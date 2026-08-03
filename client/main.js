@@ -42,6 +42,7 @@ import { shedALight, litCount } from './lib/lights.js';
 import { initBoot, markPhase, finishBoot, bootDone } from './lib/boot.js';
 import { framesHeld } from './lib/loadwork.js';
 import { initXR, updateXR } from './lib/xr.js';
+import { initSatchel } from './lib/satchel.js';
 import { startPrefetch } from './lib/prefetch.js';
 
 // ---- crash breadcrumbs (?bc=1): streamed over a BroadcastChannel so a
@@ -181,7 +182,8 @@ function start() {
   connect();
   initPalette();
   initConjure();   // the orrery panel — prompt → your pick of images → mesh → world
-  initSceneGraph();   // 🌳 the world as a tree + 📜 the scripts that animate it
+  initSatchel();
+initSceneGraph();   // 🌳 the world as a tree + 📜 the scripts that animate it
   setHint('<kbd>WASD</kbd> move · <kbd>Enter</kbd> chat · <kbd>B</kbd> build · <kbd>?</kbd> help');
 
   if (!isViewer) {

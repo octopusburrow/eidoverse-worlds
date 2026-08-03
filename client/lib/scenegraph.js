@@ -196,6 +196,7 @@ function paintScene() {
       ${channelBox(selected, bag, obj)}
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         <button data-act="find">find</button>
+        <button data-act="satchel" title="save to your personal satchel">🎒 save</button>
         <button data-act="attach">${arming === selected ? 'click new parent…' : 'attach to…'}</button>
         ${obj?.userData?.mountedTo ? '<button data-act="detach">detach</button>' : ''}
         <button data-act="remove">remove</button>
@@ -218,6 +219,10 @@ function paintScene() {
     if (!obj) return;
     const p = obj.getWorldPosition(_wp);
     flashHint(`<b>${esc(selected)}</b> is ${p.distanceTo(myState.pos).toFixed(0)}m away at (${p.x.toFixed(0)}, ${p.z.toFixed(0)})`, 5000);
+  });
+  sceneBody.querySelector('[data-act="satchel"]')?.addEventListener('click', async () => {
+    const meta = entityMeta.get(selected);
+    if (meta?.lib) (await import('./satchel.js')).satchelAdd(meta.lib);
   });
   sceneBody.querySelector('[data-act="attach"]')?.addEventListener('click', () => {
     arming = arming === selected ? null : selected;
