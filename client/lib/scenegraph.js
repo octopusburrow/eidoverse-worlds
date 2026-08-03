@@ -76,6 +76,94 @@ function treeData() {
   return { roots, kids, riders };
 }
 
+// ---- channel box -----------------------------------------------------------
+// The inspector used to show the component bag as read-only JSON — you could
+// SEE a slot's data but the only way to change it was chat or an agent. These
+// are the same editable channels an animator expects (transform first, then
+// every component), and every commit is an ordinary verb: a human typing 90
+// into "yaw" and an agent speaking `place` produce identical log entries.
+// Yaw is shown in DEGREES (the log speaks radians) — humans think in degrees.
+const DEG = 180 / Math.PI;
+const num = (v, step = 0.1) =>
+  `<input type="number" step="${step}" value="${Number.isFinite(v) ? +v.toFixed(3) : 0}" style="width:58px">`;
+
+function channelBox(id, bag, obj) {
+  const rows = [];
+  if (obj) {
+    rows.push(`<div class="cb-sec" style="color:var(--dim);margin-top:4px">transform</div>
+      <div class="cb-xf" style="display:flex;gap:3px;align-items:center;flex-wrap:wrap;font-size:11px">
+        pos ${num(obj.position.x)}${num(obj.position.y)}${num(obj.position.z)}
+        yaw° ${num(obj.rotation.y * DEG, 5)} scale ${num(obj.scale.x, 0.05)}
+      </div>`);
+  }
+  for (const [type, data] of Object.entries(bag ?? {})) {
+    rows.push(`<div class="cb-sec" style="display:flex;justify-content:space-between;color:var(--dim);margin-top:4px">
+      <span>${esc(type)}</span><button data-cb-del="${esc(type)}" title="remove component" style="font-size:10px">✕</button></div>`);
+    const flat = data && typeof data === 'object' && !Array.isArray(data)
+      && Object.values(data).every((v) => ['number', 'string', 'boolean'].includes(typeof v)
+        || (Array.isArray(v) && v.length <= 4 && v.every((n) => typeof n === 'number')));
+    if (flat) {
+      const fields = Object.entries(data).map(([k, v]) => {
+        if (typeof v === 'number') return `<label data-cb="${esc(type)}" data-k="${esc(k)}">${esc(k)} ${num(v)}</label>`;
+        if (typeof v === 'boolean') return `<label data-cb="${esc(type)}" data-k="${esc(k)}">${esc(k)} <input type="checkbox" ${v ? 'checked' : ''}></label>`;
+        if (Array.isArray(v)) return `<label data-cb="${esc(type)}" data-k="${esc(k)}" data-arr="1">${esc(k)} ${v.map((n) => num(n)).join('')}</label>`;
+        return `<label data-cb="${esc(type)}" data-k="${esc(k)}">${esc(k)} <input type="text" value="${esc(v)}" style="width:90px"></label>`;
+      });
+      rows.push(`<div style="display:flex;gap:6px;flex-wrap:wrap;font-size:11px">${fields.join('')}</div>`);
+    } else {
+      rows.push(`<textarea data-cb-json="${esc(type)}" spellcheck="false"
+        style="width:100%;min-height:52px;font:10px monospace;background:rgba(4,14,20,.9);color:var(--fg);border:1px solid var(--edge)">${esc(JSON.stringify(data, null, 1))}</textarea>`);
+    }
+  }
+  rows.push(`<div style="display:flex;gap:4px;margin-top:4px;font-size:11px">
+    <input class="cb-add-type" placeholder="add component…" style="width:110px">
+    <button class="cb-add">+</button></div>`);
+  return `<div class="cb" style="max-height:210px;overflow:auto;margin:4px 0">${rows.join('')}</div>`;
+}
+
+function wireChannelBox(id) {
+  const cb = sceneBody.querySelector('.cb');
+  if (!cb) return;
+  const commitComp = (type, data) => sendVerb('comp', { id, type, data });
+
+  const xf = cb.querySelector('.cb-xf');
+  if (xf) {
+    const [x, y, z, yawDeg, scale] = [...xf.querySelectorAll('input')];
+    const commitXf = () => sendVerb('place', {
+      id,
+      pos: [+x.value || 0, +y.value || 0, +z.value || 0],
+      yaw: (+yawDeg.value || 0) / DEG,
+      scale: +scale.value || 1,
+    });
+    for (const el of [x, y, z, yawDeg, scale]) el.addEventListener('change', commitXf);
+  }
+  for (const lab of cb.querySelectorAll('label[data-cb]')) {
+    lab.addEventListener('change', () => {
+      const type = lab.dataset.cb, k = lab.dataset.k;
+      const data = structuredClone(comps.get(id)?.[type] ?? {});
+      const ins = [...lab.querySelectorAll('input')];
+      if (lab.dataset.arr) data[k] = ins.map((i) => +i.value || 0);
+      else if (ins[0].type === 'checkbox') data[k] = ins[0].checked;
+      else if (ins[0].type === 'number') data[k] = +ins[0].value || 0;
+      else data[k] = ins[0].value;
+      commitComp(type, data);
+    });
+  }
+  for (const ta of cb.querySelectorAll('textarea[data-cb-json]')) {
+    ta.addEventListener('change', () => {
+      try { commitComp(ta.dataset.cbJson, JSON.parse(ta.value)); ta.style.borderColor = ''; }
+      catch { ta.style.borderColor = '#c33'; flashHint('not valid JSON — component unchanged'); }
+    });
+  }
+  for (const del of cb.querySelectorAll('[data-cb-del]')) {
+    del.addEventListener('click', () => commitComp(del.dataset.cbDel, null));
+  }
+  cb.querySelector('.cb-add')?.addEventListener('click', () => {
+    const type = cb.querySelector('.cb-add-type')?.value.trim();
+    if (type) commitComp(type, {});
+  });
+}
+
 function paintScene() {
   if (!sceneBody) return;
   const { roots, kids, riders } = treeData();
@@ -105,7 +193,7 @@ function paintScene() {
     inspector = `<div style="border-top:1px solid var(--edge);margin-top:6px;padding-top:6px">
       <div><b>${esc(selected)}</b> <span style="color:var(--dim)">${esc(meta?.lib ?? '')}</span></div>
       <div style="color:var(--dim)">placed by ${esc(meta?.actor ?? '?')} · ${pos ? `at (${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)})` : 'loading'}${obj?.userData?.mountedTo ? ` · mounted on ${esc(obj.userData.mountedTo)}` : ''}</div>
-      ${bag ? `<pre style="max-height:130px;overflow:auto;margin:4px 0;font-size:11px">${esc(JSON.stringify(bag, null, 1))}</pre>` : ''}
+      ${channelBox(selected, bag, obj)}
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         <button data-act="find">find</button>
         <button data-act="attach">${arming === selected ? 'click new parent…' : 'attach to…'}</button>
@@ -124,6 +212,7 @@ function paintScene() {
       paintScene();
     };
   }
+  if (selected) wireChannelBox(selected);
   sceneBody.querySelector('[data-act="find"]')?.addEventListener('click', () => {
     const obj = entities.get(selected);
     if (!obj) return;
@@ -253,6 +342,10 @@ export function initSceneGraph() {
   let repaintQueued = false;
   const repaint = () => {
     if (repaintQueued || !sceneApi?.isOpen) return;
+    // don't repaint out from under someone mid-edit in the channel box — the
+    // commit's own echo repaints after they blur the field
+    const a = document.activeElement;
+    if (a && sceneBody?.contains(a) && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA')) return;
     repaintQueued = true;
     setTimeout(() => { repaintQueued = false; if (sceneApi?.isOpen) paintScene(); }, 300);
   };
