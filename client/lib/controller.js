@@ -315,7 +315,13 @@ export function updateMe(dt, me) {
 
 // ---------------------------------------------------------------- camera
 
+// While an XR session presents, the headset owns the camera (via the rig in
+// xr.js) — the desktop follow-cam must not fight it. Probe pattern as usual.
+let xrPresenting = () => false;
+export function setXrProbe(fn) { xrPresenting = fn; }
+
 export function updateFollowCamera(dt, me) {
+  if (xrPresenting()) { if (me) me.vrm.scene.visible = false; return; }
   const headY = 1.45;
   const focus = _eye.set(myState.pos.x, myState.pos.y + headY, myState.pos.z);
 

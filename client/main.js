@@ -41,6 +41,7 @@ import { initBodyDrag, updateBodyDrag, beingDragged, revokeDragged, dragState } 
 import { shedALight, litCount } from './lib/lights.js';
 import { initBoot, markPhase, finishBoot, bootDone } from './lib/boot.js';
 import { framesHeld } from './lib/loadwork.js';
+import { initXR, updateXR } from './lib/xr.js';
 import { startPrefetch } from './lib/prefetch.js';
 
 // ---- crash breadcrumbs (?bc=1): streamed over a BroadcastChannel so a
@@ -928,6 +929,7 @@ function frame(now) {
   else if (avatarMounts.has(CONFIG.name)) updateMountedMe();  // seated: derived, not driven
   else updateMe(dt, me);
   updateSeatHint(dt);            // "X — sit" while a declared seat is in reach
+  updateXR();                    // body position -> XR rig while presenting
 
   // my own held pose: apply on change so I see what everyone else sees of me.
   // While downed the ragdoll owns setPose directly, so skip this path.
@@ -965,8 +967,11 @@ function frame(now) {
     governPerformance(fps);
     paintHud();
   }
-  requestAnimationFrame(frame);
 }
+// The loop is renderer-driven, not rAF: inside an XR session the browser's
+// rAF stops (or detaches from the headset's cadence) and only
+// session.requestAnimationFrame ticks — renderer.setAnimationLoop routes to
+// whichever is live. Desktop behavior is identical.
 
 // Shed pixels before shedding frames; shed animation detail before pixels.
 // Clouds come off before pixels do. The volumetric march measured 40fps at
@@ -1049,7 +1054,8 @@ function paintHud() {
   );
 }
 
-requestAnimationFrame(frame);
+renderer.setAnimationLoop(frame);
+initXR();
 
 // Idle bandwidth streams the rest of the library into the HTTP cache — fire
 // and forget; it waits out the boot and yields to every real load on its own
