@@ -28,7 +28,7 @@ import {
   hasGhost, hasSelection, toggleEditMode, isEditing,
 } from './lib/build.js';
 import { initConjure } from './lib/conjure.js';
-import { initSceneGraph, sceneAttach, sceneDetach } from './lib/scenegraph.js';
+import { initSceneGraph, sceneAttach, sceneDetach, openSceneSection } from './lib/scenegraph.js';
 import {
   toast, setHud, setHint, setAmbientHint, flashHint, buildHelp, toggleHelp,
   openDoor, toggleRoster, initRoster, initDock, paintRoster, panelFrame, el,
@@ -130,6 +130,7 @@ initEmoteBar();
 initDock([
   { id: 'chat', label: '💬' },
   { id: 'world', label: '🧱' },
+  { id: 'edit', label: '✏️', action: () => { if (toggleEditMode()) openSceneSection(); }, isOn: isEditing },
   { id: 'who', label: '👥' },
   { id: 'emotes', label: '👋' },
   { id: 'debug', label: '🐞' },

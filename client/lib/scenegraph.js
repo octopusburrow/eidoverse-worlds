@@ -315,6 +315,10 @@ async function paintScripts() {
   });
 }
 
+/** The dock's ✏️ edit button opens the outliner alongside the build catalog —
+ *  one click = edit mode + catalog + scene tree + channel box. */
+export function openSceneSection() { sceneApi?.toggle(true).catch(() => {}); }
+
 // ============================================================ wiring
 
 export function initSceneGraph() {

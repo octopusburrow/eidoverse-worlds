@@ -179,11 +179,14 @@ const escapeHtml = (v) => String(v).replace(/[&<>"]/g, (c) => (
 
 export function initDock(entries) {
   el.dock.innerHTML = '';
-  for (const { id, label } of entries) {
+  for (const entry of entries) {
+    const { id, label } = entry;
     const b = document.createElement('button');
     b.textContent = label;
     b.title = `toggle ${id}`;
     b.onclick = () => {
+      // an entry can be an ACTION (edit mode) instead of a frame toggle
+      if (entry.action) { entry.action(); paintDock(entries); return; }
       const f = getFrame(id);
       if (!f) return;
       f.toggle();
@@ -200,10 +203,12 @@ export function initDock(entries) {
   el.dock.appendChild(lock);
   paintDock(entries);
   bus.on('frames', () => paintDock(entries));
+  bus.on('edit-mode', () => paintDock(entries));
 }
 function paintDock(entries) {
   for (const b of el.dock.querySelectorAll('button[data-toggles]')) {
-    b.classList.toggle('on', !!getFrame(b.dataset.toggles)?.visible);
+    const entry = entries.find((e) => e.id === b.dataset.toggles);
+    b.classList.toggle('on', entry?.isOn ? !!entry.isOn() : !!getFrame(b.dataset.toggles)?.visible);
   }
   const lock = el.dock.querySelector('button[data-lock]');
   if (lock) {
