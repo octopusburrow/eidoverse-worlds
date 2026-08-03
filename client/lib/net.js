@@ -118,6 +118,9 @@ export function sendMod(type, extra = {}) {
 export function sendWhisper(to, text) {
   if (net.joined && net.ws?.readyState === 1) net.ws.send(JSON.stringify({ type: 'whisper', to, text }));
 }
+export function sendRtc(to, payload) {
+  if (net.joined && net.ws?.readyState === 1) net.ws.send(JSON.stringify({ type: 'rtc', to, payload }));
+}
 export function sendTyping(to) {
   if (net.joined && net.ws?.readyState === 1) net.ws.send(JSON.stringify({ type: 'typing', to }));
 }
@@ -373,6 +376,10 @@ async function handle(msg) {
       if (p) { pendingHistory.delete(msg.reqId); p(msg); }
       break;
     }
+
+    case 'rtc':
+      bus.emit('rtc', msg);
+      break;
 
     case 'whisper':
       logWhisper(msg);

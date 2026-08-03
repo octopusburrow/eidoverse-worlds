@@ -43,6 +43,8 @@ import { initBoot, markPhase, finishBoot, bootDone } from './lib/boot.js';
 import { framesHeld } from './lib/loadwork.js';
 import { initXR, updateXR } from './lib/xr.js';
 import { initSatchel } from './lib/satchel.js';
+import { initVoice, toggleMic, toggleMute, micOn, isMuted } from './lib/voice.js';
+import { setSTT, sttAvailable } from './lib/stt.js';
 import { startPrefetch } from './lib/prefetch.js';
 
 // ---- crash breadcrumbs (?bc=1): streamed over a BroadcastChannel so a
@@ -132,6 +134,8 @@ initDock([
   { id: 'chat', label: '💬' },
   { id: 'world', label: '🧱' },
   { id: 'edit', label: '✏️', action: () => { if (toggleEditMode()) openSceneSection(); }, isOn: isEditing },
+  { id: 'voice', label: '🎙', action: async () => { const on = await toggleMic(CONFIG.name); if (sttAvailable()) setSTT(on); }, isOn: micOn },
+  { id: 'mute', label: '🔇', action: () => { toggleMute(); }, isOn: isMuted },
   { id: 'who', label: '👥' },
   { id: 'emotes', label: '👋' },
   { id: 'debug', label: '🐞' },
@@ -183,6 +187,7 @@ function start() {
   initPalette();
   initConjure();   // the orrery panel — prompt → your pick of images → mesh → world
   initSatchel();
+initVoice(CONFIG.name);
 initSceneGraph();   // 🌳 the world as a tree + 📜 the scripts that animate it
   setHint('<kbd>WASD</kbd> move · <kbd>Enter</kbd> chat · <kbd>B</kbd> build · <kbd>?</kbd> help');
 

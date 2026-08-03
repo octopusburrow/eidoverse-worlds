@@ -2178,6 +2178,19 @@ const server = Bun.serve({
           ws.send(JSON.stringify({ type: "debug", reqId: msg.reqId ?? null, events }));
           break;
         }
+        case "rtc": {
+          // Voice/media signaling: point-to-point like a whisper and never
+          // logged for the same reason — but unlike a whisper, a stale SDP is
+          // worthless (an offer for a peer who left answers nothing), so there
+          // is no pending queue: absent recipient = silently dropped.
+          if (!c.world || c.spectator) return;
+          const rto = String(msg.to ?? "").slice(0, 64);
+          if (!rto || msg.payload == null) return;
+          if (JSON.stringify(msg.payload).length > 20000) return; // SDP-sized, not file-sized
+          const rpacket = JSON.stringify({ type: "rtc", from: c.id, to: rto, payload: msg.payload });
+          for (const t of c.world.clients) if (t.id === rto && !t.spectator) t.ws.send(rpacket);
+          return;
+        }
         case "whisper": {
           // A private message between two bodies.
           //
