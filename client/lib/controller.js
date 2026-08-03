@@ -6,7 +6,7 @@
 // shoulder offset (your own body stops occluding what you're aiming at), and
 // a continuous zoom that passes through into first person.
 
-import { THREE, camera, canvas, CONFIG, angleDelta, bus } from './core.js';
+import { THREE, camera, canvas, CONFIG, angleDelta, bus, report } from './core.js';
 import { heightAt } from './terrain.js';
 import { resolveColliders, lastBlockedTop, findSeat } from './colliders.js';
 import { chat } from './chat.js';
@@ -108,12 +108,44 @@ canvas.addEventListener('mousedown', (e) => {
 let editingNow = () => false;
 export function setEditingProbe(fn) { editingNow = fn; }
 addEventListener('mouseup', () => { dragging = false; });
+
+// ---- mouselook --------------------------------------------------------------
+// The desktop-game standard (VRChat, WoW): the canvas captures the pointer,
+// looking is free, Esc hands the cursor back. Drag-orbit stays untouched as
+// the fallback and the edit-mode behavior — a mode this module already has,
+// because looking-vs-editing was settled the same way in build.js.
+// While locked the cursor is parked, so `mouse` pins to (0,0): hover and
+// picking read the screen centre — crosshair semantics — instead of wherever
+// the pointer happened to die.
+let mouselook = localStorage.getItem('ew-mouselook') !== 'off';
+let locked = false, lockHinted = false;
+export const isMouselook = () => locked;
+export function setMouselook(on) {
+  mouselook = on;
+  localStorage.setItem('ew-mouselook', on ? 'on' : 'off');
+  if (!on && locked) document.exitPointerLock();
+}
+canvas.addEventListener('click', () => {
+  if (!mouselook || locked || editingNow() || pointerClaimed()) return;
+  if (touchState.lookId !== null) return;             // a finger, not a mouse
+  const p = canvas.requestPointerLock();              // Promise in Chrome, undefined in Safari
+  p?.catch?.((e) => report('pointer lock', e));
+});
+document.addEventListener('pointerlockchange', () => {
+  locked = document.pointerLockElement === canvas;
+  if (locked) {
+    mouse.set(0, 0);
+    if (!lockHinted) { flashHint('mouselook — <kbd>Esc</kbd> frees the cursor · click the world to look again'); lockHinted = true; }
+  }
+});
+bus.on('edit-mode', (on) => { if (on && locked) document.exitPointerLock(); });
+
 addEventListener('mousemove', (e) => {
-  if (dragging) {
+  if (locked || dragging) {
     camYaw -= e.movementX * 0.005;
     camPitch = THREE.MathUtils.clamp(camPitch + e.movementY * 0.004, -0.9, 1.2);
   }
-  mouse.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  if (!locked) mouse.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
 });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault()); // right-drag orbit
 canvas.addEventListener('wheel', (e) => {
