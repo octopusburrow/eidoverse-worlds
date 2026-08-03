@@ -84,16 +84,24 @@ function treeData() {
 // into "yaw" and an agent speaking `place` produce identical log entries.
 // Yaw is shown in DEGREES (the log speaks radians) — humans think in degrees.
 const DEG = 180 / Math.PI;
+// house input style — the panel's own palette, not browser-default white
+const IN = 'width:100%;box-sizing:border-box;background:rgba(4,14,20,.9);color:var(--fg);border:1px solid var(--edge);border-radius:4px;padding:2px 6px;font:11px inherit';
 const num = (v, step = 0.1) =>
-  `<input type="number" step="${step}" value="${Number.isFinite(v) ? +v.toFixed(3) : 0}" style="width:58px">`;
+  `<input type="number" step="${step}" value="${Number.isFinite(v) ? +v.toFixed(3) : 0}" style="${IN}">`;
+// a channel ROW: label column + value column, grid-aligned — an animator is
+// reading this panel, and unaligned translate channels are a war crime
+const GRID = 'display:grid;grid-template-columns:52px minmax(0,96px);gap:3px 6px;align-items:center;font-size:11px';
 
 function channelBox(id, bag, obj) {
   const rows = [];
   if (obj) {
     rows.push(`<div class="cb-sec" style="color:var(--dim);margin-top:4px">transform</div>
-      <div class="cb-xf" style="display:flex;gap:3px;align-items:center;flex-wrap:wrap;font-size:11px">
-        pos ${num(obj.position.x)}${num(obj.position.y)}${num(obj.position.z)}
-        yaw° ${num(obj.rotation.y * DEG, 5)} scale ${num(obj.scale.x, 0.05)}
+      <div class="cb-xf" style="${GRID}">
+        <span>pos X</span>${num(obj.position.x)}
+        <span>pos Y</span>${num(obj.position.y)}
+        <span>pos Z</span>${num(obj.position.z)}
+        <span>yaw°</span>${num(obj.rotation.y * DEG, 5)}
+        <span>scale</span>${num(obj.scale.x, 0.05)}
       </div>`);
   }
   for (const [type, data] of Object.entries(bag ?? {})) {
@@ -104,12 +112,13 @@ function channelBox(id, bag, obj) {
         || (Array.isArray(v) && v.length <= 4 && v.every((n) => typeof n === 'number')));
     if (flat) {
       const fields = Object.entries(data).map(([k, v]) => {
-        if (typeof v === 'number') return `<label data-cb="${esc(type)}" data-k="${esc(k)}">${esc(k)} ${num(v)}</label>`;
-        if (typeof v === 'boolean') return `<label data-cb="${esc(type)}" data-k="${esc(k)}">${esc(k)} <input type="checkbox" ${v ? 'checked' : ''}></label>`;
-        if (Array.isArray(v)) return `<label data-cb="${esc(type)}" data-k="${esc(k)}" data-arr="1">${esc(k)} ${v.map((n) => num(n)).join('')}</label>`;
-        return `<label data-cb="${esc(type)}" data-k="${esc(k)}">${esc(k)} <input type="text" value="${esc(v)}" style="width:90px"></label>`;
+        const lab = `<span style="overflow:hidden;text-overflow:ellipsis">${esc(k)}</span>`;
+        if (typeof v === 'number') return `<label data-cb="${esc(type)}" data-k="${esc(k)}" style="display:contents">${lab}${num(v)}</label>`;
+        if (typeof v === 'boolean') return `<label data-cb="${esc(type)}" data-k="${esc(k)}" style="display:contents">${lab}<input type="checkbox" ${v ? 'checked' : ''} style="justify-self:start"></label>`;
+        if (Array.isArray(v)) return `<label data-cb="${esc(type)}" data-k="${esc(k)}" data-arr="1" style="display:contents">${lab}<span style="display:flex;gap:3px">${v.map((n) => num(n)).join('')}</span></label>`;
+        return `<label data-cb="${esc(type)}" data-k="${esc(k)}" style="display:contents">${lab}<input type="text" value="${esc(v)}" style="${IN}"></label>`;
       });
-      rows.push(`<div style="display:flex;gap:6px;flex-wrap:wrap;font-size:11px">${fields.join('')}</div>`);
+      rows.push(`<div style="${GRID}">${fields.join('')}</div>`);
     } else {
       rows.push(`<textarea data-cb-json="${esc(type)}" spellcheck="false"
         style="width:100%;min-height:52px;font:10px monospace;background:rgba(4,14,20,.9);color:var(--fg);border:1px solid var(--edge)">${esc(JSON.stringify(data, null, 1))}</textarea>`);
