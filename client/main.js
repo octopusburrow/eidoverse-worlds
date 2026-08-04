@@ -45,6 +45,7 @@ import { initXR, updateXR } from './lib/xr.js';
 import { initSatchel } from './lib/satchel.js';
 import './lib/picture.js';  // picture comp: image-faced meshes, aspect derived from the bytes
 import { updateNotice } from './lib/notice.js';  // things that notice you looking
+import './lib/transform.js'; // transform comp: 3-axis rot + non-uniform scale (place keeps pos/yaw/size)
 import { initEditMode, toggle as toggleEditSurface } from './lib/editmode.js';
 import { initVoice, toggleMic, toggleMute, micOn, isMuted } from './lib/voice.js';
 import { setSTT, sttAvailable } from './lib/stt.js';
