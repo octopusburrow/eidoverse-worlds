@@ -129,11 +129,18 @@ export function setMouselook(on) {
   localStorage.setItem('ew-mouselook', on ? 'on' : 'off');
   if (!on && locked) document.exitPointerLock();
 }
-canvas.addEventListener('click', () => {
+// Only a clean TAP enters mouselook (R, 16:56): a hold-and-move is somebody
+// using the original drag-to-orbit and must never flip modes under their
+// hand. Clean = under 250ms, under 4px of travel.
+let _tapT = 0, _tapX = 0, _tapY = 0;
+canvas.addEventListener('pointerdown', (e) => { _tapT = performance.now(); _tapX = e.clientX; _tapY = e.clientY; });
+canvas.addEventListener('click', (e) => {
   if (!mouselook || locked || editingNow() || pointerClaimed()) return;
   if (touchState.lookId !== null) return;             // a finger, not a mouse
+  if (performance.now() - _tapT > 250 ||
+      Math.hypot(e.clientX - _tapX, e.clientY - _tapY) > 4) return;   // a drag, not a tap
   const p = canvas.requestPointerLock();              // Promise in Chrome, undefined in Safari
-  p?.catch?.((e) => report('pointer lock', e));
+  p?.catch?.((e2) => report('pointer lock', e2));
 });
 document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === canvas;
