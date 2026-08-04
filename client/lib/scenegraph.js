@@ -408,4 +408,5 @@ export function initSceneGraph() {
   bus.on('entity', repaint);
   bus.on('comp', repaint);
   bus.on('mount', repaint);
+  bus.on('sg:select-request', (id) => sgSelect(id));   // VR pointer feeds the same selection
 }

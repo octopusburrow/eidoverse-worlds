@@ -31,6 +31,10 @@ let vy = 0, grounded = true, mantle = null, airborneFor = 0;
 export let camYaw = 0, camPitch = 0.32, camDist = 4.2;
 let dragging = false, dragBtn = 0;
 export const mouse = new THREE.Vector2();
+// XR intent — a thumbstick is a keyboard that reports fractions (parity law:
+// VR walks through the SAME wish/gravity/mantle/seat code as every other
+// input; xr.js fills this per-frame while presenting, nothing else changes).
+export const xrIntent = { fwd: 0, strafe: 0, yawDelta: 0, jump: false, active: false };
 export let firstPerson = false;
 export let photoMode = false;
 
@@ -235,6 +239,10 @@ export function updateMe(dt, me) {
   let fwd = Number(held(MOVE_KEYS.fwd)) - Number(held(MOVE_KEYS.back));
   let strafe = Number(held(MOVE_KEYS.right)) - Number(held(MOVE_KEYS.left));
   if (touchState.moveX || touchState.moveZ) { strafe = touchState.moveX; fwd = -touchState.moveZ; }
+  if (xrIntent.active) {
+    fwd = xrIntent.fwd; strafe = xrIntent.strafe;
+    if (xrIntent.yawDelta) { camYaw += xrIntent.yawDelta; xrIntent.yawDelta = 0; }
+  }
 
   const moving = Math.abs(fwd) > 0.08 || Math.abs(strafe) > 0.08;
   const running = keys.has('ShiftLeft') || keys.has('ShiftRight');
@@ -265,7 +273,7 @@ export function updateMe(dt, me) {
     myState.pos.lerpVectors(mantle.from, mantle.to, e);
     if (k >= 1) { mantle = null; grounded = true; vy = 0; }
   } else {
-    if (grounded && keys.has('Space')) {
+    if (grounded && (keys.has('Space') || (xrIntent.active && xrIntent.jump))) {
       posture = null; myState.seat = null;
       const reach = blockedTop !== null ? blockedTop - myState.pos.y : 0;
       if (blockedTop !== null && reach > 0.3 && reach <= 1.7) {

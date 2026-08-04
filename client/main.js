@@ -48,6 +48,10 @@ import { updateNotice } from './lib/notice.js';  // things that notice you looki
 import './lib/transform.js'; // transform comp: 3-axis rot + non-uniform scale (place keeps pos/yaw/size)
 import './lib/decimate.js';  // decimate comp: mesh simplification, ratio in the log, derivation in the client
 import './lib/editundo.js';  // Ctrl+Z = speak the inverse verb (undo as utterance)
+// radial-menu actions: the ring speaks through the same flows the keyboard does
+bus.on('xr:sit', () => { if (!trySitOn(null)) setPosture('sit'); });
+bus.on('xr:stand', () => dismountMe());
+bus.on('xr:mic', async () => (await import('./lib/voice.js')).toggleMic());
 import { initEditMode, toggle as toggleEditSurface } from './lib/editmode.js';
 import { initVoice, toggleMic, toggleMute, micOn, isMuted } from './lib/voice.js';
 import { setSTT, sttAvailable } from './lib/stt.js';
