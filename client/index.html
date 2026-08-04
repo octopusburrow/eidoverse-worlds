@@ -138,6 +138,9 @@ select {
 /* =========================================================== frames (windows)
    Movable, resizable, collapsible, layout remembered. The scene is the
    content, so the chrome has to get out of the way on the user's terms. */
+/* invisible 4px hit-halo: pointer events just OUTSIDE the frame still target
+   it, so edge-resize can be grabbed beyond the border (no visual change) */
+.frame::before { content: ''; position: absolute; inset: -4px; }
 .frame {
   position: fixed; display: flex; flex-direction: column;
   z-index: 20; min-width: 170px; overflow: hidden;

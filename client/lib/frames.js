@@ -180,11 +180,15 @@ export function makeFrame(id, opts = {}) {
   // band around the whole frame is live; the cursor announces the zone
   // (ns/ew/nesw/nwse) and dragging a north or west side moves the origin so
   // the opposite side stays planted, which is what hands expect.
-  const BAND = 8;
+  // 12px inside + 4px beyond the edge: panel content crowds the border, so an
+  // inside-only band left a sliver ("literally a pixel" — R, 16:53). The
+  // outside reach comes free because these listeners hit-test coordinates,
+  // not elements — nothing about the panels' look changes.
+  const BAND = 12, REACH = 4;
   const zoneAt = (e) => {
     const r = root.getBoundingClientRect();
     const nx = e.clientX - r.left, ny = e.clientY - r.top;
-    if (nx < -1 || ny < -1 || nx > r.width + 1 || ny > r.height + 1) return '';
+    if (nx < -REACH || ny < -REACH || nx > r.width + REACH || ny > r.height + REACH) return '';
     let z = '';
     if (ny < BAND) z += 'n'; else if (ny > r.height - BAND) z += 's';
     if (nx < BAND) z += 'w'; else if (nx > r.width - BAND) z += 'e';
