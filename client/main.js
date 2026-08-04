@@ -133,7 +133,6 @@ initEmoteBar();
 initDock([
   { id: 'chat', label: '💬' },
   { id: 'world', label: '🧱' },
-  { id: 'edit', label: '✏️', action: () => { if (toggleEditMode()) openSceneSection(); }, isOn: isEditing },
   { id: 'voice', label: '🎙', action: async () => { const on = await toggleMic(CONFIG.name); if (sttAvailable()) setSTT(on); }, isOn: micOn },
   { id: 'mute', label: '🔇', action: () => { toggleMute(); }, isOn: isMuted },
   { id: 'who', label: '👥' },
@@ -186,9 +185,9 @@ function start() {
   connect();
   initPalette();
   initConjure();   // the orrery panel — prompt → your pick of images → mesh → world
-  initSatchel();
-initVoice(CONFIG.name);
-initSceneGraph();   // 🌳 the world as a tree + 📜 the scripts that animate it
+  initVoice(CONFIG.name);
+  initSceneGraph();   // 🌳 the world as a tree + 📜 the scripts that animate it
+  initSatchel();      // 🎒 appended last — their section order stays stock
   setHint('<kbd>WASD</kbd> move · <kbd>Enter</kbd> chat · <kbd>B</kbd> build · <kbd>?</kbd> help');
 
   if (!isViewer) {
