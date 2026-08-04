@@ -28,7 +28,7 @@ import {
   hasGhost, hasSelection, toggleEditMode, isEditing,
 } from './lib/build.js';
 import { initConjure } from './lib/conjure.js';
-import { initSceneGraph, sceneAttach, sceneDetach, openSceneSection } from './lib/scenegraph.js';
+import { initSceneGraph, sceneAttach, sceneDetach } from './lib/scenegraph.js';
 import {
   toast, setHud, setHint, setAmbientHint, flashHint, buildHelp, toggleHelp,
   openDoor, toggleRoster, initRoster, initDock, paintRoster, panelFrame, el,
@@ -52,7 +52,7 @@ import './lib/editundo.js';  // Ctrl+Z = speak the inverse verb (undo as utteran
 bus.on('xr:sit', () => { if (!trySitOn(null)) setPosture('sit'); });
 bus.on('xr:stand', () => dismountMe());
 bus.on('xr:mic', async () => (await import('./lib/voice.js')).toggleMic());
-import { initEditMode, toggle as toggleEditSurface } from './lib/editmode.js';
+import { initWorkshop, toggle as toggleWorkshop } from './lib/workshop.js';
 import { initVoice, toggleMic, toggleMute, micOn, isMuted } from './lib/voice.js';
 import { setSTT, sttAvailable } from './lib/stt.js';
 import { startPrefetch } from './lib/prefetch.js';
@@ -197,7 +197,7 @@ function start() {
   initConjure();   // the orrery panel — prompt → your pick of images → mesh → world
   initVoice(CONFIG.name);
   initSceneGraph();
-  initEditMode();   // 🌳 the world as a tree + 📜 the scripts that animate it
+  initWorkshop();   // OUR edit mode — self-contained, their surfaces untouched
   initSatchel();      // 🎒 appended last — their section order stays stock
   setHint('<kbd>WASD</kbd> move · <kbd>Enter</kbd> chat · <kbd>B</kbd> build · <kbd>?</kbd> help');
 
@@ -827,7 +827,7 @@ bus.on('command', ({ cmd, arg }) => {
     sendVerb('use', { id, action: action || 'use' });
     return;
   }
-  if (cmd === 'editor' || cmd === 'edit') { toggleEditSurface(); return; }
+  if (cmd === 'editor' || cmd === 'edit') { toggleWorkshop(); return; }
   if (cmd === 'sit') {
     // /sit [thing] — a declared seat nearby wins; otherwise sit on the ground
     if (!trySitOn((arg || '').trim() || null)) setPosture('sit');

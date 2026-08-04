@@ -23,8 +23,6 @@ import { THREE, CONFIG, bus } from './core.js';
 import { entities, entityMeta, comps, avatarMounts } from './world.js';
 import { sendVerb, requestDebug } from './net.js';
 import { makeSection, flashHint } from './ui.js';
-import { componentTypes, componentSpec, defaultsFor } from './components.js';
-import { recordPair } from './editundo.js';
 import { logChat } from './chat.js';
 import { myState } from './controller.js';
 
@@ -78,125 +76,6 @@ function treeData() {
   return { roots, kids, riders };
 }
 
-// ---- channel box -----------------------------------------------------------
-// The inspector used to show the component bag as read-only JSON — you could
-// SEE a slot's data but the only way to change it was chat or an agent. These
-// are the same editable channels an animator expects (transform first, then
-// every component), and every commit is an ordinary verb: a human typing 90
-// into "yaw" and an agent speaking `place` produce identical log entries.
-// Yaw is shown in DEGREES (the log speaks radians) — humans think in degrees.
-const DEG = 180 / Math.PI;
-// house input style — the panel's own palette, not browser-default white
-const IN = 'width:100%;box-sizing:border-box;background:rgba(4,14,20,.9);color:var(--fg);border:1px solid var(--edge);border-radius:4px;padding:2px 6px;font:11px inherit';
-const num = (v, step = 0.1) =>
-  `<input type="number" step="${step}" value="${Number.isFinite(v) ? +v.toFixed(3) : 0}" style="${IN}">`;
-// a channel ROW: label column + value column, grid-aligned — an animator is
-// reading this panel, and unaligned translate channels are a war crime
-const GRID = 'display:grid;grid-template-columns:52px minmax(0,96px);gap:3px 6px;align-items:center;font-size:11px';
-
-function channelBox(id, bag, obj) {
-  const rows = [];
-  if (obj) {
-    rows.push(`<div class="cb-sec" style="color:var(--dim);margin-top:4px">transform</div>
-      <div class="cb-xf" style="${GRID}">
-        <span>pos X</span>${num(obj.position.x)}
-        <span>pos Y</span>${num(obj.position.y)}
-        <span>pos Z</span>${num(obj.position.z)}
-        <span>yaw°</span>${num(obj.rotation.y * DEG, 5)}
-        <span>scale</span>${num(obj.scale.x, 0.05)}
-      </div>`);
-  }
-  for (const [type, data] of Object.entries(bag ?? {})) {
-    rows.push(`<div class="cb-sec" style="display:flex;justify-content:space-between;color:var(--dim);margin-top:4px">
-      <span>${esc(type)}</span><button data-cb-del="${esc(type)}" title="remove component" style="font-size:10px">✕</button></div>`);
-    const custom = componentSpec(type)?.editor?.(id, data, { esc, num, GRID }) ?? '';
-    if (custom) { rows.push(`<div data-cb-custom="${esc(type)}">${custom}</div>`); continue; }
-    const flat = data && typeof data === 'object' && !Array.isArray(data)
-      && Object.values(data).every((v) => ['number', 'string', 'boolean'].includes(typeof v)
-        || (Array.isArray(v) && v.length <= 4 && v.every((n) => typeof n === 'number')));
-    if (flat) {
-      const fields = Object.entries(data).map(([k, v]) => {
-        const lab = `<span style="overflow:hidden;text-overflow:ellipsis">${esc(k)}</span>`;
-        if (typeof v === 'number') return `<label data-cb="${esc(type)}" data-k="${esc(k)}" style="display:contents">${lab}${num(v)}</label>`;
-        if (typeof v === 'boolean') return `<label data-cb="${esc(type)}" data-k="${esc(k)}" style="display:contents">${lab}<input type="checkbox" ${v ? 'checked' : ''} style="justify-self:start"></label>`;
-        if (Array.isArray(v)) return `<label data-cb="${esc(type)}" data-k="${esc(k)}" data-arr="1" style="display:contents">${lab}<span style="display:flex;gap:3px">${v.map((n) => num(n)).join('')}</span></label>`;
-        return `<label data-cb="${esc(type)}" data-k="${esc(k)}" style="display:contents">${lab}<input type="text" value="${esc(v)}" style="${IN}"></label>`;
-      });
-      rows.push(`<div style="${GRID}">${fields.join('')}</div>`);
-    } else {
-      rows.push(`<textarea data-cb-json="${esc(type)}" spellcheck="false"
-        style="width:100%;min-height:52px;font:10px monospace;background:rgba(4,14,20,.9);color:var(--fg);border:1px solid var(--edge)">${esc(JSON.stringify(data, null, 1))}</textarea>`);
-    }
-  }
-  const opts = componentTypes().map((t) => {
-    const h = componentSpec(t)?.hint;
-    return `<option value="${esc(t)}">${h ? esc(h) : ''}</option>`;
-  }).join('');
-  rows.push(`<div style="display:flex;gap:4px;margin-top:4px;font-size:11px">
-    <input class="cb-add-type" list="cb-types" placeholder="add component…" style="width:130px">
-    <datalist id="cb-types">${opts}</datalist>
-    <button class="cb-add">+</button></div>`);
-  return `<div class="cb" style="max-height:210px;overflow:auto;margin:4px 0">${rows.join('')}</div>`;
-}
-
-function wireChannelBox(id, root = sceneBody) {
-  const cb = root.querySelector('.cb');
-  if (!cb) return;
-  const commitComp = (type, data) => {
-    const prev = structuredClone(comps.get(id)?.[type] ?? null);
-    recordPair({ verb: 'comp', args: { id, type, data: prev } },
-               { verb: 'comp', args: { id, type, data } });
-    sendVerb('comp', { id, type, data });
-  };
-
-  const xf = cb.querySelector('.cb-xf');
-  if (xf) {
-    const [x, y, z, yawDeg, scale] = [...xf.querySelectorAll('input')];
-    const commitXf = () => {
-      const obj = entities.get(id);
-      if (obj) recordPair(
-        { verb: 'place', args: { id, pos: [+obj.position.x.toFixed(3), +obj.position.y.toFixed(3), +obj.position.z.toFixed(3)], yaw: +obj.rotation.y.toFixed(4), scale: +obj.scale.x.toFixed(3) } },
-        { verb: 'place', args: { id, pos: [+x.value || 0, +y.value || 0, +z.value || 0], yaw: (+yawDeg.value || 0) / DEG, scale: +scale.value || 1 } });
-      sendVerb('place', {
-        id,
-        pos: [+x.value || 0, +y.value || 0, +z.value || 0],
-        yaw: (+yawDeg.value || 0) / DEG,
-        scale: +scale.value || 1,
-      });
-    };
-    for (const el of [x, y, z, yawDeg, scale]) el.addEventListener('change', commitXf);
-  }
-  for (const lab of cb.querySelectorAll('label[data-cb]')) {
-    lab.addEventListener('change', () => {
-      const type = lab.dataset.cb, k = lab.dataset.k;
-      const data = structuredClone(comps.get(id)?.[type] ?? {});
-      const ins = [...lab.querySelectorAll('input')];
-      if (lab.dataset.arr) data[k] = ins.map((i) => +i.value || 0);
-      else if (ins[0].type === 'checkbox') data[k] = ins[0].checked;
-      else if (ins[0].type === 'number') data[k] = +ins[0].value || 0;
-      else data[k] = ins[0].value;
-      commitComp(type, data);
-    });
-  }
-  for (const ta of cb.querySelectorAll('textarea[data-cb-json]')) {
-    ta.addEventListener('change', () => {
-      try { commitComp(ta.dataset.cbJson, JSON.parse(ta.value)); ta.style.borderColor = ''; }
-      catch { ta.style.borderColor = '#c33'; flashHint('not valid JSON — component unchanged'); }
-    });
-  }
-  for (const del of cb.querySelectorAll('[data-cb-del]')) {
-    del.addEventListener('click', () => commitComp(del.dataset.cbDel, null));
-  }
-  cb.querySelector('.cb-add')?.addEventListener('click', () => {
-    const type = cb.querySelector('.cb-add-type')?.value.trim();
-    if (type) commitComp(type, defaultsFor(type));
-  });
-  for (const box of cb.querySelectorAll('[data-cb-custom]')) {
-    const type = box.dataset.cbCustom;
-    componentSpec(type)?.wire?.(box, id, (data) => commitComp(type, data));
-  }
-}
-
 function paintScene() {
   if (!sceneBody) return;
   const { roots, kids, riders } = treeData();
@@ -226,18 +105,16 @@ function paintScene() {
     inspector = `<div style="border-top:1px solid var(--edge);margin-top:6px;padding-top:6px">
       <div><b>${esc(selected)}</b> <span style="color:var(--dim)">${esc(meta?.lib ?? '')}</span></div>
       <div style="color:var(--dim)">placed by ${esc(meta?.actor ?? '?')} · ${pos ? `at (${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)})` : 'loading'}${obj?.userData?.mountedTo ? ` · mounted on ${esc(obj.userData.mountedTo)}` : ''}</div>
-      ${channelBox(selected, bag, obj)}
+      ${bag ? `<pre style="max-height:130px;overflow:auto;margin:4px 0;font-size:11px">${esc(JSON.stringify(bag, null, 1))}</pre>` : ''}
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         <button data-act="find">find</button>
-        <button data-act="satchel" title="save to your personal satchel">🎒 save</button>
         <button data-act="attach">${arming === selected ? 'click new parent…' : 'attach to…'}</button>
         ${obj?.userData?.mountedTo ? '<button data-act="detach">detach</button>' : ''}
         <button data-act="remove">remove</button>
       </div></div>`;
   }
-  sceneBody.innerHTML = `<div style="display:flex;justify-content:flex-end;margin-bottom:2px"><button class="sg-expand" title="open the full edit surface">⛶ full edit</button></div><div class="stack" style="max-height:200px;overflow:auto">${rows.join('') || '<div style="color:var(--dim)">nothing placed yet</div>'}</div>${inspector}`;
+  sceneBody.innerHTML = `<div class="stack" style="max-height:200px;overflow:auto">${rows.join('') || '<div style="color:var(--dim)">nothing placed yet</div>'}</div>${inspector}`;
 
-  sceneBody.querySelector('.sg-expand')?.addEventListener('click', () => bus.emit('editmode:toggle'));
   for (const el of sceneBody.querySelectorAll('.sg-row')) {
     el.onclick = () => {
       const id = el.dataset.id;
@@ -245,19 +122,13 @@ function paintScene() {
       selected = id === selected ? null : id;
       arming = null;
       paintScene();
-      bus.emit('sg:select', selected);
     };
   }
-  if (selected) wireChannelBox(selected);
   sceneBody.querySelector('[data-act="find"]')?.addEventListener('click', () => {
     const obj = entities.get(selected);
     if (!obj) return;
     const p = obj.getWorldPosition(_wp);
     flashHint(`<b>${esc(selected)}</b> is ${p.distanceTo(myState.pos).toFixed(0)}m away at (${p.x.toFixed(0)}, ${p.z.toFixed(0)})`, 5000);
-  });
-  sceneBody.querySelector('[data-act="satchel"]')?.addEventListener('click', async () => {
-    const meta = entityMeta.get(selected);
-    if (meta?.lib) (await import('./satchel.js')).satchelAdd(meta.lib);
   });
   sceneBody.querySelector('[data-act="attach"]')?.addEventListener('click', () => {
     arming = arming === selected ? null : selected;
@@ -268,7 +139,6 @@ function paintScene() {
   sceneBody.querySelector('[data-act="remove"]')?.addEventListener('click', () => {
     sendVerb('remove', { id: selected });
     selected = null;
-    bus.emit('sg:select', null);
   });
 }
 
@@ -356,21 +226,6 @@ async function paintScripts() {
   });
 }
 
-/** The dock's ✏️ edit button opens the outliner alongside the build catalog —
- *  one click = edit mode + catalog + scene tree + channel box. */
-export function openSceneSection() { sceneApi?.toggle(true).catch(() => {}); }
-
-// ---- shared with the edit surface (editmode.js) ----------------------------
-// One selection, two projections: the panel section and the full edit surface
-// show the SAME selected entity; whichever changes it emits sg:select.
-export { treeData, badgesFor, channelBox, wireChannelBox };
-export function sgSelected() { return selected; }
-export function sgSelect(id) {
-  selected = id;
-  if (sceneApi?.isOpen) paintScene();
-  bus.emit('sg:select', id);
-}
-
 // ============================================================ wiring
 
 export function initSceneGraph() {
@@ -398,15 +253,10 @@ export function initSceneGraph() {
   let repaintQueued = false;
   const repaint = () => {
     if (repaintQueued || !sceneApi?.isOpen) return;
-    // don't repaint out from under someone mid-edit in the channel box — the
-    // commit's own echo repaints after they blur the field
-    const a = document.activeElement;
-    if (a && sceneBody?.contains(a) && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA')) return;
     repaintQueued = true;
     setTimeout(() => { repaintQueued = false; if (sceneApi?.isOpen) paintScene(); }, 300);
   };
   bus.on('entity', repaint);
   bus.on('comp', repaint);
   bus.on('mount', repaint);
-  bus.on('sg:select-request', (id) => sgSelect(id));   // VR pointer feeds the same selection
 }

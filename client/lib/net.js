@@ -40,7 +40,6 @@ export function wireNet(h) { hooks = { ...hooks, ...h }; }
 export function sendVerb(verb, args) {
   if (net.joined && net.ws?.readyState === 1) {
     net.ws.send(JSON.stringify({ type: 'verb', verb, args }));
-    bus.emit('verb:sent', { verb, args });   // the edit surface's echo line listens
   } else {
     verbQueue.push({ verb, args });
     logChat('*', `queued ${verb} — reconnecting…`);
@@ -509,7 +508,6 @@ async function onSnapshot(msg) {
   while (verbQueue.length) {
     const { verb, args } = verbQueue.shift();
     net.ws.send(JSON.stringify({ type: 'verb', verb, args }));
-    bus.emit('verb:sent', { verb, args });   // the edit surface's echo line listens
   }
 
   // reconcile: the snapshot is authoritative — dispose any remote no longer
