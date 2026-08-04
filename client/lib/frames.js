@@ -58,11 +58,7 @@ export function makeFrame(id, opts = {}) {
   const body = document.createElement('div');
   body.className = 'fr-body';
 
-  const grip = document.createElement('div');
-  grip.className = 'fr-grip';
-
   root.append(head, body);
-  if (resizable) root.appendChild(grip);
   document.body.appendChild(root);
 
   // ---- state
@@ -178,27 +174,60 @@ export function makeFrame(id, opts = {}) {
     head.dispatchEvent(new PointerEvent('pointerdown', e));
   }, true);
 
-  // ---- resizing
-  grip.addEventListener('pointerdown', (e) => {
-    if (locked) return;
+  // ---- resizing: every edge and corner, like any modern window ------------
+  // The old affordance was a 15px double-line grip at the lower-right — one
+  // discoverable pixel-patch and one direction of growth. Instead: an 8px
+  // band around the whole frame is live; the cursor announces the zone
+  // (ns/ew/nesw/nwse) and dragging a north or west side moves the origin so
+  // the opposite side stays planted, which is what hands expect.
+  const BAND = 8;
+  const zoneAt = (e) => {
+    const r = root.getBoundingClientRect();
+    const nx = e.clientX - r.left, ny = e.clientY - r.top;
+    if (nx < -1 || ny < -1 || nx > r.width + 1 || ny > r.height + 1) return '';
+    let z = '';
+    if (ny < BAND) z += 'n'; else if (ny > r.height - BAND) z += 's';
+    if (nx < BAND) z += 'w'; else if (nx > r.width - BAND) z += 'e';
+    return z;
+  };
+  const CURSORS = { n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize',
+    ne: 'nesw-resize', sw: 'nesw-resize', nw: 'nwse-resize', se: 'nwse-resize' };
+  root.addEventListener('pointermove', (e) => {
+    if (!resizable || locked || state.collapsed || root.style.cursor === 'grabbing') return;
+    root.style.cursor = CURSORS[zoneAt(e)] ?? '';
+  });
+  root.addEventListener('pointerdown', (e) => {
+    if (!resizable || locked || state.collapsed) return;
+    const z = zoneAt(e);
+    if (!z) return;
     e.preventDefault(); e.stopPropagation();
     raise();
-    const sx = e.clientX, sy = e.clientY, sw = state.w, sh = state.h;
-    try { grip.setPointerCapture(e.pointerId); } catch { /* no capture */ }
+    const sx = e.clientX, sy = e.clientY;
+    const s0 = { x: state.x, y: state.y, w: state.w, h: state.h };
+    try { root.setPointerCapture(e.pointerId); } catch { /* no capture */ }
     const move = (ev) => {
-      state.w = clamp(sw + (ev.clientX - sx), minW, innerWidth - 20);
-      state.h = clamp(sh + (ev.clientY - sy), minH, innerHeight - 60);
-      state.collapsed = false;
+      const dx = ev.clientX - sx, dy = ev.clientY - sy;
+      if (z.includes('e')) state.w = clamp(s0.w + dx, minW, innerWidth - 20);
+      if (z.includes('s')) state.h = clamp(s0.h + dy, minH, innerHeight - 60);
+      if (z.includes('w')) {
+        state.w = clamp(s0.w - dx, minW, innerWidth - 20);
+        state.x = s0.x + (s0.w - state.w);       // east side stays planted
+      }
+      if (z.includes('n')) {
+        state.h = clamp(s0.h - dy, minH, innerHeight - 60);
+        state.y = s0.y + (s0.h - state.h);       // south side stays planted
+      }
       paint();
     };
     const up = () => {
-      grip.removeEventListener('pointermove', move);
-      grip.removeEventListener('pointerup', up);
+      root.removeEventListener('pointermove', move);
+      root.removeEventListener('pointerup', up);
+      root.style.cursor = '';
       save();
     };
-    grip.addEventListener('pointermove', move);
-    grip.addEventListener('pointerup', up);
-  });
+    root.addEventListener('pointermove', move);
+    root.addEventListener('pointerup', up);
+  }, true);
 
   root.addEventListener('pointerdown', raise);
   head.addEventListener('dblclick', () => api.collapse());
