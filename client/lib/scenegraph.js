@@ -24,6 +24,7 @@ import { entities, entityMeta, comps, avatarMounts } from './world.js';
 import { sendVerb, requestDebug } from './net.js';
 import { makeSection, flashHint } from './ui.js';
 import { componentTypes, componentSpec, defaultsFor } from './components.js';
+import { recordPair } from './editundo.js';
 import { logChat } from './chat.js';
 import { myState } from './controller.js';
 
@@ -141,17 +142,28 @@ function channelBox(id, bag, obj) {
 function wireChannelBox(id, root = sceneBody) {
   const cb = root.querySelector('.cb');
   if (!cb) return;
-  const commitComp = (type, data) => sendVerb('comp', { id, type, data });
+  const commitComp = (type, data) => {
+    const prev = structuredClone(comps.get(id)?.[type] ?? null);
+    recordPair({ verb: 'comp', args: { id, type, data: prev } },
+               { verb: 'comp', args: { id, type, data } });
+    sendVerb('comp', { id, type, data });
+  };
 
   const xf = cb.querySelector('.cb-xf');
   if (xf) {
     const [x, y, z, yawDeg, scale] = [...xf.querySelectorAll('input')];
-    const commitXf = () => sendVerb('place', {
-      id,
-      pos: [+x.value || 0, +y.value || 0, +z.value || 0],
-      yaw: (+yawDeg.value || 0) / DEG,
-      scale: +scale.value || 1,
-    });
+    const commitXf = () => {
+      const obj = entities.get(id);
+      if (obj) recordPair(
+        { verb: 'place', args: { id, pos: [+obj.position.x.toFixed(3), +obj.position.y.toFixed(3), +obj.position.z.toFixed(3)], yaw: +obj.rotation.y.toFixed(4), scale: +obj.scale.x.toFixed(3) } },
+        { verb: 'place', args: { id, pos: [+x.value || 0, +y.value || 0, +z.value || 0], yaw: (+yawDeg.value || 0) / DEG, scale: +scale.value || 1 } });
+      sendVerb('place', {
+        id,
+        pos: [+x.value || 0, +y.value || 0, +z.value || 0],
+        yaw: (+yawDeg.value || 0) / DEG,
+        scale: +scale.value || 1,
+      });
+    };
     for (const el of [x, y, z, yawDeg, scale]) el.addEventListener('change', commitXf);
   }
   for (const lab of cb.querySelectorAll('label[data-cb]')) {
