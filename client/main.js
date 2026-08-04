@@ -53,7 +53,8 @@ bus.on('xr:sit', () => { if (!trySitOn(null)) setPosture('sit'); });
 bus.on('xr:stand', () => dismountMe());
 bus.on('xr:mic', async () => (await import('./lib/voice.js')).toggleMic());
 import { initWorkshop, toggle as toggleWorkshop } from './lib/workshop.js';
-import { initVoice, toggleMic, toggleMute, micOn, isMuted } from './lib/voice.js';
+import { initVoice } from './lib/voice.js';
+import './lib/mictoggle.js'; // mic/mute: our SVG toggle beside the HUD, muted by default
 import { setSTT, sttAvailable } from './lib/stt.js';
 import { startPrefetch } from './lib/prefetch.js';
 
@@ -143,8 +144,6 @@ initEmoteBar();
 initDock([
   { id: 'chat', label: '💬' },
   { id: 'world', label: '🧱' },
-  { id: 'voice', label: '🎙', action: async () => { const on = await toggleMic(CONFIG.name); if (sttAvailable()) setSTT(on); }, isOn: micOn },
-  { id: 'mute', label: '🔇', action: () => { toggleMute(); }, isOn: isMuted },
   { id: 'who', label: '👥' },
   { id: 'emotes', label: '👋' },
   { id: 'debug', label: '🐞' },
