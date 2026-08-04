@@ -42,7 +42,7 @@ bus.on('comp', ({ id, type, data }) => {
 const _ray = new THREE.Raycaster();
 const _eye = new THREE.Vector3();
 const _fwd = new THREE.Vector3();
-let _tick = 0, _lastNow = 0;
+let _lastNow = 0, _lastRay = -1e9;
 
 function applyHeat(id, n) {
   const obj = entities.get(id);
@@ -72,7 +72,8 @@ export function updateNotice(now) {
   _lastNow = now;
 
   let hitId = null;
-  if (++_tick % 5 === 0) {                       // ray at ~12Hz is plenty
+  if (now - _lastRay > 120) {                    // ray at ~8Hz WALL TIME — frame-count
+    _lastRay = now;                              // cadence starves at low fps (suite/VR)
     const roots = [];
     for (const id of noticed.keys()) { const o = entities.get(id); if (o) roots.push(o); }
     if (roots.length) {
