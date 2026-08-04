@@ -67,11 +67,27 @@ export function setHint(html, { sticky = false } = {}) {
   el.hint.classList.remove('gone');
   if (!sticky) setTimeout(() => el.hint.classList.add('gone'), 30000);
 }
+
+// The ambient hint is what the bar shows when nothing louder is happening —
+// a standing offer from the world ("X — sit"), set and cleared by proximity.
+// A flash (emote names, mode switches) borrows the bar and gives it back.
+let ambientHint = null;
+export function setAmbientHint(html) {
+  if (html === ambientHint) return;   // don't fight setHint's boot message over nothing
+  ambientHint = html;
+  if (el.hint._t) return;             // a flash owns the bar; it restores us when done
+  if (ambientHint) { el.hint.innerHTML = ambientHint; el.hint.classList.remove('gone'); }
+  else el.hint.classList.add('gone');
+}
 export function flashHint(html, ms = 2600) {
   el.hint.innerHTML = html;
   el.hint.classList.remove('gone');
   clearTimeout(el.hint._t);
-  el.hint._t = setTimeout(() => el.hint.classList.add('gone'), ms);
+  el.hint._t = setTimeout(() => {
+    el.hint._t = null;
+    if (ambientHint) el.hint.innerHTML = ambientHint;
+    else el.hint.classList.add('gone');
+  }, ms);
 }
 
 // ============================================================ panel frames
@@ -163,11 +179,14 @@ const escapeHtml = (v) => String(v).replace(/[&<>"]/g, (c) => (
 
 export function initDock(entries) {
   el.dock.innerHTML = '';
-  for (const { id, label } of entries) {
+  for (const entry of entries) {
+    const { id, label } = entry;
     const b = document.createElement('button');
     b.textContent = label;
     b.title = `toggle ${id}`;
     b.onclick = () => {
+      // an entry can be an ACTION (edit mode) instead of a frame toggle
+      if (entry.action) { entry.action(); paintDock(entries); return; }
       const f = getFrame(id);
       if (!f) return;
       f.toggle();
@@ -184,10 +203,12 @@ export function initDock(entries) {
   el.dock.appendChild(lock);
   paintDock(entries);
   bus.on('frames', () => paintDock(entries));
+  bus.on('edit-mode', () => paintDock(entries));
 }
 function paintDock(entries) {
   for (const b of el.dock.querySelectorAll('button[data-toggles]')) {
-    b.classList.toggle('on', !!getFrame(b.dataset.toggles)?.visible);
+    const entry = entries.find((e) => e.id === b.dataset.toggles);
+    b.classList.toggle('on', entry?.isOn ? !!entry.isOn() : !!getFrame(b.dataset.toggles)?.visible);
   }
   const lock = el.dock.querySelector('button[data-lock]');
   if (lock) {
