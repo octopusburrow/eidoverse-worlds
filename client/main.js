@@ -44,6 +44,7 @@ import { framesHeld } from './lib/loadwork.js';
 import { initXR, updateXR } from './lib/xr.js';
 import { initSatchel } from './lib/satchel.js';
 import './lib/picture.js';  // picture comp: image-faced meshes, aspect derived from the bytes
+import { initEditMode, toggle as toggleEditSurface } from './lib/editmode.js';
 import { initVoice, toggleMic, toggleMute, micOn, isMuted } from './lib/voice.js';
 import { setSTT, sttAvailable } from './lib/stt.js';
 import { startPrefetch } from './lib/prefetch.js';
@@ -187,7 +188,8 @@ function start() {
   initPalette();
   initConjure();   // the orrery panel — prompt → your pick of images → mesh → world
   initVoice(CONFIG.name);
-  initSceneGraph();   // 🌳 the world as a tree + 📜 the scripts that animate it
+  initSceneGraph();
+  initEditMode();   // 🌳 the world as a tree + 📜 the scripts that animate it
   initSatchel();      // 🎒 appended last — their section order stays stock
   setHint('<kbd>WASD</kbd> move · <kbd>Enter</kbd> chat · <kbd>B</kbd> build · <kbd>?</kbd> help');
 
@@ -804,6 +806,7 @@ bus.on('command', ({ cmd, arg }) => {
     sendVerb('use', { id, action: action || 'use' });
     return;
   }
+  if (cmd === 'editor' || cmd === 'edit') { toggleEditSurface(); return; }
   if (cmd === 'sit') {
     // /sit [thing] — a declared seat nearby wins; otherwise sit on the ground
     if (!trySitOn((arg || '').trim() || null)) setPosture('sit');

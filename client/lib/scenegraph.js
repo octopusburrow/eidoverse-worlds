@@ -130,8 +130,8 @@ function channelBox(id, bag, obj) {
   return `<div class="cb" style="max-height:210px;overflow:auto;margin:4px 0">${rows.join('')}</div>`;
 }
 
-function wireChannelBox(id) {
-  const cb = sceneBody.querySelector('.cb');
+function wireChannelBox(id, root = sceneBody) {
+  const cb = root.querySelector('.cb');
   if (!cb) return;
   const commitComp = (type, data) => sendVerb('comp', { id, type, data });
 
@@ -211,8 +211,9 @@ function paintScene() {
         <button data-act="remove">remove</button>
       </div></div>`;
   }
-  sceneBody.innerHTML = `<div class="stack" style="max-height:200px;overflow:auto">${rows.join('') || '<div style="color:var(--dim)">nothing placed yet</div>'}</div>${inspector}`;
+  sceneBody.innerHTML = `<div style="display:flex;justify-content:flex-end;margin-bottom:2px"><button class="sg-expand" title="open the full edit surface">⛶ full edit</button></div><div class="stack" style="max-height:200px;overflow:auto">${rows.join('') || '<div style="color:var(--dim)">nothing placed yet</div>'}</div>${inspector}`;
 
+  sceneBody.querySelector('.sg-expand')?.addEventListener('click', () => bus.emit('editmode:toggle'));
   for (const el of sceneBody.querySelectorAll('.sg-row')) {
     el.onclick = () => {
       const id = el.dataset.id;
@@ -220,6 +221,7 @@ function paintScene() {
       selected = id === selected ? null : id;
       arming = null;
       paintScene();
+      bus.emit('sg:select', selected);
     };
   }
   if (selected) wireChannelBox(selected);
@@ -242,6 +244,7 @@ function paintScene() {
   sceneBody.querySelector('[data-act="remove"]')?.addEventListener('click', () => {
     sendVerb('remove', { id: selected });
     selected = null;
+    bus.emit('sg:select', null);
   });
 }
 
@@ -332,6 +335,17 @@ async function paintScripts() {
 /** The dock's ✏️ edit button opens the outliner alongside the build catalog —
  *  one click = edit mode + catalog + scene tree + channel box. */
 export function openSceneSection() { sceneApi?.toggle(true).catch(() => {}); }
+
+// ---- shared with the edit surface (editmode.js) ----------------------------
+// One selection, two projections: the panel section and the full edit surface
+// show the SAME selected entity; whichever changes it emits sg:select.
+export { treeData, badgesFor, channelBox, wireChannelBox };
+export function sgSelected() { return selected; }
+export function sgSelect(id) {
+  selected = id;
+  if (sceneApi?.isOpen) paintScene();
+  bus.emit('sg:select', id);
+}
 
 // ============================================================ wiring
 
