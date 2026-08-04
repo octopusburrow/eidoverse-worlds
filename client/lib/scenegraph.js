@@ -23,6 +23,7 @@ import { THREE, CONFIG, bus } from './core.js';
 import { entities, entityMeta, comps, avatarMounts } from './world.js';
 import { sendVerb, requestDebug } from './net.js';
 import { makeSection, flashHint } from './ui.js';
+import { componentTypes, componentSpec, defaultsFor } from './components.js';
 import { logChat } from './chat.js';
 import { myState } from './controller.js';
 
@@ -107,6 +108,8 @@ function channelBox(id, bag, obj) {
   for (const [type, data] of Object.entries(bag ?? {})) {
     rows.push(`<div class="cb-sec" style="display:flex;justify-content:space-between;color:var(--dim);margin-top:4px">
       <span>${esc(type)}</span><button data-cb-del="${esc(type)}" title="remove component" style="font-size:10px">✕</button></div>`);
+    const custom = componentSpec(type)?.editor?.(id, data, { esc, num, GRID }) ?? '';
+    if (custom) { rows.push(`<div data-cb-custom="${esc(type)}">${custom}</div>`); continue; }
     const flat = data && typeof data === 'object' && !Array.isArray(data)
       && Object.values(data).every((v) => ['number', 'string', 'boolean'].includes(typeof v)
         || (Array.isArray(v) && v.length <= 4 && v.every((n) => typeof n === 'number')));
@@ -124,8 +127,13 @@ function channelBox(id, bag, obj) {
         style="width:100%;min-height:52px;font:10px monospace;background:rgba(4,14,20,.9);color:var(--fg);border:1px solid var(--edge)">${esc(JSON.stringify(data, null, 1))}</textarea>`);
     }
   }
+  const opts = componentTypes().map((t) => {
+    const h = componentSpec(t)?.hint;
+    return `<option value="${esc(t)}">${h ? esc(h) : ''}</option>`;
+  }).join('');
   rows.push(`<div style="display:flex;gap:4px;margin-top:4px;font-size:11px">
-    <input class="cb-add-type" placeholder="add component…" style="width:110px">
+    <input class="cb-add-type" list="cb-types" placeholder="add component…" style="width:130px">
+    <datalist id="cb-types">${opts}</datalist>
     <button class="cb-add">+</button></div>`);
   return `<div class="cb" style="max-height:210px;overflow:auto;margin:4px 0">${rows.join('')}</div>`;
 }
@@ -169,8 +177,12 @@ function wireChannelBox(id, root = sceneBody) {
   }
   cb.querySelector('.cb-add')?.addEventListener('click', () => {
     const type = cb.querySelector('.cb-add-type')?.value.trim();
-    if (type) commitComp(type, {});
+    if (type) commitComp(type, defaultsFor(type));
   });
+  for (const box of cb.querySelectorAll('[data-cb-custom]')) {
+    const type = box.dataset.cbCustom;
+    componentSpec(type)?.wire?.(box, id, (data) => commitComp(type, data));
+  }
 }
 
 function paintScene() {

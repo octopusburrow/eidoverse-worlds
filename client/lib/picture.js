@@ -46,3 +46,29 @@ function apply(id, data) {
 }
 
 bus.on('comp', ({ id, type, data }) => { if (type === 'picture') apply(id, data); });
+
+// ---- registry self-description (slice 2) ----------------------------------
+// The custom editor earns its seam by showing DERIVED state: the aspect is
+// computed from the bytes, never logged, so only a type-aware editor can
+// display it next to the src that produced it.
+import { registerComponent } from './components.js';
+registerComponent('picture', {
+  hint: 'show an image, shaped by its own aspect',
+  defaults: { src: '' },
+  editor: (id, data, { esc }) => {
+    let derived = '';
+    entities.get(id)?.traverse?.((o) => {
+      if (o.userData.pictureAspect) {
+        const im = o.material?.map?.image;
+        derived = `${o.userData.pictureAspect.toFixed(3)}${im ? ` (${im.width}×${im.height})` : ''}`;
+      }
+    });
+    return `<div style="font-size:11px;display:grid;grid-template-columns:64px minmax(0,1fr);gap:3px 6px;align-items:center">
+      <span>src</span><input data-pic-src value="${esc(data?.src ?? '')}" style="width:100%;box-sizing:border-box;background:rgba(4,14,20,.9);color:var(--fg);border:1px solid var(--edge);border-radius:4px;padding:2px 6px;font:11px inherit">
+      <span style="color:var(--dim)">aspect</span><span style="color:var(--dim)">${derived || 'deriving…'} <span title="derived from the bytes — never logged">ⓘ</span></span>
+    </div>`;
+  },
+  wire: (root, id, commit) => {
+    root.querySelector('[data-pic-src]')?.addEventListener('change', (e) => commit({ src: e.target.value.trim() }));
+  },
+});

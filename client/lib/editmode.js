@@ -9,7 +9,7 @@
 //
 // Off = nothing exists (display:none, zero cost). Esc or ⛶ closes.
 
-import { bus } from './core.js';
+import { THREE, bus, camera, canvas } from './core.js';
 import { entities, entityMeta, comps } from './world.js';
 import {
   treeData, badgesFor, channelBox, wireChannelBox, sgSelected, sgSelect,
@@ -129,8 +129,27 @@ export function toggle(force) {
   if (open) { repaintAll(); paintEcho(); }
 }
 
+// click-to-select in the viewport while the surface is open: the same act as
+// clicking a hierarchy row, resolved by ray instead of by list.
+const _selRay = new THREE.Raycaster();
+function pickAt(ev) {
+  const r = canvas.getBoundingClientRect();
+  const p = new THREE.Vector2(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
+  _selRay.setFromCamera(p, camera);
+  const roots = [...entities.values()].filter(Boolean);
+  const hit = _selRay.intersectObjects(roots, true)[0];
+  let n = hit?.object;
+  while (n && !n.userData.entityId) n = n.parent;
+  return n?.userData.entityId ?? null;
+}
+
 export function initEditMode() {
   bus.on('editmode:toggle', () => toggle());
+  canvas.addEventListener('click', (ev) => {
+    if (!open || document.pointerLockElement) return;
+    const id = pickAt(ev);
+    if (id) sgSelect(id === sgSelected() ? null : id);
+  });
   bus.on('sg:select', repaintAll);
   bus.on('entity', queueRepaint);
   bus.on('comp', queueRepaint);

@@ -44,6 +44,7 @@ import { framesHeld } from './lib/loadwork.js';
 import { initXR, updateXR } from './lib/xr.js';
 import { initSatchel } from './lib/satchel.js';
 import './lib/picture.js';  // picture comp: image-faced meshes, aspect derived from the bytes
+import { updateNotice } from './lib/notice.js';  // things that notice you looking
 import { initEditMode, toggle as toggleEditSurface } from './lib/editmode.js';
 import { initVoice, toggleMic, toggleMute, micOn, isMuted } from './lib/voice.js';
 import { setSTT, sttAvailable } from './lib/stt.js';
@@ -941,6 +942,7 @@ function frame(now) {
   else updateMe(dt, me);
   updateSeatHint(dt);            // "X — sit" while a declared seat is in reach
   updateXR();                    // body position -> XR rig while presenting
+  updateNotice(now);             // gaze-warmth for entities wearing `notice`
 
   // my own held pose: apply on change so I see what everyone else sees of me.
   // While downed the ragdoll owns setPose directly, so skip this path.
