@@ -178,6 +178,40 @@ function wireChannelBox(id, root) {
     componentSpec(type)?.wire?.(box, id, (data) => commitComp(type, data));
   }
 }
+const PANE = 'position:fixed;top:8px;bottom:34px;width:250px;z-index:40;' +
+  'background:rgba(4,14,20,.92);border:1px solid var(--edge);border-radius:8px;' +
+  'color:var(--fg);font-size:12px;display:flex;flex-direction:column;overflow:hidden;';
+
+let root = null;         // container for all three regions
+let hier = null, insp = null, echo = null;
+let open = false;
+let echoLog = [];        // last few spoken verbs, newest last
+
+function build() {
+  root = document.createElement('div');
+  root.id = 'editmode';
+  root.style.display = 'none';
+  root.innerHTML = `
+    <div class="em-hier" style="${PANE}left:8px">
+      <div style="padding:6px 8px;border-bottom:1px solid var(--edge);display:flex;justify-content:space-between;align-items:center">
+        <b>hierarchy</b><button class="em-close" title="close (Esc)">⛶</button></div>
+      <div class="em-tree" style="flex:1;overflow:auto;padding:4px"></div>
+    </div>
+    <div class="em-insp" style="${PANE}right:8px;width:270px">
+      <div style="padding:6px 8px;border-bottom:1px solid var(--edge)"><b>inspector</b></div>
+      <div class="em-body" style="flex:1;overflow:auto;padding:6px 8px"></div>
+    </div>
+    <div class="em-echo" style="position:fixed;left:8px;right:8px;bottom:6px;z-index:40;
+      background:rgba(4,14,20,.92);border:1px solid var(--edge);border-radius:6px;
+      padding:3px 8px;font:11px monospace;color:var(--dim);white-space:nowrap;
+      overflow:hidden;text-overflow:ellipsis" title="every edit is a verb in the world log — this is the sentence you just spoke"></div>`;
+  document.body.appendChild(root);
+  hier = root.querySelector('.em-tree');
+  insp = root.querySelector('.em-body');
+  echo = root.querySelector('.em-echo');
+  root.querySelector('.em-close').onclick = () => toggle(false);
+}
+
 // ---- hierarchy: entities, mounted children, riders, and declared sockets ---
 function paintHier() {
   const { roots, kids, riders } = treeData();
