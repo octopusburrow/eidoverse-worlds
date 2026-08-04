@@ -43,6 +43,7 @@ import { initBoot, markPhase, finishBoot, bootDone } from './lib/boot.js';
 import { framesHeld } from './lib/loadwork.js';
 import { initXR, updateXR } from './lib/xr.js';
 import { initSatchel } from './lib/satchel.js';
+import './lib/picture.js';  // picture comp: image-faced meshes, aspect derived from the bytes
 import { initVoice, toggleMic, toggleMute, micOn, isMuted } from './lib/voice.js';
 import { setSTT, sttAvailable } from './lib/stt.js';
 import { startPrefetch } from './lib/prefetch.js';
