@@ -9,7 +9,7 @@
 // A small headphone glyph beside it mutes INCOMING voice separately.
 // V toggles the mic from the keyboard, exactly like the porch.
 
-import { toggleMic, micOn, toggleMute, isMuted } from './voice.js';
+import { toggleMic, micOn } from './voice.js';
 import { setSTT, sttAvailable } from './stt.js';
 import { CONFIG } from './core.js';
 
@@ -25,24 +25,12 @@ const MIC_SVG = (on) => `
   ${on ? '<circle cx="16" cy="13" r="13.5" fill="none" stroke="rgba(255,196,107,.5)" stroke-width="1.5"/>' : ''}
 </svg>`;
 
-const EAR_SVG = (muted) => `
-<svg viewBox="0 0 32 32" width="20" height="20">
-  <g fill="none" stroke="${muted ? '#c0574f' : '#7d8f8a'}" stroke-width="2" stroke-linecap="round">
-    <path d="M6 13 a10 10 0 0 1 20 0 v6"/>
-    <rect x="4" y="14" width="5" height="9" rx="2"/>
-    <rect x="23" y="14" width="5" height="9" rx="2"/>
-    ${muted ? '<line x1="6" y1="5" x2="26" y2="27"/>' : ''}
-  </g>
-</svg>`;
-
-let micBtn = null, earBtn = null, wrap = null;
+let micBtn = null;
 
 function paint() {
   if (!micBtn) return;
   micBtn.innerHTML = MIC_SVG(micOn());
   micBtn.title = micOn() ? 'mic LIVE — the world hears you (V)' : 'mic off (V to talk)';
-  earBtn.innerHTML = EAR_SVG(isMuted());
-  earBtn.title = isMuted() ? 'incoming voices muted' : 'mute incoming voices';
 }
 
 async function flipMic() {
@@ -53,24 +41,19 @@ async function flipMic() {
 
 function ensure() {
   const hud = document.querySelector('#hud');
-  if (!hud || document.contains(wrap)) return;
-  wrap = document.createElement('div');
-  wrap.id = 'mictoggle';
-  const r = hud.getBoundingClientRect();
-  wrap.style.cssText = `position:fixed;left:${Math.round(r.left)}px;top:${Math.round(r.bottom + 6)}px;`
-    + 'z-index:45;display:flex;gap:6px;align-items:center;';
-  const mk = (extra) => {
-    const b = document.createElement('button');
-    b.style.cssText = 'background:rgba(6,16,22,.62);border:1px solid var(--edge);'
-      + 'border-radius:8px;padding:4px 6px;cursor:pointer;line-height:0;' + (extra || '');
-    return b;
-  };
-  micBtn = mk();
+  if (!hud || document.contains(micBtn)) return;
+  // IN LINE with the bar (R, 15:47): a bare glyph riding at the end of the
+  // hud's own row — no box, no chrome, just the mic. The hud repaints via
+  // setHud(innerHTML) which would erase a child, so we sit AFTER the hud text
+  // as a sibling-styled inline element inside the same visual bar.
+  micBtn = document.createElement('span');
+  micBtn.id = 'mictoggle';
+  micBtn.style.cssText = 'cursor:pointer;vertical-align:middle;margin-left:8px;'
+    + 'display:inline-block;line-height:0;';
   micBtn.onclick = flipMic;
-  earBtn = mk('opacity:.8');
-  earBtn.onclick = () => { toggleMute(); paint(); };
-  wrap.append(micBtn, earBtn);
-  document.body.appendChild(wrap);
+  hud.after(micBtn);
+  const r = hud.getBoundingClientRect();
+  micBtn.style.cssText += `position:fixed;left:${Math.round(r.right + 8)}px;top:${Math.round(r.top + (r.height - 26) / 2)}px;z-index:45;`;
   paint();
 }
 setInterval(ensure, 1000);
