@@ -289,13 +289,18 @@ export function initWorkshop() {
 // ---- the Edit button: self-injected, self-removing --------------------------
 // DOM-level graft onto the dock — zero changes in ui.js. If the dock isn't
 // built yet we wait a tick; if it never appears, the button simply doesn't.
-function injectButton() {
-  const dock = document.querySelector('#dock, .dock');
-  if (!dock) { setTimeout(injectButton, 500); return; }
-  const b = document.createElement('button');
-  b.textContent = '✏️ Edit';
-  b.title = 'workshop — our edit mode (Esc closes)';
-  b.onclick = () => { toggle(); b.classList.toggle('on', open); };
-  dock.appendChild(b);
+// initDock() rebuilds the dock's innerHTML whenever it repaints, erasing any
+// graft — so the graft is a tenant, not a squatter: check the lease every
+// second, move back in when the landlord renovates. Still zero ui.js changes.
+let wsButton = null;
+function ensureButton() {
+  const dock = document.querySelector('#dock');
+  if (!dock || dock.contains(wsButton)) return;
+  wsButton = document.createElement('button');
+  wsButton.textContent = '✏️ Edit';
+  wsButton.title = 'workshop — our edit mode (Esc closes)';
+  wsButton.onclick = () => { toggle(); wsButton.classList.toggle('on', open); };
+  dock.appendChild(wsButton);
 }
-injectButton();
+setInterval(ensureButton, 1000);
+ensureButton();
