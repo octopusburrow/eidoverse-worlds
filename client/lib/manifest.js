@@ -95,7 +95,8 @@ function paint() { ui?.set(buildFields(), (k, v) => { dispatch(k, v); paint(); }
 
 export function initManifest() {
   ui = makeSchemaFrame('manifest', {
-    title: 'manifest', x: 10, y: 40, w: 270, h: 380, minW: 220, minH: 180,
+    // y: 52 clears the top bar (see inspector.js — 40 hid the edit button)
+    title: 'manifest', x: 10, y: 52, w: 270, h: 380, minW: 220, minH: 180,
   });
   ui.frame.hide();
   bus.on('entity', paint);

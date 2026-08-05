@@ -30,24 +30,29 @@ import { makeFrame } from './frames.js';
 export function makeSchemaFrame(key, opts) {
   const frame = makeFrame(key, opts);
   frame.body.classList.add('schema-panel');
+  // inner scroller — see .schema-scroll in index.html: a scrollbar on the body
+  // itself steals the edge-resize band's pixels
+  const scroll = document.createElement('div');
+  scroll.className = 'schema-scroll';
+  frame.body.append(scroll);
   let lastFields = null, pendingWhileFocused = false;
 
   function set(fields, edit) {
     lastFields = { fields, edit };
     // Rebuilding under a focused input eats the caret mid-edit; hold the
     // refresh until focus leaves the panel, then paint the queued state.
-    if (frame.body.contains(document.activeElement) &&
+    if (scroll.contains(document.activeElement) &&
         /INPUT|TEXTAREA/.test(document.activeElement.tagName)) {
       if (!pendingWhileFocused) {
         pendingWhileFocused = true;
         document.activeElement.addEventListener('blur', () => {
           pendingWhileFocused = false;
-          if (lastFields) renderDOM(frame.body, lastFields.fields, lastFields.edit);
+          if (lastFields) renderDOM(scroll, lastFields.fields, lastFields.edit);
         }, { once: true });
       }
       return;
     }
-    renderDOM(frame.body, fields, edit);
+    renderDOM(scroll, fields, edit);
   }
   return { frame, set };
 }

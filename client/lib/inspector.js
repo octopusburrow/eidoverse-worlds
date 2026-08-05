@@ -112,7 +112,10 @@ function paint() {
 
 export function initInspector() {
   ui = makeSchemaFrame('inspector', {
-    title: 'inspector', x: -10, y: 40, w: 320, h: 420, minW: 260, minH: 200,
+    // y: 52 clears the top bar — 40 tucked under it and ate the edit button,
+    // trapping R in edit mode with no way to click out (found live 00:12).
+    // x offset from the right EDGE avoids the world/present stack at -10.
+    title: 'inspector', x: -252, y: 52, w: 320, h: 420, minW: 260, minH: 200,
   });
   ui.frame.hide();
   bus.on('selection', ({ id }) => { currentId = id; paint(); });
