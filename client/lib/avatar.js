@@ -133,6 +133,38 @@ function drawTypingDots(sprite, t, state) {
   ctx.strokeStyle = 'rgba(143,232,200,0.28)';
   ctx.lineWidth = 2;
   ctx.beginPath(); ctx.roundRect(28, 12, 72, 32, 16); ctx.fill(); ctx.stroke();
+  // mic is DRAWN, not typed (R, 23:48: empty pill while speaking, on two
+  // different emoji). Canvas emoji depend on the machine's font stack —
+  // headless Chromium rasterized both 🎙 and 🗣 fine while her desktop drew
+  // neither. A signal this load-bearing can't be a font gamble: three arcs
+  // and a capsule always paint. Bars animate with the breathing value so it
+  // reads as sound, not a static badge.
+  if (state === 'mic') {
+    const b = 0.75 + 0.25 * Math.sin(t * 3);
+    ctx.save();
+    ctx.translate(64, 28);
+    ctx.strokeStyle = `rgba(180,240,216,${b})`;
+    ctx.fillStyle = `rgba(180,240,216,${b})`;
+    ctx.lineWidth = 2.4;
+    ctx.lineCap = 'round';
+    // capsule mic body
+    ctx.beginPath(); ctx.roundRect(-16, -10, 9, 15, 4.5); ctx.fill();
+    // cradle under it
+    ctx.beginPath(); ctx.arc(-11.5, 3, 7.5, 0, Math.PI); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-11.5, 10.5); ctx.lineTo(-11.5, 14); ctx.stroke();
+    // sound arcs, rising with the envelope
+    for (let i = 0; i < 3; i++) {
+      const amp = 0.35 + 0.65 * Math.max(0, Math.sin(t * 5 - i * 0.7));
+      ctx.globalAlpha = amp;
+      ctx.beginPath();
+      ctx.arc(0, 2, 7 + i * 6, -0.85, 0.85);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+    sprite.material.map.needsUpdate = true;
+    return;
+  }
   const glyph = STATE_GLYPH[state];
   if (glyph) {
     const b = 0.75 + 0.25 * Math.sin(t * 3);      // gentle breathing, not a strobe
