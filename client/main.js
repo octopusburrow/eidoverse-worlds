@@ -1037,6 +1037,10 @@ function frame(now) {
     me._poseSig = myState.pose;
     if (myState.pose) me.setPose(myState.pose); else me.clearPose();
   }
+  // updateGrabHints() is written but NOT wired: the glow never fired in four
+  // live probes despite every precondition verified true (in reach, wearing
+  // grab, dead-centre on screen, no editor open). Unverified code does not
+  // run in the frame loop. See handgrab.js §affordance + tonight's log.
   BC('voice-mouths');
   updateVoiceMouths(now);        // BEFORE the avatar updates that consume it
   BC('me-update');

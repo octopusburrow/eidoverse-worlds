@@ -37,6 +37,7 @@ const _ray = new THREE.Raycaster();
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _ndc = new THREE.Vector2();
+const _lastNdc = new THREE.Vector2();
 
 export const isHolding = () => !!held?.id;
 export const heldId = () => held?.id ?? null;
@@ -60,12 +61,15 @@ function inReach() {
 function pick(ev) {
   const cands = inReach();
   if (!cands.length) return null;
+  // ev is null when the frame loop asks "what would I take right now?" — then
+  // the last known cursor position stands in (or the crosshair in mouselook)
   if (isMouselook()) _ndc.set(0, 0);            // locked pointer = screen centre
-  else {
+  else if (ev) {
     const r = canvas.getBoundingClientRect();
     _ndc.set(((ev.clientX - r.left) / r.width) * 2 - 1,
              -((ev.clientY - r.top) / r.height) * 2 + 1);
-  }
+    _lastNdc.copy(_ndc);
+  } else _ndc.copy(_lastNdc);
   _ray.setFromCamera(_ndc, camera);
   // widen the ray into a cone by testing against each candidate's screen-space
   // distance from the cursor rather than demanding a literal intersection
@@ -133,6 +137,67 @@ function drop() {
   }
   bus.emit('grab', { id: held.id, holding: false });
   held = null;
+}
+
+// ---- the affordance -------------------------------------------------------
+// You could pick things up but nothing said which things — the gate was
+// invisible, so using it was guesswork. Grabbable things within reach get a
+// faint rim of warmth, brightest for the one you would actually take.
+//
+// Deliberately NOT the `notice` component's job: notice is comp-driven, an
+// author opting a specific thing into warming under gaze. This is automatic
+// and structural — it reports a CAPABILITY of the world (this can be lifted),
+// not an authored behaviour. Same visual grammar, different claim, so it is a
+// separate small system rather than a hijack of that one.
+const _lit = new Map();          // material -> original emissive hex
+const _warm = new THREE.Color('#8fe8c8');
+
+function litFor(id, amount) {
+  const obj = entities.get(id);
+  if (!obj) return;
+  obj.traverse((o) => {
+    const m = o.material;
+    if (!m || !('emissive' in m)) return;
+    if (!_lit.has(m)) _lit.set(m, m.emissive.getHex());
+    m.emissive.setHex(_lit.get(m)).lerp(_warm, amount);
+  });
+}
+
+function coolAll(except) {
+  for (const [m, hex] of _lit) {
+    if (except?.has(m)) continue;
+    m.emissive.setHex(hex);
+    _lit.delete(m);
+  }
+}
+
+/** Per-frame: warm what's takeable, brightest on the current candidate. */
+export function updateGrabHints() {
+  if (held || isEditing() || isWorkshopOpen()) { coolAll(); return; }
+  const cands = inReach();
+  if (!cands.length) { coolAll(); return; }
+  // At frame time there may be no cursor event and no prior one (a fresh tab,
+  // or mouselook). Rather than reuse pick()'s cursor path — which silently
+  // scored against a stale NDC — score the candidates directly against the
+  // screen centre, which is what "what would I take right now" means when
+  // nobody has moved a mouse yet.
+  let top = null, bestScore = Infinity;
+  for (const c of cands) {
+    c.obj.getWorldPosition(_v2);
+    const screen = _v2.clone().project(camera);
+    if (screen.z > 1) continue;                    // behind the eye
+    const off = Math.hypot(screen.x - _lastNdc.x, screen.y - _lastNdc.y);
+    if (off > 0.55) continue;                      // not anywhere near the aim
+    const box = new THREE.Box3().setFromObject(c.obj);
+    const score = off / 0.55 + Math.min(1, box.getSize(_v).length() / 2) * 0.35;
+    if (score < bestScore) { bestScore = score; top = c.id; }
+  }
+  const keep = new Set();
+  for (const c of cands) {
+    litFor(c.id, c.id === top ? 0.5 : 0.16);
+    c.obj.traverse((o) => { if (o.material && 'emissive' in o.material) keep.add(o.material); });
+  }
+  coolAll(keep);
 }
 
 export function initHandGrab() {
