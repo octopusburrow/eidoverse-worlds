@@ -48,14 +48,20 @@ function ensure() {
   // as a sibling-styled inline element inside the same visual bar.
   micBtn = document.createElement('span');
   micBtn.id = 'mictoggle';
-  micBtn.style.cssText = 'cursor:pointer;vertical-align:middle;margin-left:8px;'
-    + 'display:inline-block;line-height:0;';
+  micBtn.style.cssText = 'cursor:pointer;display:inline-block;line-height:0;position:fixed;z-index:45;';
   micBtn.onclick = flipMic;
-  hud.after(micBtn);
-  const r = hud.getBoundingClientRect();
-  micBtn.style.cssText += `position:fixed;left:${Math.round(r.right + 8)}px;top:${Math.round(r.top + (r.height - 26) / 2)}px;z-index:45;`;
+  document.body.appendChild(micBtn);
   paint();
 }
+// anchored to the hud panel's LIVE box, re-measured每 second — no stale
+// coordinate math, follows the panel wherever and however wide it paints
+setInterval(() => {
+  const hud = document.querySelector('#hud');
+  if (!hud || !micBtn) return;
+  const r = hud.getBoundingClientRect();
+  micBtn.style.left = Math.round(r.right + 6) + 'px';
+  micBtn.style.top = Math.round(r.top + (r.height - 26) / 2) + 'px';
+}, 1000);
 setInterval(ensure, 1000);
 ensure();
 
