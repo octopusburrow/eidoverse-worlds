@@ -125,6 +125,27 @@ export async function toggleMic(name) {
   return true;
 }
 
+// live mic level 0..1 for UI (the mic glyph's hot-glow) — analyser built
+// lazily on first ask, rebuilt if the stream changed
+let _an = null, _anStream = null, _anBuf = null;
+export function micAnalyserLevel() {
+  if (!micStream || muted) return 0;
+  if (!_an || _anStream !== micStream) {
+    try {
+      const ctx = new AudioContext();
+      const src = ctx.createMediaStreamSource(micStream);
+      _an = ctx.createAnalyser(); _an.fftSize = 512;
+      src.connect(_an);
+      _anStream = micStream;
+      _anBuf = new Float32Array(_an.fftSize);
+    } catch { return 0; }
+  }
+  _an.getFloatTimeDomainData(_anBuf);
+  let s = 0;
+  for (let i = 0; i < _anBuf.length; i++) s += _anBuf[i] * _anBuf[i];
+  return Math.sqrt(s / _anBuf.length);
+}
+
 export function toggleMute() {
   if (!micStream) return false;
   muted = !muted;

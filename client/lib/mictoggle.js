@@ -13,25 +13,39 @@ import { toggleMic, micOn } from './voice.js';
 import { setSTT, sttAvailable } from './stt.js';
 import { CONFIG } from './core.js';
 
-const MIC_SVG = (on) => `
-<svg viewBox="0 0 32 32" width="26" height="26">
-  <g fill="none" stroke="${on ? '#ffc46b' : '#7d8f8a'}" stroke-width="2" stroke-linecap="round">
-    <rect x="12" y="5" width="8" height="14" rx="4" fill="${on ? 'rgba(255,196,107,.25)' : 'none'}"/>
+// three states (R, 17:09): off = grey + slash · live = clean bright white ·
+// hot (picking up your voice for STT) = warm yellow glow. No rings.
+const MIC_SVG = (on, hot) => {
+  const c = hot ? '#ffd66b' : on ? '#f2f7f5' : '#7d8f8a';
+  return `
+<svg viewBox="0 0 32 32" width="26" height="26" style="${hot ? 'filter:drop-shadow(0 0 5px rgba(255,214,107,.9))' : ''}">
+  <g fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round">
+    <rect x="12" y="5" width="8" height="14" rx="4" fill="${hot ? 'rgba(255,214,107,.35)' : 'none'}"/>
     <path d="M8 15 a8 8 0 0 0 16 0"/>
     <line x1="16" y1="23" x2="16" y2="27"/>
     <line x1="11" y1="27" x2="21" y2="27"/>
     ${on ? '' : '<line x1="7" y1="4" x2="25" y2="28" stroke="#c0574f"/>'}
   </g>
-  ${on ? '<circle cx="16" cy="13" r="13.5" fill="none" stroke="rgba(255,196,107,.5)" stroke-width="1.5"/>' : ''}
 </svg>`;
+};
 
 let micBtn = null;
 
+let micHot = false;
 function paint() {
   if (!micBtn) return;
-  micBtn.innerHTML = MIC_SVG(micOn());
+  micBtn.innerHTML = MIC_SVG(micOn(), micOn() && micHot);
   micBtn.title = micOn() ? 'mic LIVE — the world hears you (V)' : 'mic off (V to talk)';
 }
+// hot = your voice is actually registering: a tiny analyser on the mic track,
+// polled at 8Hz, drives the yellow glow in step with STT pickup
+import { micAnalyserLevel } from './voice.js';
+setInterval(() => {
+  if (!micOn()) { if (micHot) { micHot = false; paint(); } return; }
+  const lvl = micAnalyserLevel?.() ?? 0;
+  const hot = lvl > 0.02;
+  if (hot !== micHot) { micHot = hot; paint(); }
+}, 125);
 
 async function flipMic() {
   const on = await toggleMic(CONFIG.name);
