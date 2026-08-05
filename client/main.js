@@ -49,7 +49,9 @@ import { shedALight, litCount } from './lib/lights.js';
 import { initBoot, markPhase, finishBoot, bootDone } from './lib/boot.js';
 import { framesHeld } from './lib/loadwork.js';
 import { initXR, updateXR } from './lib/xr.js';
-import { initSatchel } from './lib/satchel.js';
+// satchel shelved 2026-08-05 (R): inventory needs a real design pass first.
+// Module kept in lib/ — re-import initSatchel + the call in init to revive.
+// import { initSatchel } from './lib/satchel.js';
 import './lib/picture.js';  // picture comp: image-faced meshes, aspect derived from the bytes
 import { updateNotice } from './lib/notice.js';  // things that notice you looking
 import './lib/transform.js'; // transform comp: 3-axis rot + non-uniform scale (place keeps pos/yaw/size)
@@ -61,7 +63,9 @@ bus.on('xr:stand', () => dismountMe());
 bus.on('xr:mic', async () => (await import('./lib/voice.js')).toggleMic());
 import { initWorkshop, toggle as toggleWorkshop } from './lib/workshop.js';
 import { initVoice, micOn, isMuted, micAnalyserLevel, peerLevels } from './lib/voice.js';
-import './lib/mictoggle.js'; // mic/mute: our SVG toggle beside the HUD, muted by default
+import './lib/mictoggle.js'; // mic + headphone toggles beside the HUD, both off by default
+import { initAudioPanel } from './lib/audiopanel.js';
+import { updateAmbient } from './lib/ambient.js';  // workbench: place-sound as a component (audio-category fixture)
 import { setSTT, sttAvailable } from './lib/stt.js';
 import { startPrefetch } from './lib/prefetch.js';
 
@@ -218,9 +222,10 @@ function start() {
   initInspector(); // TRS steppers + component add/remove on the selection
   initHandGrab();  // pick things up with a mouse — gated on the `grab` comp
   initVoice(CONFIG.name);
+  initAudioPanel();   // 🔊 voices / world / TTS + both consent rows
   initSceneGraph();
   initWorkshop();   // OUR edit mode — self-contained, their surfaces untouched
-  initSatchel();      // 🎒 appended last — their section order stays stock
+  // initSatchel();   // 🎒 shelved with its import above
   setHint('<kbd>WASD</kbd> move · <kbd>Enter</kbd> chat · <kbd>B</kbd> build · <kbd>?</kbd> help');
 
   if (!isViewer) {
@@ -1091,6 +1096,7 @@ function frame(now) {
   // run in the frame loop. See handgrab.js §affordance + tonight's log.
   BC('voice-mouths');
   updateVoiceMouths(now);        // BEFORE the avatar updates that consume it
+  updateAmbient();               // world sound: its own category, proves the split
   BC('me-update');
   me?.update(dt, now);
   BC('bodydrag');
