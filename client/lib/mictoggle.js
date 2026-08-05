@@ -66,16 +66,33 @@ function ensure() {
   micBtn.onclick = flipMic;
   document.body.appendChild(micBtn);
   paint();
+  placeMic();          // position + bind the observer the moment we exist
 }
-// anchored to the hud panel's LIVE box, re-measured每 second — no stale
-// coordinate math, follows the panel wherever and however wide it paints
-setInterval(() => {
+// Anchored to the hud panel's LIVE box. This used to re-measure on a 1s
+// setInterval, which is exactly what it looked like: the mic visibly chased
+// the panel for a second or two whenever the hud changed width (R, 01:00 —
+// "doesn't ride with it cleanly... always lags a second or two"). A poll is
+// the wrong instrument for "follow this box" — ResizeObserver fires in the
+// same frame the box changes, so the mic moves WITH the panel instead of
+// after it. The interval remains only as a slow safety net for changes
+// neither observer sees (font swaps, zoom).
+let _hudRO = null, _hudSeen = null;
+function placeMic() {
   const hud = document.querySelector('#hud');
   if (!hud || !micBtn) return;
   const r = hud.getBoundingClientRect();
   micBtn.style.left = Math.round(r.right + 6) + 'px';
   micBtn.style.top = Math.round(r.top + (r.height - 26) / 2) + 'px';
-}, 1000);
+  // (re)bind the observer if the hud element itself was replaced
+  if (hud !== _hudSeen) {
+    _hudSeen = hud;
+    _hudRO?.disconnect();
+    _hudRO = new ResizeObserver(placeMic);
+    _hudRO.observe(hud);
+  }
+}
+addEventListener('resize', placeMic);
+setInterval(placeMic, 2000);          // safety net only; the observer does the work
 setInterval(ensure, 1000);
 ensure();
 
