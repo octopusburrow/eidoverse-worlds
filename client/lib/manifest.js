@@ -20,6 +20,7 @@ import { bus, report } from './core.js';
 import { entities, entityMeta, comps, avatarMounts } from './world.js';
 import { sendVerb } from './net.js';
 import { makeSchemaFrame } from './panels.js';
+import { recordPair } from './editundo.js';
 import { wsSelect, isWorkshopOpen } from './workshop.js';
 
 let ui = null, filter = '', selectedId = null;
@@ -96,7 +97,26 @@ export function dispatch(k, v) {
   switch (k) {
     case 'filter': filter = v; break;
     case 'row': selectedId = v; wsSelect(v); break;
-    case 'delete': sendVerb('remove', { id: v }); break;
+    case 'delete': {
+      // Deleting is the one edit nobody expects to be reversible, which is
+      // exactly why it should be: the inverse of `remove` is the `spawn` that
+      // put it there, plus its transform and every component it wore.
+      const o = entities.get(v);
+      const meta = entityMeta.get(v);
+      if (o && meta?.lib) {
+        const worn = Object.entries(comps.get(v) ?? {})
+          .map(([type, data]) => ({ verb: 'comp', args: { id: v, type, data: structuredClone(data) } }));
+        recordPair(
+          { verb: 'spawn', args: { id: v, lib: meta.lib, pos: o.position.toArray(), yaw: o.rotation.y },
+            also: [
+              { verb: 'place', args: { id: v, rot: [o.rotation.x, o.rotation.y, o.rotation.z], scale: o.scale.toArray() } },
+              ...worn,
+            ] },
+          { verb: 'remove', args: { id: v } });
+      }
+      sendVerb('remove', { id: v });
+      break;
+    }
     case 'export': {
       const things = [];
       for (const [id, meta] of entityMeta) {

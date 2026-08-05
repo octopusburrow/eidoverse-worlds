@@ -11,6 +11,7 @@ import { bus, report } from './core.js';
 import { entities, entityMeta, comps } from './world.js';
 import { sendVerb } from './net.js';
 import { makeSchemaFrame } from './panels.js';
+import { recordPair } from './editundo.js';
 
 let ui = null, currentId = null;
 
@@ -59,6 +60,22 @@ const resolve = (cur, v, i) =>
   (typeof v === 'object' && v !== null && 'delta' in v)
     ? (i != null && v.axis != null ? cur[v.axis] + v.delta : cur + v.delta) : (i != null ? v[i] : v);
 
+// Every edit goes out as a PAIR: the sentence that undoes it and the sentence
+// itself (editundo speaks the inverse — there is no shadow state to roll back,
+// because the edit was always a verb in the log). Without this the steppers
+// were irreversible: a fat-fingered scale had no way home. The workshop's
+// channel box already did this; the inspector didn't, which made the nicer
+// panel the more dangerous one.
+function speak(verb, args, inverse) {
+  recordPair({ verb, args: inverse }, { verb, args });
+  sendVerb(verb, args);
+}
+const trs = (obj) => ({
+  pos: obj.position.toArray().map((n) => +n.toFixed(3)),
+  rot: [obj.rotation.x, obj.rotation.y, obj.rotation.z].map((n) => +n.toFixed(4)),
+  scale: obj.scale.toArray().map((n) => +n.toFixed(3)),
+});
+
 export function dispatch(id, k, v) {
   const obj = entities.get(id);
   if (!obj) return;
@@ -66,29 +83,36 @@ export function dispatch(id, k, v) {
     case 'pos': {
       const p = (typeof v === 'object' && 'delta' in v)
         ? obj.position.toArray().map((c, i) => (i === v.axis ? c + v.delta : c)) : v;
-      sendVerb('place', { id, pos: p });
+      speak('place', { id, pos: p }, { id, ...trs(obj) });
       break;
     }
     case 'rot': {
       const cur = [obj.rotation.x, obj.rotation.y, obj.rotation.z].map((r) => r * 180 / Math.PI);
       const deg = (typeof v === 'object' && 'delta' in v)
         ? cur.map((c, i) => (i === v.axis ? c + v.delta : c)) : v;
-      sendVerb('place', { id, rot: deg.map((d) => d * Math.PI / 180) });
+      speak('place', { id, rot: deg.map((d) => d * Math.PI / 180) }, { id, ...trs(obj) });
       break;
     }
     case 'scale': {
       const cur = obj.scale.toArray();
       const s = ((typeof v === 'object' && 'delta' in v)
         ? cur.map((c, i) => (i === v.axis ? c + v.delta : c)) : v).map((c) => Math.max(0.01, c));
-      sendVerb('place', { id, scale: s });
+      speak('place', { id, scale: s }, { id, ...trs(obj) });
       break;
     }
-    case 'rename':
-      sendVerb('comp', { id, type: 'label', data: v.trim() ? { text: v.trim().slice(0, 48) } : null });
+    case 'rename': {
+      const prev = structuredClone(comps.get(id)?.label ?? null);
+      speak('comp', { id, type: 'label', data: v.trim() ? { text: v.trim().slice(0, 48) } : null },
+            { id, type: 'label', data: prev });
       break;
-    case 'grab': sendVerb('comp', { id, type: 'grab', data: {} }); break;
-    case 'ungrab': sendVerb('comp', { id, type: 'grab', data: null }); break;
-    case 'comp-remove': sendVerb('comp', { id, type: v, data: null }); break;
+    }
+    case 'grab': speak('comp', { id, type: 'grab', data: {} }, { id, type: 'grab', data: null }); break;
+    case 'ungrab': speak('comp', { id, type: 'grab', data: null }, { id, type: 'grab', data: structuredClone(comps.get(id)?.grab ?? {}) }); break;
+    case 'comp-remove': {
+      const prev = structuredClone(comps.get(id)?.[v] ?? null);
+      speak('comp', { id, type: v, data: null }, { id, type: v, data: prev });
+      break;
+    }
     case 'comp-type': _draft.type = v; break;
     case 'comp-data': _draft.data = v; break;
     case 'comp-add': {
@@ -99,7 +123,7 @@ export function dispatch(id, k, v) {
         try { data = JSON.parse(_draft.data); }
         catch (e) { report('comp data', new Error('not valid JSON')); return; }
       }
-      sendVerb('comp', { id, type, data });
+      speak('comp', { id, type, data }, { id, type, data: null });
       _draft.type = ''; _draft.data = '';
       break;
     }

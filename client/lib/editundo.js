@@ -27,19 +27,28 @@ export function recordPair(inverse, counter) {
   redo.length = 0;
 }
 
+// Some inverses need more than one sentence: putting back a deleted thing is
+// a spawn AND its transform AND every component it was wearing. A verb may
+// therefore carry `also: [{verb, args}, ...]`, spoken in order after it.
+// Single-verb pairs are untouched — `also` is simply absent.
+const speakAll = (step) => {
+  sendVerb(step.verb, step.args);
+  for (const extra of step.also ?? []) sendVerb(extra.verb, extra.args);
+};
+
 export function undo() {
   const inv = stack.pop();
   if (!inv) { flashHint('nothing to undo'); return; }
-  if (inv.counter) redo.push({ verb: inv.counter.verb, args: inv.counter.args, counter: { verb: inv.verb, args: inv.args } });
-  sendVerb(inv.verb, inv.args);
+  if (inv.counter) redo.push({ verb: inv.counter.verb, args: inv.counter.args, also: inv.counter.also, counter: { verb: inv.verb, args: inv.args, also: inv.also } });
+  speakAll(inv);
   flashHint(`undo: ${inv.verb}${inv.args.type ? ' ' + inv.args.type : ''} on ${inv.args.id}`);
 }
 
 export function redoLast() {
   const r = redo.pop();
   if (!r) { flashHint('nothing to redo'); return; }
-  stack.push({ verb: r.counter.verb, args: r.counter.args, counter: { verb: r.verb, args: r.args } });
-  sendVerb(r.verb, r.args);
+  stack.push({ verb: r.counter.verb, args: r.counter.args, also: r.counter.also, counter: { verb: r.verb, args: r.args, also: r.also } });
+  speakAll(r);
   flashHint(`redo: ${r.verb}${r.args.type ? ' ' + r.args.type : ''} on ${r.args.id}`);
 }
 
