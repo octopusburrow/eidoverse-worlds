@@ -129,24 +129,24 @@ export function setMouselook(on) {
   localStorage.setItem('ew-mouselook', on ? 'on' : 'off');
   if (!on && locked) document.exitPointerLock();
 }
-// Only a clean TAP enters mouselook (R, 16:56): a hold-and-move is somebody
-// using the original drag-to-orbit and must never flip modes under their
-// hand. Clean = under 250ms, under 4px of travel.
-let _tapT = 0, _tapX = 0, _tapY = 0;
-canvas.addEventListener('pointerdown', (e) => { _tapT = performance.now(); _tapX = e.clientX; _tapY = e.clientY; });
-canvas.addEventListener('click', (e) => {
-  if (!mouselook || locked || editingNow() || pointerClaimed()) return;
-  if (touchState.lookId !== null) return;             // a finger, not a mouse
-  if (performance.now() - _tapT > 250 ||
-      Math.hypot(e.clientX - _tapX, e.clientY - _tapY) > 4) return;   // a drag, not a tap
-  const p = canvas.requestPointerLock();              // Promise in Chrome, undefined in Safari
-  p?.catch?.((e2) => report('pointer lock', e2));
-});
+// MODE SWITCHING IS DELIBERATE (R, 00:27). Three ways in and out, all of them
+// chosen — a stray click in the viewport must never capture your cursor:
+//
+//   C (hold)  momentary cursor while mouselooking — reach for a frame or a
+//             die, release and you are looking again. Your finger IS the mode,
+//             so there is nothing to forget. (GMod context-menu lineage.)
+//   C (tap)   toggles mouselook when the cursor is free — the way IN, since
+//             Esc is hardcoded by the browser to only ever release a lock.
+//   Esc       always frees the cursor. Browser-guaranteed, unbreakable.
+//
+// Click-to-enter used to exist and was removed: once C is the momentary reach,
+// a click that also locks means you can end up captured without ever choosing
+// it, which is exactly the hole the momentary model is supposed to close.
 document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === canvas;
   if (locked) {
     mouse.set(0, 0);
-    if (!lockHinted) { flashHint('mouselook — <kbd>Esc</kbd> frees the cursor · click the world to look again'); lockHinted = true; }
+    if (!lockHinted) { flashHint('mouselook — <kbd>Esc</kbd> or <kbd>C</kbd> frees the cursor · hold <kbd>C</kbd> to reach for it'); lockHinted = true; }
   }
 });
 bus.on('edit-mode', (on) => { if (on && locked) document.exitPointerLock(); });
@@ -159,7 +159,11 @@ bus.on('edit-mode', (on) => { if (on && locked) document.exitPointerLock(); });
 let _cHold = false;
 addEventListener('keydown', (e) => {
   if (e.code !== 'KeyC' || e.repeat || _cHold) return;
-  if (!locked || editingNow() || isOverlayOpen() || chat.isOpen) return;
+  if (editingNow() || isOverlayOpen() || chat.isOpen) return;
+  if (!locked) {                       // cursor is free: C is the way IN
+    if (mouselook) canvas.requestPointerLock()?.catch?.(() => {});
+    return;
+  }
   _cHold = true;
   document.exitPointerLock();
 });
