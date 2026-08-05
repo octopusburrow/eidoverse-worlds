@@ -9,6 +9,7 @@ import {
 } from './assets.js';
 import { beginWork, enqueue, idleYield } from './loadwork.js';
 import { DRIVEN_BONES } from './ragdoll.js';
+import { stroke as strokeIcon } from './icons.js';
 
 // The clip library is ~1.9MB PER SLOT. Waiting for all seven before a body
 // could exist put 13MB between a person and their own legs — the single
@@ -121,54 +122,9 @@ function makeTypingSprite() {
 // mic = this body's voice is LIVE in the room right now (R, 23:30) — the
 // megaphone is presence, not a message: it says listen, sound is coming from
 // here, independent of whether any words have been transcribed yet.
-// DRAWN, never typed — and now with REAL Lucide path data (R, 00:18-00:19:
-// "does Lucide not have an actual think bubble?" / "same with your wrench lol"
-// — my hand-drawn versions were improvisation and looked it).
-//
-// Canvas fillText of an emoji silently paints NOTHING when the platform lacks
-// that glyph: no error, no fallback. It happened live on Windows 11 with two
-// different codepoints, both of which rasterized fine in headless Chromium, so
-// the fault was invisible to the tests too. Path2D has no font dependency.
-//
-// Paths are verbatim from lucide-icons/lucide (ISC), 24x24 viewBox, drawn
-// centered via a translate+scale — same approach as porch-old's PORCH_ICONS.
-const LUCIDE = {
-  // ear
-  ear: ['M6 8.5a6.5 6.5 0 1 1 13 0c0 6-6 6-6 10a3.5 3.5 0 1 1-7 0',
-        'M15 8.5a2.5 2.5 0 0 0-5 0v1a2 2 0 1 1 0 4'],
-  // message-circle-more — a speech bubble with an ellipsis: the universal
-  // "composing" idiom. Lucide has no literal thought-cloud, and `brain` is
-  // mush at 26px.
-  think: ['M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719',
-          'M8 12h.01', 'M12 12h.01', 'M16 12h.01'],
-  // wrench
-  tool: ['M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z'],
-  // mic
-  mic: ['M12 19v3', 'M19 10v2a7 7 0 0 1-14 0v-2'],
-};
-const LUCIDE_RECT = { mic: [9, 2, 6, 13, 3] };   // rect x,y,w,h,rx (mic capsule)
-const _p2d = new Map();
-function lucidePaths(name) {
-  if (!_p2d.has(name)) {
-    const list = (LUCIDE[name] ?? []).map((d) => new Path2D(d));
-    const r = LUCIDE_RECT[name];
-    if (r) { const q = new Path2D(); q.roundRect(...r); list.push(q); }
-    _p2d.set(name, list);
-  }
-  return _p2d.get(name);
-}
-/** Stroke a 24x24 Lucide icon centred at the origin, sized to `size` px. */
-function drawLucide(ctx, name, size = 26) {
-  const k = size / 24;
-  ctx.save();
-  ctx.scale(k, k);
-  ctx.translate(-12, -12);
-  ctx.lineWidth = 2 / k;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  for (const path of lucidePaths(name)) ctx.stroke(path);
-  ctx.restore();
-}
+// Attention icons come from the shared Lucide registry (icons.js) — never
+// from emoji: canvas fillText paints nothing when a glyph is missing, silently.
+const ICON_FOR = { ear: 'ear', think: 'think', tool: 'wrench', mic: 'mic' };
 
 function drawTypingDots(sprite, t, state) {
   const ctx = sprite.userData.ctx;
@@ -177,13 +133,13 @@ function drawTypingDots(sprite, t, state) {
   ctx.strokeStyle = 'rgba(143,232,200,0.28)';
   ctx.lineWidth = 2;
   ctx.beginPath(); ctx.roundRect(28, 12, 72, 32, 16); ctx.fill(); ctx.stroke();
-  if (LUCIDE[state]) {
+  if (ICON_FOR[state]) {
     const b = 0.75 + 0.25 * Math.sin(t * 3);      // gentle breathing, not a strobe
     ctx.save();
     ctx.translate(64, 28);
     ctx.globalAlpha = b;
     ctx.strokeStyle = 'rgba(180,240,216,1)';
-    drawLucide(ctx, state, 26);
+    strokeIcon(ctx, ICON_FOR[state], 26);
     // mic gets sound arcs on top: the icon says "a voice", the arcs say "NOW"
     if (state === 'mic') {
       for (let i = 0; i < 2; i++) {
