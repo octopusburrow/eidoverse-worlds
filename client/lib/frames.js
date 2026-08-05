@@ -87,15 +87,45 @@ document.addEventListener('pointerdown', (e) => {
     }
     f.paint();
   };
-  const up = () => {
+  // ONE idempotent finish, shared by every way a drag can end. `pointerup`
+  // alone is not enough: release the button outside the browser and `up` never
+  // arrives, so `_resizing` stays true and the move/up listeners stay
+  // installed — hover detection and all future resizes are dead until reload.
+  // (The title-bar drag path has always taken pointer capture; this one was
+  // written without it. Found in review.)
+  let captureEl = null;          // whoever ACQUIRED the capture releases it
+  let done = false;
+  const finish = () => {
+    if (done) return;                    // idempotent: several paths may fire
+    done = true;
     document.removeEventListener('pointermove', move, true);
-    document.removeEventListener('pointerup', up, true);
+    document.removeEventListener('pointerup', finish, true);
+    document.removeEventListener('pointercancel', finish, true);
+    removeEventListener('blur', finish);
+    // release on the element that ACQUIRED it. document.releasePointerCapture
+    // was a no-op — Document does not own the capture, documentElement does —
+    // so a blur/cancel could leave the capture live. (Review catch.)
+    try {
+      if (captureEl?.hasPointerCapture?.(e.pointerId)) captureEl.releasePointerCapture(e.pointerId);
+    } catch { /* never captured, or gone */ }
+    captureEl?.removeEventListener('lostpointercapture', finish);
     document.body.style.cursor = '';
     _resizing = false;
     f.save();
   };
+  // capture keeps the stream coming while the pointer is outside the window;
+  // lostpointercapture is then one more road to the same finish
+  // one element owns the capture and the same one releases it; retained so
+  // finish() cannot guess wrong
+  try {
+    document.documentElement.setPointerCapture(e.pointerId);
+    captureEl = document.documentElement;
+    captureEl.addEventListener('lostpointercapture', finish);
+  } catch { /* no capture available — the listeners below still cover it */ }
   document.addEventListener('pointermove', move, true);
-  document.addEventListener('pointerup', up, true);
+  document.addEventListener('pointerup', finish, true);
+  document.addEventListener('pointercancel', finish, true);
+  addEventListener('blur', finish);
 }, true);
 let zTop = 30;
 let locked = localStorage.getItem('ew-ui-locked') === '1';
