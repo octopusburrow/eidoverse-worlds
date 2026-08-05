@@ -19,7 +19,7 @@ const frames = new Map();
 // pixels belong to content — scrollbars and buttons always win (we test the
 // real element under the pointer, not geometry alone).
 const _resizables = [];
-const _BAND = 3, _REACH = 7;
+const _BAND = 2, _REACH = 6;   // R-tuned, 17:23
 const _CURSORS = { n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize',
   ne: 'nesw-resize', sw: 'nesw-resize', nw: 'nwse-resize', se: 'nwse-resize' };
 function _zoneFor(f, e) {
