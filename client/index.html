@@ -165,6 +165,36 @@ select {
 }
 .fr-badge b { color: var(--fg); font-weight: 600; }
 .fr-badge b.ping { color: var(--ping); }
+
+/* schema panels (manifest / inspector) — see panels.js for the field contract */
+.schema-panel { padding: 8px 10px; overflow-y: auto; font-size: var(--fs-sm); }
+.sp-row { display: flex; align-items: center; gap: 8px; margin: 5px 0; }
+.sp-row.sp-f-list { flex-direction: column; align-items: stretch; }
+.sp-label { color: var(--dim); min-width: 64px; flex-shrink: 0; }
+.sp-info { color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-step { display: inline-flex; align-items: center; gap: 2px; }
+.sp-bump { width: 22px; padding: 2px 0; background: #2a3342; border: none; color: var(--fg);
+  border-radius: 4px; cursor: pointer; }
+.sp-bump:hover { background: #37435a; }
+.sp-num { width: 54px; background: var(--panel); border: 1px solid var(--line); color: var(--fg);
+  border-radius: 4px; padding: 3px 5px; text-align: right; }
+.sp-vec { display: flex; gap: 6px; flex-wrap: wrap; }
+.sp-text { flex: 1; min-width: 0; background: var(--panel); border: 1px solid var(--line);
+  color: var(--fg); border-radius: 4px; padding: 4px 7px; }
+.sp-btn { background: var(--accent, #e8956b); border: none; color: #14100c; font-weight: 600;
+  border-radius: 5px; padding: 5px 12px; cursor: pointer; }
+.sp-btn.danger, .sp-mini.danger { background: #6e2a2a; color: var(--fg); }
+.sp-list { display: flex; flex-direction: column; gap: 2px; max-height: 190px; overflow-y: auto; }
+.sp-item { display: flex; align-items: center; gap: 6px; padding: 3px 7px; border-radius: 5px; }
+.sp-item:hover { background: rgba(255,255,255,.04); }
+.sp-item.active { background: #1d2634; }
+.sp-item-main { flex: 1; min-width: 0; display: flex; flex-direction: column; cursor: pointer; }
+.sp-item-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-item-sub { color: var(--dim); font-size: 11px; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
+.sp-mini { background: #2a3342; border: none; color: var(--fg); border-radius: 4px;
+  padding: 2px 8px; font-size: 11px; cursor: pointer; }
+.sp-empty { color: var(--dim); font-style: italic; padding: 4px 7px; }
 .fr-btns { display: flex; gap: 2px; flex: none; }
 .fr-btn {
   padding: 1px 6px; font-size: 11px; line-height: 1.4;

@@ -18,6 +18,7 @@
 // foveation 0, local-floor, and the settled law: NEVER navigate mid-session.
 
 import { THREE, renderer, camera, scene, CONFIG, XR_BOOT, report, bus } from './core.js';
+import { xrPanelsEnter, xrPanelsExit, xrPanelsPick } from './xrpanels.js';
 import { myState, xrIntent, setCamYaw, setXrProbe } from './controller.js';
 import { entities, comps } from './world.js';
 import { sendVerb } from './net.js';
@@ -205,9 +206,11 @@ async function enterVR() {
     hands.right ??= makeHand(1);
     presenting = true;
     xrIntent.active = true;
+    xrPanelsEnter(rig);            // manifest + inspector as physical surfaces
     session.addEventListener('end', () => {
       presenting = false;
       xrIntent.active = false;
+      xrPanelsExit(rig);
       releaseGrab();
       rig.remove(camera);
       scene.remove(rig);
@@ -262,12 +265,18 @@ export function updateXR() {
     if (grip && trig && !held) tryGrab('right');
     if (!grip && held) releaseGrab();
     if (trig && !triggerWasDown && !grip && !radialOpen) {
-      const hit = rayHitEntity(hands.right.ray);
-      if (hit) { bus.emit('sg:select-request', hit.id); flashHint(`→ ${hit.id}`); }
+      // panels claim the laser before the world does — a click meant for a
+      // stepper must never select the mountain behind it
+      const panelDist = xrPanelsPick(hands.right.ray, true);
+      if (panelDist == null) {
+        const hit = rayHitEntity(hands.right.ray);
+        if (hit) { bus.emit('sg:select-request', hit.id); flashHint(`→ ${hit.id}`); }
+      }
     }
     if (hands.right.laser.visible) {
-      const hit = rayHitEntity(hands.right.ray, 40);
-      hands.right.laser.scale.z = hit ? hit.dist : 24;
+      const panelDist = xrPanelsPick(hands.right.ray, false);
+      const hit = panelDist == null ? rayHitEntity(hands.right.ray, 40) : null;
+      hands.right.laser.scale.z = panelDist ?? (hit ? hit.dist : 24);
     }
     triggerWasDown = trig;
   }

@@ -28,6 +28,8 @@ import {
   hasGhost, hasSelection, toggleEditMode, isEditing,
 } from './lib/build.js';
 import { initConjure } from './lib/conjure.js';
+import { initInspector } from './lib/inspector.js';
+import { initManifest } from './lib/manifest.js';
 import { initSceneGraph, sceneAttach, sceneDetach } from './lib/scenegraph.js';
 import {
   toast, setHud, setHint, setAmbientHint, flashHint, buildHelp, toggleHelp,
@@ -194,6 +196,8 @@ function start() {
   connect();
   initPalette();
   initConjure();   // the orrery panel — prompt → your pick of images → mesh → world
+  initManifest();  // the left hand: what's aboard, import/export (R, 21:56)
+  initInspector(); // the right hand: TRS + comps on the selection
   initVoice(CONFIG.name);
   initSceneGraph();
   initWorkshop();   // OUR edit mode — self-contained, their surfaces untouched
