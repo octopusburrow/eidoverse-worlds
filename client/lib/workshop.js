@@ -13,6 +13,7 @@
 // produce identical log entries. One selection, kept local ('ws:select').
 
 import { THREE, bus, camera, canvas } from './core.js';
+import { toggleEditMode } from './build.js';
 import { entities, entityMeta, comps, avatarMounts } from './world.js';
 import { sendVerb as netSendVerb } from './net.js';
 import { componentTypes, componentSpec, defaultsFor } from './components.js';
@@ -318,9 +319,9 @@ export function initWorkshop() {
   bus.on('comp', queueRepaint);
   bus.on('mount', queueRepaint);
   onSpoke = (v) => { if (open) paintEcho(v); };   // our own verbs, no net.js hook
-  window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && open) toggle(false);
-  });
+  // Esc belongs to THEIR mode now (staged: ghost, selection, then exit) —
+  // we exit when the mode does, via the 'edit-mode' event below. One king.
+  bus.on('edit-mode', (on) => { toggle(!!on); wsButton?.classList.toggle('on', !!on); });
 }
 
 // ---- the Edit button: self-injected, self-removing --------------------------
@@ -335,8 +336,11 @@ function ensureButton() {
   if (!dock || dock.contains(wsButton)) return;
   wsButton = document.createElement('button');
   wsButton.textContent = '✏️ Edit';
-  wsButton.title = 'workshop — our edit mode (Esc closes)';
-  wsButton.onclick = () => { toggle(); wsButton.classList.toggle('on', open); };
+  wsButton.title = "edit mode (their 'b') + our inspector/undo ride along · Esc leaves";
+  // ONE edit mode: the button speaks THEIR toggle (R: converge, don't parallel
+  // — 'copy their b panels into our edit button'); our surface follows the
+  // 'edit-mode' event, so B-key, button, and Esc all agree about the state.
+  wsButton.onclick = () => toggleEditMode();
   dock.appendChild(wsButton);
 }
 setInterval(ensureButton, 1000);

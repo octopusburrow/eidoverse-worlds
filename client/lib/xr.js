@@ -64,6 +64,16 @@ function makeHand(i) {
   return { grip, ray, laser };
 }
 
+/** Guarded rumble (porch-old _haptic): silently a no-op on pads without
+ *  actuators. Staging doctrine per HIGGS: touch = light tick, take = firmer. */
+export function haptic(hand, val = 0.4, ms = 24) {
+  try {
+    if (!session) return;
+    for (const src of session.inputSources)
+      if (src.handedness === hand) src.gamepad?.hapticActuators?.[0]?.pulse(val, ms);
+  } catch { /* never let feedback break the frame */ }
+}
+
 function sourceFor(hand) {
   if (!session) return null;
   for (const src of session.inputSources) if (src.handedness === hand) return src;
@@ -110,6 +120,7 @@ function tryGrab(hand) {
     scale: +obj.scale.x.toFixed(3),
   };
   held = { id: target, hand, prevParent: obj.parent, prevPlace };
+  haptic(hand, 0.55, 40);           // the take, felt
   h.grip.attach(obj);              // preserves world transform; it rides the hand
   flashHint(`holding ${target} — release grip to place`);
 }
@@ -216,6 +227,10 @@ async function enterVR() {
       scene.remove(rig);
       session = null;
       camera.position.set(3.5, 2.6, 5.5);
+      // FISHEYE FIX (porch-old :925): WebXR overwrote the projection with the
+      // HMD's ~110° matrices; position alone leaves the desktop view fisheyed.
+      camera.fov = 60; camera.aspect = innerWidth / innerHeight; camera.zoom = 1;
+      camera.updateProjectionMatrix();
     });
   } catch (e) {
     report('enter VR', e);
@@ -228,8 +243,13 @@ async function enterVR() {
 export function updateXR() {
   if (!presenting) return;
 
-  // head yaw becomes the movement frame: stick-forward = where you look
-  camera.getWorldDirection(_v);
+  // head yaw becomes the movement frame: stick-forward = where you look.
+  // Read the -Z column of matrixWorld DIRECTLY: getWorldDirection() calls
+  // updateWorldMatrix(), which clobbers the XR-set matrix and freezes forward
+  // at north (porch-old :9948, a debugged-for-days bug — not a style choice).
+  const me_ = camera.matrixWorld.elements;
+  _v.set(-me_[8], -me_[9], -me_[10]);
+  if (_v.lengthSq() < 1e-6) _v.set(0, 0, -1);
   setCamYaw(Math.atan2(_v.x, _v.z) + Math.PI);
 
   // sticks → intent (deadzone-with-rescale; snap cooldown — exultation math)
@@ -268,6 +288,7 @@ export function updateXR() {
       // panels claim the laser before the world does — a click meant for a
       // stepper must never select the mountain behind it
       const panelDist = xrPanelsPick(hands.right.ray, true);
+      if (panelDist != null) haptic('right', 0.3, 18);   // a button, felt
       if (panelDist == null) {
         const hit = rayHitEntity(hands.right.ray);
         if (hit) { bus.emit('sg:select-request', hit.id); flashHint(`→ ${hit.id}`); }

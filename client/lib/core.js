@@ -120,7 +120,9 @@ camera.position.set(3.5, 2.6, 5.5);
 camera.lookAt(0, 1, 0);
 
 addEventListener('resize', () => {
-  renderer.setSize(innerWidth, innerHeight);
+  // XR owns the framebuffer while presenting (porch-old :11157): resizing it
+  // mid-session tears the eye buffers. Aspect math is still safe to keep warm.
+  if (!renderer.xr?.isPresenting) renderer.setSize(innerWidth, innerHeight);
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
 });

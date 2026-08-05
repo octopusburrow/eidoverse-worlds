@@ -28,7 +28,8 @@ const _hit = new THREE.Vector3();
 
 // The starter vocabulary. Everything else arrives through the catalog or an
 // `asset` verb, so this list is a doorway, not a limit.
-const STARTER = [
+// exported for the VR catalog quad (vrcatalog.js) — same doorway, second surface
+export const STARTER = [
   ['crate (red)', 'eidoverse/assets/models/crate_large_red.glb'],
   ['crate (blue)', 'eidoverse/assets/models/crate_large_blue.glb'],
   ['palm tree', 'eidoverse/assets/models/palm_date_tree_tropical_deseert_oasis_plant.glb'],

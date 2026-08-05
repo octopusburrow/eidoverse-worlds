@@ -9,6 +9,7 @@ import { THREE, bus } from './core.js';
 import { renderCanvas, hitRegion } from './panels.js';
 import { manifestFields, manifestDispatch } from './manifest.js';
 import { inspectorFields, inspectorDispatch } from './inspector.js';
+import { catalogFields, catalogDispatch } from './vrcatalog.js';
 
 const PX_PER_M = 900;              // canvas pixels per world metre of quad
 const W = 0.58;                    // quad width, metres — an arm's-length read
@@ -53,6 +54,7 @@ export function xrPanelsEnter(rig) {
   panels = [
     makePanel(manifestFields, manifestDispatch, -0.42, 0.35),
     makePanel(inspectorFields, inspectorDispatch, 0.42, -0.35),
+    makePanel(catalogFields, catalogDispatch, -0.98, 0.7),   // the build doorway
   ];
   for (const p of panels) rig.add(p.mesh);
   bus.on('entity', repaintAll);
