@@ -2330,7 +2330,8 @@ const server = Bun.serve({
           // state: optional social affordance glyph for agents (ear = I hear
           // you, think = composing a reply, tool = working). Whitelisted so
           // presence stays presence.
-          const st = typeof msg.state === "string" && ["ear", "think", "tool"].includes(msg.state) ? msg.state : null;
+          // mic = a live voice is coming from this body right now (R, 23:30)
+          const st = typeof msg.state === "string" && ["ear", "think", "tool", "mic"].includes(msg.state) ? msg.state : null;
           c.world.broadcast({ type: "typing", id: c.id, to: msg.to ?? null, ...(st ? { state: st } : {}) }, c);
           break;
         }

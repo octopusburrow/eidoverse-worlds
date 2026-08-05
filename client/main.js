@@ -55,7 +55,7 @@ bus.on('xr:sit', () => { if (!trySitOn(null)) setPosture('sit'); });
 bus.on('xr:stand', () => dismountMe());
 bus.on('xr:mic', async () => (await import('./lib/voice.js')).toggleMic());
 import { initWorkshop, toggle as toggleWorkshop } from './lib/workshop.js';
-import { initVoice } from './lib/voice.js';
+import { initVoice, micOn, isMuted, micAnalyserLevel, peerLevels } from './lib/voice.js';
 import './lib/mictoggle.js'; // mic/mute: our SVG toggle beside the HUD, muted by default
 import { setSTT, sttAvailable } from './lib/stt.js';
 import { startPrefetch } from './lib/prefetch.js';
@@ -610,6 +610,39 @@ bus.on('force', ({ actor, at, radius = 4, power = 3 }) => {
   applyShove(lean, actor);
 });
 
+// ---- live voice as presence (R, 23:30) --------------------------------------
+// The same two-plane split we built for the agent voice, pointed at humans:
+// the SOUND is already live over the mesh (zero latency, no waiting on
+// transcription), so the visible half must be live too — mouth driven by real
+// amplitude, 🎙 glyph while the mic is hot. STT stays on the LOG plane, landing
+// afterward as an ordinary say. Nobody waits for words to know you're talking.
+const VOICE_GATE = 0.045;        // below this is room tone, not speech
+let _micGlyphOn = false, _micGlyphAt = 0;
+
+function updateVoiceMouths(now) {
+  // mine: local analyser, no round trip
+  if (me) {
+    const live = micOn() && !isMuted();
+    me.voiceLevel = live ? micAnalyserLevel() : null;
+    // the megaphone is a presence signal, refreshed like typing (~2.5s) and
+    // dropped the moment the mic goes cold
+    const speaking = live && me.voiceLevel > VOICE_GATE;
+    if (live !== _micGlyphOn || (live && now - _micGlyphAt > 2400)) {
+      _micGlyphOn = live; _micGlyphAt = now;
+      sendTyping(null, live ? 'mic' : null);
+      me.setTyping(live ? 'mic' : null);
+    }
+    if (speaking) me.speakUntil = now + 400;   // keeps head/gaze life going
+  }
+  // theirs: one analyser per inbound stream
+  const levels = peerLevels();
+  for (const [id, r] of remotes) {
+    const lv = levels.get(id);
+    if (r.avatar) r.avatar.voiceLevel = lv == null ? null : lv;
+    if (lv != null && lv > VOICE_GATE) noteSpeaking(id, 600);
+  }
+}
+
 // Two-plane speech, timer-free (R, 16:09): captions are the live performance
 // (bubble + mouth, paced to the voice); the logged say carries spoken:true
 // and world.js never re-performs it. No dedup windows, no content matching —
@@ -991,6 +1024,8 @@ function frame(now) {
     me._poseSig = myState.pose;
     if (myState.pose) me.setPose(myState.pose); else me.clearPose();
   }
+  BC('voice-mouths');
+  updateVoiceMouths(now);        // BEFORE the avatar updates that consume it
   BC('me-update');
   me?.update(dt, now);
   BC('bodydrag');

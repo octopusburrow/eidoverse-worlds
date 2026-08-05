@@ -17,6 +17,7 @@ import { flashHint } from './ui.js';
 
 let rec = null;
 let wanted = false;
+let uttSeq = 0;                 // one id per transcribed utterance (log plane)
 export const sttOn = () => wanted;
 export const sttAvailable = () => !!(window.SpeechRecognition ?? window.webkitSpeechRecognition);
 
@@ -33,7 +34,11 @@ export function setSTT(on) {
     for (let i = e.resultIndex; i < e.results.length; i++) {
       if (!e.results[i].isFinal) continue;
       const text = e.results[i][0].transcript.trim();
-      if (text) sendVerb('say', { text: `🎙 ${text}`, voiced: true });
+      // The LOG plane. The sound already reached the room live (mesh audio +
+      // 🎙 glyph + moving mouth); this is the written record arriving after,
+      // so it must never re-perform the utterance as a fresh speech event.
+      // Same doctrine as the agent voice's spoken:true. (R, 23:30)
+      if (text) sendVerb('say', { text: `🎙 ${text}`, voiced: true, spoken: true, utt: ++uttSeq });
     }
   };
   // Chrome ends recognition on silence — restart while still wanted

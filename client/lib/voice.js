@@ -46,6 +46,7 @@ function peerFor(id) {
   if (micStream) for (const t of micStream.getTracks()) pc.addTrack(t, micStream);
   pc.ontrack = (e) => {
     audio.srcObject = e.streams[0];
+    p.stream = e.streams[0];        // kept so their mouth can move with their voice
     // autoplay policy: if the browser balks (receiver never clicked anything),
     // retry on the next user gesture rather than failing silently
     audio.play().catch(() => addEventListener('click', () => audio.play().catch(() => {}), { once: true }));
@@ -175,3 +176,33 @@ export function initVoice(name) {
 
 // test/debug probe — connection states by peer id (the world_debug spirit)
 export const voiceDebug = () => Object.fromEntries([...peers].map(([id, p]) => [id, p.pc.connectionState]));
+
+// ---- per-speaker levels (R, 23:30: mouths move in sync with the sound)
+// One analyser per inbound stream, built lazily. Same RMS math as the local
+// mic glyph; the caller maps id -> avatar. Cheap enough at mesh scale: an
+// analyser node is a few hundred bytes and the read is a single loop.
+const _peerAn = new Map();          // id -> {an, buf, stream}
+let _peerCtx = null;
+
+export function peerLevels() {
+  const out = new Map();
+  for (const [id, p] of peers) {
+    if (!p.stream) continue;
+    let a = _peerAn.get(id);
+    if (!a || a.stream !== p.stream) {
+      try {
+        _peerCtx ??= new AudioContext();
+        const an = _peerCtx.createAnalyser();
+        an.fftSize = 512;
+        _peerCtx.createMediaStreamSource(p.stream).connect(an);
+        a = { an, buf: new Float32Array(an.fftSize), stream: p.stream };
+        _peerAn.set(id, a);
+      } catch { continue; }
+    }
+    a.an.getFloatTimeDomainData(a.buf);
+    let s = 0;
+    for (let i = 0; i < a.buf.length; i++) s += a.buf[i] * a.buf[i];
+    out.set(id, Math.min(1, Math.sqrt(s / a.buf.length) * 4));
+  }
+  return out;
+}
