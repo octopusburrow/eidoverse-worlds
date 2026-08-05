@@ -121,7 +121,11 @@ function makeTypingSprite() {
 // mic = this body's voice is LIVE in the room right now (R, 23:30) — the
 // megaphone is presence, not a message: it says listen, sound is coming from
 // here, independent of whether any words have been transcribed yet.
-const STATE_GLYPH = { ear: '👂', think: '💭', tool: '🔧', mic: '🎙' };
+// NOTE mic: U+1F399 '🎙' is a variation-selector emoji and renders blank or
+// as monochrome text in many font stacks — it drew as an EMPTY pill on R's
+// machine (23:37). U+1F5E3 '🗣' (speaking head) is plain-emoji and always
+// draws. Prefer non-VS codepoints for anything painted to a canvas.
+const STATE_GLYPH = { ear: '👂', think: '💭', tool: '🔧', mic: '🗣' };
 function drawTypingDots(sprite, t, state) {
   const ctx = sprite.userData.ctx;
   ctx.clearRect(0, 0, 128, 56);

@@ -617,21 +617,26 @@ bus.on('force', ({ actor, at, radius = 4, power = 3 }) => {
 // amplitude, 🎙 glyph while the mic is hot. STT stays on the LOG plane, landing
 // afterward as an ordinary say. Nobody waits for words to know you're talking.
 const VOICE_GATE = 0.045;        // below this is room tone, not speech
-let _micGlyphOn = false, _micGlyphAt = 0;
+let _micGlyphOn = false, _micGlyphAt = 0, _micTail = 0;
 
 function updateVoiceMouths(now) {
   // mine: local analyser, no round trip
   if (me) {
     const live = micOn() && !isMuted();
     me.voiceLevel = live ? micAnalyserLevel() : null;
-    // the megaphone is a presence signal, refreshed like typing (~2.5s) and
-    // dropped the moment the mic goes cold
+    // 🎙 means SOUND IS COMING OUT OF ME, not "my mic is plugged in" (R,
+    // 23:38: "it's not just if the mic is capturing my voice activity, it's
+    // if the mic is simply ON"). An always-on badge is furniture — it stops
+    // carrying information the second everyone wears one. So it tracks
+    // actual speech, with a short tail so ordinary pauses between words
+    // don't strobe it.
     const speaking = live && me.voiceLevel > VOICE_GATE;
-    // refresh well inside the 4s expiry so one dropped packet can't blank it
-    if (live !== _micGlyphOn || (live && now - _micGlyphAt > 1500)) {
-      _micGlyphOn = live; _micGlyphAt = now;
-      sendTyping(null, live ? 'mic' : null);
-      me.setTyping(live ? 'mic' : null);
+    if (speaking) _micTail = now + 900;
+    const show = now < _micTail;
+    if (show !== _micGlyphOn || (show && now - _micGlyphAt > 1500)) {
+      _micGlyphOn = show; _micGlyphAt = now;
+      sendTyping(null, show ? 'mic' : null);
+      me.setTyping(show ? 'mic' : null);
     }
     if (speaking) me.speakUntil = now + 400;   // keeps head/gaze life going
   }
