@@ -144,10 +144,9 @@ export function setMouselook(on) {
 // it, which is exactly the hole the momentary model is supposed to close.
 document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === canvas;
-  if (!locked && !_cDownAt) _cHold = false;   // Esc released it: no stale hold
   if (locked) {
     mouse.set(0, 0);
-    if (!lockHinted) { flashHint('mouselook — <kbd>Esc</kbd> or <kbd>C</kbd> frees the cursor · hold <kbd>C</kbd> to reach for it'); lockHinted = true; }
+    if (!lockHinted) { flashHint('mouselook — <kbd>M</kbd> toggles · <kbd>Esc</kbd> frees the cursor'); lockHinted = true; }
   }
 });
 bus.on('edit-mode', (on) => { if (on && locked) document.exitPointerLock(); });
@@ -157,48 +156,47 @@ bus.on('edit-mode', (on) => { if (on && locked) document.exitPointerLock(); });
 // instead of a toggle because toggles breed mode-amnesia; your finger IS the
 // mode. (GMod context-menu lineage. Esc remains the deliberate switch.)
 // keydown counts as a user gesture, so re-locking on keyup is allowed.
-// C is BOTH a tap and a hold, distinguished by duration — the same key, two
-// intents (R found the collision at 00:31: "esc doesn't swap now"). The first
-// version re-locked on every keyup, so a TAP released the cursor and grabbed
-// it back 80ms later, making C-to-exit impossible.
+// M TOGGLES mouselook, full stop (R, 00:35-00:40 — the reasoning that settled
+// it: "I thought esc was a *toggle* and c was a *temp swap*. Esc can't be a
+// toggle, so c has to be. The toggle is more useful." Then: "M alone. I like
+// toggles :3").
 //
-//   tap  (<250ms)   toggle: lock if free, release if locked
-//   hold (>=250ms)  momentary: release while held, re-lock on release
+// M, not C: M is the NAME of the mode (mouselook) and carries Second Life's
+// precedent for exactly this binding, while Ctrl+C is the most-pressed
+// shortcut on any machine — a modifier guard handles it, but that is the one
+// key where a guard failure is guaranteed to bite someone mid-copy. No reason
+// to sit on a landmine when a clearer spot is free. (R spotted the Ctrl+C
+// hazard at 00:36.)
 //
-// Esc is untouched by any of this — the browser releases the lock itself, and
-// _cHold is cleared by pointerlockchange so a stale hold cannot leak.
-const C_HOLD_MS = 250;
-let _cDownAt = 0, _cHold = false;
+// The original design gave C a momentary hold — press to reach for the cursor,
+// release to keep looking — on the assumption that Esc handled the deliberate
+// switch in both directions. It cannot: browsers hardcode Esc to only ever
+// RELEASE a pointer lock and refuse to grant one from it, because that is how
+// a hostile page would trap a cursor. With Esc out-only, the toggle has to
+// live on C, and one key cannot be both a toggle and a hold without the
+// ambiguity that cost us a live debugging session tonight.
+//
+//   M     toggle: locked <-> free, both directions
+//   Esc   always frees the cursor (browser-enforced, out-only)
 addEventListener('keydown', (e) => {
-  if (e.code !== 'KeyC' || e.repeat || _cDownAt) return;
+  if (e.code !== 'KeyM' || e.repeat) return;
+  // bare M only: modified presses belong to the browser and the OS
+  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
   if (editingNow() || isOverlayOpen() || chat.isOpen || !mouselook) return;
-  _cDownAt = performance.now();
-  if (locked) { _cHold = true; document.exitPointerLock(); }   // may still be a tap
-  else relock();                                               // free -> lock, tap or hold
-});
-addEventListener('keyup', (e) => {
-  if (e.code !== 'KeyC' || !_cDownAt) return;
-  const heldFor = performance.now() - _cDownAt;
-  _cDownAt = 0;
-  const wasHold = _cHold;
-  _cHold = false;
-  // Only a genuine HOLD re-locks on release. A tap leaves you where its
-  // keydown put you — that is what makes C a toggle in both directions.
-  if (wasHold && heldFor >= C_HOLD_MS && mouselook && !editingNow() && !pointerClaimed()) {
-    relock();
-  }
+  if (locked) document.exitPointerLock();
+  else relock();
 });
 
-// Esc-initiated unlocks leave the canvas unfocused, and Chrome wants a
-// user-gesture-adjacent request with a focused target — a bare window keydown
-// listener alone was not enough to get back IN (R, 00:33: "esc gets me out of
-// mouselook but not back in on repress"). Focus first, then ask; and if the
-// browser refuses anyway, say so instead of failing silently.
+// An Esc-initiated unlock leaves the canvas unfocused, and Chrome wants
+// requestPointerLock from a focused target — a bare window keydown listener
+// was not enough to get back IN (R, 00:33). Focus first, then ask; and if the
+// browser refuses anyway, say so instead of failing silently, which is how
+// this hid in the first place.
 function relock() {
   if (document.pointerLockElement === canvas) return;
   try { canvas.focus?.({ preventScroll: true }); } catch { /* not focusable, fine */ }
   const p = canvas.requestPointerLock();
-  p?.catch?.(() => flashHint('press <kbd>C</kbd> again or click the world to look'));
+  p?.catch?.(() => flashHint('press <kbd>M</kbd> again to look'));
 }
 
 addEventListener('mousemove', (e) => {
