@@ -151,6 +151,25 @@ document.addEventListener('pointerlockchange', () => {
 });
 bus.on('edit-mode', (on) => { if (on && locked) document.exitPointerLock(); });
 
+// Momentary cursor (R, 21:23): HOLD C to reach for the cursor mid-mouselook —
+// touch a UI frame, drop a die — release and you're looking again. A hold
+// instead of a toggle because toggles breed mode-amnesia; your finger IS the
+// mode. (GMod context-menu lineage. Esc remains the deliberate switch.)
+// keydown counts as a user gesture, so re-locking on keyup is allowed.
+let _cHold = false;
+addEventListener('keydown', (e) => {
+  if (e.code !== 'KeyC' || e.repeat || _cHold) return;
+  if (!locked || editingNow() || isOverlayOpen() || chat.isOpen) return;
+  _cHold = true;
+  document.exitPointerLock();
+});
+addEventListener('keyup', (e) => {
+  if (e.code !== 'KeyC' || !_cHold) return;
+  _cHold = false;
+  if (!mouselook || editingNow() || pointerClaimed()) return;
+  canvas.requestPointerLock()?.catch?.(() => {});   // gesture may be stale in some browsers; tap re-enters
+});
+
 addEventListener('mousemove', (e) => {
   if (locked || dragging) {
     camYaw -= e.movementX * 0.005;
@@ -163,7 +182,12 @@ canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
   camDist = THREE.MathUtils.clamp(camDist + e.deltaY * 0.004, 0.0, 16);
   const wasFP = firstPerson;
-  firstPerson = camDist < 0.6;
+  // Hysteresis (R, 21:37): enter FP under 0.4m, don't leave until past 0.7m.
+  // A single threshold flickers 1P/3P right at the boundary — nauseating, and
+  // loud for exactly the motion-sensitive people a hangout world shelters.
+  // The cut itself stays a clean snap on purpose: an almost-smooth lerp
+  // through your own neck reads worse than a cut.
+  firstPerson = wasFP ? camDist < 0.7 : camDist < 0.4;
   if (firstPerson !== wasFP) flashHint(firstPerson ? 'first person' : 'third person');
 }, { passive: false });
 
@@ -340,7 +364,12 @@ export function updateFollowCamera(dt, me) {
   const headY = 1.45;
   const focus = _eye.set(myState.pos.x, myState.pos.y + headY, myState.pos.z);
 
-  if (firstPerson) {
+  // Taunt cam (R, 21:37, TF2 lineage): emoting in first person pops you out
+  // to watch yourself — an emote you can't see is a wasted emote — then FP
+  // resumes when the clip ends. Purely local; nobody else's view changes.
+  const taunting = firstPerson && !!me?.emote;
+
+  if (firstPerson && !taunting) {
     // Eye slightly forward of the head joint so the face doesn't clip the near
     // plane, aimed along the orbit angles (which are now the LOOK angles).
     _facing.set(Math.sin(camYaw), 0, Math.cos(camYaw));
@@ -358,13 +387,15 @@ export function updateFollowCamera(dt, me) {
   if (me) me.vrm.scene.visible = true;
 
   // desired eye, with a shoulder offset so the body doesn't sit dead-centre
-  // over whatever you're aiming at
+  // over whatever you're aiming at. A taunt borrows a fixed stage distance
+  // (scroll position is untouched underneath — FP resumes where you left it).
+  const dist = taunting ? Math.max(camDist, 2.4) : camDist;
   const dirX = Math.sin(camYaw) * Math.cos(camPitch);
   const dirY = Math.sin(camPitch);
   const dirZ = Math.cos(camYaw) * Math.cos(camPitch);
   const shoulder = new THREE.Vector3(Math.cos(camYaw), 0, -Math.sin(camYaw))
-    .multiplyScalar(THREE.MathUtils.clamp(camDist * 0.16, 0, 0.62));
-  const want = new THREE.Vector3(dirX, dirY, dirZ).multiplyScalar(camDist).add(focus).add(shoulder);
+    .multiplyScalar(THREE.MathUtils.clamp(dist * 0.16, 0, 0.62));
+  const want = new THREE.Vector3(dirX, dirY, dirZ).multiplyScalar(dist).add(focus).add(shoulder);
 
   // ---- collision: raycast from the head to the wanted eye and pull in.
   // Orbiting into a wall or a hillside used to put the camera inside the world.
