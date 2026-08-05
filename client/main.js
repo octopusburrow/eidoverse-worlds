@@ -29,6 +29,7 @@ import {
 } from './lib/build.js';
 import { initConjure } from './lib/conjure.js';
 import { initInspector } from './lib/inspector.js';
+import { initManifest } from './lib/manifest.js';
 import { initSceneGraph, sceneAttach, sceneDetach } from './lib/scenegraph.js';
 import {
   toast, setHud, setHint, setAmbientHint, flashHint, buildHelp, toggleHelp,
@@ -200,6 +201,7 @@ function start() {
   // R spotted the duplicate at 00:14: "is there TWO edit modes??"). So the
   // manifest is retired and only the inspector ships: editable TRS + comps,
   // which their read-only inspector genuinely lacks.
+  initManifest();  // our hierarchy, forked from their scenegraph as a real panel
   initInspector(); // TRS steppers + component add/remove on the selection
   initVoice(CONFIG.name);
   initSceneGraph();

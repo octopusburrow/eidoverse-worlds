@@ -118,10 +118,10 @@ export function initInspector() {
     title: 'inspector', x: -252, y: 52, w: 320, h: 420, minW: 260, minH: 200,
   });
   ui.frame.hide();
-  bus.on('selection', ({ id }) => { currentId = id; paint(); });
+  bus.on('ws:select', (id) => { currentId = id; paint(); });
   bus.on('entity', ({ id }) => { if (id === currentId) paint(); });
   bus.on('comp', ({ id }) => { if (id === currentId) paint(); });
-  bus.on('edit-mode', (on) => { on ? ui.frame.show() : ui.frame.hide(); });
+  bus.on('ws:open', (on) => { on ? ui.frame.show() : ui.frame.hide(); });
   paint();
 }
 

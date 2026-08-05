@@ -28,7 +28,8 @@ const sendVerb = (verb, args) => { netSendVerb(verb, args); onSpoke?.({ verb, ar
 
 // ---- selection (ours, local) ----------------------------------------------
 let selected = null;
-function wsSelect(id) { selected = id; bus.emit('ws:select', id); }
+export function wsSelect(id) { selected = id; bus.emit('ws:select', id); }
+export const isWorkshopOpen = () => open;
 
 function badgesFor(id) {
   const out = [];
@@ -287,6 +288,8 @@ export function toggle(force) {
   if (!root) build();
   root.style.display = open ? '' : 'none';
   if (open) { repaintAll(); paintEcho(); }
+  // sibling panels (manifest, inspector) live in OUR edit mode and follow this
+  bus.emit('ws:open', open);
 }
 
 // click-to-select in the viewport while the surface is open: the same act as
