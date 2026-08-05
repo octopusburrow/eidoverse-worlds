@@ -29,6 +29,7 @@ import {
 } from './lib/build.js';
 import { initConjure } from './lib/conjure.js';
 import { initInspector } from './lib/inspector.js';
+import { initHandGrab } from './lib/handgrab.js';
 import { initManifest } from './lib/manifest.js';
 import { initSceneGraph, sceneAttach, sceneDetach } from './lib/scenegraph.js';
 import {
@@ -203,6 +204,7 @@ function start() {
   // which their read-only inspector genuinely lacks.
   initManifest();  // our hierarchy, forked from their scenegraph as a real panel
   initInspector(); // TRS steppers + component add/remove on the selection
+  initHandGrab();  // pick things up with a mouse — gated on the `grab` comp
   initVoice(CONFIG.name);
   initSceneGraph();
   initWorkshop();   // OUR edit mode — self-contained, their surfaces untouched
