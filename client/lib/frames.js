@@ -196,12 +196,30 @@ export function makeFrame(id, opts = {}) {
   };
   const CURSORS = { n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize',
     ne: 'nesw-resize', sw: 'nesw-resize', nw: 'nwse-resize', se: 'nwse-resize' };
+  // A scrollbar living inside the band OWNS its pixels — the resize zone
+  // yields wherever the pointer sits on a scrollable child's scrollbar strip
+  // (R, 17:14: "the panel edge grab steals it").
+  const overScrollbar = (e) => {
+    for (let t = e.target; t && t !== root.parentElement; t = t.parentElement) {
+      if (!(t instanceof HTMLElement)) break;
+      if (t.scrollHeight > t.clientHeight + 1) {
+        const sbw = t.offsetWidth - t.clientWidth;
+        if (sbw > 0 && e.clientX >= t.getBoundingClientRect().right - sbw - 2) return true;
+      }
+      if (t.scrollWidth > t.clientWidth + 1) {
+        const sbh = t.offsetHeight - t.clientHeight;
+        if (sbh > 0 && e.clientY >= t.getBoundingClientRect().bottom - sbh - 2) return true;
+      }
+    }
+    return false;
+  };
   root.addEventListener('pointermove', (e) => {
     if (!resizable || locked || state.collapsed || root.style.cursor === 'grabbing') return;
-    root.style.cursor = CURSORS[zoneAt(e)] ?? '';
+    root.style.cursor = (!overScrollbar(e) && CURSORS[zoneAt(e)]) || '';
   });
   root.addEventListener('pointerdown', (e) => {
     if (!resizable || locked || state.collapsed) return;
+    if (overScrollbar(e)) return;
     const z = zoneAt(e);
     if (!z) return;
     e.preventDefault(); e.stopPropagation();
