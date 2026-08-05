@@ -141,6 +141,9 @@ select {
 /* invisible 4px hit-halo: pointer events just OUTSIDE the frame still target
    it, so edge-resize can be grabbed beyond the border (no visual change) */
 .frame::before { content: ''; position: absolute; inset: -4px; }
+/* scrollbars sit 2px in from the frame edge so the resize band and the
+   scroll thumb stop fighting over the same column (R, 17:11) */
+.frame .fr-body { padding-right: 2px; }
 .frame {
   position: fixed; display: flex; flex-direction: column;
   z-index: 20; min-width: 170px; overflow: hidden;
