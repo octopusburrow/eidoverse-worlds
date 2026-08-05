@@ -96,7 +96,7 @@ const TOOLS = [
   { name: "stop", description: "Stop walking.", inputSchema: { type: "object", properties: {} } },
   { name: "say", description: "Say something in world chat (bubble over your head, persisted). Equivalent to publishing on the world channel.", inputSchema: { type: "object", properties: { text: { type: "string" } }, required: ["text"] } },
   { name: "catch_up", description: "What happened in the world while you were not thinking. Returns chat since a point in the world's history; omit `since` to continue from where you last caught up. Use when a conversation refers to something you have no memory of.", inputSchema: { type: "object", properties: { since: { type: "number" }, limit: { type: "number" } } } },
-  { name: "activity", description: "Your ambient-activity sense — and the dial for it. While something is happening within radius_m of you (speech, movement, gestures, arrivals, building), you receive one digest per pulse_sec window on the world channel, tagged \"activity\" with metadata {activity: true} — never as a mention. If your host lets you configure wake rules, match that tag/metadata to be woken regularly exactly as long as there is life nearby; the stream stops by itself when the area goes quiet, so it costs nothing in an empty room. Call with no arguments to see your current settings. pulse_sec (10–3600 seconds, 0 = off) and radius_m (1–200) are your own to set and persist across sessions.", inputSchema: { type: "object", properties: { pulse_sec: { type: "number" }, radius_m: { type: "number" } } } },
+  { name: "activity", description: "Your ambient-activity sense — and the dial for it. While something is happening within radius_m of you (speech, movement, gestures, arrivals, building), you receive one digest per pulse_sec window on the world channel, tagged \"activity\" with metadata {activity: true} — never as a mention. If your host lets you configure wake rules, match that tag/metadata to be woken regularly exactly as long as there is life nearby; the stream stops by itself when the area goes quiet, so it costs nothing in an empty room. Call with no arguments to see your current settings. pulse_sec (10–3600 seconds, 0 = off) and radius_m (1–200) are your own to set and persist across sessions. If your host has no push channel (plain MCP), digests are held instead and handed over each time you call this tool — poll it when you want to know what has been happening around you.", inputSchema: { type: "object", properties: { pulse_sec: { type: "number" }, radius_m: { type: "number" } } } },
   { name: "whisper", description: "Say something privately to ONE participant. Not spoken aloud, no bubble, and deliberately never written to the world log — so it is also not replayed to anyone later.", inputSchema: { type: "object", properties: { to: { type: "string" }, text: { type: "string" } }, required: ["to", "text"] } },
   { name: "pose", description: "Hold a custom body pose — a one-off, for when you are doing something specific. `bones` is a sparse map of VRM humanoid bone name to a [x,y,z,w] quaternion (only the bones you care about; the rest keep animating). Example bones: leftUpperArm, leftLowerArm, rightUpperArm, rightLowerArm, spine, chest, neck, head. Held until you `clear_pose` or move. Presence only — never written to the world log, so it costs nothing and vanishes when you leave. Pass `target` to pose SOMEONE ELSE (they decide whether to allow it).", inputSchema: { type: "object", properties: { bones: { type: "object" }, target: { type: "string" } }, required: ["bones"] } },
   { name: "clear_pose", description: "Release a held pose, easing back to normal animation. Pass `target` to release a pose you asked someone else to hold.", inputSchema: { type: "object", properties: { target: { type: "string" } } } },
@@ -112,7 +112,7 @@ const TOOLS = [
   { name: "place", description: "Move an entity (id from look) to x,z (y defaults to terrain; pass y to seat on furniture).", inputSchema: { type: "object", properties: { id: { type: "string" }, x: { type: "number" }, z: { type: "number" }, y: { type: "number" }, yaw: { type: "number" } }, required: ["id", "x", "z"] } },
   { name: "light", description: "Place a light source in the world. Persists like any placed thing. color is a hex integer (e.g. 0xffd9a0 warm, 0x88bbff cool, 0xff5533 red), intensity and range are optional. Position defaults to just in front of you. A small glowing sphere marks it; move or remove it by id like any entity.", inputSchema: { type: "object", properties: { color: { type: "number" }, intensity: { type: "number" }, range: { type: "number" }, x: { type: "number" }, y: { type: "number" }, z: { type: "number" }, id: { type: "string" } } } },
   { name: "remove", description: "Remove a placed entity.", inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] } },
-  { name: "world_verb", description: "Raw world-log verb. The verb set is CLOSED by design — say, use, mount, dismount, spawn, place, remove, light, comp, motion, behavior, asset, terrain, grass, sky, weather, grant, kick, ban, unban — and the door refuses others; extend STATE with comp types you invent, EVENTS with use actions, SEMANTICS with behavior scripts, never by hoping a new verb exists. This is also the authoring surface for components: comp {id, type, data|null} attaches data to an entity (sockets, reactions, or anything you invent); motion {id, type: pendulum|spin|orbit|bob|path, …} sets it moving; see AGENTS.md in the eidoverse-worlds repo for the full vocabulary.", inputSchema: { type: "object", properties: { verb: { type: "string" }, args: { type: "object" } }, required: ["verb", "args"] } },
+  { name: "world_verb", description: "Raw world-log verb. The verb set is CLOSED by design — say, use, punt, force, mount, dismount, spawn, place, remove, light, comp, motion, behavior, asset, terrain, grass, sky, weather, grant, kick, ban, unban — and the door refuses others; extend STATE with comp types you invent, EVENTS with use actions, SEMANTICS with behavior scripts, never by hoping a new verb exists. This is also the authoring surface for components: comp {id, type, data|null} attaches data to an entity (sockets, reactions, or anything you invent); motion {id, type: pendulum|spin|orbit|bob|path, …} sets it moving; see AGENTS.md in the eidoverse-worlds repo for the full vocabulary.", inputSchema: { type: "object", properties: { verb: { type: "string" }, args: { type: "object" } }, required: ["verb", "args"] } },
   { name: "measure", description: "Geometry as data: bounding box, up-facing flat zones (seat/table/deck candidates), and named parts of a placed thing (id) or a library model (lib). Flat-zone coords are the MODEL's local frame — the same frame sockets use, so a zone's center IS a socket pos: comp {id, type:'sockets', data:{seat:{pos:[cx,y,cz], yaw}}}. Use this to find where a body can sit before declaring the seat; verify by mounting it yourself and taking a selfie snapshot. Raw GLB bytes are at GET <sequencer>/library/<lib> if you want to process the mesh locally.", inputSchema: { type: "object", properties: { id: { type: "string" }, lib: { type: "string" } } } },
   { name: "world_history", description: "Pull raw entries from the world log — the append-only record every world IS. Filter by verbs (e.g. ['use','motion'] to trace an interaction, ['comp'] to see how something was built), page backwards with before. Every entry has {seq, ts, actor, verb, args}; reaction-authored entries carry {cause, by}. This is the debugging primitive: the log is the world, so reading it is reading the world's source.", inputSchema: { type: "object", properties: { verbs: { type: "array", items: { type: "string" } }, before: { type: "number" }, after: { type: "number" }, limit: { type: "number" } } } },
   { name: "world_debug", description: "The world's flight recorder: why things BOUNCED. The log answers 'what happened'; this answers 'why didn't it' — denied verbs (rights), rejected shapes (malformed/oversized comp, bad mount), rate limits, reaction outcomes ('reaction' fired with cause→effect seqs, 'reaction-skip' with the reason, 'reaction-error'), and script events ('script-error', 'script-pause'). Pass behavior: <id> to read ONE runtime script's own log ring (its world.log() console + status); pass behaviors: true to list what scripts run here and whether they're alive. IMPORTANT: motion/comp components are NOT scripts — they are passive data evaluated client-side and NEVER appear in the behaviors roster (absence there does not mean your component failed or was deleted; check world_history verbs:['comp','motion'] for its fold, and look for kind 'motion-lint' in the plain recorder: the server lints every folded motion for params the evaluator will ignore, unknown types, and part names that no client renders). In-memory, recent events only. Check here first when something doesn't do what you expected.", inputSchema: { type: "object", properties: { limit: { type: "number" }, kinds: { type: "array", items: { type: "string" } }, behavior: { type: "string" }, behaviors: { type: "boolean" } } } },
@@ -202,7 +202,21 @@ class Session {
    *  granted(). Never derived from anything this server said about itself, and
    *  never widened by anything in a receipt (§6.7). */
   private grant: Set<string> | null = null;
+  /** Opens when the host's first §5.3 `featureSets/update` Request has been
+   *  answered — the earliest moment `granted()` can say yes on a 0.5 host.
+   *  The grant-dependent prelude in serve() waits on this, CONCURRENTLY with
+   *  the read loop, because only the read loop can process the policy frame
+   *  (waiting inline would deadlock — the discord-mcpl 90f869f lesson). */
+  private policyAnswered!: () => void;
+  private policyGate: Promise<void> = new Promise((resolve) => { this.policyAnswered = resolve; });
   private caughtUpTo: number | null = null; // the world channel is home — open unless the agent closes it
+  /** Activity digests held for a push-less (plain-MCP) host. The pulse is a
+   *  wake signal, and a host with no push channel cannot be woken — but the
+   *  digests themselves are still worth having, so they wait here and the
+   *  `activity` tool hands them over on its next call. Pull where push can't
+   *  reach (external integrator find #5b, digi/FC). Small ring: this is a
+   *  sense, not scrollback. */
+  private heldActivity: string[] = [];
 
   constructor(private auth: Auth, ws: WebSocket, agentToken = "") {
     this.conn = McplConnection.fromWebSocket(ws as never);
@@ -387,7 +401,12 @@ class Session {
         // (or plain `chat:ambient`) in its wake gate, which yields regular wakes
         // exactly as long as there is life nearby, and stops by itself when the
         // area goes quiet. A closed door mutes it like any ambient signal.
-        if (this.channelOpen) this.deliver(`* ${ev.text}`, { id: "world", name: this.agent.world },
+        if (!this.granted(CAP.channelsIncoming)) {
+          // No push channel this digest could ride — hold it for the
+          // `activity` tool to hand over. deliver() would drop it silently.
+          this.heldActivity.push(`[${new Date(ev.ts).toISOString().slice(11, 16)}Z] ${ev.text}`);
+          if (this.heldActivity.length > 8) this.heldActivity.shift();
+        } else if (this.channelOpen) this.deliver(`* ${ev.text}`, { id: "world", name: this.agent.world },
           { tags: tags(CHAT.ambient, EIDO.activityDigest), metadata: { activity: true } });
       } else if (this.channelOpen) {
         this.deliver(`* ${ev.who} ${ev.kind === "arrive" ? "arrived in the world" : "left the world"}`,
@@ -404,6 +423,23 @@ class Session {
       }
     };
 
+    // §5.3 ORDERING (the discord-mcpl canary's rule: NOTHING runs between
+    // initialize and the read loop). A 0.5 host's first frame after initialize
+    // is the featureSets/update policy Request, and only the read loop below
+    // can answer it — so everything grant-dependent (channel registration,
+    // missed-mention replay, the seen cursor) runs CONCURRENTLY behind the
+    // policy gate. Waiting inline would deadlock: the gate can only open once
+    // the loop is pumping. Pre-0.5 and plain-MCP peers never send policy and
+    // proceed immediately under the semantics they asked for; the 20s race is
+    // a safety bound so a 0.5 host that never sends policy can't strand the
+    // prelude forever (granted() stays false there, so it degrades to a no-op).
+    const hostMajor = Number(this.hostMcplVersion?.split(".")[0] ?? 0);
+    const hostMinor = Number(this.hostMcplVersion?.split(".")[1] ?? 0);
+    const awaitsPolicy = this.mcplClient && (hostMajor > 0 || hostMinor >= 5);
+    let seenTimer: ReturnType<typeof setInterval> | undefined;
+    const prelude = async () => {
+    if (awaitsPolicy) await Promise.race([this.policyGate, new Promise((r) => setTimeout(r, 20_000))]);
+    if (this.conn.isClosed) return;
     // Deliberately NOT awaited: channels/register is a server→client REQUEST,
     // and a plain-MCP host that silently drops unknown requests (most
     // frameworks; spec-correct ones answer -32601) would otherwise deadlock
@@ -456,11 +492,13 @@ class Session {
     lastSeen[this.auth.id] = Date.now();
     lastSeenSeq[this.auth.id] = this.agent.lastSeq;
     persistState();
-    const seenTimer = setInterval(() => {
+    seenTimer = setInterval(() => {
       lastSeen[this.auth.id] = Date.now();
       lastSeenSeq[this.auth.id] = this.agent.lastSeq;
       persistState();
     }, 60_000);
+    };
+    prelude().catch((e) => console.error(`[${ts()}] [mcpl:${this.auth.id}] prelude failed: ${(e as Error).message?.slice(0, 160)}`));
 
     try {
       while (!this.conn.isClosed) {
@@ -496,6 +534,22 @@ class Session {
               // capability path (§17.3-adjacent: fetch is host-initiated).
               this.conn.sendResponse(req.id, MANIFEST_WITH_REVISION);
               break;
+            case method.FEATURE_SETS_UPDATE: {
+              // §5.3/§6.7: the host's policy. Until the first one is answered,
+              // a 0.5 host holds this whole surface deny-until-policy — this
+              // case IS the door coming alive. applyPolicy adopts the grant
+              // and returns the degradation receipt (consequence testimony,
+              // never entitlement); a malformed policy fails closed and keeps
+              // the previous grant.
+              const receipt = this.applyPolicy(params);
+              if ("error" in receipt && typeof receipt.error === "string") {
+                this.conn.sendError(req.id, -32602, receipt.error);
+                break;
+              }
+              this.conn.sendResponse(req.id, receipt);
+              this.policyAnswered();
+              break;
+            }
             case method.CHANNELS_LIST:
               this.conn.sendResponse(req.id, { channels: this.channelDescriptors() });
               break;
@@ -777,6 +831,20 @@ class Session {
         if (opts.pulseSec != null || opts.radiusM != null) {
           activityCfg[this.auth.id] = cur; // what was APPLIED, not what was asked
           persistState();
+        }
+        // A push-less host cannot receive the stream — saying "delivered on
+        // the world channel" to a session with no channels would set an agent
+        // waiting forever for pushes that structurally cannot arrive
+        // (external integrator find #5b, digi/FC). Tell the truth, and hand
+        // over whatever digests accumulated since the last call: the same
+        // sense, in the polling model this host lives in anyway.
+        if (!this.granted(CAP.channelsIncoming)) {
+          const held = this.heldActivity.splice(0);
+          const status = cur.pulseSec === 0
+            ? "your activity sense is OFF (pulse_sec 10–3600 turns it on)"
+            : `your activity sense: one digest per ${cur.pulseSec}s while something happens within ${cur.radiusM}m of you`;
+          return text(`${status}. Your host has no push channel, so digests cannot arrive on their own — they are HELD (last 8) and handed over each time you call this tool.` +
+            (held.length ? `\nheld since your last call:\n${held.join("\n")}` : `\nnothing held since your last call.`));
         }
         return text(cur.pulseSec === 0
           ? `your activity sense is OFF — no ambient digests. Turn it back on with pulse_sec (10–3600s); radius stays ${cur.radiusM}m.`

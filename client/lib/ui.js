@@ -2,7 +2,7 @@
 // Toasts, the loading tray, the HUD, the hint bar, the panel frames, the dock,
 // and the two overlays (help, front door).
 
-import { bus, CONFIG, setName, setToken, setErrorSink, report } from './core.js';
+import { bus, CONFIG, setName, setToken, setErrorSink, report, colorFor } from './core.js';
 import { loadingItems } from './assets.js';
 import { makeFrame, getFrame, isLocked, setLocked, resetLayout } from './frames.js';
 
@@ -161,7 +161,7 @@ export function paintRoster() {
   whoFrame.setTitle(`present · ${people.length}`);
   whoFrame.list.innerHTML = people.length
     ? people.map((p) => `<div class="who-row ${p.me ? 'self' : ''}">
-        <span class="n">${escapeHtml(p.id)}${p.me ? ' (you)' : ''}</span>
+        <span class="n" style="color:${colorFor(p.id)}">${escapeHtml(p.id)}${p.me ? ' (you)' : ''}</span>
         <span class="d">${p.dist == null ? '' : p.dist.toFixed(0) + 'm'}</span></div>`).join('')
     : '<div style="color:var(--dim)">nobody else yet</div>';
 }
@@ -247,6 +247,7 @@ export const KEYMAP = [
   ['Mouselook',   '<kbd>M</kbd> toggles · <kbd>Esc</kbd> frees the cursor (browsers only let Esc release it)'],
   ['Edit mode',   '<kbd>B</kbd> — off by default, so looking around never moves anything'],
   ['Select',      'in edit mode: click a thing, drag to move, <kbd>Q</kbd>/<kbd>E</kbd> turn, <kbd>Del</kbd> remove'],
+  ['Seat anchors', 'select a thing → <b>+ seat</b> → click the spot · gold gizmos: drag / <kbd>Q</kbd><kbd>E</kbd> face / <kbd>Del</kbd>'],
   ['Raise / lower', '<kbd>Shift</kbd>+drag, or <kbd>R</kbd>/<kbd>F</kbd> — move a selected thing up and down'],
   ['Undo',        '<kbd>Ctrl</kbd>+<kbd>Z</kbd> — your own edits, newest first'],
   ['Panels',      '<kbd>Tab</kbd> who\'s here · drag titles to move, corners to resize'],

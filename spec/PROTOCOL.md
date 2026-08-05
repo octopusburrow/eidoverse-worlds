@@ -70,11 +70,13 @@ measured on the fields above (see `fixtures/README.md`).
 | `mount` | `{id, to, slot?, offset?, yaw?}` | if `id` is an entity: set its `parent`; else record in `mounts` (a body). No-op if `to` missing or `id == to` |
 | `dismount` | `{id, pos?, yaw?}` | clear parent/mount; if entity and pos given, **stamp** it (§9 invariant) |
 | `use` | `{id, action}` | **nothing** — a cause, kept as history; effects are separate entries |
+| `force` | `{at:[x,y,z], radius?, power?}` | **nothing** — a physical cause (blast/gust); LIVE clients apply it to bodies they own, under those bodies' consent; replay never re-detonates *(dialect v2)* |
+| `punt` | `{id, power?, dir?}` | **nothing** — a physical cause on an entity; a LIVE client volunteers to simulate the flight via an animation lease (§5), and the landing arrives as an ordinary `place` *(dialect v2)* |
 | `say` | `{text}` | chat (implementation-defined window; not conformance-scored) |
 | `grant` | `{id, role?, gen?, sub?}` | update `roles[id]`; missing role/gen inherit current; `sub`, when present, binds the grant to that durable identity (§7) |
 | `behavior` | `{id, src, attach?, caps?, knobs?}` or `{id, remove: true}` | bind/unbind a runtime script (§8); author = entry actor |
 | `bstate` | `{id, data}` | `behaviors[id].state = data` (script kv persistence) |
-| `terrain` / `grass` / `sky` / `weather` | opaque bags | world-scope singletons (grass `{clear: true}` deletes; weather merges into sky) |
+| `terrain` / `grass` / `sky` / `weather` | opaque bags | world-scope singletons (grass `{clear: true}` deletes; weather merges into sky). Grass bags speak eidoverse-video's `createFlora` (species/height/density/color/rows); legacy makeGrass bags in old logs are mapped client-side, never rewritten |
 | `asset` | `{name, path}` | append to the world's asset palette (dedup by path) |
 | anything else | — | **nothing, and the log keeps it** |
 
@@ -115,6 +117,11 @@ Everything else in a bag is somebody's annotation. Preserve it.
   rest MUST stamp its absolute pose into the verb that ends the ride
   (`dismount {pos, yaw}`; `motion {type: null}` + `place`). The log never
   depends on reconstructing where a ride was.
+- **Animation leases** extend the presence plane to entities (docs/leases.md):
+  one negotiated holder streams an object's transforms; the arbiter (the
+  body's owner, or the sequencer for entities) commits the resting `place`.
+  The plane-transition invariant is enforced BY the sequencer for entity
+  leases: release, disconnect, and staleness all commit the last transform.
 
 ## 6. Actors
 

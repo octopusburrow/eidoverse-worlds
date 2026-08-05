@@ -77,7 +77,21 @@ export function rigs() {
     const P = {};
     for (const [b, n] of Object.entries(bones)) if (g.nodes[n]) P[b] = wp(n);
     if (!P.hips) { out.push({ name, err: 'no hips bone' }); continue; }
-    out.push({ name, P, boneCount: Object.keys(P).length });
+    // The REAL parent chain, as the VRM has it: each humanoid bone's nearest
+    // humanoid ANCESTOR. On 6 of the 14 shipped rigs that is not the simplified
+    // chain — leftUpperArm hangs off leftShoulder, which hangs off upperChest —
+    // and the ragdoll's `d.parent` is whatever the rig really says, so a
+    // harness that assumes the simple chain is testing a skeleton nobody ships.
+    const nodeOf = new Map(Object.entries(bones).map(([b, n]) => [n, b]));
+    const up = new Map();
+    g.nodes.forEach((n, i) => (n.children ?? []).forEach((c) => up.set(c, i)));
+    const realParent = {};
+    for (const [b, n] of Object.entries(bones)) {
+      let a = up.get(n);
+      while (a !== undefined && !nodeOf.has(a)) a = up.get(a);
+      realParent[b] = a === undefined ? null : nodeOf.get(a);
+    }
+    out.push({ name, P, realParent, boneCount: Object.keys(P).length });
   }
   return out;
 }
@@ -101,14 +115,20 @@ export const PARENT = {
  *  sim ever sees the skeleton — the case that used to poison the sim's idea of
  *  "rest". restBonePositions() still reports the NEUTRAL pose, as the real
  *  Avatar does, so a test can prove the two are decoupled. */
-export function makeAvatar(P, { stride = 0 } = {}) {
+export function makeAvatar(P, { stride = 0, realParent = null } = {}) {
   const root = new THREE.Object3D();
   const nodes = {};
-  for (const j of Object.keys(PARENT)) {
-    if (!P[j]) continue;
+  // `realParent` builds the rig's ACTUAL humanoid hierarchy — upperChest,
+  // shoulders and all — so `d.parent` is the node the shipped rig would give.
+  // Without it every rig is tested as though it were one of the simple ones.
+  const par = realParent ?? PARENT;
+  const order = Object.keys(realParent ? P : PARENT).filter((j) => P[j]);
+  const depth = (j) => { let d = 0, k = j; while (par[k]) { k = par[k]; if (++d > 40) break; } return d; };
+  order.sort((a, b) => depth(a) - depth(b));
+  for (const j of order) {
     const n = new THREE.Object3D();
     n.name = j;
-    const p = PARENT[j];
+    const p = par[j];
     const base = p && P[p] ? P[p] : new THREE.Vector3(0, 0, 0);
     n.position.copy(P[j]).sub(base);
     ((p && nodes[p]) ? nodes[p] : root).add(n);
@@ -138,11 +158,27 @@ export function makeAvatar(P, { stride = 0 } = {}) {
   };
 
   if (stride) {
-    // a plausible mid-walk frame: thighs split, one knee up, arms counterswung
+    // A plausible mid-walk frame: thighs split, one knee up, arms counterswung.
+    //
+    // About the RIG'S OWN axes, not the world's. 6 of the 14 shipped rigs
+    // (meebit, orion, shino, victoria, vroid_fem, vroid_masc) carry
+    // leftUpperArm on -X — they face -Z, the VRM 0.x convention, which the
+    // raw GLB read here does not normalise away. Rotating those about world X
+    // bent the knee FORWARD: not a mid-walk pose but a hyperextension no leg
+    // can reach, so a solver with real limits was correct to fight it and a
+    // fixture that produced it was testing an impossible body. Derived per
+    // rig, the pose is the same walk on every skeleton.
+    const up = (P.neck ?? P.chest ?? P.spine).clone().sub(P.hips).normalize();
+    const lat = (P.leftUpperArm && P.rightUpperArm)
+      ? P.leftUpperArm.clone().sub(P.rightUpperArm)
+      : new THREE.Vector3(1, 0, 0);
+    lat.addScaledVector(up, -lat.dot(up));
+    if (lat.lengthSq() < 1e-9) lat.set(1, 0, 0);
+    lat.normalize();
+    const fwd = new THREE.Vector3().crossVectors(lat, up).normalize();
     const rot = (j, ax, deg) => nodes[j]?.quaternion.setFromAxisAngle(ax, deg * stride * Math.PI / 180);
-    const X = new THREE.Vector3(1, 0, 0), Z = new THREE.Vector3(0, 0, 1);
-    rot('leftUpperLeg', X, -35); rot('rightUpperLeg', X, 30); rot('leftLowerLeg', X, 45);
-    rot('leftUpperArm', Z, -25); rot('rightUpperArm', Z, 25); rot('spine', X, 8);
+    rot('leftUpperLeg', lat, -35); rot('rightUpperLeg', lat, 30); rot('leftLowerLeg', lat, 45);
+    rot('leftUpperArm', fwd, -25); rot('rightUpperArm', fwd, 25); rot('spine', lat, 8);
     root.updateMatrixWorld(true);
   }
   return av;

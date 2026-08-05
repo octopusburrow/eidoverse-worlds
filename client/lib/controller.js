@@ -112,7 +112,6 @@ canvas.addEventListener('mousedown', (e) => {
 let editingNow = () => false;
 export function setEditingProbe(fn) { editingNow = fn; }
 addEventListener('mouseup', () => { dragging = false; });
-
 // ---- mouselook --------------------------------------------------------------
 // The desktop-game standard (VRChat, WoW): the canvas captures the pointer,
 // looking is free, Esc hands the cursor back. Drag-orbit stays untouched as
@@ -121,27 +120,30 @@ addEventListener('mouseup', () => { dragging = false; });
 // While locked the cursor is parked, so `mouse` pins to (0,0): hover and
 // picking read the screen centre — crosshair semantics — instead of wherever
 // the pointer happened to die.
-let mouselook = localStorage.getItem('ew-mouselook') !== 'off';
 let locked = false, lockHinted = false;
 export const isMouselook = () => locked;
-export function setMouselook(on) {
-  mouselook = on;
-  localStorage.setItem('ew-mouselook', on ? 'on' : 'off');
-  if (!on && locked) document.exitPointerLock();
-}
-// MODE SWITCHING IS DELIBERATE (R, 00:27). Three ways in and out, all of them
-// chosen — a stray click in the viewport must never capture your cursor:
+
+// MOUSELOOK: M toggles, Esc frees. Two keys, one behaviour each.
 //
-//   C (hold)  momentary cursor while mouselooking — reach for a frame or a
-//             die, release and you are looking again. Your finger IS the mode,
-//             so there is nothing to forget. (GMod context-menu lineage.)
-//   C (tap)   toggles mouselook when the cursor is free — the way IN, since
-//             Esc is hardcoded by the browser to only ever release a lock.
-//   Esc       always frees the cursor. Browser-guaranteed, unbreakable.
+//   M     toggle: locked <-> free, both directions. Bare M only — modified
+//         presses belong to the browser and the OS (Ctrl+M etc).
+//   Esc   always frees the cursor. One-way by browser law: every engine
+//         hardcodes Esc to RELEASE a pointer lock and refuses to let a page
+//         grant one from it, because that is exactly how a hostile page would
+//         trap a cursor. So Esc can never be the way back IN — hence M.
 //
-// Click-to-enter used to exist and was removed: once C is the momentary reach,
-// a click that also locks means you can end up captured without ever choosing
-// it, which is exactly the hole the momentary model is supposed to close.
+// M rather than C: M is the name of the mode and matches Second Life's
+// binding, while Ctrl+C is the most-pressed shortcut on any machine and a
+// guard regression there would bite someone mid-copy.
+//
+// Clicking the world does NOT enter mouselook. It used to, and that made
+// cursor mode nearly unusable — every click on anything dropped you back into
+// capture, so you could never interact freely.
+//
+// While locked the cursor is parked, so `mouse` pins to (0,0): hover and
+// picking read the screen centre — crosshair semantics — instead of wherever
+// the pointer happened to die.
+
 document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === canvas;
   if (locked) {
@@ -151,38 +153,11 @@ document.addEventListener('pointerlockchange', () => {
 });
 bus.on('edit-mode', (on) => { if (on && locked) document.exitPointerLock(); });
 
-// Momentary cursor (R, 21:23): HOLD C to reach for the cursor mid-mouselook —
-// touch a UI frame, drop a die — release and you're looking again. A hold
-// instead of a toggle because toggles breed mode-amnesia; your finger IS the
-// mode. (GMod context-menu lineage. Esc remains the deliberate switch.)
-// keydown counts as a user gesture, so re-locking on keyup is allowed.
-// M TOGGLES mouselook, full stop (R, 00:35-00:40 — the reasoning that settled
-// it: "I thought esc was a *toggle* and c was a *temp swap*. Esc can't be a
-// toggle, so c has to be. The toggle is more useful." Then: "M alone. I like
-// toggles :3").
-//
-// M, not C: M is the NAME of the mode (mouselook) and carries Second Life's
-// precedent for exactly this binding, while Ctrl+C is the most-pressed
-// shortcut on any machine — a modifier guard handles it, but that is the one
-// key where a guard failure is guaranteed to bite someone mid-copy. No reason
-// to sit on a landmine when a clearer spot is free. (R spotted the Ctrl+C
-// hazard at 00:36.)
-//
-// The original design gave C a momentary hold — press to reach for the cursor,
-// release to keep looking — on the assumption that Esc handled the deliberate
-// switch in both directions. It cannot: browsers hardcode Esc to only ever
-// RELEASE a pointer lock and refuse to grant one from it, because that is how
-// a hostile page would trap a cursor. With Esc out-only, the toggle has to
-// live on C, and one key cannot be both a toggle and a hold without the
-// ambiguity that cost us a live debugging session tonight.
-//
-//   M     toggle: locked <-> free, both directions
-//   Esc   always frees the cursor (browser-enforced, out-only)
 addEventListener('keydown', (e) => {
   if (e.code !== 'KeyM' || e.repeat) return;
   // bare M only: modified presses belong to the browser and the OS
   if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
-  if (editingNow() || isOverlayOpen() || chat.isOpen || !mouselook) return;
+  if (editingNow() || isOverlayOpen() || chat.isOpen) return;
   if (locked) document.exitPointerLock();
   else relock();
 });
@@ -211,11 +186,9 @@ canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
   camDist = THREE.MathUtils.clamp(camDist + e.deltaY * 0.004, 0.0, 16);
   const wasFP = firstPerson;
-  // Hysteresis (R, 21:37): enter FP under 0.4m, don't leave until past 0.7m.
-  // A single threshold flickers 1P/3P right at the boundary — nauseating, and
-  // loud for exactly the motion-sensitive people a hangout world shelters.
-  // The cut itself stays a clean snap on purpose: an almost-smooth lerp
-  // through your own neck reads worse than a cut.
+  // Hysteresis: enter FP under 0.4m, don't leave until past 0.7m. A single
+  // threshold flickers 1P/3P at the boundary — nauseating, and loudest for
+  // exactly the motion-sensitive people a hangout world shelters.
   firstPerson = wasFP ? camDist < 0.7 : camDist < 0.4;
   if (firstPerson !== wasFP) flashHint(firstPerson ? 'first person' : 'third person');
 }, { passive: false });
@@ -457,12 +430,43 @@ export function setCameraCollisionTargets(fn) { collisionTargets = fn; }
 // screenshot key, no UI hide, no free camera. This is the human-facing version
 // of the retina path that already exists for agents.
 
-const photo = { pos: new THREE.Vector3(), yaw: 0, pitch: 0, fov: 55, speed: 6 };
+// Damping. A camera that starts and stops on the exact frame a key goes down
+// reads as a debug flythrough, not a shot: the eye is a physical object and an
+// operator's hands have mass. Everything here eases with an exponential
+// half-life — frame-rate independent (no `dt` term in a lerp factor, which
+// silently changes feel between 60 and 144Hz), and it cannot overshoot after a
+// long frame the way a spring would.
+const MOVE_TAU = 0.22;   // dolly weight: pushes off, glides to a stop
+const LOOK_TAU = 0.09;   // pans settle instead of snapping; short enough to not feel laggy
+const FOV_TAU = 0.16;    // the lens breathes
+// Alt is the fine-adjust modifier: the last few metres and the last few degrees
+// of a frame. It slows the dolly to a walking pace AND puts the head on a
+// geared tripod — the same hand movement that whips the camera around at full
+// speed becomes a slow, smooth swing, so a shot can be settled precisely
+// instead of hunted. Damping only changes HOW it gets there: the mouse still
+// commands the same angle, it just arrives without the jitter of the wrist.
+const LOOK_TAU_FINE = 0.5;
+const FINE_MPS = 2.5;    // absolute, not a fraction — "creep at 2.5 m/s"
+const damp = (cur, target, tau, dt) => target + (cur - target) * Math.exp(-dt / tau);
+/** Same, over the shortest arc — so a pan across ±π doesn't unwind the long way. */
+function dampAngle(cur, target, tau, dt) {
+  let d = (target - cur) % (Math.PI * 2);
+  if (d > Math.PI) d -= Math.PI * 2;
+  if (d < -Math.PI) d += Math.PI * 2;
+  return cur + d * (1 - Math.exp(-dt / tau));
+}
+
+const photo = {
+  pos: new THREE.Vector3(), vel: new THREE.Vector3(),
+  yaw: 0, pitch: 0, fov: 55, speed: 6,
+};
+const _f = new THREE.Vector3(), _right = new THREE.Vector3(), _want = new THREE.Vector3();
 export function togglePhotoMode() {
   photoMode = !photoMode;
   if (photoMode) {
     photo.pos.copy(camera.position);
     photo.yaw = camYaw; photo.pitch = camPitch;
+    photo.vel.set(0, 0, 0);          // enter at rest — no inherited drift
     photo.fov = camera.fov;
     flashHint('photo mode — <kbd>WASD</kbd>+<kbd>QE</kbd> fly · <kbd>[</kbd><kbd>]</kbd> lens · <kbd>F1</kbd> hide UI · <kbd>F2</kbd> save · <kbd>P</kbd> exit', 6000);
   } else {
@@ -473,22 +477,42 @@ export function togglePhotoMode() {
 }
 function updatePhotoCamera(dt) {
   if (dragging) { /* handled by the shared mousemove */ }
-  photo.yaw = camYaw; photo.pitch = camPitch;
-  const f = new THREE.Vector3(
-    -Math.sin(camYaw) * Math.cos(camPitch), -Math.sin(camPitch), -Math.cos(camYaw) * Math.cos(camPitch));
-  const right = new THREE.Vector3().crossVectors(f, UP).normalize();
-  const boost = (keys.has('ShiftLeft') ? 3.5 : 1) * (keys.has('AltLeft') ? 0.25 : 1);
-  const v = photo.speed * boost * dt;
-  if (held(MOVE_KEYS.fwd)) photo.pos.addScaledVector(f, v);
-  if (held(MOVE_KEYS.back)) photo.pos.addScaledVector(f, -v);
-  if (held(MOVE_KEYS.right)) photo.pos.addScaledVector(right, v);
-  if (held(MOVE_KEYS.left)) photo.pos.addScaledVector(right, -v);
-  if (keys.has('KeyE')) photo.pos.y += v;
-  if (keys.has('KeyQ')) photo.pos.y -= v;
-  if (keys.has('BracketLeft')) { camera.fov = Math.max(12, camera.fov - 30 * dt); camera.updateProjectionMatrix(); }
-  if (keys.has('BracketRight')) { camera.fov = Math.min(95, camera.fov + 30 * dt); camera.updateProjectionMatrix(); }
+  // The mouse sets a TARGET orientation; the camera chases it. Framing against
+  // the damped angles (not the raw ones) is what makes a pan feel operated
+  // rather than teleported — and the fly keys steer by where the camera is
+  // actually looking, so movement never fights the settle.
+  const fine = keys.has('AltLeft');
+  const lookTau = fine ? LOOK_TAU_FINE : LOOK_TAU;
+  photo.yaw = dampAngle(photo.yaw, camYaw, lookTau, dt);
+  photo.pitch = damp(photo.pitch, camPitch, lookTau, dt);
+  _f.set(-Math.sin(photo.yaw) * Math.cos(photo.pitch), -Math.sin(photo.pitch),
+    -Math.cos(photo.yaw) * Math.cos(photo.pitch));
+  _right.crossVectors(_f, UP).normalize();
+
+  const boost = (keys.has('ShiftLeft') ? 3.5 : 1) * (fine ? FINE_MPS / photo.speed : 1);
+  _want.set(0, 0, 0);
+  if (held(MOVE_KEYS.fwd)) _want.add(_f);
+  if (held(MOVE_KEYS.back)) _want.sub(_f);
+  if (held(MOVE_KEYS.right)) _want.add(_right);
+  if (held(MOVE_KEYS.left)) _want.sub(_right);
+  if (keys.has('KeyE')) _want.y += 1;
+  if (keys.has('KeyQ')) _want.y -= 1;
+  // diagonals used to travel ~1.4× faster than the cardinals
+  if (_want.lengthSq() > 1) _want.normalize();
+  _want.multiplyScalar(photo.speed * boost);
+
+  // Velocity chases the intent, so a keypress accelerates and a release coasts.
+  const k = 1 - Math.exp(-dt / MOVE_TAU);
+  photo.vel.addScaledVector(_want.sub(photo.vel), k);
+  photo.pos.addScaledVector(photo.vel, dt);
+
+  if (keys.has('BracketLeft')) photo.fov = Math.max(12, photo.fov - 30 * dt);
+  if (keys.has('BracketRight')) photo.fov = Math.min(95, photo.fov + 30 * dt);
+  const fov = damp(camera.fov, photo.fov, FOV_TAU, dt);
+  if (Math.abs(fov - camera.fov) > 1e-4) { camera.fov = fov; camera.updateProjectionMatrix(); }
+
   camera.position.copy(photo.pos);
-  camera.lookAt(photo.pos.clone().add(f));
+  camera.lookAt(_f.add(photo.pos));   // _f is spent here — recomputed next frame
 }
 
 /** Spectator/retina camera: first person from a followed body's head. */

@@ -10,7 +10,7 @@ import { loadGLB, loadEidoModule, noiseTexture, loadTrack, loadDone, libLabels }
 import { beginWork } from './loadwork.js';
 import { fitCollider, removeCollider, reindexCollider, refitCollider } from './colliders.js';
 import { setTerrain, setGrass, clearGrass, heightAt } from './terrain.js';
-import { groomGrass } from './grass_groom.js';
+import { buildFloraField } from './flora.js';
 import { applySky, attachLocalLights } from './sky.js';
 import { makeLight, disposeLight } from './lights.js';
 import { logChat } from './chat.js';
@@ -30,6 +30,9 @@ export const comps = new Map();
 /** Avatar attachments (a sitter, a passenger) — bodies aren't entities, so
  *  their mounts live here for remotes/controller to consume. */
 export const avatarMounts = new Map();
+/** id -> bound runtime scripts (server sandbox AND client-mod offers), from
+ *  `behavior` entries. mods.js consumes the runtime:"client" ones. */
+export const behaviors = new Map();
 // A mount whose parent or child is still downloading waits here and is
 // retried whenever a spawn completes — same reasoning as pendingOps.
 const pendingMounts = new Map(); // id -> mount args
@@ -265,11 +268,11 @@ export async function applyEntry(entry, live, ctx = {}) {
         enqueueWorldBuild('grass', async () => {
           // yields the main thread to arrival; resolves instantly once booted
           await whenBooted();
-          await loadEidoModule('grass.js');
-          // setGrass removes any previous field first — changing grass must
-          // replace it, not stack a second one on top
-          const field = groomGrass(globalThis.makeGrass({ ...args, scene, heightFn: heightAt }), args);
-          // makeGrass self-adds its mesh; borrow it back out for a precompile
+          // vegetation brush (createFlora) — makeGrass's replacement upstream.
+          // Legacy makeGrass bags persisted in old world logs are mapped
+          // inside buildFloraField; the log itself is never rewritten.
+          const field = await buildFloraField(args, { scene, heightFn: heightAt });
+          // borrow the mesh back out for a precompile
           // (compileAsync skips invisible objects, so hiding wouldn't work —
           // detach, compile against the scene's lighting, re-add warm)
           if (field?.mesh) {
@@ -388,6 +391,27 @@ export async function applyEntry(entry, live, ctx = {}) {
         // a cause, not an effect: nothing to render — reactions arrive as
         // their own log entries. Surfaced for UI/behaviors that care.
         if (live) bus.emit('use', { actor, ...args });
+        break;
+      case 'behavior':
+        // the client's mirror of the binding roster: the QuickJS tier runs
+        // server-side, but client-runtime MOD OFFERS (runtime: "client") are
+        // consumed here — mods.js watches this map and asks the person.
+        if (args.remove) behaviors.delete(args.id);
+        else if (args.id && args.src) {
+          behaviors.set(args.id, {
+            src: args.src,
+            ...(args.runtime ? { runtime: args.runtime } : {}),
+            ...(args.knobs ? { knobs: args.knobs } : {}),
+            author: args.by ?? actor,
+          });
+        }
+        bus.emit('behavior-roster', { live });
+        break;
+      case 'punt':
+        // a cause, like force: folds to nothing, and live clients with a
+        // physics plugin VOLUNTEER to simulate it (physobj.js) — the lease
+        // table arbitrates who wins. History keeps the kicker's name.
+        if (live) bus.emit('punt', { actor, ...args });
         break;
       case 'force':
         // an instantaneous radial cause (blast, gust): no state to fold, so a
@@ -577,6 +601,12 @@ export function stateToEntries(state, { skipChatFromSeq = Infinity } = {}) {
       add('spawn', {
         id, lib: e.lib, pos: e.pos, yaw: e.yaw,
         ...(e.scale != null ? { scale: e.scale } : {}),
+        // carried through the snapshot for the same reason as scale: the
+        // spawn verb's `collide` override decides exact-vs-box, and rebuilding
+        // the entry without it makes a snapshot-joiner's world disagree with a
+        // log-joiner's. applyEntry reads args.collide; give it the same value
+        // the original spawn carried.
+        ...(e.collide != null ? { collide: e.collide } : {}),
       }, e.actor ?? 'world', e.ts ?? Date.now());
     }
   }
@@ -587,6 +617,10 @@ export function stateToEntries(state, { skipChatFromSeq = Infinity } = {}) {
     if (e.parent) add('mount', { id, ...e.parent });
   }
   for (const [id, rel] of Object.entries(state.mounts ?? {})) add('mount', { id, ...rel });
+  for (const [id, b] of Object.entries(state.behaviors ?? {})) {
+    add('behavior', { id, src: b.src, ...(b.runtime ? { runtime: b.runtime } : {}),
+      ...(b.knobs ? { knobs: b.knobs } : {}), by: b.author }, b.author ?? 'world', b.ts ?? Date.now());
+  }
   // Anything the tail will replay must not also be rendered from the snapshot.
   // Chat keeps its REAL seq, unlike the world-shaping entries above: it is the
   // only part of a snapshot that is a position in history rather than a
@@ -603,6 +637,7 @@ export function stateToEntries(state, { skipChatFromSeq = Infinity } = {}) {
 
 export function resetWorld() {
   worldRoles.clear();
+  behaviors.clear();
   shadowless.clear();
   for (const [id, obj] of entities) { if (obj) (obj.parent ?? scene).remove(obj); removeCollider(id); }
   entities.clear();

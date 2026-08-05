@@ -252,11 +252,23 @@ function foldEntry(st: WorldState, e: LogEntry): void {
       // an instantaneous cause: no state to fold. Live clients react to the
       // broadcast entry; a replay or a late join must never re-detonate.
       return;
+    case "punt":
+      // same doctrine: the punt is history, the flight is presence (a lease
+      // some volunteer holds), the landing is the `place` that lease commits
+      return;
     case "spawn":
       if (!a?.id || !a?.lib) return;
       st.entities[a.id] = {
         lib: a.lib, pos: a.pos ?? [0, 0, 0], yaw: a.yaw ?? 0,
         ...(a.scale != null ? { scale: a.scale } : {}),
+        // `collide` ("exact" | "box") is the spawner's override of the
+        // size-derived collider choice, and the fold used to drop it: the
+        // clients present at the spawn honoured it, and everyone who joined
+        // afterwards folded a snapshot that had never heard of it. The same
+        // object was walkable or solid depending on when you arrived — which
+        // is precisely the drift house rule 1 forbids. The LOG always kept it,
+        // so no world lost anything; it just never reached the snapshot.
+        ...(a.collide != null ? { collide: a.collide } : {}),
         actor: e.actor, ts: e.ts,
       };
       return;
@@ -433,6 +445,7 @@ function foldEntry(st: WorldState, e: LogEntry): void {
       if (typeof a.src !== "string") return;
       st.behaviors[a.id] = {
         src: a.src,
+        ...(a.runtime === "client" ? { runtime: "client" } : {}),
         ...(a.attach ? { attach: String(a.attach) } : {}),
         ...(a.caps ? { caps: a.caps } : {}),
         ...(a.knobs ? { knobs: a.knobs } : {}),
@@ -681,6 +694,13 @@ const VERB_NEEDS: Record<string, { rank: number; gen?: boolean }> = {
   // building; whether any BODY moves stays each body's own consent (pushable,
   // client-side) — this rank only stops visitors from spamming detonations.
   force: { rank: 1 },
+  // Punting a thing is USING the world (docs/leases.md): the verb is the
+  // CAUSE — logged, attributed, replay-inert — and any present client with a
+  // physics plugin volunteers to simulate it (the lease table arbitrates the
+  // race). This is why agents need no special tool: world_verb punt. (It is
+  // `punt`, not `kick`, on the wire — `kick` is moderation's remove-a-person,
+  // and one log word meaning two acts by referent type is a landmine.)
+  punt: { rank: 0 },
   asset: { rank: 1, gen: true },
   terrain: { rank: 2 }, grass: { rank: 2 }, sky: { rank: 2 }, weather: { rank: 2 },
   grant: { rank: 2 },
@@ -748,6 +768,30 @@ class World {
    *  N×M×15Hz individual sends (24×200 would be 72k msgs/s); it's one frame
    *  per world per tick, fanned out once. */
   dirty = new Map<string, unknown>();
+  /** Entity animation leases (docs/leases.md): who may animate each object
+   *  right now, and the last transform they streamed — the server's memory,
+   *  so a crashed or preempted simulator never loses an object. Presence
+   *  plane: never persisted; outcomes commit as `place` verbs. */
+  leases = new Map<string, { holder: Client; lastState: { p: number[]; yaw?: number; q?: number[] } | null; lastAt: number }>();
+
+  /** Commit-and-forget one entity lease (docs/leases.md): the last streamed
+   *  transform becomes an ordinary `place` entry — server-authored like a
+   *  reaction effect, the cause in args — so nothing is ever lost to a
+   *  crashed, preempted, or stale simulator. */
+  settleLease(id: string, final?: { p?: number[] | null; yaw?: number | null }) {
+    const L = this.leases.get(id);
+    if (!L) return;
+    const p = final?.p ?? L.lastState?.p ?? null;
+    const yaw = final?.yaw ?? L.lastState?.yaw;
+    this.leases.delete(id);
+    if (p && this.state.entities[id]) {
+      const entry = this.append("world", "place", {
+        id, pos: p, ...(yaw != null ? { yaw } : {}), by: L.holder.id, via: "lease",
+      });
+      this.broadcast({ type: "log", entry });
+    }
+    this.broadcast({ type: "lease", op: "released", id });
+  }
   /** The runtime's flight recorder — the "why didn't it work" surface.
    *
    *  The world log holds what HAPPENED; this ring holds what DIDN'T and why:
@@ -827,7 +871,7 @@ class World {
     // with a deadline, because it only helps logs written after it exists
     // (Hesperus finding #5). Old readers fold it as an unknown verb: nothing.
     if (this.logBytes === 0 && this.snapSeq < 0) {
-      this.append("world", "genesis", { v: 1, dialect: "eidoverse-log" });
+      this.append("world", "genesis", { v: 2, dialect: "eidoverse-log" });
     }
     // Runtime scripts wake with the world — a behavior keeps behaving with
     // nobody connected (timers), which is the point of running server-side.
@@ -887,7 +931,7 @@ class World {
     this.poses = {};
     this.bhv.disposeAll();
     this.bhv.sync();
-    this.append("world", "genesis", { v: 1, dialect: "eidoverse-log" });
+    this.append("world", "genesis", { v: 2, dialect: "eidoverse-log" });
     return arch;
   }
 
@@ -1389,14 +1433,25 @@ const server = Bun.serve({
       //  - ?as=avatar&name=foo: named into the overlay vrms dir, because the
       //    roster is name-keyed and people re-export their bodies (mtime
       //    versioning handles the cache).
-      // Trust model: the door token OR any per-agent bearer from
-      // mcpl/tokens.json (so Orrery and agents can push generated GLBs here
-      // directly — the store is content-addressed and inert; what enters a
-      // WORLD is still the `asset`/`spawn` verbs, which per-world roles gate),
-      // plus per-IP rate limiting — live generation is the feature, an upload
-      // flood is not. `?by=` is attribution for the console trail.
+      // Trust model: the door token, any per-agent bearer from
+      // mcpl/tokens.json, OR an aid1 credential the home node vouches for
+      // (so Orrery and agents can push generated GLBs here directly — the
+      // store is content-addressed and inert; what enters a WORLD is still
+      // the `asset`/`spawn` verbs, which per-world roles gate), plus per-IP
+      // rate limiting — live generation is the feature, an upload flood is
+      // not. `?by=` is attribution for the console trail.
       const upTok = url.searchParams.get("token") ?? "";
-      const upAgent = agentTokens().byToken.get(upTok);
+      let upAgent = agentTokens().byToken.get(upTok);
+      // The aid1 leg the join door has: guests enrolled via archipelago-home
+      // carry no tokens.json entry, but the scripting tier's `behavior` verb
+      // is already reachable to them through world_verb — the bytes it binds
+      // must be landable by the same identity, or the tier is half-open.
+      // Same audience/scope/slug derivation as the two doors, no jti burn
+      // (an aid1 credential is reusable until expiry at every door).
+      if (!upAgent && HN_ISSUER_KEY && upTok.startsWith("aid1.")) {
+        const v = verifyToken(upTok, { issuerId: HN_ISSUER_KEY, iss: HN_ISS, aud: HN_AUD, requireScopes: ["worlds:join"] });
+        if (v.ok) upAgent = v.payload.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || v.payload.sub;
+      }
       if (JOIN_TOKEN && upTok !== JOIN_TOKEN && !upAgent)
         return new Response("token required", { status: 401 });
       const upBy = (url.searchParams.get("by") ?? upAgent ?? "?").slice(0, 64);
@@ -1732,6 +1787,9 @@ const server = Bun.serve({
       if ((c as any).bcRing?.length) {
         console.log(`[bc] ${c.id} last breadcrumbs: ${(c as any).bcRing.join(" | ")}`);
       }
+      // a vanished simulator's objects land exactly where its last frame put
+      // them — the lease's whole promise (docs/leases.md)
+      if (c.world) for (const [lid, L] of [...c.world.leases]) if (L.holder === c) c.world.settleLease(lid);
       if (c.world) {
         c.world.clients.delete(c);
         if (!c.spectator) {
@@ -2007,6 +2065,29 @@ const server = Bun.serve({
             const power = Math.min(12, Math.max(0.2, Number(args.power ?? 3)));
             args = { at, radius, power };
           }
+          if (msg.verb === "punt") {
+            // shape-check before it becomes history: {id, dir?, power?}. The
+            // target must exist, the power is bounded, and the kicker must be
+            // NEAR the thing — an arm's-length act like /push, checked here
+            // because agents reach this verb with no client-side gate. The
+            // object's LIVE position counts (a leased ball is where its sim
+            // says, not where the log left it).
+            const id = String(args.id ?? "").slice(0, 64);
+            if (!id || !c.world.state.entities[id]) {
+              ws.send(JSON.stringify({ type: "error", error: `nothing here called "${id}" to kick` }));
+              return;
+            }
+            const at = c.world.leases.get(id)?.lastState?.p ?? c.world.state.entities[id].pos;
+            const me = c.lastPose?.p;
+            if (!me || Math.hypot(me[0] - at[0], me[2] - at[2]) > 4) {
+              c.world.debug("denied", { who: c.id, verb: "punt", why: `${id} is out of reach` });
+              ws.send(JSON.stringify({ type: "error", error: `${id} is too far away to kick` }));
+              return;
+            }
+            const power = Math.min(10, Math.max(0.5, Number(args.power ?? 5)));
+            const dir = Array.isArray(args.dir) ? (args.dir as unknown[]).slice(0, 3).map(Number) : null;
+            args = { id, power, ...(dir && dir.length === 3 && dir.every(Number.isFinite) ? { dir } : {}) };
+          }
           if (msg.verb === "comp") {
             // shape-check before it becomes history: {id, type, data|null}.
             // data is opaque but BOUNDED — components are parameters, not
@@ -2077,6 +2158,20 @@ const server = Bun.serve({
             if (!id) { ws.send(JSON.stringify({ type: "error", error: "behavior wants {id, src|remove}" })); return; }
             if (args.remove) { args = { id, remove: true }; }
             else {
+              // runtime "client" = a MOD OFFER (docs/leases.md §self-animation):
+              // code visitors may choose to run in their own clients, each by
+              // per-script consent. Publishing code for OTHERS' machines is an
+              // owner act — a stricter gate than binding a sandboxed behavior.
+              const runtime = args.runtime != null ? String(args.runtime) : undefined;
+              if (runtime !== undefined && runtime !== "client") {
+                ws.send(JSON.stringify({ type: "error", error: 'behavior runtime must be "client" (or absent for the server sandbox)' }));
+                return;
+              }
+              if (runtime === "client" && ROLE_RANK[rightsOf(c.world, c.id, c.sub).role] < 2 && !isAdminId(c.id, c.sub)) {
+                c.world.debug("denied", { who: c.id, verb: "behavior", why: "client-runtime mods are owner-only" });
+                ws.send(JSON.stringify({ type: "error", error: "offering mods to visitors' clients is for this world's owner" }));
+                return;
+              }
               const src = String(args.src ?? "");
               if (!/^store\/scripts\/[a-f0-9]{16}\.js$/.test(src) || !existsSync(join(ROOT, "assets", "opt", src))) {
                 c.world.debug("rejected", { who: c.id, verb: "behavior", why: `no such script: ${src} — upload with POST /upload?as=script first` });
@@ -2103,6 +2198,7 @@ const server = Bun.serve({
                 ...(capsIn.selfOnly != null ? { selfOnly: Boolean(capsIn.selfOnly) } : {}),
               };
               args = { id, src, ...(attach ? { attach } : {}),
+                ...(runtime === "client" ? { runtime: "client" } : {}),
                 ...(Object.keys(caps).length ? { caps } : {}),
                 ...(args.knobs != null ? { knobs: args.knobs } : {}) };   // author = entry.actor, never client-supplied
             }
@@ -2292,7 +2388,88 @@ const server = Bun.serve({
           if (ring.length > 40) ring.shift();
           return;
         }
+        case "lease": {
+          // Entity animation leases — docs/leases.md. The server arbitrates
+          // (objects have no owning client), remembers the last streamed
+          // transform, and COMMITS it when the holder releases, vanishes, or
+          // goes stale. It never simulates: transforms in, transforms out,
+          // one `place` verb at rest. Presence semantics: never logged.
+          if (!c.world || c.spectator) return;
+          const w = c.world;
+          const id = String(msg.id ?? "").slice(0, 64);
+          const op = String(msg.op ?? "");
+          if (!id) return;
+
+          const sane = (a: unknown, n: number): number[] | null => {
+            if (!Array.isArray(a) || a.length !== n) return null;
+            const v = (a as unknown[]).map(Number);
+            return v.every(Number.isFinite) ? v : null;
+          };
+          if (op === "claim") {
+            if (!w.state.entities[id]) {
+              ws.send(JSON.stringify({ type: "lease", op: "denied", id, why: "no such entity" }));
+              return;
+            }
+            // physical play is USING the world (rank 0), like `use` — a
+            // per-world knob can gate this later without protocol changes
+            const cur = w.leases.get(id);
+            if (cur && cur.holder !== c) {
+              const stale = Date.now() - cur.lastAt > 5000;
+              // proximity take: you can take what you can reach — the ball
+              // being dribbled past you is kickable, the one across the
+              // field is not. Distance vs the OBJECT's live position.
+              const at = cur.lastState?.p ?? w.state.entities[id].pos;
+              const me = c.lastPose?.p;
+              const near = !!me && Math.hypot(me[0] - at[0], me[2] - at[2]) <= 3.5;
+              if (!stale && !(msg.take && near)) {
+                ws.send(JSON.stringify({ type: "lease", op: "denied", id, why: `${cur.holder.id} is animating it` }));
+                return;
+              }
+              cur.holder.ws.send(JSON.stringify({ type: "lease", op: "lost", id, to: c.id }));
+            }
+            // per-client cap: a runaway plugin must not lease a whole world
+            let held = 0;
+            for (const L of w.leases.values()) if (L.holder === c) held++;
+            if (held >= 8 && !w.leases.has(id)) {
+              ws.send(JSON.stringify({ type: "lease", op: "denied", id, why: "too many live leases — release something" }));
+              return;
+            }
+            w.leases.set(id, { holder: c, lastState: w.leases.get(id)?.lastState ?? null, lastAt: Date.now() });
+            ws.send(JSON.stringify({ type: "lease", op: "granted", id, ...(w.leases.get(id)!.lastState ? { from: w.leases.get(id)!.lastState } : {}) }));
+            w.broadcast({ type: "lease", op: "claimed", id, by: c.id }, c);
+            return;
+          }
+
+          const L = w.leases.get(id);
+          if (!L || L.holder !== c) return;      // a lost holder's tail, dropped
+
+          if (op === "state") {
+            const p = sane(msg.p, 3);
+            if (!p) return;
+            const yaw = Number.isFinite(Number(msg.yaw)) ? Number(msg.yaw) : undefined;
+            const q = sane(msg.q, 4) ?? undefined;
+            L.lastState = { p, ...(yaw != null ? { yaw } : {}), ...(q ? { q } : {}) };
+            L.lastAt = Date.now();
+            w.broadcast({ type: "lease", op: "state", id, by: c.id, p, ...(yaw != null ? { yaw } : {}), ...(q ? { q } : {}) }, c);
+            return;
+          }
+          if (op === "release") {
+            w.settleLease(id, { p: sane(msg.p, 3), yaw: Number.isFinite(Number(msg.yaw)) ? Number(msg.yaw) : null });
+            return;
+          }
+          return;
+        }
         case "bodydrag": {
+          const okSim = (v: any) => {
+            if (!v || typeof v !== "object") return false;
+            const { j, p, q } = { j: v.j, p: v.p, q: v.v };
+            if (!Array.isArray(j) || j.length === 0 || j.length > 24) return false;
+            if (!Array.isArray(p) || !Array.isArray(q)) return false;
+            if (p.length !== j.length * 3 || q.length !== j.length * 3) return false;
+            return j.every((n: unknown) => typeof n === "string" && n.length <= 24)
+              && p.every((n: unknown) => Number.isFinite(n))
+              && q.every((n: unknown) => Number.isFinite(n));
+          };
           // Interactive ragdoll drag — the takeover stream. A dragger runs the
           // body's sim on ITS machine and streams the result to the body's
           // owner, who applies it to itself and rebroadcasts through normal
@@ -2317,6 +2494,11 @@ const server = Bun.serve({
             // persistent pins: nail-here (rides a release), pull-this-nail,
             // and the owner's current pin set (sent back on grab accept so
             // the dragger's takeover sim keeps enforcing the other nails)
+            // the handover: joint names, positions and velocities, so the
+            // receiver CONTINUES the sim instead of rebuilding a guess from
+            // the bones. Bounded like everything else on this path — 24 joints,
+            // three finite numbers each, or it does not travel.
+            ...(okSim(msg.sim) ? { sim: msg.sim } : {}),
             ...(msg.pinAt != null ? { pinAt: msg.pinAt } : {}),
             ...(msg.unpin != null ? { unpin: msg.unpin } : {}),
             ...(Array.isArray(msg.pins) ? { pins: (msg.pins as unknown[]).slice(0, 16) } : {}),
@@ -2559,6 +2741,21 @@ setInterval(() => {
     }
   }
 }, FRAME_MS);
+
+// Stale-lease sweep: a holder that stops streaming (hung tab, wedged plugin)
+// loses the object — committed at its last known transform, like a
+// disconnect. Nothing hovers forever; nothing stays possessed.
+setInterval(() => {
+  const now = Date.now();
+  for (const w of worlds.values()) {
+    for (const [id, L] of [...w.leases]) {
+      if (now - L.lastAt > 10_000) {
+        w.debug("lease-swept", { id, holder: L.holder.id });
+        w.settleLease(id);
+      }
+    }
+  }
+}, 5_000);
 
 // Fold on the way out so a restart resumes from the snapshot rather than
 // re-reading a tail that was already folded in memory.

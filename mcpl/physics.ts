@@ -92,14 +92,12 @@ async function skeletonFor(httpBase: string, avatarPath: string) {
 export class HeadlessBody {
   private m: NonNullable<typeof simMods>;
   private av: any;
-  private rest: any;
   rd: any = null;
   groundY = 0;
 
   private constructor(m: NonNullable<typeof simMods>, P: Record<string, any>) {
     this.m = m;
     this.av = m.rig.makeAvatar(P);
-    this.rest = this.av.restBonePositions();
   }
 
   /** null when physics is unavailable for this process or this VRM. */
@@ -137,6 +135,7 @@ export class HeadlessBody {
     pose?: Record<string, number[]> | null;
     rootY?: number;                          // world y of the root at start (a lifted drop)
     pins?: Array<{ j: string; at: number[] }>;
+    sim?: { j: string[]; p: number[]; v: number[] } | null;   // a handover
   }) {
     this.pose(opts.x, opts.z, opts.groundY, opts.yaw, opts.pose ?? null);
     if (opts.rootY != null) {
@@ -145,7 +144,21 @@ export class HeadlessBody {
     }
     const lean = Array.isArray(opts.lean) && opts.lean.length === 3
       ? new this.m.THREE.Vector3(opts.lean[0], opts.lean[1], opts.lean[2]) : null;
-    this.rd = new this.m.Ragdoll(this.av, lean, this.rest);
+    // The rest snapshot must be taken with the root WHERE IT IS NOW. It is a
+    // set of WORLD positions, and Ragdoll reads the hips' height out of it
+    // against the live root to learn how far the model origin sits below the
+    // pelvis. Cached once at construction — with the root at y=0, as it was —
+    // it is wrong by exactly the lift for any tumble that begins somewhere
+    // else, and `rootY` is precisely that: a body let go of in mid-air. The
+    // pelvis then renders a metre from where the sim has it. A plain
+    // knock-over starts at y=0 and never noticed; a drag release always did.
+    // A handover carries the sim's own state — where each joint was and how
+    // fast — so this body CONTINUES what the other machine was running rather
+    // than restarting from the bones with the motion thrown away. Positions
+    // arrive in world y; this sim runs ground-at-zero, hence dy.
+    const seed = opts.sim && Array.isArray(opts.sim.j)
+      ? { ...opts.sim, dy: -opts.groundY } : null;
+    this.rd = new this.m.Ragdoll(this.av, lean, this.av.restBonePositions(), seed);
     for (const p of opts.pins ?? []) this.setPin(p.j, p.at);
   }
 

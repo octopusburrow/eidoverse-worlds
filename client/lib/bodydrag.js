@@ -26,7 +26,8 @@
 
 import { THREE, camera, canvas, bus, scene } from './core.js';
 import { remotes, draggedLocal } from './remotes.js';
-import { Ragdoll, JOINTS } from './ragdoll.js';
+import { JOINTS } from './ragdoll.js';
+import { makeRagdoll } from './bodysim.js';
 import { sendBodyDrag } from './net.js';
 import { flashHint, toast } from './ui.js';
 import { isEditing } from './build.js';
@@ -124,15 +125,25 @@ function pickMarker() {
 function pinCurrent() {
   if (!drag) return;
   const r = remotes.get(drag.id);
-  const t = drag.rd.pins?.get(drag.joint);
+  // where the joint IS, not where the cursor is. They agree — a pinned joint
+  // is held at its target — but the joint is the thing being nailed, and
+  // saying so keeps the nail on the limb if that ever stops being true.
+  const t = drag.rd.p?.[drag.joint] ?? drag.rd.pins?.get(drag.joint);
   if (!t) return;
   sendBodyDrag(drag.id, {
     end: true,
     pinAt: { joint: drag.joint, at: [t.x, t.y, t.z] },
     ...(drag.rd.pose ? { pose: drag.rd.pose } : {}),
-    ...(r?.avatar ? { p: r.avatar.root.position.toArray() } : {}),
+    // a nail is a handover too: the owner takes over enforcing it, and should
+    // continue this sim rather than rebuild a guess of it from the bones
+    sim: drag.rd.snapshot(),
+    ...(r?.avatar ? {
+      p: r.avatar.root.position.toArray(),
+      yaw: r.avatar.root.rotation.y,
+    } : {}),
   });
   drag.rd.setPin(null);
+  drag.rd.dispose?.();
   draggedLocal.delete(drag.id);
   flashHint(`${drag.joint} nailed in place — click the pin to pull it`);
   drag = null;
@@ -168,8 +179,21 @@ function beginGrab(e) {
   }
 
   hitR.avatar.root.updateMatrixWorld(true);
-  const rd = new Ragdoll(hitR.avatar, null, hitR.avatar.restBonePositions());
-  drag = { id: hitR.id, rd, joint, depth: hit.along, sentAt: 0 };
+  const rd = makeRagdoll(hitR.avatar, null, hitR.avatar.restBonePositions());
+  // Keep the offset between the joint and the cursor RAY. pickBody finds the
+  // joint nearest the ray, which is up to PICK_R away from it — so pinning the
+  // joint straight onto the ray teleports the limb sideways the instant you
+  // grab, by as much as the pick radius. You grab a wrist and the wrist jumps
+  // to your cursor; nail it there and the nail lands somewhere you never
+  // pointed at. Held as a world offset, the limb keeps the relationship it had
+  // when you took hold of it.
+  const jn = hitR.avatar.vrm.humanoid?.getNormalizedBoneNode?.(joint);
+  const off = new THREE.Vector3();
+  if (jn) {
+    off.copy(_ray.ray.origin).addScaledVector(_ray.ray.direction, hit.along);
+    off.subVectors(jn.getWorldPosition(_tmp), off);
+  }
+  drag = { id: hitR.id, rd, joint, depth: hit.along, off, sentAt: 0 };
   draggedLocal.add(hitR.id);
   sendBodyDrag(hitR.id, { grab: { joint } });
   flashHint(`dragging ${hitR.id} by the ${joint} — release to drop · P to nail it here`);
@@ -185,8 +209,15 @@ function endGrab() {
   sendBodyDrag(drag.id, {
     end: true,
     ...(drag.rd.pose ? { pose: drag.rd.pose } : {}),
-    ...(r?.avatar ? { p: r.avatar.root.position.toArray() } : {}),
+    // the handover: exactly where every joint is and how fast, so the owner
+    // CONTINUES this sim instead of rebuilding a guess of it from the bones
+    sim: drag.rd.snapshot(),
+    ...(r?.avatar ? {
+      p: r.avatar.root.position.toArray(),
+      yaw: r.avatar.root.rotation.y,
+    } : {}),
   });
+  drag.rd.dispose?.();
   draggedLocal.delete(drag.id);
   drag = null;
 }
@@ -273,6 +304,7 @@ bus.on('bodydrag', (msg) => {
     else if (drag && drag.id === by) {
       // I was the dragger and the OWNER revoked (broke free, or refused)
       drag.rd.setPin(null);
+      drag.rd.dispose?.();
       draggedLocal.delete(drag.id);
       drag = null;
       flashHint(`${by} broke free`);
@@ -288,6 +320,11 @@ bus.on('bodydrag', (msg) => {
 // ---------------------------------------------------------------- tick
 
 /** Dev introspection — what the drag module believes right now. */
+/** The takeover sim, while a body is in your hand. The debug panel wants it:
+ *  a dragged body is a DIFFERENT Ragdoll from your own, and a panel that only
+ *  ever reads main.js's shows nothing for the body you are actually holding. */
+export function dragSim() { return drag?.rd ?? null; }
+
 export function dragState() {
   return { dragging: drag ? { id: drag.id, joint: drag.joint, depth: +drag.depth.toFixed(2) } : null, draggedBy };
 }
@@ -304,13 +341,14 @@ export function updateBodyDrag(dt, now = performance.now()) {
     const newest = r.buf[r.buf.length - 1];
     if (newest?.clip && newest.clip !== 'ragdoll') {
       drag.rd.setPin(null);
+      drag.rd.dispose?.();
       draggedLocal.delete(drag.id);
       flashHint(`${drag.id} broke free`);
       drag = null;
       return;
     }
     _ray.setFromCamera(_ndc, camera);
-    _pt.copy(_ray.ray.direction).multiplyScalar(drag.depth).add(_ray.ray.origin);
+    _pt.copy(_ray.ray.direction).multiplyScalar(drag.depth).add(_ray.ray.origin).add(drag.off);
     drag.rd.setPin(drag.joint, _pt);
     drag.rd.step(dt);                            // drives the remote avatar directly
     if (now - drag.sentAt >= STREAM_MS && drag.rd.pose) {

@@ -117,7 +117,8 @@ const MASS = {
 };
 
 const FIXED_DT = 1 / 60;   // the sim's only clock — see the header
-const MAX_FRAMES = 4;      // frames simulated per call before we drop a backlog
+const MAX_FRAMES = 4;
+const PIN_JUMP = 0.12;     // metres/frame — past this a pin jumped, it did not move
 
 // Everything tunable, in one mutable object so a sweep can drive it without
 // editing the file — which is what the old parameter study had to do, and why
@@ -134,10 +135,49 @@ export const TUNING = {
   // 14 rigs, the neighbours settle 6 to 11.
   SUBSTEPS: 2,
   ITER: 3,                 // relaxation passes per substep
+  // A body HANGING from a pin needs far more than a body falling. Gauss-Seidel
+  // propagates tension one link per pass, so a chain held at one end and loaded
+  // at the other stretches until the passes reach it — and a dragged body is
+  // exactly that chain, held by a hand with the pelvis swinging off the far
+  // end. Measured while dragging: 69% bone stretch at 3 passes, 23% at 8, 8% at
+  // 16. A body stretched half again its length reads as the limbs twisting,
+  // because the drive takes its directions from where the joints ended up.
+  // Only paid while something is actually pinned.
+  ITER_PINNED: 16,
   DAMP: 0.98,              // per FRAME, spread across the substeps
   SLEEP_DAMP: 0.8,         // ...harder once nearly still, see _solve
   YIELD: 0.5,              // fraction of an angular violation fixed per pass
   CAPSULE_SOFT: 0.6,       // fraction of an overlap resolved per pass
+  TWIST_DAMP: 0.88,        // per frame, on the twist velocity
+  TWIST_STIFF: 26,         // rad/s per rad — passive pull back to neutral
+  // A driver for twist, off by default. A limp bone lagging its parent's roll
+  // is the one physically motivated source of twist in a model with no angular
+  // momentum about bone axes — and measured, it only ever ADDS twist: mean
+  // limb twist 8° at 0, 18° at 0.05, 34° at 0.2, with the worst case unmoved.
+  // There is no torque here for it to be answering, so the honest value is
+  // zero and the state below is what bounds it if anything ever drives it (a
+  // dragged or puppeted limb would).
+  TWIST_LAG: 0,
+  // Live switches for the debug panel. Everything here can be turned off while
+  // a body is mid-tumble, which is the fastest way to find which rule is
+  // responsible for a shape that looks wrong — and eyes on the actual render
+  // have caught things every headless metric in this repo has missed.
+  ON_FLEX: 1, ON_CONE: 1, ON_BEHIND: 1, ON_HINGE: 1,
+  ON_CAPSULE: 1, ON_BRACE: 1, ON_TWIST: 1, ON_GROUND: 1,
+  PAUSED: 0,
+  // A pin sets a joint's POSITION and, as shipped, nothing else — so in Verlet
+  // the joint's velocity becomes the whole distance the pin travelled, every
+  // substep. Dragging a body by one hand injects energy in proportion to cursor
+  // speed, and it comes out as torsion: measured against an unpinned fall, a
+  // moving pin takes peak joint speed 1.7 -> 5.6 m/s, stretch 3% -> 16% and
+  // twist 101° -> 180°.
+  //
+  // PIN_VEL gives the joint the PIN's velocity instead. It is off by default
+  // because the synthetic drag I can write headless does not agree that it
+  // helps, and a cursor in a real hand is the only instrument that has been
+  // right about this body all week. It is a switch in the debug panel so that
+  // instrument can settle it.
+  PIN_VEL: 0,
   SETTLE_V: 0.06,          // speed below which we call it settled...
   SETTLE_TIME: 0.4,        // ...for this long, in SECONDS (was 24 FRAMES, which
                            // meant 0.17s at 144Hz and 0.8s at 30Hz)
@@ -221,6 +261,47 @@ const CONE = [
 // plane. It cannot go to zero: this model has no hip or shoulder ROTATION, so
 // a limb that has twisted has nowhere to put it but here. These are the
 // smallest values the fleet stays stable at.
+// TWIST — a bone's roll about its own length, as REAL STATE.
+//
+// The particle sim gives directions, never roll, so roll has to come from
+// somewhere. Deriving it against the WORLD (a fixed rest direction, or a
+// carried reference) drifts: parallel transport has holonomy, so a limb swung
+// around a loop comes back rotated by the solid angle it enclosed, and a
+// tumbling arm encloses a lot of sphere. Measured that way, upper arms ended a
+// tumble 144° rolled and stayed there.
+//
+// Deriving it against the PARENT does not drift, because it is a function of
+// the current state and not of the path taken to reach it. The one place that
+// construction could fail is a bone swung a full 180° from its parent, and the
+// joint limits above already forbid that — the hinges stop at 150°, the cones
+// at 55-85°, the spine at 25°. The limits are what make this well posed.
+//
+// What is left over is genuine twist, and it is a state variable with inertia,
+// damping, a spring back to neutral and a hard stop, like every other joint
+// quantity here. With no driver it sits at zero, which is the right answer for
+// a limp limb in a model that carries no angular momentum about a bone's own
+// axis — and zero is exactly what the parent-relative frame makes reachable.
+// Measured, limb twist at settle: 97° mean and 172° worst before, 0° now, on
+// every driven bone but the pelvis (whose "twist" is the body's own roll and
+// belongs there). `max` is the stop, in degrees: shoulders and forearms turn a
+// lot, spines and shins hardly at all.
+const TWIST = {
+  spine: 25, chest: 25, neck: 45,
+  leftUpperArm: 75, rightUpperArm: 75,
+  leftLowerArm: 80, rightLowerArm: 80,     // pronation/supination
+  leftUpperLeg: 40, rightUpperLeg: 40,
+  leftLowerLeg: 25, rightLowerLeg: 25,
+};
+// Which bone each one twists AGAINST. The drive walks CHAINS parents-first, so
+// a parent's frame is always resolved before its children ask for it.
+const TWIST_PARENT = {
+  spine: 'hips', chest: 'spine', neck: 'chest',
+  leftUpperArm: 'chest', rightUpperArm: 'chest',
+  leftLowerArm: 'leftUpperArm', rightLowerArm: 'rightUpperArm',
+  leftUpperLeg: 'hips', rightUpperLeg: 'hips',
+  leftLowerLeg: 'leftUpperLeg', rightLowerLeg: 'rightUpperLeg',
+};
+
 const HINGE = [
   // a               b                 c            dir  maxFlex°  sideways°
   ['leftUpperArm',  'leftLowerArm',  'leftHand',    +1,   145,      12],
@@ -254,6 +335,16 @@ const _bz = new THREE.Vector3();
 const _by = new THREE.Vector3();
 const _mat = new THREE.Matrix4();
 const _qd2 = new THREE.Quaternion();
+const _qBody = new THREE.Quaternion();
+const _qs = new THREE.Quaternion();
+const _qsi = new THREE.Quaternion();
+const _qL = new THREE.Quaternion();
+const _qt = new THREE.Quaternion();
+const _qpi = new THREE.Quaternion();
+const _t2 = new THREE.Vector3();
+const _t3 = new THREE.Vector3();
+const _qtw = new THREE.Quaternion();
+const _X = new THREE.Vector3(1, 0, 0);
 const _s1 = new THREE.Vector3();   // swing: correction direction
 const _s2 = new THREE.Vector3();   // swing: velocity probe
 const _ca = new THREE.Vector3();
@@ -297,6 +388,31 @@ function rollRef(dir, up, frame) {
   return false;
 }
 
+/** World positions of the simulated joints — the shape a sim is in, so the
+ *  next one can be handed both it and the motion it had. */
+export function jointPositions(avatar, out = new Map()) {
+  const h = avatar?.vrm?.humanoid;
+  if (!h) return out;
+  for (const j of JOINTS) {
+    const n = h.getNormalizedBoneNode(j);
+    if (n) out.set(j, n.getWorldPosition(out.get(j) ?? new THREE.Vector3()));
+  }
+  return out;
+}
+
+/** The roll component of `q` about `axis` — the twist half of a swing-twist
+ *  decomposition, signed, in radians. */
+function twistAbout(q, axis) {
+  _t3.set(q.x, q.y, q.z);
+  const along = _t3.dot(axis);
+  _qtw.set(axis.x * along, axis.y * along, axis.z * along, q.w);
+  if (_qtw.lengthSq() < 1e-12) return 0;
+  _qtw.normalize();
+  let a = 2 * Math.acos(THREE.MathUtils.clamp(_qtw.w, -1, 1));
+  if (a > Math.PI) a -= Math.PI * 2;
+  return along < 0 ? -a : a;
+}
+
 export function closestParams(p1, q1, p2, q2, out) {
   _a.copy(q1).sub(p1); _b.copy(q2).sub(p2); _c.copy(p1).sub(p2);
   const A = _a.dot(_a), E = _b.dot(_b), F = _b.dot(_c);
@@ -320,18 +436,26 @@ export function closestParams(p1, q1, p2, q2, out) {
 export class Ragdoll {
   /** @param avatar   the OWNER's Avatar.
    *  @param lean     optional topple velocity in m/s — see below.
-   *  @param rest     optional map joint -> neutral-rest world position, from
-   *                  Avatar.restBonePositions(). Everything anatomical is
+   *  @param rest     optional map joint -> neutral-rest WORLD position, from
+   *                  Avatar.restBonePositions(). It must be captured with the
+   *                  root where it is NOW: everything else read out of it is a
+   *                  difference and so translation-free, but hipsOffset is the
+   *                  pelvis's height above the ROOT, and a snapshot taken at a
+   *                  different root height is wrong by exactly that difference.
+   *  @param seedVel  optional map joint -> velocity (m/s), to inherit motion
+   *                  from a sim being replaced mid-flight. Everything anatomical is
    *                  measured against THIS, not against the live skeleton: a
    *                  body that goes limp mid-stride must not inherit the
    *                  stride's angles as its idea of "rest", or its knees adopt
    *                  the walk cycle's bend as their zero. */
-  constructor(avatar, lean = null, rest = null) {
+  constructor(avatar, lean = null, rest = null, seedVel = null) {
     this.avatar = avatar;
     this.settledFor = 0;
     this.elapsed = 0;
     this.acc = 0;
     this.maxV = Infinity;
+    this.steps = 0;                   // step() calls; see the debug panel
+    this.frames = 0;                  // ...and substeps actually simulated
     this.pose = null;
     this.done = false;
     const h = avatar.vrm.humanoid;
@@ -347,9 +471,30 @@ export class Ragdoll {
       this.nodes[j] = node;
       const wp = node.getWorldPosition(new THREE.Vector3());
       this.p[j] = wp.clone();
-      this.prev[j] = wp.clone();
+      // A sim built mid-motion must INHERIT that motion. Verlet keeps velocity
+      // in p - prev, and a fresh sim sets prev = p, which is a body at a dead
+      // stop — so releasing a body swung at 3 m/s dropped it where it was and
+      // settled it on the spot, and every re-creation (a nail pulled, a drag
+      // let go) silently threw the momentum away.
+      const v = seedVel?.get?.(j) ?? (seedVel && !seedVel.j ? seedVel[j] : null);
+      this.prev[j] = v ? wp.clone().addScaledVector(v, -FIXED_DT) : wp.clone();
       this.pre[j] = wp.clone();      // step-start position, for the settle test
     }
+    // A handover snapshot outranks the bones: it is where the particles
+    // actually were, at what speed, on the machine that was simulating. The
+    // bones only ever showed where they POINTED. Applied after the bone read
+    // above so a caller with no snapshot still works.
+    if (seedVel?.j) {
+      const { j: names, p: pos, v: vel, dy = 0 } = seedVel;
+      for (let i = 0; i < names.length; i++) {
+        const n = names[i], k = i * 3;
+        if (!this.p[n]) continue;
+        this.p[n].set(pos[k], pos[k + 1] + dy, pos[k + 2]);
+        this.prev[n].copy(this.p[n]).addScaledVector(
+          _v.set(vel[k], vel[k + 1], vel[k + 2]), -FIXED_DT);
+      }
+    }
+
     // the neutral skeleton every limit is measured against; falls back to the
     // live one joint-by-joint so a caller that has no rest map still works
     this.rest = {};
@@ -379,10 +524,14 @@ export class Ragdoll {
     // than infinite mass — an unpinned particle that never moves is worse.
     this.iw = {};
     for (const j of Object.keys(this.p)) this.iw[j] = 1 / (MASS[j] ?? 1);
+    this._pinFrom = new Map();        // each pin's target at frame start
 
     // rest length of each link, from the neutral pose (see BRACES)
     this.links = LINKS.filter(([a, b]) => this.p[a] && this.p[b])
-      .map(([a, b]) => ({ a, b, len: this.rest[a].distanceTo(this.rest[b]) }))
+      .map(([a, b]) => ({
+        a, b, len: this.rest[a].distanceTo(this.rest[b]),
+        brace: BRACES.some((x) => x[0] === a && x[1] === b),
+      }))
       .filter((l) => l.len > 1e-5);
 
     // the rig's own body frame, in which the CONE and HINGE limits are stated
@@ -446,31 +595,20 @@ export class Ragdoll {
     // ---- capsules: every BONE is a fat segment, and pairs of them push apart
     this._buildCapsules();
 
-    // per-driven-bone rest reference: its world quaternion, the world direction
-    // to its child, and a FULL rest basis — all from the LIVE skeleton, so the
-    // tumble starts exactly where the body already is (the delta is identity at
-    // t=0).
+    // per-driven-bone rest reference, expressed in its TWIST PARENT's frame.
     //
-    // The basis is the point. Rotating restDir onto the live direction with a
-    // minimal arc gives the right SWING and a ROLL with no memory: roll comes
-    // out as a function of the current direction alone, and near the antipode
-    // of restDir it is barely a function of that either, since every axis
-    // perpendicular to restDir is an equally good arc axis there.
-    //
-    // So the roll ACCUMULATES. Not as a snap — measured, the two drives differ
-    // by at most 19° in any single frame — but as a drift that nothing carries
-    // back: 3175° of unrequested roll over a fleet tumble against 5° here. Ten
-    // frames of it is half a turn, and since nothing returns it the limb simply
-    // stays twisted, while its mirror took a different path and did not. That
-    // is the knee that twists 180° and never untwists.
-    //
-    // A basis has roll defined everywhere, and carrying it (see rollRef) rather
-    // than rebuilding it each frame is what removes the drift: the reference
-    // turns exactly as far as the bone does and no further, which is also what
-    // an untorqued limb does with its twist.
+    // restLocal is this bone's rest frame seen from the frame it hangs off. Each
+    // step the live direction is expressed in that same parent frame and the
+    // minimal arc from restLocal's own axis carries the frame across — a
+    // function of current state only, with no memory and therefore no drift.
+    // Roll is then nobody's accident: it is `tw`, integrated below.
     this._frame(this.p);
+    _mat.makeBasis(this.frame.r, this.frame.u, this.frame.f);
+    const bodyRest = new THREE.Quaternion().setFromRotationMatrix(_mat);
     const axes = [this.frame.r, this.frame.u, this.frame.f];
+
     this.drive = [];
+    this.driveBy = new Map();
     for (const [bone, child] of CHAINS) {
       const bn = this.nodes[bone];
       if (!bn || !this.p[child]) continue;
@@ -478,22 +616,38 @@ export class Ragdoll {
       _v.copy(this.p[child]).sub(bwp);
       if (_v.lengthSq() < 1e-8) continue;
       const dir = _v.clone().normalize();
+      // any stable reference will do for the REST frame — it is only ever used
+      // as the fixed thing the live frame is measured against
       let ref = 0;
       for (let i = 1; i < 3; i++) {
         if (Math.abs(dir.dot(axes[i])) < Math.abs(dir.dot(axes[ref]))) ref = i;
       }
-      const up = new THREE.Vector3();
-      const restBasis = new THREE.Quaternion();
-      if (!basisOf(dir, axes[ref], restBasis)) continue;
-      up.copy(_bz);
-      this.drive.push({
-        bone, child, up,
-        restDir: dir,
-        restBasisInv: restBasis.invert(),
+      const restFrame = new THREE.Quaternion();
+      if (!basisOf(dir, axes[ref], restFrame)) continue;
+
+      const tp = TWIST_PARENT[bone] ?? null;
+      const parentRest = tp ? this.driveBy.get(tp)?.restFrame : bodyRest;
+      if (tp && !parentRest) continue;                 // parent bone absent on this rig
+      const restLocal = parentRest.clone().invert().multiply(restFrame);
+
+      const d = {
+        bone, child, twistParent: tp,
+        restFrame,
+        restFrameInv: restFrame.clone().invert(),
+        restLocal,
+        restLocalAxis: new THREE.Vector3(1, 0, 0).applyQuaternion(restLocal),
         restQuat: bn.getWorldQuaternion(new THREE.Quaternion()),
         parent: bn.parent,
-      });
+        // ---- twist, as state
+        tw: 0, twv: 0,
+        twMax: (TWIST[bone] ?? 180) * D2R,
+        frameW: restFrame.clone(),                     // resolved each step
+        swingW: restFrame.clone(),                     // ...before twist
+      };
+      this.drive.push(d);
+      this.driveBy.set(bone, d);
     }
+    this.bodyRest = bodyRest;
 
     this.rootStartY = avatar.root.position.y;
     // How far the model origin sits below the hips — MEASURED, never assumed:
@@ -595,7 +749,8 @@ export class Ragdoll {
     // where the frame started, for the settle test at the bottom
     for (const j of JOINTS) { const p = this.p[j]; if (p) this.pre[j].copy(p); }
 
-    for (let s = 0; s < n; s++) this._substep(sdt, sdamp);
+    const iters = this.pinned ? TUNING.ITER_PINNED : TUNING.ITER;
+    for (let s = 0; s < n; s++) this._substep(sdt, sdamp, iters);
 
     // Full world collision (props AND terrain) once per FRAME rather than once
     // per relaxation pass: resolveColliders is a spatial-hash query, and
@@ -622,7 +777,7 @@ export class Ragdoll {
     this.maxV = Math.sqrt(moved) / FIXED_DT;
   }
 
-  _substep(dt, damp) {
+  _substep(dt, damp, iters = TUNING.ITER) {
     for (const j of JOINTS) {
       const p = this.p[j]; if (!p) continue;
       const pr = this.prev[j];
@@ -631,20 +786,62 @@ export class Ragdoll {
       p.add(_v);
       p.y += TUNING.GRAVITY * dt * dt;
     }
-    // pinned joints go exactly where their pins say, every substep —
-    // after integration, before the constraints that hang the body from them
-    if (this.pins?.size) for (const [j, t] of this.pins) this.p[j].copy(t);
+    this._pin(dt);
     this._frame(this.p);
-    for (let it = 0; it < TUNING.ITER; it++) {
+    for (let it = 0; it < iters; it++) {
       this._links();
       this._capsules();
       this._terrain();
       this._limits();
     }
+    // ...and again at the end: the constraints have had their say, and a nail
+    // is a nail. Position only — prev already carries the pin's velocity, so
+    // putting the joint back where the pin is does not invent any more of it.
+
+  }
+
+  /** Pinned joints go exactly where their pins say.
+   *
+   *  A pin used to set POSITION alone. In Verlet the velocity IS p - prev, so
+   *  writing p and leaving prev where it was hands the joint the whole distance
+   *  the pin travelled as speed — every substep, on top of whatever it already
+   *  had. Dragging a body by one hand therefore injected energy in proportion
+   *  to how fast the cursor moved, and it came out as torsion: measured against
+   *  an unpinned fall, a moving pin took peak joint speed 1.7 -> 5.6 m/s, bone
+   *  stretch 3% -> 16%, and twist 101° -> a full 180°.
+   *
+   *  prev now carries the PIN's own velocity — where the pin was at the start
+   *  of this frame versus where it is — scaled to the substep, so a pinned
+   *  joint moves at the speed the cursor is actually moving and no faster. It
+   *  is also what lets a swung body keep its momentum when you let go.
+   *
+   *  Left deliberately alone: making a pinned joint immovable (infinite mass)
+   *  and re-asserting the pin after the solve. Both are defensible and both
+   *  measured WORSE here — the body then cannot satisfy its own bone lengths
+   *  while hanging, and stretch went to several hundred percent. The pin stays
+   *  a normal particle that something else is moving. */
+  _pin(dt) {
+    if (!this.pins?.size) { this._pinFrom.clear(); return; }
+    const k = dt / FIXED_DT;               // this substep, as a fraction of a frame
+    for (const [j, t] of this.pins) {
+      if (!this.p[j]) continue;
+      const from = this._pinFrom.get(j);
+      this.p[j].copy(t);
+      if (!TUNING.PIN_VEL) continue;                       // position only
+      // A pin that has just been set, or dragged faster than any hand moves,
+      // is a TELEPORT — land it dead. Only continuous motion carries velocity.
+      // Converting a jump into speed is how the first frame of a grab threw
+      // the joint at 45 m/s, ten times worse than the bug it was fixing.
+      _v.copy(t).sub(from ?? t);
+      if (!from || _v.lengthSq() > PIN_JUMP * PIN_JUMP) this.prev[j].copy(t);
+      else this.prev[j].copy(t).sub(_v.multiplyScalar(k));
+    }
+    for (const j of [...this._pinFrom.keys()]) if (!this.pins.has(j)) this._pinFrom.delete(j);
   }
 
   _links() {
-    for (const { a, b, len } of this.links) {
+    for (const { a, b, len, brace } of this.links) {
+      if (brace && !TUNING.ON_BRACE) continue;
       const pa = this.p[a], pb = this.p[b];
       const wa = this.iw[a], wb = this.iw[b], ws = wa + wb;
       if (ws <= 0) continue;
@@ -661,6 +858,7 @@ export class Ragdoll {
    *  segment the contact fell and by inverse mass — so a wrist bounces off the
    *  chest rather than shoving it. */
   _capsules() {
+    if (!TUNING.ON_CAPSULE) return;
     for (const { A, B, min } of this.pairs) {
       const a0 = this.p[A.a], a1 = this.p[A.b], b0 = this.p[B.a], b1 = this.p[B.b];
       closestParams(a0, a1, b0, b1, _pr);
@@ -715,6 +913,7 @@ export class Ragdoll {
    *  else collides against. Lights carry no collider, so a ragdoll never snags
    *  on a bulb. */
   _world() {
+    if (!TUNING.ON_GROUND) return;
     for (const j of JOINTS) {
       const p = this.p[j]; if (!p) continue;
       const x0 = p.x, z0 = p.z;
@@ -791,7 +990,7 @@ export class Ragdoll {
 
   _limits() {
     // ---- FLEX: symmetric cone between adjacent links
-    for (const { a, b, c, max } of this.flex) {
+    if (TUNING.ON_FLEX) for (const { a, b, c, max } of this.flex) {
       const pa = this.p[a], pb = this.p[b], pc = this.p[c];
       _a.copy(pb).sub(pa); const la = _a.length();
       _b.copy(pc).sub(pb); const lb = _b.length();
@@ -814,7 +1013,7 @@ export class Ragdoll {
 
     // ---- CONE: limb direction vs the torso
     const { r, u, f } = this.frame;
-    for (const { b, c, axis, cos } of this.cone) {
+    if (TUNING.ON_CONE) for (const { b, c, axis, cos } of this.cone) {
       const pb = this.p[b], pc = this.p[c];
       _b.copy(pc).sub(pb); const lb = _b.length();
       if (lb < 1e-5) continue;
@@ -835,7 +1034,7 @@ export class Ragdoll {
     }
 
     // ---- BEHIND: a one-sided frontal-plane stop on the limb's direction
-    for (const { b, c, minFwd } of this.behind) {
+    if (TUNING.ON_BEHIND) for (const { b, c, minFwd } of this.behind) {
       const pb = this.p[b], pc = this.p[c];
       _b.copy(pc).sub(pb); const lb = _b.length();
       if (lb < 1e-5) continue;
@@ -854,7 +1053,7 @@ export class Ragdoll {
     }
 
     // ---- HINGE: signed one-sided fold, plus a sideways tolerance
-    for (const H of this.hinge) {
+    if (TUNING.ON_HINGE) for (const H of this.hinge) {
       const pa = this.p[H.a], pb = this.p[H.b], pc = this.p[H.c];
       _a.copy(pb).sub(pa); const la = _a.length();
       _b.copy(pc).sub(pb); const lb = _b.length();
@@ -969,6 +1168,32 @@ export class Ragdoll {
     this.elapsed = 0;
   }
 
+  /** Everything this sim IS, as plain numbers: where every joint is and how
+   *  fast it is going, in world coordinates.
+   *
+   *  Handing a body from one machine to another has been lossy at every seam.
+   *  A streamed POSE is where the bones point — not where the particles are,
+   *  and not what they were doing — so a receiver rebuilding a sim from a pose
+   *  has to invent the velocity, and invents zero. That is why a body swung
+   *  across a room and let go of settled on the spot, and why a takeover began
+   *  by discarding whatever the body was already doing. A handover carries
+   *  this instead, and the receiver continues rather than restarts.
+   *
+   *  Rounded on purpose: this rides a presence message, and a millimetre and a
+   *  millimetre-per-second are far below what anyone can see. */
+  snapshot() {
+    const j = [], p = [], v = [];
+    for (const name of JOINTS) {
+      const q = this.p[name];
+      if (!q) continue;
+      j.push(name);
+      p.push(+q.x.toFixed(4), +q.y.toFixed(4), +q.z.toFixed(4));
+      _v.copy(q).sub(this.prev[name]).divideScalar(FIXED_DT);
+      v.push(+_v.x.toFixed(3), +_v.y.toFixed(3), +_v.z.toFixed(3));
+    }
+    return { j, p, v };
+  }
+
   /** Advance the sim and push the result into the avatar as a held pose.
    *  Returns the sparse pose (for streaming) while active, or null once it has
    *  been captured and handed off. */
@@ -981,11 +1206,24 @@ export class Ragdoll {
     // which used to change peak bone stretch by 3.5x and land the body metres
     // apart for the same fall. A long hitch drops its backlog rather than
     // simulating a second of physics in one frame and exploding.
+    if (TUNING.PAUSED) dt = 0;
     this.acc += dt;
     let n = 0;
     while (this.acc >= FIXED_DT && n < MAX_FRAMES) { this._solve(); this.acc -= FIXED_DT; n++; }
     if (n === MAX_FRAMES) this.acc = 0;
+    // remember where each pin was THIS frame; next frame's velocity is measured
+    // against it. Per frame, because that is the rate the cursor moves it at —
+    // sampling per substep reads the same target twice and calls the second
+    // one motionless.
+    if (this.pins?.size) {
+      for (const [j, t] of this.pins) {
+        const f = this._pinFrom.get(j);
+        if (f) f.copy(t); else this._pinFrom.set(j, t.clone());
+      }
+    }
 
+    this.steps++;
+    this.frames += n;
     this.elapsed += dt;
     // A held body neither settles nor deadlines: a pin is ongoing input,
     // and capturing would freeze a hung body's constraint enforcement.
@@ -1015,7 +1253,11 @@ export class Ragdoll {
       this.avatar.root.position.y = Math.min(this.rootStartY, y);
     }
 
-    // ---- map particles back to bone rotations (world-reference method)
+    // ---- map particles back to bone rotations (parent-relative + twist state)
+    _mat.makeBasis(this.frame.r, this.frame.u, this.frame.f);
+    _qBody.setFromRotationMatrix(_mat);
+    const dtF = Math.max(1e-4, n * FIXED_DT);
+
     const pose = {};
     for (const d of this.drive) {
       const bn = this.nodes[d.bone];
@@ -1023,15 +1265,40 @@ export class Ragdoll {
       _b.copy(this.p[d.child]).sub(bwp);
       if (_b.lengthSq() < 1e-6) continue;
       _b.normalize();
-      if (!rollRef(_b, d.up, this.frame)) continue;
-      _qd.copy(_qd2);
-      _qd.multiply(d.restBasisInv);                    // rest basis -> live one
-      _qd.multiply(d.restQuat);                        // -> new world quaternion
+
+      // the frame this bone hangs off, already resolved (parents come first)
+      const par = d.twistParent ? this.driveBy.get(d.twistParent) : null;
+      _qp.copy(par ? par.frameW : _qBody);
+
+      // live direction, in that parent frame
+      _t2.copy(_b).applyQuaternion(_qpi.copy(_qp).invert());
+      if (_t2.dot(d.restLocalAxis) < -0.999) continue;   // 180° from rest: the
+      // joint limits are supposed to make this unreachable; if it ever happens,
+      // hold the previous frame rather than invent a roll
+      _qs.setFromUnitVectors(d.restLocalAxis, _t2);
+      _qs.multiply(d.restLocal);                         // swing-free, in parent
+      _qL.copy(_qp).multiply(_qs);                       // ...and in the world
+
+      // ---- twist: a limp bone LAGS its parent's roll, then springs back
+      const rollRate = twistAbout(_qt.copy(_qL).multiply(_qsi.copy(d.swingW).invert()), _b);
+      d.swingW.copy(_qL);
+      d.twv -= rollRate * TUNING.TWIST_LAG / dtF;
+      d.twv *= TUNING.TWIST_DAMP;
+      d.twv -= d.tw * TUNING.TWIST_STIFF * dtF;
+      d.tw += d.twv * dtF;
+      if (!TUNING.ON_TWIST) { d.tw = 0; d.twv = 0; }
+      if (d.tw > d.twMax) { d.tw = d.twMax; d.twv = 0; }
+      else if (d.tw < -d.twMax) { d.tw = -d.twMax; d.twv = 0; }
+
+      _qs.multiply(_qt.setFromAxisAngle(_X, d.tw));      // roll in the bone frame
+      d.frameW.copy(_qp).multiply(_qs);
+
+      _qd.copy(d.frameW).multiply(d.restFrameInv).multiply(d.restQuat);
       // world -> local (parent may itself have moved this frame)
-      d.parent.getWorldQuaternion(_qp).invert();
-      _qp.multiply(_qd);
-      bn.quaternion.copy(_qp);
-      pose[d.bone] = [+_qp.x.toFixed(4), +_qp.y.toFixed(4), +_qp.z.toFixed(4), +_qp.w.toFixed(4)];
+      d.parent.getWorldQuaternion(_qpi).invert();
+      _qpi.multiply(_qd);
+      bn.quaternion.copy(_qpi);
+      pose[d.bone] = [+_qpi.x.toFixed(4), +_qpi.y.toFixed(4), +_qpi.z.toFixed(4), +_qpi.w.toFixed(4)];
     }
     this.pose = pose;
     // apply locally too, held, so the owner sees its own flop this frame

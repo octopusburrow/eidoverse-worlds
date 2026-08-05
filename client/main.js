@@ -37,10 +37,14 @@ import {
   openDoor, toggleRoster, initRoster, initDock, paintRoster, panelFrame, el,
 } from './lib/ui.js';
 import { initDebug, updateDebug, toggleDebug } from './lib/debug.js';
+import { dragSim } from './lib/bodydrag.js';
 import { initChat, logChat, chat, openConvo } from './lib/chat.js';
 import { makeFrame } from './lib/frames.js';
-import { Ragdoll } from './lib/ragdoll.js';
+import { jointPositions } from './lib/ragdoll.js';
+import { makeRagdoll, bodyEngine, setBodyEngine } from './lib/bodysim.js';
 import { initBodyDrag, updateBodyDrag, beingDragged, revokeDragged, dragState } from './lib/bodydrag.js';
+import { initPhysObj, tickPhysObj, kick, leaseApi } from './lib/physobj.js';
+import { initMods, tickMods, modsApi } from './lib/mods.js';
 import { shedALight, litCount } from './lib/lights.js';
 import { initBoot, markPhase, finishBoot, bootDone } from './lib/boot.js';
 import { framesHeld } from './lib/loadwork.js';
@@ -151,7 +155,15 @@ initDock([
   { id: 'emotes', label: '👋' },
   { id: 'debug', label: '🐞' },
 ]);
-initDebug({ ragdoll: () => ragdoll, downed: () => downed, fps: () => fps });
+initDebug({
+  // the body in your HAND wins over your own — that is the one being worked on
+  ragdoll: () => dragSim() ?? ragdoll,
+  downed: () => !!dragSim() || downed,
+  dragging: () => !!dragSim(),
+  fps: () => fps,
+  // drop again from where you stand, so a shape can be reproduced back to back
+  reLimp: () => { if (downed) getUp(); goLimp(); },
+});
 
 // Verified identity resolves BEFORE anything reads CONFIG.name — otherwise the
 // door panel and the local nameplate greet a stale localStorage name while the
@@ -308,7 +320,7 @@ function goLimp(lean = null) {
   // it measures its limits against, and the live pose the tumble starts from —
   // and neither may still have the walk cycle in it.
   me.setLimp(true);
-  ragdoll = new Ragdoll(me, lean ?? toppleVelocity(), me.restBonePositions());
+  ragdoll = makeRagdoll(me, lean ?? toppleVelocity(), me.restBonePositions());
   myState.clip = 'ragdoll';
   flashHint('limp — move to get up');
 }
@@ -316,7 +328,7 @@ function getUp() {
   if (!downed) return;
   revokeDragged();                 // if someone is dragging me, I take myself back
   clearPins();                     // standing up tears every nail out
-  downed = false; ragdoll = null;
+  downed = false; ragdoll?.dispose?.(); ragdoll = null;
   myState.pose = null; me?.clearPose();
   me?.setLimp(false);
   myState.clip = 'idle';
@@ -439,7 +451,7 @@ function stepRagdoll(dt) {
 
 function beginDraggedMode(by) {
   if (!me) return;
-  ragdoll = null;                  // the dragger's sim owns the tumble now
+  ragdoll?.dispose?.(); ragdoll = null;   // the dragger's sim owns the tumble now
   downed = true;
   me.setLimp(true);
   myState.clip = 'ragdoll';
@@ -454,8 +466,30 @@ function applyDraggedSample({ pose, p, yaw }) {
   }
   if (Number.isFinite(yaw)) { me.root.rotation.y = yaw; myState.yaw = yaw; }
   if (pose && typeof pose === 'object') { me.setPose(pose); myState.pose = pose; }
+  me.root.updateMatrixWorld(true);
+  noteDraggedMotion();
   myState.clip = 'ragdoll';
   myState.speed = 0;
+}
+
+// While a hand holds me, my body is a stream of poses with no sim behind it —
+// so its VELOCITY only exists as the difference between the frames arriving.
+// Sampled here so the moment the hand lets go the sim can start with the
+// motion the body already had, instead of at a dead stop.
+let dragSnap = null, dragVel = null;
+function noteDraggedMotion() {
+  if (!me) return;
+  const now = performance.now();
+  const pos = jointPositions(me);
+  if (dragSnap && now > dragSnap.t) {
+    const dt = Math.min(0.5, (now - dragSnap.t) / 1000);
+    dragVel ??= new Map();
+    for (const [j, p] of pos) {
+      const was = dragSnap.pos.get(j);
+      if (was) dragVel.set(j, (dragVel.get(j) ?? new THREE.Vector3()).copy(p).sub(was).divideScalar(dt));
+    }
+  }
+  dragSnap = { t: now, pos: new Map([...pos].map(([j, p]) => [j, p.clone()])) };
 }
 
 function endDraggedMode(msg) {
@@ -465,7 +499,9 @@ function endDraggedMode(msg) {
   // only ever the moving part
   if (msg?.pose || msg?.p) applyDraggedSample(msg);
   me.root.updateMatrixWorld(true);
-  ragdoll = new Ragdoll(me, null, me.restBonePositions());
+  // the hand's own sim state outranks anything we sampled from its stream
+  ragdoll = makeRagdoll(me, null, me.restBonePositions(), msg?.sim ?? dragVel);
+  dragSnap = null; dragVel = null;
   applyMyPins();
   myState.clip = 'ragdoll';
 }
@@ -502,7 +538,7 @@ function removePin(j) {
   // wake my own sim so the body sags from what remains and settles honestly
   if (downed && !ragdoll && me && !beingDragged()) {
     me.root.updateMatrixWorld(true);
-    ragdoll = new Ragdoll(me, null, me.restBonePositions());
+    ragdoll = makeRagdoll(me, null, me.restBonePositions());
     applyMyPins();
     myState.clip = 'ragdoll';
   }
@@ -513,6 +549,9 @@ function clearPins() {
   ragdoll?.setPin(null);
   syncPins();
 }
+
+initPhysObj({ myPos: () => myState.pos });
+initMods();   // 🧩 runtime client scripts: local trusted mods + world offers
 
 initBodyDrag({
   pushable: () => pushable,
@@ -566,7 +605,7 @@ function applyShove(lean, by) {
     else {
       // still limp from the last fall (getUp is what clears it) — the new sim
       // reads the lying pose as its start and the neutral rest as its limits
-      ragdoll = new Ragdoll(me, lean ?? toppleVelocity(), me.restBonePositions());
+      ragdoll = makeRagdoll(me, lean ?? toppleVelocity(), me.restBonePositions());
       applyMyPins();               // a nailed body shoved is a nailed body swinging
       myState.clip = 'ragdoll';
     }
@@ -759,6 +798,15 @@ bus.on('command', ({ cmd, arg }) => {
     sendVerb('grant', { id, ...(role ? { role } : {}), ...(genFlag ? { gen: genFlag === '+gen' } : {}) });
     return;
   }
+  if (cmd === 'kick') {
+    // one word, two acts (the /push pattern): a THING within the world gets
+    // the physics kick; a PERSON gets moderation. Things win the lookup —
+    // and /punt is always the physics verb, /ban always the moderation one.
+    const first = (arg || '').trim().split(/\s+/)[0];
+    if (!first || entities.has(first) || !remotes.has(first)) { kick(arg); return; }
+    // falls through into moderation below (a person's name)
+  }
+  if (cmd === 'punt') { kick(arg); return; }
   if (cmd === 'kick' || cmd === 'ban') {
     // /kick /ban <name> [reason…] — owner-only, the server enforces (and
     // narrates the act into chat via the log entry it broadcasts back).
@@ -1048,6 +1096,10 @@ function frame(now) {
   BC('bodydrag');
   updateBodyDrag(dt, now);       // BEFORE remotes: the takeover sim's pose must
                                  // land in the same frame's avatar.update
+  BC('physobj');
+  tickPhysObj(dt, now);          // entity leases I hold (kicked balls, etc.)
+  BC('mods');
+  tickMods(dt, now);             // runtime-loaded client scripts (🧩 mods)
   BC('remotes');
   updateRemotes(dt, now);
   BC('gaze');
@@ -1173,6 +1225,9 @@ globalThis.EW = {
   me: () => me, remotes, entities, myState, THREE, net, scene, camera, renderer, bus,
   skyArgs, sendVerb, setPosable, get posable() { return posable; },
   setPushable, get pushable() { return pushable; }, dragState,
+  lease: leaseApi,   // the entity-lease surface runtime plugins script against
+  mods: modsApi,     // load/run/offer runtime client scripts (🧩)
+  bodysim: { engine: bodyEngine, setEngine: setBodyEngine },  // swappable body physics
 };
 
 } // end of the normal-boot branch (?mintthumbs takes the path above)
