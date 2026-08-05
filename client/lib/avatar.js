@@ -550,10 +550,20 @@ export class Avatar {
   // ---- speech
   /** They're composing. Repeated calls extend it; it expires on its own so a
    *  dropped "stopped typing" never leaves the dots stuck up forever. */
-  setTyping(state) { this._typingUntil = performance.now() + 4000; this._typingState = state || null; }
+  setTyping(state) {
+    // state === null means STOP (mic went cold, composing ended) — it must
+    // clear the pill, not schedule 4s of an empty one. Found live: R's
+    // megaphone rendered as a blank bubble (2026-08-04 23:35).
+    if (state === null) { this._typingUntil = 0; this._typingState = null; return; }
+    this._typingUntil = performance.now() + 4000;
+    this._typingState = state || null;
+  }
 
   say(text) {
-    this._typingUntil = 0;         // speaking ends composing; the bubble takes over
+    // Speaking ends COMPOSING — but not a live mic. The 🎙 is presence: the
+    // voice is still coming out of this body while its transcript scrolls
+    // past. Only the composing states yield to the bubble.
+    if (this._typingState !== 'mic') this._typingUntil = 0;
     if (this.bubble) { this.root.remove(this.bubble); disposeSprite(this.bubble); }
     this.bubble = makeBubble(text);
     this.bubble.position.y = 2.3;
@@ -680,8 +690,13 @@ export class Avatar {
     }
 
     // ---- typing dots: shown only while composing and not already speaking
-    const typingNow = now < this._typingUntil && !this.bubble;
-    if (typingNow && !this.typing) { this.typing = makeTypingSprite(); this.typing.position.y = 2.12; this.root.add(this.typing); }
+    // A composing pill hides behind a bubble (you've stopped composing, you
+    // said it). A LIVE MIC does not: the voice keeps coming while its
+    // transcript floats. Stack it above the bubble instead of suppressing it.
+    const micLive = this._typingState === 'mic';
+    const typingNow = now < this._typingUntil && (micLive || !this.bubble);
+    if (typingNow && !this.typing) { this.typing = makeTypingSprite(); this.root.add(this.typing); }
+    if (this.typing) this.typing.position.y = (micLive && this.bubble) ? 2.72 : 2.12;
     if (this.typing) {
       this.typing.visible = typingNow;
       if (typingNow) {

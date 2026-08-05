@@ -627,7 +627,8 @@ function updateVoiceMouths(now) {
     // the megaphone is a presence signal, refreshed like typing (~2.5s) and
     // dropped the moment the mic goes cold
     const speaking = live && me.voiceLevel > VOICE_GATE;
-    if (live !== _micGlyphOn || (live && now - _micGlyphAt > 2400)) {
+    // refresh well inside the 4s expiry so one dropped packet can't blank it
+    if (live !== _micGlyphOn || (live && now - _micGlyphAt > 1500)) {
       _micGlyphOn = live; _micGlyphAt = now;
       sendTyping(null, live ? 'mic' : null);
       me.setTyping(live ? 'mic' : null);
