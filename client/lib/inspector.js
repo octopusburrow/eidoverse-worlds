@@ -34,8 +34,8 @@ export function buildFields(id) {
     { t: 'info', label: 'by', value: meta.actor ?? '?' },
     { t: 'text', k: 'rename', label: 'name', value: bag.label?.text ?? '', placeholder: label(id) },
     { t: 'vec3', k: 'pos', label: 'position', value: obj.position.toArray(), step: 0.1, dp: 2 },
-    { t: 'num', k: 'yaw', label: 'yaw°', value: obj.rotation.y * 180 / Math.PI, step: 15, dp: 0 },
-    { t: 'num', k: 'scale', label: 'scale', value: obj.scale.x, step: 0.1, dp: 2, min: 0.01 },
+    { t: 'vec3', k: 'rot', label: 'rotation°', value: [obj.rotation.x, obj.rotation.y, obj.rotation.z].map((r) => r * 180 / Math.PI), step: 15, dp: 0 },
+    { t: 'vec3', k: 'scale', label: 'scale', value: obj.scale.toArray(), step: 0.1, dp: 2 },
     { t: 'btn', k: grabbable ? 'ungrab' : 'grab', label: grabbable ? 'remove grabbable' : '✋ make grabbable' },
     {
       t: 'list', label: 'components', empty: 'no components',
@@ -69,8 +69,20 @@ export function dispatch(id, k, v) {
       sendVerb('place', { id, pos: p });
       break;
     }
-    case 'yaw': sendVerb('place', { id, yaw: resolve(obj.rotation.y * 180 / Math.PI, v) * Math.PI / 180 }); break;
-    case 'scale': sendVerb('place', { id, scale: Math.max(0.01, resolve(obj.scale.x, v)) }); break;
+    case 'rot': {
+      const cur = [obj.rotation.x, obj.rotation.y, obj.rotation.z].map((r) => r * 180 / Math.PI);
+      const deg = (typeof v === 'object' && 'delta' in v)
+        ? cur.map((c, i) => (i === v.axis ? c + v.delta : c)) : v;
+      sendVerb('place', { id, rot: deg.map((d) => d * Math.PI / 180) });
+      break;
+    }
+    case 'scale': {
+      const cur = obj.scale.toArray();
+      const s = ((typeof v === 'object' && 'delta' in v)
+        ? cur.map((c, i) => (i === v.axis ? c + v.delta : c)) : v).map((c) => Math.max(0.01, c));
+      sendVerb('place', { id, scale: s });
+      break;
+    }
     case 'rename':
       sendVerb('comp', { id, type: 'label', data: v.trim() ? { text: v.trim().slice(0, 48) } : null });
       break;

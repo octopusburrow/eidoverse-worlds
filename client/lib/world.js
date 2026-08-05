@@ -179,7 +179,12 @@ export async function applyEntry(entry, live, ctx = {}) {
         }
         if (args.pos) obj.position.set(...args.pos);
         if (args.yaw != null) obj.rotation.y = args.yaw;
-        if (args.scale != null) obj.scale.setScalar(args.scale);
+        // full TRS (R, 22:13: "don't leave me hanging — three degrees of
+        // freedom"): rot = euler xyz radians, scale = per-axis triple.
+        // yaw/scalar-scale stay honored so old entries and drag-edits replay.
+        if (Array.isArray(args.rot) && args.rot.length === 3) obj.rotation.set(...args.rot);
+        if (Array.isArray(args.scale)) obj.scale.set(...args.scale);
+        else if (args.scale != null) obj.scale.setScalar(args.scale);
         if (!obj.userData.mountedTo) {
           obj.userData.base = { pos: obj.position.toArray(), yaw: obj.rotation.y };
         }

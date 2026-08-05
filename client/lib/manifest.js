@@ -52,7 +52,8 @@ export function dispatch(k, v) {
       const things = aboard().map(({ id, meta }) => {
         const o = entities.get(id);
         return {
-          lib: meta.lib, pos: o.position.toArray(), yaw: o.rotation.y, scale: o.scale.x,
+          lib: meta.lib, pos: o.position.toArray(),
+          rot: [o.rotation.x, o.rotation.y, o.rotation.z], scale: o.scale.toArray(),
           comps: comps.get(id) ?? {},
         };
       });
@@ -73,10 +74,11 @@ export function dispatch(k, v) {
           for (const t of doc.things ?? []) {
             if (!t.lib) continue;
             const id = `${t.lib.split('/').pop().replace(/\.\w+$/, '').slice(0, 20)}-${Math.random().toString(36).slice(2, 7)}`;
-            sendVerb('spawn', {
-              id, lib: t.lib, pos: t.pos ?? [0, 0, 0],
-              yaw: t.yaw ?? 0, ...(t.scale && t.scale !== 1 ? { scale: t.scale } : {}),
-            });
+            sendVerb('spawn', { id, lib: t.lib, pos: t.pos ?? [0, 0, 0], yaw: t.yaw ?? 0 });
+            if (t.rot || t.scale != null) {
+              sendVerb('place', { id, ...(t.rot ? { rot: t.rot } : {}),
+                ...(t.scale != null ? { scale: t.scale } : {}) });
+            }
             for (const [type, data] of Object.entries(t.comps ?? {})) {
               sendVerb('comp', { id, type, data });
             }
