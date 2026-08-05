@@ -121,11 +121,57 @@ function makeTypingSprite() {
 // mic = this body's voice is LIVE in the room right now (R, 23:30) — the
 // megaphone is presence, not a message: it says listen, sound is coming from
 // here, independent of whether any words have been transcribed yet.
-// NOTE mic: U+1F399 '🎙' is a variation-selector emoji and renders blank or
-// as monochrome text in many font stacks — it drew as an EMPTY pill on R's
-// machine (23:37). U+1F5E3 '🗣' (speaking head) is plain-emoji and always
-// draws. Prefer non-VS codepoints for anything painted to a canvas.
-const STATE_GLYPH = { ear: '👂', think: '💭', tool: '🔧', mic: '🗣' };
+// DRAWN, never typed. Canvas fillText of an emoji silently paints NOTHING when
+// the platform lacks that glyph — no error, no fallback, just a pill that means
+// something and shows nothing. It happened live on R's Windows 11 desktop with
+// two different codepoints (U+1F399 🎙 and U+1F5E3 🗣), both of which
+// rasterized fine in headless Chromium — so the fault was invisible to the
+// tests too. Lucide-style strokes have no font dependency at all.
+// Signature: (ctx, t) => void, drawing centered on the origin in a ~26px box.
+const STATE_ICON = {
+  // ear — lucide 'ear': the outer helix, then the inner curl
+  ear(ctx) {
+    ctx.beginPath();
+    ctx.arc(0, -3, 8.5, Math.PI * 0.92, Math.PI * 2.02);
+    ctx.lineTo(8.5, 3);
+    ctx.arc(0, 3, 8.5, 0, Math.PI * 0.42);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(-0.5, -2, 3.6, Math.PI * 0.85, Math.PI * 2.1);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(3.1, -1.2); ctx.quadraticCurveTo(3.6, 6, -1.5, 8.5);
+    ctx.stroke();
+  },
+  // think — a thought cloud with trailing bubbles
+  think(ctx, t) {
+    ctx.beginPath();
+    ctx.arc(-5, -3, 5.2, 0, Math.PI * 2);
+    ctx.arc(3, -5, 6.2, 0, Math.PI * 2);
+    ctx.arc(6, 1.5, 4.4, 0, Math.PI * 2);
+    ctx.arc(-1, 2, 5.6, 0, Math.PI * 2);
+    ctx.stroke();
+    for (let i = 0; i < 2; i++) {
+      const a = 0.4 + 0.6 * Math.max(0, Math.sin(t * 3.4 - i * 0.9));
+      ctx.globalAlpha *= 1;
+      ctx.beginPath();
+      ctx.arc(-9 - i * 4.5, 8 + i * 3.5, 2.4 - i * 0.7, 0, Math.PI * 2);
+      ctx.globalAlpha = a * 0.9;
+      ctx.fill();
+    }
+  },
+  // tool — lucide 'wrench': the open jaw and the shaft
+  tool(ctx) {
+    ctx.beginPath();
+    ctx.moveTo(6.5, -9.5);
+    ctx.arc(3, -6, 5, -Math.PI * 0.28, Math.PI * 0.95, false);
+    ctx.lineTo(-8, 7.5);
+    ctx.arc(-9.5, 9, 2.2, -Math.PI * 0.75, Math.PI * 0.6, false);
+    ctx.lineTo(1.5, -1.5);
+    ctx.closePath();
+    ctx.stroke();
+  },
+};
 function drawTypingDots(sprite, t, state) {
   const ctx = sprite.userData.ctx;
   ctx.clearRect(0, 0, 128, 56);
@@ -165,14 +211,20 @@ function drawTypingDots(sprite, t, state) {
     sprite.material.map.needsUpdate = true;
     return;
   }
-  const glyph = STATE_GLYPH[state];
-  if (glyph) {
+  const icon = STATE_ICON[state];
+  if (icon) {
     const b = 0.75 + 0.25 * Math.sin(t * 3);      // gentle breathing, not a strobe
+    ctx.save();
+    ctx.translate(64, 28);
     ctx.globalAlpha = b;
-    ctx.font = '26px sans-serif';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(glyph, 64, 30);
+    ctx.strokeStyle = 'rgba(180,240,216,1)';
+    ctx.fillStyle = 'rgba(180,240,216,1)';
+    ctx.lineWidth = 2.2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    icon(ctx, t);
     ctx.globalAlpha = 1;
+    ctx.restore();
   } else {
     for (let i = 0; i < 3; i++) {
       const b = 0.32 + 0.68 * Math.max(0, Math.sin(t * 5 - i * 0.85));
