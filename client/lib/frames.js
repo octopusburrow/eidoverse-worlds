@@ -184,7 +184,8 @@ export function makeFrame(id, opts = {}) {
   // inside-only band left a sliver ("literally a pixel" — R, 16:53). The
   // outside reach comes free because these listeners hit-test coordinates,
   // not elements — nothing about the panels' look changes.
-  const BAND = 7, REACH = 4;   // 12 swallowed the scrollbars (R, 17:09)
+  const BAND = 3, REACH = 7;   // grab lives mostly OUTSIDE the edge (R, 17:18) —
+  // inside pixels belong to content, outside air is free real estate
   const zoneAt = (e) => {
     const r = root.getBoundingClientRect();
     const nx = e.clientX - r.left, ny = e.clientY - r.top;
