@@ -142,10 +142,18 @@ export async function applyEntry(entry, live, ctx = {}) {
         const sc = queued?.scale ?? args.scale;
         // decision sees the SPAWN scale: wrong-sized imports that arrive with a
         // corrective scale still classify by their real-world size
-        fitCollider(args.id, obj, { collide: args.collide, scale: sc || 1 });
+        // sc may be a per-axis triple (TRS, R 22:13) — the collider classifier
+        // wants one magnitude, and the biggest axis is what you can bump into
+        fitCollider(args.id, obj, { collide: args.collide,
+          scale: Array.isArray(sc) ? Math.max(...sc) : (sc || 1) });
         obj.position.set(...(queued?.pos ?? args.pos ?? [0, 0, 0]));
         obj.rotation.y = queued?.yaw ?? args.yaw ?? 0;
-        if (sc) obj.scale.setScalar(sc);
+        // setScalar(triple) silently poisons the Vector3: x=y=z=THE ARRAY,
+        // and every later read (inspector's toFixed, refitCollider's scale.x)
+        // detonates far from here. The place path learned triples; this spawn
+        // path had not. Found via the undo harness, 2026-08-05.
+        if (Array.isArray(sc)) obj.scale.set(...sc);
+        else if (sc) obj.scale.setScalar(sc);
         // the logged rest pose — what motion composes on and rest returns to
         obj.userData.base = { pos: obj.position.toArray(), yaw: obj.rotation.y };
         reindexCollider(args.id);
