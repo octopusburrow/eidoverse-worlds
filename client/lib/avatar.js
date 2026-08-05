@@ -704,7 +704,11 @@ export class Avatar {
     if (this.typing) {
       this.typing.visible = typingNow;
       if (typingNow) {
-        if (now - this._typingDrawAt > 110) { this._typingDrawAt = now; drawTypingDots(this.typing, now / 1000, this._typingState); }
+        if (now - this._typingDrawAt > 110) {
+          this._typingDrawAt = now;
+          drawTypingDots(this.typing, now / 1000, this._typingState);
+          if (globalThis.__pillDebug) globalThis.__pillLast = { id: this.id, state: this._typingState, t: now };
+        }
         this.typing.material.opacity = THREE.MathUtils.clamp(1 - (d - 26) / 12, 0, 1);
       }
     }
