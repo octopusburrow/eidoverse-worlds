@@ -140,7 +140,7 @@ select {
    content, so the chrome has to get out of the way on the user's terms. */
 /* invisible 4px hit-halo: pointer events just OUTSIDE the frame still target
    it, so edge-resize can be grabbed beyond the border (no visual change) */
-.frame::before { content: ''; position: absolute; inset: -4px; }
+.frame::before { content: ''; position: absolute; inset: -7px; }
 /* scrollbars sit 2px in from the frame edge so the resize band and the
    scroll thumb stop fighting over the same column (R, 17:11) */
 .frame .fr-body { padding-right: 3px; }
