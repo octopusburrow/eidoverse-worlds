@@ -13,6 +13,90 @@ import { bus } from './core.js';
 
 const LS = (id) => `ew-frame-${id}`;
 const frames = new Map();
+
+// ---- edge-resize: one document-level hit-tester for all frames -------------
+// Grab band: 3px inside the border + 7px of free air outside it. Inside
+// pixels belong to content — scrollbars and buttons always win (we test the
+// real element under the pointer, not geometry alone).
+const _resizables = [];
+const _BAND = 3, _REACH = 7;
+const _CURSORS = { n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize',
+  ne: 'nesw-resize', sw: 'nesw-resize', nw: 'nwse-resize', se: 'nwse-resize' };
+function _zoneFor(f, e) {
+  const r = f.root.getBoundingClientRect();
+  const nx = e.clientX - r.left, ny = e.clientY - r.top;
+  if (nx < -_REACH || ny < -_REACH || nx > r.width + _REACH || ny > r.height + _REACH) return '';
+  let z = '';
+  if (ny < _BAND) z += 'n'; else if (ny > r.height - _BAND) z += 's';
+  if (nx < _BAND) z += 'w'; else if (nx > r.width - _BAND) z += 'e';
+  return z;
+}
+function _contentClaims(e) {
+  // whatever really sits under the pointer: a scrollbar strip, a button, an
+  // input — interactive content beats the grab; bare frame chrome does not
+  for (let t = document.elementFromPoint(e.clientX, e.clientY); t instanceof HTMLElement; t = t.parentElement) {
+    if (['BUTTON', 'INPUT', 'TEXTAREA', 'SELECT', 'A'].includes(t.tagName)) return true;
+    if (t.scrollHeight > t.clientHeight + 1) {
+      const sbw = t.offsetWidth - t.clientWidth;
+      if (sbw > 0 && e.clientX >= t.getBoundingClientRect().right - sbw - 2) return true;
+    }
+    if (t.scrollWidth > t.clientWidth + 1) {
+      const sbh = t.offsetHeight - t.clientHeight;
+      if (sbh > 0 && e.clientY >= t.getBoundingClientRect().bottom - sbh - 2) return true;
+    }
+    if (t.classList?.contains('frame')) break;
+  }
+  return false;
+}
+function _hit(e) {
+  const cands = _resizables.filter((f) => f.active());
+  cands.sort((a, b) => (+b.root.style.zIndex || 0) - (+a.root.style.zIndex || 0));
+  for (const f of cands) {
+    const z = _zoneFor(f, e);
+    if (z) return { f, z };
+  }
+  return null;
+}
+let _resizing = false;
+document.addEventListener('pointermove', (e) => {
+  if (_resizing) return;
+  const h = _hit(e);
+  document.body.style.cursor = (h && !_contentClaims(e)) ? _CURSORS[h.z] : '';
+}, true);
+document.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0) return;
+  const h = _hit(e);
+  if (!h || _contentClaims(e)) return;
+  const { f, z } = h;
+  e.preventDefault(); e.stopPropagation();
+  f.raise();
+  _resizing = true;
+  const sx = e.clientX, sy = e.clientY;
+  const s0 = { x: f.state.x, y: f.state.y, w: f.state.w, h: f.state.h };
+  const move = (ev) => {
+    const dx = ev.clientX - sx, dy = ev.clientY - sy;
+    if (z.includes('e')) f.state.w = clamp(s0.w + dx, f.minW, innerWidth - 20);
+    if (z.includes('s')) f.state.h = clamp(s0.h + dy, f.minH, innerHeight - 60);
+    if (z.includes('w')) {
+      f.state.w = clamp(s0.w - dx, f.minW, innerWidth - 20);
+      f.state.x = s0.x + (s0.w - f.state.w);       // east side stays planted
+    }
+    if (z.includes('n')) {
+      f.state.h = clamp(s0.h - dy, f.minH, innerHeight - 60);
+      f.state.y = s0.y + (s0.h - f.state.h);       // south side stays planted
+    }
+    f.paint();
+  };
+  const up = () => {
+    document.removeEventListener('pointermove', move, true);
+    document.removeEventListener('pointerup', up, true);
+    document.body.style.cursor = '';
+    _resizing = false;
+    f.save();
+  };
+  document.addEventListener('pointermove', move, true);
+  document.addEventListener('pointerup', up, true);
+}, true);
 let zTop = 30;
 let locked = localStorage.getItem('ew-ui-locked') === '1';
 
@@ -174,83 +258,12 @@ export function makeFrame(id, opts = {}) {
     head.dispatchEvent(new PointerEvent('pointerdown', e));
   }, true);
 
-  // ---- resizing: every edge and corner, like any modern window ------------
-  // The old affordance was a 15px double-line grip at the lower-right — one
-  // discoverable pixel-patch and one direction of growth. Instead: an 8px
-  // band around the whole frame is live; the cursor announces the zone
-  // (ns/ew/nesw/nwse) and dragging a north or west side moves the origin so
-  // the opposite side stays planted, which is what hands expect.
-  // 12px inside + 4px beyond the edge: panel content crowds the border, so an
-  // inside-only band left a sliver ("literally a pixel" — R, 16:53). The
-  // outside reach comes free because these listeners hit-test coordinates,
-  // not elements — nothing about the panels' look changes.
-  const BAND = 3, REACH = 7;   // grab lives mostly OUTSIDE the edge (R, 17:18) —
-  // inside pixels belong to content, outside air is free real estate
-  const zoneAt = (e) => {
-    const r = root.getBoundingClientRect();
-    const nx = e.clientX - r.left, ny = e.clientY - r.top;
-    if (nx < -REACH || ny < -REACH || nx > r.width + REACH || ny > r.height + REACH) return '';
-    let z = '';
-    if (ny < BAND) z += 'n'; else if (ny > r.height - BAND) z += 's';
-    if (nx < BAND) z += 'w'; else if (nx > r.width - BAND) z += 'e';
-    return z;
-  };
-  const CURSORS = { n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize',
-    ne: 'nesw-resize', sw: 'nesw-resize', nw: 'nwse-resize', se: 'nwse-resize' };
-  // A scrollbar living inside the band OWNS its pixels — the resize zone
-  // yields wherever the pointer sits on a scrollable child's scrollbar strip
-  // (R, 17:14: "the panel edge grab steals it").
-  const overScrollbar = (e) => {
-    for (let t = e.target; t && t !== root.parentElement; t = t.parentElement) {
-      if (!(t instanceof HTMLElement)) break;
-      if (t.scrollHeight > t.clientHeight + 1) {
-        const sbw = t.offsetWidth - t.clientWidth;
-        if (sbw > 0 && e.clientX >= t.getBoundingClientRect().right - sbw - 2) return true;
-      }
-      if (t.scrollWidth > t.clientWidth + 1) {
-        const sbh = t.offsetHeight - t.clientHeight;
-        if (sbh > 0 && e.clientY >= t.getBoundingClientRect().bottom - sbh - 2) return true;
-      }
-    }
-    return false;
-  };
-  root.addEventListener('pointermove', (e) => {
-    if (!resizable || locked || state.collapsed || root.style.cursor === 'grabbing') return;
-    root.style.cursor = (!overScrollbar(e) && CURSORS[zoneAt(e)]) || '';
-  });
-  root.addEventListener('pointerdown', (e) => {
-    if (!resizable || locked || state.collapsed) return;
-    if (overScrollbar(e)) return;
-    const z = zoneAt(e);
-    if (!z) return;
-    e.preventDefault(); e.stopPropagation();
-    raise();
-    const sx = e.clientX, sy = e.clientY;
-    const s0 = { x: state.x, y: state.y, w: state.w, h: state.h };
-    try { root.setPointerCapture(e.pointerId); } catch { /* no capture */ }
-    const move = (ev) => {
-      const dx = ev.clientX - sx, dy = ev.clientY - sy;
-      if (z.includes('e')) state.w = clamp(s0.w + dx, minW, innerWidth - 20);
-      if (z.includes('s')) state.h = clamp(s0.h + dy, minH, innerHeight - 60);
-      if (z.includes('w')) {
-        state.w = clamp(s0.w - dx, minW, innerWidth - 20);
-        state.x = s0.x + (s0.w - state.w);       // east side stays planted
-      }
-      if (z.includes('n')) {
-        state.h = clamp(s0.h - dy, minH, innerHeight - 60);
-        state.y = s0.y + (s0.h - state.h);       // south side stays planted
-      }
-      paint();
-    };
-    const up = () => {
-      root.removeEventListener('pointermove', move);
-      root.removeEventListener('pointerup', up);
-      root.style.cursor = '';
-      save();
-    };
-    root.addEventListener('pointermove', move);
-    root.addEventListener('pointerup', up);
-  }, true);
+  // ---- resizing: registered with the module-level edge hit-tester (below) —
+  // one document listener serves every frame, which is the only way to grab
+  // OUTSIDE a frame's border without an overlay stealing its content's events
+  // (the ::before halo painted over scrollbars and buttons — R, 17:20).
+  if (resizable) _resizables.push({ root, state, minW, minH, paint, save, raise,
+    active: () => !locked && !state.collapsed && !state.hidden });
 
   root.addEventListener('pointerdown', raise);
   head.addEventListener('dblclick', () => api.collapse());
