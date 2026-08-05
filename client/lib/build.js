@@ -118,12 +118,14 @@ export function select(id) {
   outline.box.setFromObject(obj);
   outline.visible = true;
   showInspector(id);
+  bus.emit('selection', { id });
 }
 export function deselect() {
   selected = null;
   dragging = null;
   outline.visible = false;
   hideInspector();
+  bus.emit('selection', { id: null });
 }
 function refreshOutline() {
   if (selected) outline.box.setFromObject(selected.obj);

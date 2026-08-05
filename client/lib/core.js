@@ -89,7 +89,13 @@ canvas.tabIndex = -1;
 canvas.style.outline = 'none';
 document.body.prepend(canvas);
 
-export const renderer = new THREE.WebGPURenderer({ canvas, antialias: true });
+// XR needs the WebGL2 backend: three r184's XRManager throws on WebGPU
+// ("use forceWebGL"), and the backend is a construction-time choice — so VR
+// is a boot flag (?xr=1), not a runtime toggle. Known cost: WebGL loses the
+// reversed-Z depth precision noted below; the 0.15..20000 range is a
+// z-fighting risk in XR mode until we add a log-depth or tightened-far path.
+export const XR_BOOT = CONFIG.params.has('xr');
+export const renderer = new THREE.WebGPURenderer({ canvas, antialias: true, forceWebGL: XR_BOOT });
 renderer.setSize(innerWidth, innerHeight);
 // Spectators start a notch lower — an audience laptop's job is 30fps for an
 // hour, not maximum sharpness. Adaptive scaling adjusts from here.

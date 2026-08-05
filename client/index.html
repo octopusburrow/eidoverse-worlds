@@ -175,6 +175,41 @@ select {
 /* scrollbars sit a couple px in from the frame edge so the scroll thumb and
    the edge-resize band don't fight over the same column */
 .frame .fr-body { padding-right: 3px; }
+
+/* schema panels (manifest / inspector) — see panels.js for the field contract */
+/* The scroller is an INNER element, never .fr-body itself: a scrollbar on the
+   body sits exactly where the edge-resize band lives, and content-wins hands
+   those pixels to the scrollbar — the panel stops being resizable from its
+   right edge (R, 00:12). Matches the .stack pattern the other frames use. */
+.schema-panel { padding: 0; overflow: hidden; font-size: var(--fs-sm); }
+.schema-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 10px; }
+.sp-row { display: flex; align-items: center; gap: 8px; margin: 5px 0; }
+.sp-row.sp-f-list { flex-direction: column; align-items: stretch; }
+.sp-label { color: var(--dim); min-width: 64px; flex-shrink: 0; }
+.sp-info { color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-step { display: inline-flex; align-items: center; gap: 2px; }
+.sp-bump { width: 22px; padding: 2px 0; background: #2a3342; border: none; color: var(--fg);
+  border-radius: 4px; cursor: pointer; }
+.sp-bump:hover { background: #37435a; }
+.sp-num { width: 54px; background: var(--panel); border: 1px solid var(--line); color: var(--fg);
+  border-radius: 4px; padding: 3px 5px; text-align: right; }
+.sp-vec { display: flex; gap: 6px; flex-wrap: wrap; }
+.sp-text { flex: 1; min-width: 0; background: var(--panel); border: 1px solid var(--line);
+  color: var(--fg); border-radius: 4px; padding: 4px 7px; }
+.sp-btn { background: var(--accent, #e8956b); border: none; color: #14100c; font-weight: 600;
+  border-radius: 5px; padding: 5px 12px; cursor: pointer; }
+.sp-btn.danger, .sp-mini.danger { background: #6e2a2a; color: var(--fg); }
+.sp-list { display: flex; flex-direction: column; gap: 2px; max-height: 190px; overflow-y: auto; }
+.sp-item { display: flex; align-items: center; gap: 6px; padding: 3px 7px; border-radius: 5px; }
+.sp-item:hover { background: rgba(255,255,255,.04); }
+.sp-item.active { background: #1d2634; }
+.sp-item-main { flex: 1; min-width: 0; display: flex; flex-direction: column; cursor: pointer; }
+.sp-item-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-item-sub { color: var(--dim); font-size: 11px; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
+.sp-mini { background: #2a3342; border: none; color: var(--fg); border-radius: 4px;
+  padding: 2px 8px; font-size: 11px; cursor: pointer; }
+.sp-empty { color: var(--dim); font-style: italic; padding: 4px 7px; }
 .frame.flash { animation: flash 1.4s ease-out; }
 @keyframes flash {
   0%, 100% { border-color: var(--edge); }

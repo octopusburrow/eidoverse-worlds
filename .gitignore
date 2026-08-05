@@ -27,3 +27,6 @@ assets/opt/thumbs/
 
 # local claude/mcp config
 .mcp.json
+
+# session memory must never ride the repo (private content; fork is public)
+.memsearch/
