@@ -1098,6 +1098,7 @@ function frame(now) {
   updateVoiceMouths(now);        // BEFORE the avatar updates that consume it
   updateAmbient();               // world sound: its own category, proves the split
   BC('me-update');
+  updateVoiceMouths(now);        // BEFORE the avatar updates that consume it
   me?.update(dt, now);
   BC('bodydrag');
   updateBodyDrag(dt, now);       // BEFORE remotes: the takeover sim's pose must

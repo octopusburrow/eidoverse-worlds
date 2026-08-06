@@ -11,6 +11,9 @@ import { randomBytes } from "node:crypto";
 import { verifyToken, JtiCache } from "./aid1.ts";
 import { BehaviorHost, wireBehaviorGate, wireBehaviorStore, behaviorLimits, type BehaviorRec } from "./behaviors.ts";
 import { summarizeGlb } from "./geometry.ts";
+// Pure and dependency-free — the same fold the browser client and the mcpl
+// agent run, which is what keeps all three planes' skies in agreement.
+import { foldSkyEntry } from "../client/lib/forecast.js";
 
 const PORT = Number(process.env.PORT ?? 8940);
 // Show-night door policy. Empty = open (dev on a tailnet). On a public box you
@@ -317,8 +320,11 @@ function foldEntry(st: WorldState, e: LogEntry): void {
     }
     case "terrain": st.terrain = a; return;
     case "grass": st.grass = a?.clear ? null : a; return;   // clear = mow, no field to replay
-    case "sky": st.sky = { ...a, ts: e.ts }; return;
-    case "weather": st.sky = { ...(st.sky ?? {}), ...a, ts: e.ts }; return;
+    // Sky and weather fold through the shared module: forecast/override
+    // provenance is stamped from the ENTRY (spoof-proof), and a weather verb
+    // under a rated sky rebases `hours` so the day doesn't snap (issue #29).
+    case "sky": st.sky = foldSkyEntry(null, { verb: "sky", args: a, ts: e.ts, seq: e.seq, actor: e.actor }); return;
+    case "weather": st.sky = foldSkyEntry(st.sky, { verb: "weather", args: a, ts: e.ts, seq: e.seq, actor: e.actor }); return;
     case "asset":
       if (a?.path && !st.assets.some((x) => x.path === a.path)) {
         st.assets.push({ name: a.name ?? "upload", path: a.path });
@@ -1227,6 +1233,7 @@ function contentType(path: string): string {
   if (path.endsWith(".js") || path.endsWith(".mjs")) return "text/javascript";
   if (path.endsWith(".json")) return "application/json";
   if (path.endsWith(".css")) return "text/css";
+  if (path.endsWith(".md")) return "text/markdown; charset=utf-8";
   if (path.endsWith(".png")) return "image/png";
   if (path.endsWith(".jpg") || path.endsWith(".jpeg")) return "image/jpeg";
   if (path.endsWith(".hdr")) return "application/octet-stream";
@@ -1765,6 +1772,13 @@ const server = Bun.serve({
          </svg>`,
         { headers: { "content-type": "image/svg+xml", "cache-control": "public, max-age=86400" } },
       );
+    }
+    if (url.pathname.toLowerCase() === "/agents.md") {
+      // The closed-verb-set error says "see AGENTS.md" — so the file has to be
+      // reachable from the world itself, not just the repo. Any casing works
+      // (/AGENTS.md, /agents.md): agents type both, and a 404 on the spelling
+      // the error message taught you is a locked door with a sign on it.
+      return serveFrom(ROOT, "AGENTS.md", false, req);
     }
     if (url.pathname === "/" || url.pathname === "/index.html")
       return serveFrom(join(ROOT, "client"), "index.html");

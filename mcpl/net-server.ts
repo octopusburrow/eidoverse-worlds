@@ -408,6 +408,18 @@ class Session {
           if (this.heldActivity.length > 8) this.heldActivity.shift();
         } else if (this.channelOpen) this.deliver(`* ${ev.text}`, { id: "world", name: this.agent.world },
           { tags: tags(CHAT.ambient, EIDO.activityDigest), metadata: { activity: true } });
+      } else if (ev.kind === "weather") {
+        // The sky changed ON ITS OWN — a forecast boundary, an override
+        // landing/expiring, or a day-phase crossing. One line per boundary,
+        // provenance in the text, ambient like every world-system signal.
+        // Pull-only hosts get it from the `activity` tool's held ring, same
+        // as activity digests — resting agents shouldn't need a renderer to
+        // know it started raining.
+        if (!this.granted(CAP.channelsIncoming)) {
+          this.heldActivity.push(`[${new Date(ev.ts).toISOString().slice(11, 16)}Z] ${ev.text}`);
+          if (this.heldActivity.length > 8) this.heldActivity.shift();
+        } else if (this.channelOpen) this.deliver(`* ${ev.text}`, { id: "world", name: this.agent.world },
+          { tags: tags(CHAT.ambient, EIDO.weather), metadata: { weather: true } });
       } else if (this.channelOpen) {
         this.deliver(`* ${ev.who} ${ev.kind === "arrive" ? "arrived in the world" : "left the world"}`,
           { id: "world", name: this.agent.world }, { tags: tags(CHAT.ambient, EIDO.presence, from) });
@@ -474,9 +486,14 @@ class Session {
       const missedSeq = said.filter((m) => m.who !== this.auth.id && rxSeq.test(m.text));
       if (missedSeq.length) {
         this.deliver(`While you were away, ${missedSeq.length} message${missedSeq.length === 1 ? "" : "s"} mentioned you:`,
-          { id: "world", name: this.agent.world });
+          { id: "world", name: this.agent.world }, { tags: tags(CHAT.ambient, EIDO.catchup) });
         for (const m of missedSeq.slice(-10)) {
-          this.deliver(`${m.who}: ${m.text}`, { id: m.who, name: m.who }, { tags: ["mention"], mentioned: true });
+          // replay = ORIGINAL addressing + the catchup marker, exactly as the
+          // ontology declares (issue #39: these shipped as bare legacy
+          // ["mention"], which no declared rule could match). deliver()
+          // renders the author itself — passing "who: text" here doubled it.
+          this.deliver(m.text, { id: m.who, name: m.who },
+            { tags: tags(CHAT.mention, EIDO.catchup), mentioned: true });
         }
       }
     }
@@ -485,8 +502,10 @@ class Session {
       const rx = new RegExp(`(@${this.auth.id}\\b|\\b${this.auth.id}\\b)`, "i");
       const missed = this.agent.inbox.filter((m) => m.kind === "say" && m.ts > since && m.who !== this.auth.id && rx.test(m.text ?? ""));
       if (missed.length) {
-        this.deliver(`While you were away, ${missed.length} message${missed.length === 1 ? "" : "s"} mentioned you:`, { id: "world", name: this.agent.world });
-        for (const m of missed.slice(-10)) this.deliver(`${m.who}: ${m.text}`, { id: m.who, name: m.who }, { tags: ["mention"], mentioned: true });
+        this.deliver(`While you were away, ${missed.length} message${missed.length === 1 ? "" : "s"} mentioned you:`,
+          { id: "world", name: this.agent.world }, { tags: tags(CHAT.ambient, EIDO.catchup) });
+        for (const m of missed.slice(-10)) this.deliver(m.text ?? "", { id: m.who, name: m.who },
+          { tags: tags(CHAT.mention, EIDO.catchup), mentioned: true });
       }
     }
     lastSeen[this.auth.id] = Date.now();
