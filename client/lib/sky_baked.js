@@ -298,6 +298,14 @@ export function updateBakedDome(now = performance.now()) {
   if (!dome) return;
   dome.position.set(camera.position.x, 0, camera.position.z);
 
+  // XR: NO mid-frame secondary renders while a session presents. Band bakes
+  // and env blits call renderer.render() inside the animation frame, which
+  // corrupts the in-flight per-eye render list ("Cannot destructure 'object'
+  // of renderList[i]" @ three.webgpu _renderObjects, thrown per frame = the
+  // world strobing in the headset — R, 22:42). The dome keeps its last baked
+  // sky; refresh cycles resume when the session ends.
+  if (renderer.xr?.isPresenting) return;
+
   if (state === 'baking') {
     renderBand(bandIdx);
     bandIdx += 1;
