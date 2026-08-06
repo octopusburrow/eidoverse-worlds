@@ -856,6 +856,10 @@ export async function contributeThumbnail(name, vrm, token = '', { force = false
     // Pose it first. A VRM at rest is in a T-pose, which reads as a mannequin
     // on a shelf rather than a person you might be. One frame of the idle clip
     // costs a single already-cached download and makes the roster look alive.
+    // The BONES must go back too: restoring position/rotation/parent but not
+    // the pose left an idle imprint on any bone the live action doesn't drive
+    // (visible as the body popping toward idle after a portrait).
+    const keptPose = vrm.humanoid?.getRawPose?.() ?? null;
     let poseMixer = null;
     try {
       const clip = await clipFor(vrm, 'idle');
@@ -907,6 +911,7 @@ export async function contributeThumbnail(name, vrm, token = '', { force = false
     } finally {
       renderer.setRenderTarget(prevTarget);
       poseMixer?.stopAllAction();
+      if (keptPose) { try { vrm.humanoid.setRawPose(keptPose); } catch { /* pose restore is best-effort */ } }
       vrm.scene.position.copy(keptPos);
       vrm.scene.rotation.copy(keptRot);
       if (home) {
