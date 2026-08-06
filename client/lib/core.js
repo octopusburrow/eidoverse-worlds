@@ -95,35 +95,37 @@ document.body.prepend(canvas);
 // reversed-Z depth precision noted below; the 0.15..20000 range is a
 // z-fighting risk in XR mode until we add a log-depth or tightened-far path.
 export const XR_BOOT = CONFIG.params.has('xr');
-export const renderer = new THREE.WebGPURenderer({ canvas, antialias: true, forceWebGL: XR_BOOT });
-renderer.setSize(innerWidth, innerHeight);
-
-// TOLERANT RENDER LIST (XR strobe, R 22:42→23:02): something leaves holes in
+// TOLERANT RENDER LIST (XR strobe, R 22:42→23:05): something leaves holes in
 // the per-eye render list mid-session ("Cannot destructure 'object' of
 // renderList[i]"), and the stock loop throws — one hole kills the whole
-// frame, which reads as the world blinking in the headset. Skip holes and
-// render everything else; log the first few occurrences WITH a stack so the
-// actual corruptor can be found (the sky-bake gate was theory #1, killed by
-// data). Diagnostic shim: remove once the root cause is fixed.
+// frame, which reads as the world blinking in the headset. Skip holes, render
+// everything else, and log the first few with a stack so the corruptor can be
+// found. Patched on the CLASS PROTOTYPE **before construction** — an
+// instance patch verifiably engaged yet raw crashes continued, so some call
+// path holds a constructor-time binding of the original method.
 {
-  const orig = renderer._renderObjects?.bind(renderer);
+  const proto = THREE.WebGPURenderer?.prototype;
+  const orig = proto?._renderObjects;
   let logged = 0;
   if (orig) {
-    renderer._renderObjects = (renderList, cam, scn, lightsNode, passId) => {
+    proto._renderObjects = function (renderList, cam, scn, lightsNode, passId) {
       let holes = 0;
       for (let i = renderList.length - 1; i >= 0; i--) {
         if (!renderList[i]) { renderList.splice(i, 1); holes++; }
       }
       if (holes && logged < 5) {
         logged++;
-        const err = new Error(`renderList had ${holes} hole(s), pass=${passId}, xr=${renderer.xr?.isPresenting}`);
+        const err = new Error(`renderList had ${holes} hole(s), pass=${passId}, xr=${this.xr?.isPresenting}`);
         globalThis.__errLog?.push?.(`${err.message} :: ${err.stack?.split('\n').slice(2, 5).join(' | ')}`);
         console.warn('[renderlist]', err.message);
       }
-      return orig(renderList, cam, scn, lightsNode, passId);
+      return orig.call(this, renderList, cam, scn, lightsNode, passId);
     };
   }
 }
+
+export const renderer = new THREE.WebGPURenderer({ canvas, antialias: true, forceWebGL: XR_BOOT });
+renderer.setSize(innerWidth, innerHeight);
 // Spectators start a notch lower — an audience laptop's job is 30fps for an
 // hour, not maximum sharpness. Adaptive scaling adjusts from here.
 export const BASE_PIXEL_RATIO = Math.min(devicePixelRatio, CONFIG.spectate ? 1.5 : 2);
