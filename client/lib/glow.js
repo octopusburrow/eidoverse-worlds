@@ -8,14 +8,19 @@
 // one additive material per active glow. Attention is presentation; the shell
 // is removed when it cools, leaving the instance exactly as authored.
 
-import { THREE } from './core.js';
+import { THREE, bus } from './core.js';
 
-const active = new Map();   // root Object3D -> { shells: Mesh[], mat }
+const active = new Map();   // entity id -> { root, shells: Mesh[], mat }
 
-export function glowSet(root, color, heat) {
+// an entity removed mid-glow must not pin its dead subtree in this registry
+// (found in the 08-06 self-audit R demanded — keyed by root, the entry and
+// its material outlived the entity)
+bus.on('entity', ({ id, gone }) => { if (gone) glowRemove(id); });
+
+export function glowSet(id, root, color, heat) {
   if (!root) return;
-  if (heat <= 0.01) { glowRemove(root); return; }
-  let g = active.get(root);
+  if (heat <= 0.01) { glowRemove(id); return; }
+  let g = active.get(id);
   if (!g) {
     const mat = new THREE.MeshBasicMaterial({
       color, transparent: true, opacity: 0,
@@ -25,6 +30,10 @@ export function glowSet(root, color, heat) {
     const shells = [];
     root.traverse((o) => {
       if (!o.isMesh || o.userData.glowShell) return;
+      // a static shell of a SkinnedMesh's geometry renders the BIND POSE — a
+      // T-posed ghost jutting out of an animated body. Skinned things carry
+      // their highlight elsewhere (or not at all) rather than wrongly.
+      if (o.isSkinnedMesh) return;
       const shell = new THREE.Mesh(o.geometry, mat);   // geometry by reference
       shell.userData.glowShell = true;
       shell.raycast = () => {};                        // never pickable
@@ -33,8 +42,8 @@ export function glowSet(root, color, heat) {
       o.add(shell);
       shells.push(shell);
     });
-    g = { shells, mat };
-    active.set(root, g);
+    g = { root, shells, mat };
+    active.set(id, g);
   }
   g.mat.color.set(color);
   // 0.35 read as hot-pink shrink-wrap at close range (measured 08-06) —
@@ -42,10 +51,10 @@ export function glowSet(root, color, heat) {
   g.mat.opacity = Math.min(1, heat) * 0.13;
 }
 
-export function glowRemove(root) {
-  const g = active.get(root);
+export function glowRemove(id) {
+  const g = active.get(id);
   if (!g) return;
-  active.delete(root);
+  active.delete(id);
   for (const s of g.shells) s.parent?.remove(s);
   g.mat.dispose();
 }

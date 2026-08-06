@@ -180,14 +180,14 @@ const _litIds = new Set();       // entity ids currently wearing a hint shell
 function litFor(id, amount) {
   const obj = entities.get(id);
   if (!obj) return;
-  glowSet(obj, _warm, amount);
+  glowSet(id, obj, _warm, amount);
   _litIds.add(id);
 }
 
 function coolAll(except) {
   for (const id of _litIds) {
     if (except?.has(id)) continue;
-    glowRemove(entities.get(id));
+    glowRemove(id);
     _litIds.delete(id);
   }
 }

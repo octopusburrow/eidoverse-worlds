@@ -51,11 +51,11 @@ let _lastNow = 0, _lastRay = -1e9;
 // (geometry by reference) while heat > 0 and removes it after. The material
 // every sibling shares is never written.
 function applyHeat(id, n) {
-  glowSet(entities.get(id), n.color, n.heat);
+  glowSet(id, entities.get(id), n.color, n.heat);
 }
 
 function cool(id) {
-  glowRemove(entities.get(id));
+  glowRemove(id);
 }
 
 /** Called from the frame loop. Raycasts at ~12Hz; heat eases every frame. */
