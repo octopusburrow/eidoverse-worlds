@@ -676,7 +676,11 @@ export class Avatar {
       this.gaze.position.lerp(_v, 1 - Math.exp(-3 * dt));
     }
 
-    const em = this.vrm.expressionManager;
+    // tune.expressions:false — a body whose morph targets carry corrupt
+    // body-wide deltas (tigerbee: EVERY morph, blink included, deforms the
+    // whole mesh — VRC-conversion artifact, measured 08-05) turns blink and
+    // visemes into a periodic full-body pop. Off until the asset is rebuilt.
+    const em = this.tune?.expressions === false ? null : this.vrm.expressionManager;
     if (em) {
       // ---- blink: irregular, in pairs sometimes, never metronomic
       if (this.blinkT >= 0) {
