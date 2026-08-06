@@ -170,6 +170,7 @@ export function sendPose(now) {
     p: [s.pos.x, s.pos.y, s.pos.z],
     yaw: s.yaw, speed: s.speed, clip: s.clip,
     pitch: Math.round((s.pitch ?? 0) * 100) / 100,
+    lyaw: Math.round((s.lyaw ?? 0) * 100) / 100,
   };
   if (s.emote) { pose.emote = s.emote; s.emote = null; } // one-shot: send once
   // A held custom pose rides the presence packet (and therefore lastPose, so

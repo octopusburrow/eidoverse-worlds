@@ -2,6 +2,7 @@
 // the small autonomic behaviours that make a puppet read as present (gaze,
 // blink, head pitch, mouth movement while speaking).
 
+import { FeetIK } from './feetik.js';
 import { THREE, scene, camera, renderer, report, angleDelta } from './core.js';
 import {
   loadVRM, clipFor, vrmaBytes, loadTrack, loadDone,
@@ -165,7 +166,8 @@ function drawTypingDots(sprite, t, state) {
 
 const _v = new THREE.Vector3();
 const _pq = new THREE.Quaternion();
-const _X = new THREE.Vector3(1, 0, 0);      // scratch — hot paths must not allocate
+const _X = new THREE.Vector3(1, 0, 0);
+const _Y = new THREE.Vector3(0, 1, 0);      // scratch — hot paths must not allocate
 const _Z = new THREE.Vector3(0, 0, 1);
 const _IDENT = new THREE.Quaternion();
 const _v2 = new THREE.Vector3();
@@ -215,6 +217,7 @@ export class Avatar {
     this.blinkT = -1;
     this.head = vrm.humanoid?.getNormalizedBoneNode?.('head') ?? null;
     this.pitch = 0;                // radians, applied post-update
+    this.lookYaw = 0;              // radians, view − body: the look chain's twist
     this._limp = false;            // see setLimp: the mixer yields to the sim
     this._composed = new Map();    // node -> clip base + what we last wrote
     this.shadow = makeBlobShadow();
@@ -629,13 +632,27 @@ export class Avatar {
     // the quaternion form says so outright instead of leaning on the decompose
     // order of whatever the clip left in the bone.
     BC('av:head');
-    if (this.head && !this._limp) {
-      const r = this._composeBegin(this.head);
-      if (this.pitch) {
-        this.head.quaternion.premultiply(
-          _pq.setFromAxisAngle(_X, THREE.MathUtils.clamp(this.pitch, -0.5, 0.6)));
-      }
-      this._composeEnd(this.head, r);
+    // LOOK CHAIN (2026-08-06, R: "character won't turn and look with you"):
+    // pitch AND yaw distributed down spine→head so no single joint snaps —
+    // ported from porch-old's HMD spine-look weights, driven here by lookYaw
+    // (view − body yaw, set by the controller for me, by the wire for others).
+    // Weights renormalize over the bones this rig actually has (upperChest is
+    // optional in VRM), so the head's cumulative turn hits the target.
+    if (!this._limp && (this.pitch || this.lookYaw)) {
+      const chain = ['spine', 'chest', 'upperChest', 'neck', 'head'];
+      const wY = [0.12, 0.12, 0.16, 0.25, 0.35], wP = [0.10, 0.12, 0.16, 0.26, 0.36];
+      const bones = chain.map((n) => this.vrm.humanoid?.getNormalizedBoneNode?.(n));
+      let sY = 0, sP = 0;
+      bones.forEach((b, i) => { if (b) { sY += wY[i]; sP += wP[i]; } });
+      const pitch = THREE.MathUtils.clamp(this.pitch, -0.5, 0.6);
+      const yaw = THREE.MathUtils.clamp(this.lookYaw ?? 0, -1.15, 1.15);
+      bones.forEach((b, i) => {
+        if (!b) return;
+        const r = this._composeBegin(b);
+        if (yaw) b.quaternion.premultiply(_pq.setFromAxisAngle(_Y, yaw * wY[i] / (sY || 1)));
+        if (pitch) b.quaternion.premultiply(_pq.setFromAxisAngle(_X, pitch * wP[i] / (sP || 1)));
+        this._composeEnd(b, r);
+      });
     }
     // ---- per-body tune (sidecar json): armSpread lifts the upper arms away
     // from the torso by N degrees. Human-proportioned clips put a correct
@@ -664,6 +681,15 @@ export class Avatar {
         if (b) b.quaternion.slerp(_IDENT, 1 - fs);
       }
     }
+
+    // ---- planted feet (feetik.js): only a STANDING body — idle clip, not
+    // limp, no emote, no held pose. The look chain above may be easing the
+    // whole root toward the view; this pins the feet to their world plant
+    // spots and steps them when the twist passes the gait threshold.
+    BC('av:feet');
+    if (this.currentSlot === 'idle' && !this._limp && !this.emote && !this._override) {
+      (this.feet ??= new FeetIK(this.vrm)).update(true, this.root.position.y, this.root.rotation.y, dt, now);
+    } else this.feet?.update(false);
 
     BC('av:override');
     if (this._override) this._applyOverride(dt, now);

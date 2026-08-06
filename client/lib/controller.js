@@ -16,6 +16,7 @@ export const myState = {
   pos: new THREE.Vector3(0, 0, 0),
   yaw: 0,
   pitch: 0,          // head pitch, mirrored from the camera
+  lyaw: 0,           // look-chain yaw: view − body, what the spine absorbs
   speed: 0,
   clip: 'idle',
   emote: null,       // one-shot, cleared after it's been sent once
@@ -262,6 +263,7 @@ if (matchMedia('(pointer: coarse)').matches) enableTouch();
 const _dir = new THREE.Vector3();
 const _eye = new THREE.Vector3();
 const _facing = new THREE.Vector3();
+let turnAlign = false;   // hysteresis: body is re-aligning to the view
 const _ray = new THREE.Raycaster();
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -335,6 +337,27 @@ export function updateMe(dt, me) {
     if (myState.pose) myState.pose = null;
   }
 
+  // ---- look chain + threshold turn (R, 08-06: "character won't turn and
+  // look with you"). The head leads: lookYaw carries view−body twist through
+  // the avatar's spine chain (both camera modes — mouselook and drag-orbit
+  // share camYaw). The body only re-aligns once the twist passes ~60°, then
+  // eases until it's back under a few degrees — so feet stay planted (feetik
+  // steps them) instead of the whole body micro-tracking every glance.
+  const viewYaw = camYaw + Math.PI;   // camera looks along −(sin,cos)·camYaw
+  const seated = posture !== null || myState.seat || myState.pose;
+  if (!moving && !seated) {
+    const diff = angleDelta(myState.yaw, viewYaw);
+    if (!turnAlign && Math.abs(diff) > 1.05) turnAlign = true;
+    if (turnAlign) {
+      myState.yaw += diff * Math.min(1, 5 * dt);
+      if (Math.abs(diff) < 0.06) turnAlign = false;
+    }
+  } else turnAlign = false;
+  const lookTarget = THREE.MathUtils.clamp(angleDelta(myState.yaw, viewYaw), -1.15, 1.15);
+  myState.lyaw += (lookTarget - myState.lyaw) * Math.min(1, 10 * dt);
+  if (Math.abs(myState.lyaw) < 0.01 && !lookTarget) myState.lyaw = 0;
+  me.lookYaw = myState.lyaw;
+
   const seatedClip = myState.seat?.chair ? 'sitchair' : 'sit';
   myState.clip = mantle ? 'climb'
     : airborneFor > 0.09 ? 'jump'
@@ -349,7 +372,7 @@ export function updateMe(dt, me) {
   // your head follows your camera — you could always look up, your body never
   // showed it
   myState.pitch = THREE.MathUtils.clamp(camPitch - 0.32, -0.45, 0.55);
-  me.pitch = firstPerson ? 0 : myState.pitch;
+  me.pitch = myState.pitch;   // FP too: your reflection and remotes see the real gaze
 
   updateFollowCamera(dt, me);
 }

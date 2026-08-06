@@ -237,6 +237,7 @@ export function updateRemotes(dt, now = performance.now()) {
       r.avatar.root.position.copy(_a).lerp(_b, k);
       r.avatar.root.rotation.y = a.yaw + angleDelta(a.yaw, b.yaw ?? a.yaw) * k;
       r.avatar.pitch = (a.pitch ?? 0) + ((b.pitch ?? 0) - (a.pitch ?? 0)) * k;
+      r.avatar.lookYaw = (a.lyaw ?? 0) + ((b.lyaw ?? 0) - (a.lyaw ?? 0)) * k;
       // drop samples we've moved past, but always keep one behind renderAt
       while (buf.length > 2 && buf[1].t < renderAt - 400) buf.shift();
       applyPose(r, a, b, k);
