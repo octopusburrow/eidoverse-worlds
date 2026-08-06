@@ -10,6 +10,7 @@ import { renderCanvas, hitRegion } from './panels.js';
 import { manifestFields, manifestDispatch } from './manifest.js';
 import { inspectorFields, inspectorDispatch } from './inspector.js';
 import { catalogFields, catalogDispatch } from './vrcatalog.js';
+import { isEditing } from './build.js';
 
 const PX_PER_M = 900;              // canvas pixels per world metre of quad
 const W = 0.58;                    // quad width, metres — an arm's-length read
@@ -57,6 +58,11 @@ export function xrPanelsEnter(rig) {
     makePanel(catalogFields, catalogDispatch, -0.98, 0.7),   // the build doorway
   ];
   for (const p of panels) rig.add(p.mesh);
+  // edit SURFACES appear in edit MODE — outside it they were photobombing the
+  // periphery ("a quad that says catalog…", R in-headset 23:16)
+  const applyVis = (on) => { for (const p of panels ?? []) p.mesh.visible = !!on; };
+  applyVis(isEditing());
+  bus.on('edit-mode', applyVis);
   bus.on('entity', repaintAll);
   bus.on('comp', repaintAll);
   bus.on('selection', repaintAll);

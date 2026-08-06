@@ -178,9 +178,13 @@ export const ground = new THREE.Mesh(
   new THREE.MeshStandardNodeMaterial({ color: 0x2a3440, roughness: 0.9, metalness: 0.05 }),
 );
 ground.receiveShadow = true;
+// XR per-eye frustum culling misjudges huge planes (R in-headset, 23:16: the
+// ground VANISHES at some head angles) — one draw call, never cull it
+ground.frustumCulled = false;
 scene.add(ground);
 export const grid = new THREE.GridHelper(160, 80, 0x3a4a5a, 0x222c38);
 grid.position.y = 0.01;
+grid.frustumCulled = false;
 scene.add(grid);
 
 // ---------------------------------------------------------- eidoverse host
