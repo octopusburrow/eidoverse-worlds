@@ -315,7 +315,9 @@ export async function initXR() {
 
   const b = document.createElement('button');
   b.className = 'panel xr-chip';
-  b.style.cssText = 'position:fixed; top:10px; right:12px; z-index:30; font-size:14px; padding:8px 14px;';
+  // rides the LEFT flank of the top-right menu (world frame: right edge -10,
+  // w 232) — dead-center right overlapped it (R, 22:48)
+  b.style.cssText = 'position:fixed; top:10px; right:254px; z-index:30; font-size:14px; padding:8px 14px;';
   if (!XR_BOOT) {
     b.textContent = '🥽 VR';
     b.onclick = () => {
