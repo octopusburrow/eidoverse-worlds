@@ -1,26 +1,37 @@
-// inspector — the right hand (R, 21:56): everything about ONE selected thing.
-// TRS as steppers, components as a list you can add to and strip from. This is
-// the grabbables on-ramp: `grab` is just a comp, so "make grabbable" is the
-// panel's most honored button, not a special system.
+// inspector — their 🌳 inline inspector, EXACTLY, as its own panel.
 //
-// Writes go through the same verbs agents use (place / comp) — the panel is a
-// hand, not a back door. Schema lives in buildFields() so the VR renderer
-// paints the identical panel from the identical data.
+// R (18:47): "the ONLY differences should be the addition of full
+// pos/rot/scale XYZ and 'add component' below that. Everything else the
+// same, and we'll start triaging."
+//
+// So, theirs feature-for-feature:
+//   · header: id + lib
+//   · provenance: placed by · live world position · mounted-on
+//   · the component bag, verbatim (one row per comp, data shown raw)
+//   · actions: find / attach to… / detach (when mounted) / remove
+// Plus exactly two additions:
+//   · vec3 steppers for position / rotation / scale (after provenance)
+//   · add component (type + JSON data + button), directly below TRS
+// Removed in this pass (triage later, deliberately): rename, the grab
+// shortcut button, per-comp strip buttons. Stripping still works: add the
+// comp type with data `null`.
+//
+// Writes go through the same verbs agents use (place / comp / remove /
+// mount / dismount) — the panel is a hand, not a back door. Every edit
+// speaks an undo PAIR (editundo): the inverse sentence rides with it.
 
-import { bus, report } from './core.js';
+import { THREE, bus, report } from './core.js';
 import { entities, entityMeta, comps } from './world.js';
 import { sendVerb } from './net.js';
 import { makeSchemaFrame } from './panels.js';
 import { recordPair } from './editundo.js';
+import { sceneDetach } from './scenegraph.js';
+import { armAttach, armedChild } from './manifest.js';
+import { flashHint } from './ui.js';
+import { myState } from './controller.js';
 
 let ui = null, currentId = null;
-
-const label = (id) => {
-  const named = comps.get(id)?.label?.text;
-  if (named) return named;
-  const lib = entityMeta.get(id)?.lib;
-  return lib?.split('/').pop()?.replace(/\.(glb|vrm)$/, '') ?? id;
-};
+const _wp = new THREE.Vector3();
 
 export function buildFields(id) {
   if (!id || !entities.get(id)) {
@@ -29,43 +40,42 @@ export function buildFields(id) {
   const obj = entities.get(id);
   const meta = entityMeta.get(id) ?? {};
   const bag = comps.get(id) ?? {};
-  const grabbable = !!bag.grab;
+  const pos = obj.getWorldPosition(_wp);
+  const mountedTo = obj.userData?.mountedTo;
   return [
-    { t: 'info', label: 'thing', value: label(id) },
-    { t: 'info', label: 'by', value: meta.actor ?? '?' },
-    { t: 'text', k: 'rename', label: 'name', value: bag.label?.text ?? '', placeholder: label(id) },
+    // ---- theirs: header + provenance
+    { t: 'info', label: 'thing', value: `${id} · ${meta.lib ?? meta.kind ?? '?'}` },
+    { t: 'info', label: 'by', value: `placed by ${meta.actor ?? '?'} · at (${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)})${mountedTo ? ` · mounted on ${mountedTo}` : ''}` },
+    // ---- addition 1: full TRS
     { t: 'vec3', k: 'pos', label: 'position', value: obj.position.toArray(), step: 0.1, dp: 2 },
     { t: 'vec3', k: 'rot', label: 'rotation°', value: [obj.rotation.x, obj.rotation.y, obj.rotation.z].map((r) => r * 180 / Math.PI), step: 15, dp: 0 },
     { t: 'vec3', k: 'scale', label: 'scale', value: obj.scale.toArray(), step: 0.1, dp: 2 },
-    { t: 'btn', k: grabbable ? 'ungrab' : 'grab', label: grabbable ? 'remove grabbable' : '✋ make grabbable' },
+    // ---- addition 2: add component, directly below TRS
+    { t: 'text', k: 'comp-type', label: 'add comp', value: _draft.type, placeholder: 'type e.g. spin' },
+    { t: 'text', k: 'comp-data', label: 'data', value: _draft.data, placeholder: '{} (JSON · null strips)' },
+    { t: 'btn', k: 'comp-add', label: 'add component' },
+    // ---- theirs: the bag, verbatim
     {
       t: 'list', label: 'components', empty: 'no components',
       rows: Object.entries(bag).map(([type, data]) => ({
-        id: type, label: type,
-        sub: JSON.stringify(data).slice(0, 40),
-        actions: [{ k: 'comp-remove', label: 'strip', danger: true }],
+        id: `comp:${type}`, label: type,
+        sub: JSON.stringify(data),
+        actions: [],
       })),
     },
-    { t: 'text', k: 'comp-type', label: 'add comp', value: _draft.type, placeholder: 'type e.g. spin' },
-    { t: 'text', k: 'comp-data', label: 'data', value: _draft.data, placeholder: '{} (JSON)' },
-    { t: 'btn', k: 'comp-add', label: 'add component' },
+    // ---- theirs: the action row
+    { t: 'btn', k: 'find', label: 'find' },
+    { t: 'btn', k: 'attach', label: armedChild() === id ? 'click new parent…' : 'attach to…' },
+    ...(mountedTo ? [{ t: 'btn', k: 'detach', label: 'detach' }] : []),
+    { t: 'btn', k: 'remove', label: 'remove', danger: true },
   ];
 }
 
 const _draft = { type: '', data: '' };
 
-// Steppers from the VR renderer arrive as {axis, delta} relatives; DOM sends
-// absolutes. One resolver so both surfaces drive the identical dispatcher.
-const resolve = (cur, v, i) =>
-  (typeof v === 'object' && v !== null && 'delta' in v)
-    ? (i != null && v.axis != null ? cur[v.axis] + v.delta : cur + v.delta) : (i != null ? v[i] : v);
-
 // Every edit goes out as a PAIR: the sentence that undoes it and the sentence
 // itself (editundo speaks the inverse — there is no shadow state to roll back,
-// because the edit was always a verb in the log). Without this the steppers
-// were irreversible: a fat-fingered scale had no way home. The workshop's
-// channel box already did this; the inspector didn't, which made the nicer
-// panel the more dangerous one.
+// because the edit was always a verb in the log).
 function speak(verb, args, inverse) {
   recordPair({ verb, args: inverse }, { verb, args });
   sendVerb(verb, args);
@@ -100,19 +110,6 @@ export function dispatch(id, k, v) {
       speak('place', { id, scale: s }, { id, ...trs(obj) });
       break;
     }
-    case 'rename': {
-      const prev = structuredClone(comps.get(id)?.label ?? null);
-      speak('comp', { id, type: 'label', data: v.trim() ? { text: v.trim().slice(0, 48) } : null },
-            { id, type: 'label', data: prev });
-      break;
-    }
-    case 'grab': speak('comp', { id, type: 'grab', data: {} }, { id, type: 'grab', data: null }); break;
-    case 'ungrab': speak('comp', { id, type: 'grab', data: null }, { id, type: 'grab', data: structuredClone(comps.get(id)?.grab ?? {}) }); break;
-    case 'comp-remove': {
-      const prev = structuredClone(comps.get(id)?.[v] ?? null);
-      speak('comp', { id, type: v, data: null }, { id, type: v, data: prev });
-      break;
-    }
     case 'comp-type': _draft.type = v; break;
     case 'comp-data': _draft.data = v; break;
     case 'comp-add': {
@@ -121,10 +118,38 @@ export function dispatch(id, k, v) {
       let data = {};
       if (_draft.data.trim()) {
         try { data = JSON.parse(_draft.data); }
-        catch (e) { report('comp data', new Error('not valid JSON')); return; }
+        catch { report('comp data', new Error('not valid JSON')); return; }
       }
-      speak('comp', { id, type, data }, { id, type, data: null });
+      const prev = structuredClone(comps.get(id)?.[type] ?? null);
+      speak('comp', { id, type, data }, { id, type, data: prev });
       _draft.type = ''; _draft.data = '';
+      break;
+    }
+    // ---- their actions
+    case 'find': {
+      const p = obj.getWorldPosition(_wp);
+      flashHint(`<b>${id}</b> is ${p.distanceTo(myState.pos).toFixed(0)}m away at (${p.x.toFixed(0)}, ${p.z.toFixed(0)})`, 5000);
+      break;
+    }
+    case 'attach': armAttach(id); break;    // next manifest row click = new parent
+    case 'detach': sceneDetach(id); break;
+    case 'remove': {
+      // Their remove, plus the undo pair ours already spoke: the inverse of
+      // `remove` is the `spawn` that put it there, its transform, and every
+      // component it wore.
+      const meta = entityMeta.get(id);
+      if (meta?.lib) {
+        const worn = Object.entries(comps.get(id) ?? {})
+          .map(([type, data]) => ({ verb: 'comp', args: { id, type, data: structuredClone(data) } }));
+        recordPair(
+          { verb: 'spawn', args: { id, lib: meta.lib, pos: obj.position.toArray(), yaw: obj.rotation.y },
+            also: [
+              { verb: 'place', args: { id, rot: [obj.rotation.x, obj.rotation.y, obj.rotation.z], scale: obj.scale.toArray() } },
+              ...worn,
+            ] },
+          { verb: 'remove', args: { id } });
+      }
+      sendVerb('remove', { id });
       break;
     }
   }
@@ -145,6 +170,7 @@ export function initInspector() {
   bus.on('ws:select', (id) => { currentId = id; paint(); });
   bus.on('entity', ({ id }) => { if (id === currentId) paint(); });
   bus.on('comp', ({ id }) => { if (id === currentId) paint(); });
+  bus.on('mount', () => paint());
   bus.on('ws:open', (on) => { on ? ui.frame.show() : ui.frame.hide(); });
   paint();
 }

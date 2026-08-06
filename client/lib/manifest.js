@@ -1,40 +1,61 @@
-// manifest — what's aboard the world, as a standalone panel.
+// manifest — their 🌳 scene hierarchy, EXACTLY, as a panel that can ride a quad.
 //
-// This is a deliberate FORK of their scenegraph 🌳 section (R's call, 00:13:
-// "duplicate their hierarchy and keep developing it under the name Manifest").
-// The hierarchy logic is theirs and good — mounted things nest under their
-// parent, seated bodies hang off as riders. What's forked is the SHELL: their
-// version is a section wedged into the shared world panel via makeSection,
-// which cannot cross into VR. This is a schema panel, so the same tree paints
-// as a frame on desktop and a laser-clickable quad in the headset from one
-// field list.
+// R (18:47): "copy their hierarchy panel in their edit mode exactly into our
+// manifest… I just want to make sure we don't leave some of their features
+// behind." So this is a faithful port of scenegraph.js's tree, feature by
+// feature — the SHELL is the only divergence (schema frame → desktop panel or
+// VR laser quad; theirs is a makeSection wedged into the world panel).
 //
-// Divergence from theirs, so far:
-//   + import/export — the aboard/ashore boundary; nothing upstream has it
-//   + row click drives the same selection the inspector edits
-//   - no script rows yet (📜 stays theirs; it's debug UI for the behavior tier)
+// Ported verbatim in behavior:
+//   · every entity (bodies included — theirs doesn't filter to cargo)
+//   · row = id bold + short lib name, indented under its mount parent
+//   · component badges (motion(type) / sockets(keys) / reactions(keys) / type)
+//   · 📜 script badges from the behavior roster
+//   · seated bodies as 🧍 rider rows
+//   · click row = select (inspector shows it) · click while arming = attach
+// Selection actions (find / attach / detach / remove) live in the INSPECTOR
+// panel — that's where their inline inspector became a panel of its own.
 //
-// A ship's manifest, for a world that literally is a log.
+// Kept divergences (additive, R-approved earlier): filter, export/import.
 
 import { bus, report } from './core.js';
 import { entities, entityMeta, comps, avatarMounts } from './world.js';
-import { sendVerb } from './net.js';
+import { sendVerb, requestDebug } from './net.js';
 import { makeSchemaFrame } from './panels.js';
-import { recordPair } from './editundo.js';
-import { wsSelect, isWorkshopOpen } from './workshop.js';
+import { sceneAttach } from './scenegraph.js';
+import { wsSelect } from './workshop.js';
+import { flashHint } from './ui.js';
 
 let ui = null, filter = '', selectedId = null;
+let arming = null;          // child id waiting for a parent click (their flow)
+let behaviorRows = [];      // 📜 badges, same source as theirs
 
-const label = (id) => comps.get(id)?.label?.text
-  ?? entityMeta.get(id)?.lib?.split('/').pop()?.replace(/\.(glb|vrm)$/, '')
-  ?? id;
+/** Their short-name derivation, verbatim. */
+const shortName = (id) => {
+  const meta = entityMeta.get(id);
+  return (meta?.lib ?? meta?.kind ?? '?').split('/').pop().replace('.glb', '')
+    .split('_').slice(0, 3).join(' ');
+};
 
-/** Mounts are parenthood: their tree shape, ported verbatim in spirit. */
+/** Their badge derivation, verbatim. */
+function badgesFor(id) {
+  const out = [];
+  const bag = comps.get(id) ?? {};
+  for (const [type, data] of Object.entries(bag)) {
+    if (type === 'motion' || type.startsWith('motion:')) {
+      out.push(`${type}(${data?.type ?? '…'})`);
+    } else if (type === 'sockets' || type === 'reactions') {
+      out.push(`${type}(${Object.keys(data ?? {}).join(',')})`);
+    } else out.push(type);
+  }
+  return out;
+}
+
+/** Their tree shape, verbatim: mounts are parenthood, seats are riders. */
 function tree() {
   const kids = new Map();
   const roots = [];
   for (const [id, obj] of entities) {
-    if (!entityMeta.get(id)?.lib) continue;          // bodies aren't cargo
     const p = obj?.userData?.mountedTo;
     if (p && entities.has(p)) {
       if (!kids.has(p)) kids.set(p, []);
@@ -49,30 +70,33 @@ function tree() {
   return { roots: roots.sort(), kids, riders };
 }
 
-/** Flatten to rows, depth carried so any renderer can indent it. */
+async function refreshRoster() {
+  try {
+    const r = await requestDebug({ behaviors: true });
+    behaviorRows = (r.events ?? []).filter((e) => e.kind === 'behavior');
+  } catch { /* roster is decoration; the tree must paint without it */ }
+}
+
 function rows() {
   const { roots, kids, riders } = tree();
   const q = filter.trim().toLowerCase();
   const out = [];
   const walk = (id, depth) => {
-    const name = label(id);
-    const hit = !q || name.toLowerCase().includes(q) || id.toLowerCase().includes(q);
+    const short = shortName(id);
+    const hit = !q || short.toLowerCase().includes(q) || id.toLowerCase().includes(q);
     if (hit) {
-      const bag = comps.get(id) ?? {};
-      const marks = [];
-      if (bag.grab) marks.push('grab');
-      if (bag.motion) marks.push('moving');
-      if (entities.get(id)?.userData?.mountedTo) marks.push('mounted');
+      const badges = badgesFor(id);
+      const scripts = behaviorRows.filter((b) => b.attach === id).map((b) => `📜${b.id}`);
       out.push({
         id, depth,
-        label: `${'  '.repeat(depth)}${depth ? '└ ' : ''}${name}`,
-        sub: marks.join(' · ') || `by ${entityMeta.get(id)?.actor ?? '?'}`,
+        label: `${'  '.repeat(depth)}${depth ? '└ ' : ''}${id} · ${short}`,
+        sub: [...badges, ...scripts].join(' · '),
         active: id === selectedId,
-        actions: [{ k: 'delete', label: 'del', danger: true }],
+        actions: [],
       });
       for (const r of riders.get(id) ?? []) {
         out.push({ id: `rider:${r}`, depth: depth + 1, rider: true,
-          label: `${'  '.repeat(depth + 1)}└ ${r}`, sub: 'riding', actions: [] });
+          label: `${'  '.repeat(depth + 1)}└ 🧍 ${r}`, sub: '', actions: [] });
       }
     }
     for (const k of (kids.get(id) ?? []).sort()) walk(k, depth + 1);
@@ -85,36 +109,35 @@ export function buildFields() {
   const all = rows();
   return [
     { t: 'text', k: 'filter', label: 'find', value: filter,
-      placeholder: `${all.length} aboard` },
-    { t: 'list', label: 'aboard', empty: filter ? 'nothing matches' : 'nothing placed yet', rows: all },
+      placeholder: `${all.length} in the world` },
+    { t: 'list', label: arming ? `click ${arming}'s new parent…` : 'scene',
+      empty: filter ? 'nothing matches' : 'nothing placed yet', rows: all },
     { t: 'btn', k: 'export', label: 'export json' },
     { t: 'btn', k: 'import', label: 'import json' },
   ];
 }
 
+/** The inspector's attach button arms; the next manifest row click lands it. */
+export function armAttach(childId) {
+  arming = arming === childId ? null : childId;
+  flashHint(arming ? 'now click the row of its new parent' : 'attach cancelled', 4000);
+  paint();
+}
+export const armedChild = () => arming;
+
 export function dispatch(k, v) {
-  if (typeof v === 'string' && v.startsWith('rider:')) return;   // riders aren't cargo
+  if (typeof v === 'string' && v.startsWith('rider:')) return;   // riders aren't rows you can act on
   switch (k) {
     case 'filter': filter = v; break;
-    case 'row': selectedId = v; wsSelect(v); break;
-    case 'delete': {
-      // Deleting is the one edit nobody expects to be reversible, which is
-      // exactly why it should be: the inverse of `remove` is the `spawn` that
-      // put it there, plus its transform and every component it wore.
-      const o = entities.get(v);
-      const meta = entityMeta.get(v);
-      if (o && meta?.lib) {
-        const worn = Object.entries(comps.get(v) ?? {})
-          .map(([type, data]) => ({ verb: 'comp', args: { id: v, type, data: structuredClone(data) } }));
-        recordPair(
-          { verb: 'spawn', args: { id: v, lib: meta.lib, pos: o.position.toArray(), yaw: o.rotation.y },
-            also: [
-              { verb: 'place', args: { id: v, rot: [o.rotation.x, o.rotation.y, o.rotation.z], scale: o.scale.toArray() } },
-              ...worn,
-            ] },
-          { verb: 'remove', args: { id: v } });
+    case 'row': {
+      if (arming && arming !== v) {           // their arming flow, verbatim
+        sceneAttach(arming, v);
+        arming = null;
+        break;
       }
-      sendVerb('remove', { id: v });
+      arming = null;
+      selectedId = v;
+      wsSelect(v);
       break;
     }
     case 'export': {
@@ -174,10 +197,12 @@ export function initManifest() {
   ui.frame.hide();
   bus.on('entity', paint);
   bus.on('comp', paint);
-  // OUR edit mode (R, 00:14: "in our edit mode"), not their `B` — workshop.js
-  // is deliberately unentangled from their surfaces, and these panels are ours.
+  bus.on('mount', paint);            // theirs repaints on mount too
   bus.on('ws:select', (id) => { selectedId = id; paint(); });
-  bus.on('ws:open', (on) => { on ? ui.frame.show() : ui.frame.hide(); });
+  bus.on('ws:open', async (on) => {
+    if (on) { ui.frame.show(); await refreshRoster(); paint(); }
+    else ui.frame.hide();
+  });
   paint();
 }
 
