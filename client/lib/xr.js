@@ -315,30 +315,23 @@ export async function initXR() {
 
   const b = document.createElement('button');
   b.className = 'panel xr-chip';
-  // Rides the LEFT flank of the top-right menu cluster — MEASURED, not
-  // guessed: the cluster's width varies with viewport, and two fixed-px
-  // attempts landed on top of it (R, 22:48/22:50). Headless probes can't see
-  // this chip at all (no WebXR → never rendered), so it positions itself.
-  b.style.cssText = 'position:fixed; top:10px; right:12px; z-index:30; font-size:14px; padding:8px 14px;';
-  const dockLeftOf = () => {
-    let edge = window.innerWidth;
-    for (const e of document.querySelectorAll('body > *')) {
-      if (e === b) continue;
-      const s = getComputedStyle(e);
-      if (s.position !== 'fixed' || s.display === 'none') continue;
-      const r = e.getBoundingClientRect();
-      // menus only: near the top, hugging the right, and not a full-width bar
-      if (r.top < 50 && r.width > 0 && r.width < window.innerWidth * 0.5
-          && r.right > window.innerWidth - 340) edge = Math.min(edge, r.left);
-    }
-    // whatever was matched, the chip stays ON SCREEN (22:53: it docked itself
-    // off the left edge of the universe)
-    const right = Math.min(window.innerWidth - 120, window.innerWidth - edge + 10);
-    b.style.right = `${Math.max(12, right)}px`;
+  // Seats at the end of the hud bar, after the mic/ear glyphs — the same
+  // anchor-plus-ResizeObserver pattern mictoggle.js already proved out
+  // (R, 22:55: "we went through this with the mic and headphones icons").
+  // ResizeObserver fires the frame the bar changes, so the chip seats
+  // immediately and moves WITH the bar — no timers, no drift-in-late.
+  b.style.cssText = 'position:fixed; z-index:30; font-size:13px; padding:5px 10px;';
+  let ro = null, seen = null;
+  const seat = () => {
+    const hud = document.querySelector('#hud');
+    if (!hud) { setTimeout(seat, 300); return; }
+    const r = hud.getBoundingClientRect();
+    b.style.left = `${Math.round(r.right + 70)}px`;   // mic +6, ear +38, chip +70
+    b.style.top = `${Math.round(r.top + (r.height - b.offsetHeight) / 2)}px`;
+    if (hud !== seen) { seen = hud; ro?.disconnect(); ro = new ResizeObserver(seat); ro.observe(hud); }
   };
-  window.addEventListener('resize', dockLeftOf);
-  setTimeout(dockLeftOf, 500);
-  setTimeout(dockLeftOf, 3000);   // late-building panels move the edge
+  window.addEventListener('resize', seat);
+  seat();
   if (!XR_BOOT) {
     b.textContent = '🥽 VR';
     b.onclick = () => {
