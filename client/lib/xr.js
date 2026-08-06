@@ -315,7 +315,7 @@ export async function initXR() {
 
   const b = document.createElement('button');
   b.className = 'panel xr-chip';
-  b.style.cssText = 'position:fixed; bottom:12px; right:12px; z-index:30; font-size:14px; padding:8px 14px;';
+  b.style.cssText = 'position:fixed; top:10px; right:12px; z-index:30; font-size:14px; padding:8px 14px;';
   if (!XR_BOOT) {
     b.textContent = '🥽 VR';
     b.onclick = () => {
