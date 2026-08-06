@@ -327,9 +327,14 @@ export async function initXR() {
       const s = getComputedStyle(e);
       if (s.position !== 'fixed' || s.display === 'none') continue;
       const r = e.getBoundingClientRect();
-      if (r.top < 50 && r.width > 0 && r.right > window.innerWidth - 340) edge = Math.min(edge, r.left);
+      // menus only: near the top, hugging the right, and not a full-width bar
+      if (r.top < 50 && r.width > 0 && r.width < window.innerWidth * 0.5
+          && r.right > window.innerWidth - 340) edge = Math.min(edge, r.left);
     }
-    b.style.right = `${window.innerWidth - edge + 10}px`;
+    // whatever was matched, the chip stays ON SCREEN (22:53: it docked itself
+    // off the left edge of the universe)
+    const right = Math.min(window.innerWidth - 120, window.innerWidth - edge + 10);
+    b.style.right = `${Math.max(12, right)}px`;
   };
   window.addEventListener('resize', dockLeftOf);
   setTimeout(dockLeftOf, 500);
