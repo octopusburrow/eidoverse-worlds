@@ -22,6 +22,13 @@ Server: bun --watch on :8940 (auto-reloads; key=workbench-2026), data in
    get it, then fix. (Three bugs on 08-05/06 each burned 2+ confident wrong
    theories before someone fetched a fact.)
 
+## 🔔 Session-start ritual (added 08-06 after Mica's pings hit an empty chair)
+1. `gh api notifications` — GitHub never pushes to us; poll it or miss reviews.
+2. `tail ~/.portal/pings.log` — eidoverse-Discord mentions (portal-listener
+   daemon appends; if `pgrep -af portal-listener` is empty, RESTART IT:
+   `nohup bun code/scripts/portal-listener.mjs >> /tmp/portal-listener.log 2>&1 &`)
+3. Live session: also Monitor the tail of pings.log.
+
 ## Handy
 - Headless page probes: playwright via `tools/node_modules` symlink
   (SwiftShader: `--use-angle=swiftshader --enable-unsafe-swiftshader`).
