@@ -113,6 +113,14 @@ function fieldDOM(f, edit) {
       row.append(b);
       break;
     }
+    case 'check': {
+      const inp = el('input');
+      inp.type = 'checkbox';
+      inp.checked = !!f.value;
+      inp.onchange = () => edit(f.k, inp.checked);
+      row.append(inp);
+      break;
+    }
     case 'list': {
       const box = el('div', 'sp-list');
       if (!f.rows?.length) box.append(el('div', 'sp-empty', f.empty ?? 'nothing here'));
@@ -195,6 +203,21 @@ export function renderCanvas(canvas, fields, { width = 512, rowH = 44, pad = 12,
         font(15, 600); g.fillStyle = '#14100c';
         g.fillText(f.label, pad + 12, y + rowH * 0.62);
         regions.push({ x: pad, y: y + 6, w: bw, h: rowH - 12, action: f.k });
+        break;
+      }
+      case 'check': {
+        const s = rowH - 16;
+        g.strokeStyle = C.label; g.lineWidth = 2;
+        g.strokeRect(vx, y + 8, s, s);
+        if (f.value) {
+          g.strokeStyle = C.accent; g.lineWidth = 3;
+          g.beginPath();
+          g.moveTo(vx + s * 0.2, y + 8 + s * 0.55);
+          g.lineTo(vx + s * 0.45, y + 8 + s * 0.8);
+          g.lineTo(vx + s * 0.85, y + 8 + s * 0.2);
+          g.stroke();
+        }
+        regions.push({ x: vx, y: y + 8, w: s, h: s, action: f.k, payload: !f.value });
         break;
       }
       case 'num': paintStepper(g, regions, f, +(f.value ?? 0), vx, y, rowH, f.k, null, f.dp); break;

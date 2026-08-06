@@ -94,6 +94,10 @@ function rows() {
         active: id === selectedId,
         actions: [],
       });
+      for (const slot of Object.keys(comps.get(id)?.sockets ?? {})) {
+        out.push({ id: `rider:socket:${slot}`, depth: depth + 1, rider: true,
+          label: `${'  '.repeat(depth + 1)}◦ ${slot}`, sub: 'socket', actions: [] });
+      }
       for (const r of riders.get(id) ?? []) {
         out.push({ id: `rider:${r}`, depth: depth + 1, rider: true,
           label: `${'  '.repeat(depth + 1)}└ 🧍 ${r}`, sub: '', actions: [] });
@@ -136,8 +140,8 @@ export function dispatch(k, v) {
         break;
       }
       arming = null;
-      selectedId = v;
-      wsSelect(v);
+      selectedId = v === selectedId ? null : v;   // re-click deselects, like the hierarchy
+      wsSelect(selectedId);
       break;
     }
     case 'export': {
