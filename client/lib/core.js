@@ -132,6 +132,18 @@ export const XR_BOOT = CONFIG.params.has('xr');
 }
 
 export const renderer = new THREE.WebGPURenderer({ canvas, antialias: true, forceWebGL: XR_BOOT });
+// r185 SHIPPING BUG (fixed on three dev, unreleased): XRManager.onAnimationFrame
+// calls foveateBoundTexture(renderer._getFrameBufferTarget()) and the target is
+// legitimately NULL when no post-processing pass is needed (our config: sRGB
+// output, no tonemap). The method reads .isPostProcessingRenderTarget off it →
+// EVERY XR frame throws inside three BEFORE the app callback, the emulator/
+// browser swallows it, and the world freezes while head tracking stays live.
+// Found 2026-08-06 via iwer console capture (167 errs/2.5s). Null-guard shim,
+// byte-identical to dev's fix; delete when three ≥ r186.
+{
+  const fov = renderer.xr.foveateBoundTexture?.bind(renderer.xr);
+  if (fov) renderer.xr.foveateBoundTexture = (rt) => (rt == null ? undefined : fov(rt));
+}
 renderer.setSize(innerWidth, innerHeight);
 // Spectators start a notch lower — an audience laptop's job is 30fps for an
 // hour, not maximum sharpness. Adaptive scaling adjusts from here.

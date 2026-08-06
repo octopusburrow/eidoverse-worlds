@@ -252,6 +252,7 @@ async function enterVR() {
     session.addEventListener('end', () => {
       presenting = false;
       xrIntent.active = false;
+      camera.layers.enable(TP_LAYER); camera.layers.disable(FP_LAYER);
       selfFirstPerson(false);
       xrPanelsExit(rig);
       releaseGrab();
@@ -335,16 +336,12 @@ export function updateXR() {
   }
 
   // eye cameras see the first-person split, never the third-person head.
-  // Set every frame (idempotent, cheap): three recreates/repopulates the XR
-  // ArrayCamera's sub-cameras across session events, so a one-shot misses.
+  // r185 re-derives per-eye masks from the BASE camera every frame
+  // (XRManager: cameraXR.layers.mask = camera.layers.mask | 0b110), so the
+  // r184-era per-eye enable() was stomped one frame later. Drive the BASE
+  // camera instead and let three propagate. Restored on session end.
   if (fpVrm !== getSelf()?.vrm) selfFirstPerson(true);
-  if (fpVrm) {
-    const xrCam = renderer.xr.getCamera?.();
-    if (xrCam) {
-      xrCam.layers.enable(FP_LAYER); xrCam.layers.disable(TP_LAYER);
-      for (const c of xrCam.cameras ?? []) { c.layers.enable(FP_LAYER); c.layers.disable(TP_LAYER); }
-    }
-  }
+  if (fpVrm) { camera.layers.enable(FP_LAYER); camera.layers.disable(TP_LAYER); }
 
   // the body moved by THEIR controller code; the rig goes where the body is
   rig.position.set(myState.pos.x, myState.pos.y, myState.pos.z);

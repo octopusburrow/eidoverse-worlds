@@ -82,6 +82,7 @@ const r = await page.evaluate(async () => {
   return out;
 });
 console.log('enter:', JSON.stringify(r));
+console.log('pageErrors:', JSON.stringify(errors.slice(0, 6)));
 if (!r.presenting) { console.error(errors.slice(0, 4)); process.exit(1); }
 
 // ---- head sweep: 12 yaws x 2 pitches, frame + probes per pose ---------------
