@@ -167,6 +167,7 @@ const _v = new THREE.Vector3();
 const _pq = new THREE.Quaternion();
 const _X = new THREE.Vector3(1, 0, 0);      // scratch — hot paths must not allocate
 const _Z = new THREE.Vector3(0, 0, 1);
+const _IDENT = new THREE.Quaternion();
 const _v2 = new THREE.Vector3();
 
 export class Avatar {
@@ -648,6 +649,19 @@ export class Avatar {
       for (const [n, sign] of [['leftUpperArm', 1], ['rightUpperArm', -1]]) {
         const b = this.vrm.humanoid?.getNormalizedBoneNode?.(n);
         if (b) b.quaternion.premultiply(_pq.setFromAxisAngle(_Z, sign * rad));
+      }
+    }
+    // fingerScale (0..1) damps CLIP-driven finger curls toward rest. A body
+    // whose knuckles sit a forearm-length from the wrist (tigerbee: 16cm
+    // wrist→proximal, claws longer than the forearm) swings human curl angles
+    // into monstrous levers. Fingers stay MAPPED — VR hand poses arrive
+    // through xr paths, not the mixer, and are untouched by this.
+    const fs = this.tune?.fingerScale;
+    if (fs != null && fs < 1 && !this._limp) {
+      for (const n of this._humanoidBones()) {
+        if (!/Thumb|Index|Middle|Ring|Little/.test(n)) continue;
+        const b = this.vrm.humanoid?.getNormalizedBoneNode?.(n);
+        if (b) b.quaternion.slerp(_IDENT, 1 - fs);
       }
     }
 
