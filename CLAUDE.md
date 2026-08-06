@@ -1,7 +1,6 @@
 # eido workbench (worlds-native) — session context
 
-Lab fork of anima-research/eidoverse-worlds (`origin`=octopusburrow fork,
-`upstream`=anima). Branch `lab-resync`. Upstream PRs go via clean branches off
+Lab fork of anima-research/eidoverse-worlds (remotes: `fork`=octopusburrow, `origin`+`upstream`=anima — push to `fork`). Branch `lab-resync`. Upstream PRs go via clean branches off
 `upstream/main` (worktree pattern — lab branch carries unmerged extras).
 Server: bun --watch on :8940 (auto-reloads; key=workbench-2026), data in
 ../worlds-data, avatars in ../eidoverse-video/eidoverse/assets/vrms/.
