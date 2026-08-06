@@ -810,7 +810,10 @@ export async function makeAvatar(id, libPath, { full = false, urgent = false } =
       // Data with the asset, never a table in this file: human-proportioned
       // clips on a wide or chibi body need per-BODY taste (arm spread, etc.),
       // and the body's author is the one who knows the number.
-      fetch(`/library/${libPath}.tune.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+      // strip any cache-buster (?v=...) BEFORE appending — the roster serves
+      // paths with query strings, and probes passing clean paths by hand hid
+      // exactly this (found live: R got no tune while every probe passed)
+      fetch(`/library/${libPath.split('?')[0]}.tune.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null),
       ...slots.map(vrmaBytes)]);
     work.phase('clips');
     const clips = {};
