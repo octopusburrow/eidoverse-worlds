@@ -20,6 +20,7 @@
 
 import { THREE, camera, canvas, bus, CONFIG } from './core.js';
 import { entities, comps } from './world.js';
+import { glowSet, glowRemove } from './glow.js';
 import { sendVerb } from './net.js';
 import { recordPair } from './editundo.js';
 import { flashHint } from './ui.js';
@@ -149,25 +150,23 @@ function drop() {
 // and structural — it reports a CAPABILITY of the world (this can be lifted),
 // not an authored behaviour. Same visual grammar, different claim, so it is a
 // separate small system rather than a hijack of that one.
-const _lit = new Map();          // material -> original emissive hex
 const _warm = new THREE.Color('#8fe8c8');
+const _litIds = new Set();       // entity ids currently wearing a hint shell
 
+// Instance-safe (R, 08-06): warming a shared emissive lit every sibling of
+// the same model. glow.js shells never touch the asset's material.
 function litFor(id, amount) {
   const obj = entities.get(id);
   if (!obj) return;
-  obj.traverse((o) => {
-    const m = o.material;
-    if (!m || !('emissive' in m)) return;
-    if (!_lit.has(m)) _lit.set(m, m.emissive.getHex());
-    m.emissive.setHex(_lit.get(m)).lerp(_warm, amount);
-  });
+  glowSet(obj, _warm, amount);
+  _litIds.add(id);
 }
 
 function coolAll(except) {
-  for (const [m, hex] of _lit) {
-    if (except?.has(m)) continue;
-    m.emissive.setHex(hex);
-    _lit.delete(m);
+  for (const id of _litIds) {
+    if (except?.has(id)) continue;
+    glowRemove(entities.get(id));
+    _litIds.delete(id);
   }
 }
 
@@ -195,7 +194,7 @@ export function updateGrabHints() {
   const keep = new Set();
   for (const c of cands) {
     litFor(c.id, c.id === top ? 0.5 : 0.16);
-    c.obj.traverse((o) => { if (o.material && 'emissive' in o.material) keep.add(o.material); });
+    keep.add(c.id);
   }
   coolAll(keep);
 }
