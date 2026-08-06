@@ -11,6 +11,7 @@
 // compute walkable ground are the same data as "what can I put things on".
 
 import { THREE, scene, camera, canvas, CONFIG, report, bus } from './core.js';
+import { svg } from './icons.js';
 import { loadGLB, libLabels, listLibrary } from './assets.js';
 import { makeLightGizmo } from './lights.js';
 import { entities, entityMeta, comps, findPart } from './world.js';
@@ -700,11 +701,11 @@ bus.on('key', (e) => {
 let buildSec = null;
 
 export function initPalette() {
-  buildSec = makeSection('🧱 build', async (body) => { if (!body.dataset.init) await paintBuild(body); },
-    { id: 'build' });
-  makeSection('🧍 avatar', paintAvatars, { id: 'avatar' });
-  makeSection('🌿 ground', paintGround, { id: 'ground' });
-  makeSection('☀ sky', paintSky, { id: 'sky' });
+  buildSec = makeSection('build', async (body) => { if (!body.dataset.init) await paintBuild(body); },
+    { id: 'build', icon: 'boxes' });
+  makeSection('avatar', paintAvatars, { id: 'avatar', icon: 'personStanding' });
+  makeSection('ground', paintGround, { id: 'ground', icon: 'leaf' });
+  makeSection('sky', paintSky, { id: 'sky', icon: 'sun' });
   return { buildSec };
 }
 
@@ -824,7 +825,7 @@ function paintGround(body) {
   dens.onchange = () => { st.density = dens.value; if (st.grass) growGrass(); };
   row('grass', dens);
   body.appendChild(btnRow(
-    mkBtn('🌱 grow', () => { growGrass(); flashHint(`${st.plant} growing`); }),
+    mkBtn('grow', () => { growGrass(); flashHint(`${st.plant} growing`); }),
     mkBtn('mow', () => { st.grass = false; sendVerb('grass', { clear: true }); flashHint('field cleared'); }),
   ));
 
@@ -847,7 +848,7 @@ async function paintBuild(body) {
 
   // primitives that aren't library models — a light is the first
   const prim = document.createElement('button');
-  prim.textContent = '💡 add light';
+  prim.innerHTML = `${svg('lightbulb', 11)} add light`;
   prim.title = 'place a light source';
   prim.onclick = () => holdGhost('@light', 'light');
   body.appendChild(prim);
@@ -925,7 +926,7 @@ async function paintAvatars(body) {
       `<img alt="" loading="lazy" src="/thumb/${encodeURIComponent(name)}.png"
          onerror="this.parentNode.querySelector('.ph').style.display='flex';this.style.display='none'">
        <div class="ph" style="display:none;width:100%;aspect-ratio:1;align-items:center;
-         justify-content:center;background:rgba(0,0,0,.3);border-radius:4px;font-size:18px">🧍</div>
+         justify-content:center;background:rgba(0,0,0,.3);border-radius:4px;font-size:18px">${svg('personStanding', 18)}</div>
        <span>${name}</span>`;
     card.onclick = () => onSwitchAvatar?.(path, name);
     grid.appendChild(card);
@@ -1046,7 +1047,7 @@ function paintSky(body) {
   for (const q of CLOUD_QUALITY) cq.appendChild(new Option(q, q));
   cq.value = getCloudQuality();
   cq.onchange = () => { setCloudQuality(cq.value); flashHint(`clouds: ${cq.value} (yours only)`); };
-  const cqRow = mkRow('clouds⚙', cq);
+  const cqRow = mkRow('cloud quality', cq);
   cqRow.title = 'local performance setting — not shared with the world';
   body.appendChild(cqRow);
 

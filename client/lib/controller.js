@@ -6,6 +6,7 @@
 // shoulder offset (your own body stops occluding what you're aiming at), and
 // a continuous zoom that passes through into first person.
 
+import { svg as svgIcon } from './icons.js';
 import { THREE, camera, canvas, CONFIG, angleDelta, bus, report } from './core.js';
 import { heightAt } from './terrain.js';
 import { resolveColliders, lastBlockedTop, findSeat } from './colliders.js';
@@ -244,10 +245,11 @@ export function enableTouch() {
   canvas.addEventListener('pointercancel', lookEnd);
 
   const btns = document.getElementById('touchbtns');
-  for (const [label, code] of [['⤒', 'Space'], ['💬', 'chat']]) {
+  for (const [label, code] of [['⤒', 'Space'], ['chat', 'chat']]) {
     const b = document.createElement('button');
     b.className = 'panel';
-    b.textContent = label;
+    if (code === 'chat') b.innerHTML = svgIcon('messageSquare', 15);
+    else b.textContent = label;
     if (code === 'chat') b.onclick = () => chat.open();
     else {
       b.addEventListener('pointerdown', () => keys.add(code));

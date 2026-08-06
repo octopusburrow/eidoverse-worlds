@@ -3,6 +3,7 @@
 // and the two overlays (help, front door).
 
 import { bus, CONFIG, setName, setToken, setErrorSink, report, colorFor } from './core.js';
+import { svg } from './icons.js';
 import { loadingItems } from './assets.js';
 import { makeFrame, getFrame, isLocked, setLocked, resetLayout } from './frames.js';
 
@@ -108,14 +109,17 @@ export function panelFrame() {
 
 /** Collapsible section inside the world frame. onOpen is awaited each time it
  *  opens, so rosters and catalogs re-fetch instead of going stale. */
-export function makeSection(title, onOpen, { id = '' } = {}) {
+export function makeSection(title, onOpen, { id = '', icon = '' } = {}) {
   const host = panelFrame().stack;
   const box = document.createElement('div');
   box.className = 'sec';
   if (id) box.id = `sec-${id}`;
   const head = document.createElement('button');
   head.className = 'head';
-  head.textContent = title;
+  // drawn glyphs, never emoji: fillText/emoji-font failures are silent
+  // (see icons.js header) — every section wears a Lucide icon instead.
+  if (icon) head.innerHTML = `${svg(icon, 13)} ${title}`;
+  else head.textContent = title;
   head.setAttribute('aria-expanded', 'false');
   const body = document.createElement('div');
   body.className = 'body';
@@ -180,9 +184,10 @@ const escapeHtml = (v) => String(v).replace(/[&<>"]/g, (c) => (
 export function initDock(entries) {
   el.dock.innerHTML = '';
   for (const entry of entries) {
-    const { id, label } = entry;
+    const { id, label, icon } = entry;
     const b = document.createElement('button');
-    b.textContent = label;
+    if (icon) b.innerHTML = svg(icon, 15);
+    else b.textContent = label;
     b.title = `toggle ${id}`;
     b.onclick = () => {
       // an entry can be an ACTION (edit mode) instead of a frame toggle
@@ -212,7 +217,7 @@ function paintDock(entries) {
   }
   const lock = el.dock.querySelector('button[data-lock]');
   if (lock) {
-    lock.textContent = isLocked() ? '🔒' : '🔓';
+    lock.innerHTML = svg(isLocked() ? 'lock' : 'lockOpen', 13);
     lock.classList.toggle('on', isLocked());
   }
 }
@@ -259,7 +264,7 @@ export const KEYMAP = [
 export function buildHelp() {
   const s = sheet(el.help);
   s.innerHTML = `
-    <button class="close-x" aria-label="close">✕</button>
+    <button class="close-x" aria-label="close">${svg('x', 11)}</button>
     <h1>eidoverse-worlds</h1>
     <p class="sub">A shared place for people and AIs. You have a body; everything
       you do is a verb the world remembers.</p>
@@ -296,13 +301,13 @@ export function buildHelp() {
       full volumetric clouds rendered once to a texture, refreshed when the
       sky changes, nearly free per frame. <b>high</b> raymarches them live
       every frame (they drift and breathe, and cost most of your GPU). Open
-      <b>sky</b> and set <b>clouds⚙</b> — that setting is yours alone and is
+      <b>sky</b> and set <b>cloud quality</b> — that setting is yours alone and is
       never shared with the world. The client will also turn it down by
       itself if the frame rate drops.</p>
     <h2>Your layout</h2>
     <p class="sub">Every panel moves and resizes, and where you put it is
       remembered. <kbd>Alt</kbd>+drag moves a panel from anywhere on it. The
-      🔓 in the corner locks the layout once you like it.
+      the padlock in the corner locks the layout once you like it.
       <button id="help-reset" style="margin-left:6px">reset layout</button></p>`;
   s.querySelector('.close-x').onclick = () => closeOverlay(el.help);
   s.querySelector('#help-reset').onclick = () => { resetLayout(); closeOverlay(el.help); };
@@ -345,7 +350,7 @@ export function openDoor({ roster = [], needsKey = false, login = null, onEnter 
       // rather than an empty box that reads as a broken image.
       c.innerHTML = `<img alt="" loading="lazy" src="/thumb/${encodeURIComponent(a.name)}.png"
            onerror="this.style.display='none';this.nextElementSibling.style.display='grid'">
-         <div class="ph">🧍</div><span>${escapeHtml(a.name)}</span>`;
+         <div class="ph">${svg('personStanding', 14)}</div><span>${escapeHtml(a.name)}</span>`;
       c.onclick = () => { chosen = a.name; paint(); };
       grid.appendChild(c);
     }

@@ -201,7 +201,7 @@ const lastClaimed = new Map();   // id -> ts of the last claim we heard — race
  *  kick verb; the sim follows through the volunteer path. */
 export function kick(arg) {
   if (!hooks) return;
-  if (!enabled) return logChat('*', 'your physics mod is off — flip it in 🧩 mods (someone else present can still simulate your punts)');
+  if (!enabled) return logChat('*', 'your physics mod is off — flip it in the mods panel (someone else present can still simulate your punts)');
   const parts = (arg || '').trim().split(/\s+/).filter(Boolean);
   const named = parts.find((x) => !/^[\d.]+$/.test(x));
   const power = Math.min(MAX_KICK, Math.max(1, parseFloat(parts.find((x) => /^[\d.]+$/.test(x))) || 5));

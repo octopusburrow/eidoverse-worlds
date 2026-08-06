@@ -27,6 +27,7 @@
 // grabbed globals keeps them until reload. Trusted means trusted.
 
 import { bus, CONFIG, report } from './core.js';
+import { svg } from './icons.js';
 import { behaviors } from './world.js';
 import { sendVerb } from './net.js';
 import { makeSection, toast, flashHint } from './ui.js';
@@ -128,7 +129,7 @@ export function tickMods(dt, now) {
         report(`mod ${name} tick`, e);
         if (++inst.errors >= 5) {
           inst.dead = true;
-          toast(`mod "${name}" paused after repeated errors — re-enable it in 🧩 mods`, 'err', 9000);
+          toast(`mod "${name}" paused after repeated errors — re-enable it in the mods panel`, 'err', 9000);
           break;
         }
       }
@@ -158,7 +159,7 @@ function reconcileOffers({ live = false } = {}) {
     if (running.has(runName)) continue;
     if (g[scriptKey(id, b.src)] || g[worldKey()]) { runOffer(id, b); continue; }
     if (live) {
-      logChat('*', `this world offers a mod: "${id}" by ${b.author} — open 🧩 mods to run it`);
+      logChat('*', `this world offers a mod: "${id}" by ${b.author} — open the mods panel to run it`);
     }
   }
   // unbound offers stop running
@@ -206,7 +207,7 @@ export const modsApi = {
 };
 
 export function initMods() {
-  makeSection('🧩 mods', async (body) => {
+  makeSection('mods', async (body) => {
     let editing = null;      // name being edited, '' = new
     const render = async () => {
       const mine = await listScripts();
@@ -219,7 +220,7 @@ export function initMods() {
             <button data-auto="${esc(s.name)}">${s.auto ? 'autorun ✓' : 'autorun'}</button>
             <button data-edit="${esc(s.name)}">edit</button>
             <button data-promote="${esc(s.name)}" title="upload + offer to everyone in this world (owner)">promote</button>
-            <button data-del="${esc(s.name)}">✕</button></div>
+            <button data-del="${esc(s.name)}">${svg('x', 9)}</button></div>
         </div>`;
       }).join('');
       const offerRows = offers().map(([id, b]) => {
@@ -233,9 +234,9 @@ export function initMods() {
       }).join('');
       body.innerHTML = `<div class="stack">
         <div><b>built-in</b> — the house plugins, dogfooding the same tier</div>
-        <div>⚙ object physics <span style="color:var(--dim)">(balls, boxes, punts — the SIM half; you always SEE others' physics)</span>
+        <div>${svg('settings', 11)} object physics <span style="color:var(--dim)">(balls, boxes, punts — the SIM half; you always SEE others' physics)</span>
           <button data-corephys="1">${physicsEnabled() ? 'on ✓' : 'off'}</button></div>
-        <div>⚙ body engine <span style="color:var(--dim)">(how YOUR falls simulate — rapier: rigid bones, muscle tone)</span>
+        <div>${svg('settings', 11)} body engine <span style="color:var(--dim)">(how YOUR falls simulate — rapier: rigid bones, muscle tone)</span>
           <button data-bodyeng="1">${bodyEngine()}</button></div>
         <hr>
         <div style="color:var(--dim)">local mods run with FULL access, as you — load only code you trust</div>
@@ -340,7 +341,7 @@ export function initMods() {
     };
     paint = render;
     await render();
-  });
+  }, { id: 'mods', icon: 'puzzle' });
 
   // autoruns: local mods marked auto, and consented world offers
   bus.on('hydrated', async () => {

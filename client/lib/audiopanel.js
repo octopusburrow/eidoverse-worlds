@@ -21,7 +21,7 @@ import { bus } from './core.js';
 
 const ROWS = [
   ['voices', 'voices', 'other people speaking, and agent speech'],
-  ['world', 'world', 'ambience and place-sound — the 🎧 toggle never touches this'],
+  ['world', 'world', 'ambience and place-sound — the headphones toggle never touches this'],
   ['tts', 'text-to-speech', 'synthetic narration only'],
 ];
 
@@ -109,7 +109,7 @@ function paint(body) {
   // it from a fully-revoked state grants consent as well, exactly like the
   // glyph, so the box is never a dead end.
   body_.append(checkRow('hear voices',
-    'peers and agent speech — the 🎧 glyph is this same switch',
+    'peers and agent speech — the headphones glyph is this same switch',
     receivingVoice() && !isHushed(), (on) => {
       if (on) { if (!receivingVoice()) setReceiveVoice(true); setHush(false); }
       else setHush(true);
@@ -138,7 +138,7 @@ function paint(body) {
 }
 
 export function initAudioPanel() {
-  makeSection('🔊 audio', (body) => paint(body), { id: 'audio' });
+  makeSection('audio', (body) => paint(body), { id: 'audio', icon: 'volume2' });
   // either control moving repaints the other's row — one truth, two surfaces
   bus.on('audio:hush', () => paint());
   bus.on('audio:receive', () => paint());

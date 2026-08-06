@@ -19,6 +19,7 @@
 // dev — a MOCK_APIS Orrery instance makes the whole flow testable offline.
 
 import { CONFIG, bus, report } from './core.js';
+import { svg } from './icons.js';
 import { makeSection, toast, flashHint } from './ui.js';
 import { sendVerb, net } from './net.js';
 import { holdGhost } from './build.js';
@@ -74,7 +75,7 @@ async function poll() {
       j.nodes = tree.nodes.filter((n) => (n.group_id ?? '').startsWith(`${j.chainId}:`));
       if (prev !== j.status) {
         if (j.status === 'waiting_selection') {
-          flashHint('✨ image candidates ready — pick one in the conjure panel');
+          flashHint(`${svg('sparkles', 12)} image candidates ready — pick one in the conjure panel`);
           logChat('*', `conjure: "${j.prompt.slice(0, 40)}" wants your pick of images`);
         }
         if (j.status === 'completed') logChat('*', `conjure: "${j.prompt.slice(0, 40)}" is ready to place`);
@@ -168,7 +169,7 @@ async function paint(body) {
         || '<span class="sub">candidates finished but none readable — open orrery</span>'}</div>`;
     } else if (j.status === 'completed') {
       inner = `<div class="cj-done">
-        <button data-place="${idx}">⚡ into the world</button>
+        <button data-place="${idx}">${svg('zap', 10)} into the world</button>
         <button data-avatar="${idx}" title="rigged results only">as avatar</button>
       </div>`;
     } else if (j.status === 'failed') {
@@ -180,8 +181,8 @@ async function paint(body) {
       <div class="cj-head">
         <span class="cj-prompt" title="${esc(j.prompt)}">${esc(j.prompt.slice(0, 44))}</span>
         <span class="cj-stage">${esc(stage)}${prog != null ? ` ${prog}%` : ''}</span>
-        ${active(j) ? `<button class="cj-x" data-cancel="${idx}" title="cancel">✕</button>`
-                    : `<button class="cj-x" data-dismiss="${idx}" title="dismiss">✕</button>`}
+        ${active(j) ? `<button class="cj-x" data-cancel="${idx}" title="cancel">${svg('x', 10)}</button>`
+                    : `<button class="cj-x" data-dismiss="${idx}" title="dismiss">${svg('x', 10)}</button>`}
       </div>${inner}</div>`;
   }).join('');
 
@@ -189,7 +190,7 @@ async function paint(body) {
     <div class="cj-new">
       <input id="cj-prompt" type="text" maxlength="400" spellcheck="false"
         placeholder="describe a thing… e.g. a rusted brass lighthouse" ${genOk ? '' : 'disabled'}>
-      <button id="cj-go" ${genOk ? '' : 'disabled'}>✨ conjure</button>
+      <button id="cj-go" ${genOk ? '' : 'disabled'}>${svg('sparkles', 11)} conjure</button>
     </div>
     ${genOk ? '' : '<p class="sub">bringing new objects into this world needs the <b>gen</b> capability — ask its owner (<b>/grant you +gen</b>)</p>'}
     <div id="cj-jobs">${rows || '<p class="sub">nothing cooking — your conjures queue here with progress, and pause for your pick of the image candidates before any mesh is spent.</p>'}</div>
@@ -280,11 +281,11 @@ export function initConjure() {
     .cj-done { display:flex; gap:4px; margin-top:5px; }`;
   document.head.appendChild(style);
 
-  makeSection('✨ conjure', async (body) => {
+  makeSection('conjure', async (body) => {
     bodyEl = body;
     await paint(body);
     schedule();
-  }, { id: 'conjure' });
+  }, { id: 'conjure', icon: 'sparkles' });
 
   bus.on('your-rights', () => { if (bodyEl) paint(bodyEl).catch(() => {}); });
   schedule();   // resume polling for jobs left cooking before a reload

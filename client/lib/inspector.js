@@ -21,6 +21,7 @@
 // speaks an undo PAIR (editundo): the inverse sentence rides with it.
 
 import { THREE, bus, report } from './core.js';
+import { svg } from './icons.js';
 import { entities, entityMeta, comps } from './world.js';
 import { sendVerb } from './net.js';
 import { makeSchemaFrame } from './panels.js';
@@ -84,7 +85,7 @@ function compFields(type, data) {
   const header = {
     t: 'list', label: '',
     rows: [{ id: `comp:${type}`, label: type, sub: '',
-      actions: [{ k: 'comp-strip', label: '✕', danger: true }] }],
+      actions: [{ k: 'comp-strip', label: svg('x', 10), danger: true }] }],
   };
   const flat = data && typeof data === 'object' && !Array.isArray(data)
     && Object.values(data).every((v) => ['number', 'string', 'boolean'].includes(typeof v)

@@ -15,6 +15,7 @@
 // Volume rolls off by avatar distance — voice is proximity-scoped like chat.
 
 import { bus, report } from './core.js';
+import { svg } from './icons.js';
 import { sendRtc } from './net.js';
 import { remotes } from './remotes.js';
 import { myState } from './controller.js';
@@ -190,7 +191,7 @@ export async function toggleMic(name) {
       if (!receivingVoice()) dropPeer(id);
       else renegotiate(id);          // tell them our track is gone; keep theirs
     }
-    flashHint('🎙 off');
+    flashHint(`${svg('mic', 12)} off`);
     bus.emit('voice', { on: false });
     return false;
   }
@@ -204,7 +205,7 @@ export async function toggleMic(name) {
     return false;
   }
   for (const id of humanIds()) offerTo(id);
-  flashHint('🎙 live — speak, neighbors hear · <b>mute</b> in the dock');
+  flashHint(`${svg('mic', 12)} live — speak, neighbors hear · <b>mute</b> in the dock`);
   bus.emit('voice', { on: true });
   return true;
 }
@@ -234,7 +235,7 @@ export function toggleMute() {
   if (!micStream) return false;
   muted = !muted;
   for (const t of micStream.getTracks()) t.enabled = !muted;
-  flashHint(muted ? '🔇 muted' : '🎙 unmuted');
+  flashHint(muted ? `${svg('volumeX', 12)} muted` : `${svg('mic', 12)} unmuted`);
   bus.emit('voice', { on: true, muted });
   return muted;
 }

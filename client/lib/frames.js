@@ -10,6 +10,7 @@
 // the whole layout when you're happy, and have it still be there tomorrow.
 
 import { bus } from './core.js';
+import { svg } from './icons.js';
 
 const LS = (id) => `ew-frame-${id}`;
 const frames = new Map();
@@ -267,7 +268,7 @@ export function makeFrame(id, opts = {}) {
     const b = document.createElement('button');
     b.className = 'fr-btn';
     b.title = 'close';
-    b.textContent = '✕';
+    b.innerHTML = svg('x', 11);
     b.onclick = (e) => { e.stopPropagation(); api.hide(); };
     btns.appendChild(b);
   }

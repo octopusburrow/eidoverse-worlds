@@ -13,6 +13,7 @@
 // maybe. Storage first.
 
 import { report } from './core.js';
+import { svg } from './icons.js';
 import { makeSection, flashHint } from './ui.js';
 import { holdGhost } from './build.js';
 
@@ -30,7 +31,7 @@ export function satchelAdd(lib, name) {
   if (items.some((i) => i.lib === lib)) { flashHint('already in your satchel'); return; }
   items.push({ lib, name: name ?? lib.split('/').pop().replace('.glb', ''), added: Date.now() });
   save(items);
-  flashHint(`🎒 <b>${items[items.length - 1].name}</b> saved to your satchel`);
+  flashHint(`${svg('backpack', 12)} <b>${items[items.length - 1].name}</b> saved to your satchel`);
   paint();
 }
 
@@ -44,9 +45,9 @@ function paint() {
   body.innerHTML = items.length
     ? `<div style="color:var(--dim);font-size:10px;margin-bottom:3px">yours — lives in this browser, follows you between worlds</div>
        ${items.map((i, n) => `<div class="who-row" style="cursor:pointer" data-n="${n}">
-         <span class="n">🎒 ${esc(i.name)}</span>
-         <span class="d"><button data-del="${n}" style="font-size:10px">✕</button></span></div>`).join('')}`
-    : '<div style="color:var(--dim)">empty — select something in the 🌳 scene and hit 🎒 save</div>';
+         <span class="n">${svg('backpack', 11)} ${esc(i.name)}</span>
+         <span class="d"><button data-del="${n}" style="font-size:10px">${svg('x', 9)}</button></span></div>`).join('')}`
+    : '<div style="color:var(--dim)">empty — select something in the scene and hit save</div>';
   for (const row of body.querySelectorAll('[data-n]')) {
     row.onclick = (e) => {
       if (e.target.dataset.del != null) return;
@@ -60,5 +61,5 @@ function paint() {
 }
 
 export function initSatchel() {
-  makeSection('🎒 satchel', (b) => { body = b; paint(); }, { id: 'satchel' });
+  makeSection('satchel', (b) => { body = b; paint(); }, { id: 'satchel', icon: 'backpack' });
 }

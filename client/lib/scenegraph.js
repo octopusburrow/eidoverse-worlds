@@ -20,6 +20,7 @@
 // no authority. The server enforces rights; buttons just try.
 
 import { THREE, CONFIG, bus } from './core.js';
+import { svg } from './icons.js';
 import { entities, entityMeta, comps, avatarMounts } from './world.js';
 import { sendVerb, requestDebug } from './net.js';
 import { makeSection, flashHint } from './ui.js';
@@ -85,12 +86,12 @@ function paintScene() {
     const short = (meta?.lib ?? meta?.kind ?? '?').split('/').pop().replace('.glb', '')
       .split('_').slice(0, 3).join(' ');
     const badges = badgesFor(id);
-    const scripts = behaviorRows.filter((b) => b.attach === id).map((b) => `📜${b.id}`);
+    const scripts = behaviorRows.filter((b) => b.attach === id).map((b) => `${svg('scrollText', 10)}${b.id}`);
     rows.push(`<div class="who-row sg-row" data-id="${esc(id)}" style="cursor:pointer;padding-left:${depth * 14}px;${id === selected ? 'background:rgba(255,255,255,.06)' : ''}">
       <span class="n">${depth ? '└ ' : ''}<b>${esc(id)}</b> <span style="color:var(--dim)">${esc(short)}</span></span>
       <span class="d">${esc([...badges, ...scripts].join(' · '))}</span></div>`);
     for (const r of riders.get(id) ?? []) {
-      rows.push(`<div class="who-row" style="padding-left:${(depth + 1) * 14}px"><span class="n">└ 🧍 ${esc(r)}</span></div>`);
+      rows.push(`<div class="who-row" style="padding-left:${(depth + 1) * 14}px"><span class="n">└ ${svg('personStanding', 11)} ${esc(r)}</span></div>`);
     }
     for (const k of kids.get(id) ?? []) row(k, depth + 1);
   };
@@ -229,13 +230,13 @@ async function paintScripts() {
 // ============================================================ wiring
 
 export function initSceneGraph() {
-  sceneApi = makeSection('🌳 scene', async (body) => {
+  sceneApi = makeSection('scene', async (body) => {
     sceneBody = body;
     await refreshRoster();      // the tree shows 📜 badges too
     paintScene();
-  }, { id: 'scene' });
+  }, { id: 'scene', icon: 'trees' });
 
-  scriptsApi = makeSection('📜 scripts', async (body) => {
+  scriptsApi = makeSection('scripts', async (body) => {
     scriptsBody = body;
     await refreshRoster();
     await paintScripts();
@@ -247,7 +248,7 @@ export function initSceneGraph() {
       await refreshRoster();
       await paintScripts();
     }, 2500);
-  }, { id: 'scripts' });
+  }, { id: 'scripts', icon: 'scrollText' });
 
   // keep the tree honest while it's visible
   let repaintQueued = false;

@@ -206,7 +206,7 @@ export async function loadGLB(libPath) {
     // In the loading tray too: on Safari a single material graph compiles for
     // SECONDS — a spinner named after the model turns that from mystery jank
     // into visible progress.
-    loadTrack(`compile:${libPath}`, `⚙ ${short}`);
+    loadTrack(`compile:${libPath}`, `compile ${short}`);
     const p = enqueue(() => {
       work.phase('compile');
       return renderer.compileAsync(obj, camera, scene).catch(() => {});

@@ -86,7 +86,7 @@ function rows() {
     const hit = !q || short.toLowerCase().includes(q) || id.toLowerCase().includes(q);
     if (hit) {
       const badges = badgesFor(id);
-      const scripts = behaviorRows.filter((b) => b.attach === id).map((b) => `📜${b.id}`);
+      const scripts = behaviorRows.filter((b) => b.attach === id).map((b) => `§${b.id}`);
       out.push({
         id, depth,
         label: `${'  '.repeat(depth)}${depth ? '└ ' : ''}${id} · ${short}`,
@@ -100,7 +100,7 @@ function rows() {
       }
       for (const r of riders.get(id) ?? []) {
         out.push({ id: `rider:${r}`, depth: depth + 1, rider: true,
-          label: `${'  '.repeat(depth + 1)}└ 🧍 ${r}`, sub: '', actions: [] });
+          label: `${'  '.repeat(depth + 1)}└ ${r}`, sub: '', actions: [] });
       }
     }
     for (const k of (kids.get(id) ?? []).sort()) walk(k, depth + 1);

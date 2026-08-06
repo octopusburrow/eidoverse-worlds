@@ -13,6 +13,7 @@
 // produce identical log entries. One selection, kept local ('ws:select').
 
 import { THREE, bus, camera, canvas } from './core.js';
+import { svg } from './icons.js';
 import { toggleEditMode } from './build.js';
 import { entities, entityMeta, comps, avatarMounts } from './world.js';
 import { sendVerb as netSendVerb } from './net.js';
@@ -196,7 +197,7 @@ function build() {
   root.innerHTML = `
     <div class="em-hier" style="${PANE}left:8px">
       <div style="padding:6px 8px;border-bottom:1px solid var(--edge);display:flex;justify-content:space-between;align-items:center">
-        <b>hierarchy</b><button class="em-close" title="close (Esc)">⛶</button></div>
+        <b>hierarchy</b><button class="em-close" title="close (Esc)">${svg('maximize', 11)}</button></div>
       <div class="em-tree" style="flex:1;overflow:auto;padding:4px"></div>
     </div>
     <div class="em-insp" style="${PANE}right:8px;width:270px">
@@ -229,7 +230,7 @@ function paintHier() {
       rows.push(`<div style="padding-left:${18 + depth * 14}px;color:var(--dim)">◦ ${esc(slot)} <span style="font-size:10px">socket</span></div>`);
     }
     for (const r of riders.get(id) ?? []) {
-      rows.push(`<div style="padding-left:${18 + depth * 14}px;color:var(--dim)">🧍 ${esc(r)}</div>`);
+      rows.push(`<div style="padding-left:${18 + depth * 14}px;color:var(--dim)">${svg('personStanding', 11)} ${esc(r)}</div>`);
     }
     for (const k of kids.get(id) ?? []) row(k, depth + 1);
   };
@@ -335,7 +336,7 @@ function ensureButton() {
   const dock = document.querySelector('#dock');
   if (!dock || dock.contains(wsButton)) return;
   wsButton = document.createElement('button');
-  wsButton.textContent = '✏️ Edit';
+  wsButton.innerHTML = `${svg('pencil', 12)} Edit`;
   wsButton.title = "edit mode (their 'b') + our inspector/undo ride along · Esc leaves";
   // ONE edit mode: the button speaks THEIR toggle (R: converge, don't parallel
   // — 'copy their b panels into our edit button'); our surface follows the

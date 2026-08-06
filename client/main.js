@@ -5,6 +5,7 @@
 // server sequences and relays. This file is boot and the frame loop — every
 // system lives in lib/.
 
+import { svg } from './lib/icons.js';
 import {
   THREE, scene, camera, renderer, sun, canvas, CONFIG, BASE_PIXEL_RATIO,
   bus, report, setName,
@@ -154,11 +155,11 @@ initChat({
 initRoster(people);
 initEmoteBar();
 initDock([
-  { id: 'chat', label: '💬' },
-  { id: 'world', label: '🧱' },
-  { id: 'who', label: '👥' },
-  { id: 'emotes', label: '👋' },
-  { id: 'debug', label: '🐞' },
+  { id: 'chat', label: 'chat', icon: 'messageSquare' },
+  { id: 'world', label: 'world', icon: 'boxes' },
+  { id: 'who', label: 'who', icon: 'users' },
+  { id: 'emotes', label: 'emotes', icon: 'hand' },
+  { id: 'debug', label: 'debug', icon: 'bug' },
 ]);
 initDebug({
   // the body in your HAND wins over your own — that is the one being worked on
@@ -1215,7 +1216,7 @@ function paintHud() {
   setHud(
     `${statusDot[net.status] ?? ''} <b>${CONFIG.name}</b> @ ${CONFIG.world}   ` +
     `${fps}fps   ${n} other${n === 1 ? '' : 's'}` +
-    (isEditing() ? '   <span class="edit">✎ editing</span>' : '') +
+    (isEditing() ? `   <span class="edit">${svg('pencil', 10)} editing</span>` : '') +
     (skyImpl() === 'skymesh' ? '   <span style="opacity:.6">basic sky</span>' : ''),
   );
 }

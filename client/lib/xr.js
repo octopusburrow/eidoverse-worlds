@@ -18,6 +18,7 @@
 // foveation 0, local-floor, and the settled law: NEVER navigate mid-session.
 
 import { THREE, renderer, camera, scene, CONFIG, XR_BOOT, report, bus } from './core.js';
+import { stroke, svg } from './icons.js';
 import { xrPanelsEnter, xrPanelsExit, xrPanelsPick } from './xrpanels.js';
 import { myState, xrIntent, setCamYaw, setXrProbe } from './controller.js';
 import { entities, comps } from './world.js';
@@ -175,12 +176,12 @@ function releaseGrab() {
 // just a hand-shaped way to say them. DOM panels don't exist in VR, so slots
 // are world-actions only (satchel/build in VR ride a later 3D-UI slice).
 const RADIAL = [
-  { icon: '🪑', label: 'sit', act: () => bus.emit('xr:sit') },
-  { icon: '🧍', label: 'stand', act: () => bus.emit('xr:stand') },
-  { icon: '🎙', label: 'mic', act: () => bus.emit('xr:mic') },
-  { icon: '👋', label: 'wave', act: () => sendVerb('say', { text: '👋' }) },
-  { icon: '📌', label: 'here?', act: () => sendVerb('say', { text: `I'm at (${myState.pos.x.toFixed(0)}, ${myState.pos.z.toFixed(0)})` }) },
-  { icon: '⛺', label: 'home', act: () => { myState.pos.set(0, 2, 0); flashHint('home'); } },
+  { icon: 'armchair', label: 'sit', act: () => bus.emit('xr:sit') },
+  { icon: 'personStanding', label: 'stand', act: () => bus.emit('xr:stand') },
+  { icon: 'mic', label: 'mic', act: () => bus.emit('xr:mic') },
+  { icon: 'hand', label: 'wave', act: () => sendVerb('say', { text: '👋' }) },
+  { icon: 'pin', label: 'here?', act: () => sendVerb('say', { text: `I'm at (${myState.pos.x.toFixed(0)}, ${myState.pos.z.toFixed(0)})` }) },
+  { icon: 'tent', label: 'home', act: () => { myState.pos.set(0, 2, 0); flashHint('home'); } },
 ];
 let radial = null;   // {group, slots[], sel}
 function makeRadial() {
@@ -189,8 +190,11 @@ function makeRadial() {
     const a = (i / RADIAL.length) * Math.PI * 2 - Math.PI / 2;
     const cv = document.createElement('canvas'); cv.width = cv.height = 128;
     const g = cv.getContext('2d');
-    g.font = '64px serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillText(s.icon, 64, 52);
+    // drawn Lucide, never fillText(emoji): that call silently paints NOTHING
+    // on platforms missing the glyph (see icons.js header) — and this canvas
+    // is exactly that trap, discovered live 08-05.
+    g.save(); g.translate(64, 52); g.strokeStyle = '#f2f7f5'; stroke(g, s.icon, 52); g.restore();
+    g.textAlign = 'center'; g.textBaseline = 'middle';
     g.font = '20px monospace'; g.fillStyle = '#cfe8f5'; g.fillText(s.label, 64, 104);
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true }));
     sp.scale.setScalar(0.075);
@@ -373,12 +377,12 @@ export async function initXR() {
   window.addEventListener('resize', seat);
   seat();
   if (!XR_BOOT) {
-    b.textContent = '🥽 VR';
+    b.innerHTML = `${svg('glasses', 13)} VR`;
     b.onclick = () => {
       const u = new URL(location.href); u.searchParams.set('xr', '1'); location.href = u;
     };
   } else {
-    b.textContent = '🥽 enter VR';
+    b.innerHTML = `${svg('glasses', 13)} enter VR`;
     b.onclick = enterVR;
   }
   document.body.appendChild(b);
