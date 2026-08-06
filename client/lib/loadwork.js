@@ -52,6 +52,19 @@ const LOG_THRESHOLD_MS = 120;
 // can't be read over WebDriver) and from a quick `__loadJank` in any console.
 const loadLog = (globalThis.__loadLog = []);
 const jankLog = (globalThis.__loadJank = []);
+// Uncaught errors, persisted: toasts fade before a human in a headset can
+// read them (R, 22:45, mid-VR-debug). Ring rides the perf beacon, and the
+// first error posts one immediately — a crash shouldn't wait for the 40s mark.
+const errLog = (globalThis.__errLog = []);
+let errPosted = false;
+function noteErr(line) {
+  if (errLog.length < 50) errLog.push(line);
+  if (!errPosted) { errPosted = true; setTimeout(() => postPerf('err'), 1500); }
+}
+window.addEventListener('error', (e) =>
+  noteErr(`${e.message} @ ${(e.filename ?? '?').split('/').pop()}:${e.lineno}`));
+window.addEventListener('unhandledrejection', (e) =>
+  noteErr(`unhandled: ${String(e.reason?.stack ?? e.reason).slice(0, 300)}`));
 
 /** Start a labelled piece of load work. Returns a record:
  *    phase(name)  — enter a named phase (closes the previous one)
@@ -266,6 +279,7 @@ function postPerf(mark) {
         boot: globalThis.__bootMarks ?? null,
         fps: fpsMedian(),
         jank: jankLog.slice(0, 100),
+        errors: errLog.slice(0, 50),
         load: loadLog.slice(0, 200),
       }),
     }).catch(() => {});
