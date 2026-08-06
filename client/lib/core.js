@@ -108,18 +108,25 @@ export const XR_BOOT = CONFIG.params.has('xr');
   const orig = proto?._renderObjects;
   let logged = 0;
   if (orig) {
-    proto._renderObjects = function (renderList, cam, scn, lightsNode, passId) {
-      let holes = 0;
-      for (let i = renderList.length - 1; i >= 0; i--) {
-        if (!renderList[i]) { renderList.splice(i, 1); holes++; }
+    // REIMPLEMENTED, not wrapped: pre-cleaning didn't help, so the list is
+    // mutating DURING iteration (the stock loop caches its length and then
+    // dereferences a vacated slot). Live length + per-item guard tolerates
+    // both holes and mid-loop shrinkage; the render call itself is verbatim.
+    proto._renderObjects = function (renderList, cam, scn, lightsNode, passId = null) {
+      for (let i = 0; i < renderList.length; i++) {
+        const item = renderList[i];
+        if (!item) {
+          if (logged < 5) {
+            logged++;
+            const err = new Error(`renderList hole at ${i}/${renderList.length}, pass=${passId}, xr=${this.xr?.isPresenting}`);
+            globalThis.__errLog?.push?.(`${err.message} :: ${err.stack?.split('\n').slice(2, 5).join(' | ')}`);
+            console.warn('[renderlist]', err.message);
+          }
+          continue;
+        }
+        const { object, geometry, material, group, clippingContext } = item;
+        this._currentRenderObjectFunction(object, scn, cam, geometry, material, group, lightsNode, clippingContext, passId);
       }
-      if (holes && logged < 5) {
-        logged++;
-        const err = new Error(`renderList had ${holes} hole(s), pass=${passId}, xr=${this.xr?.isPresenting}`);
-        globalThis.__errLog?.push?.(`${err.message} :: ${err.stack?.split('\n').slice(2, 5).join(' | ')}`);
-        console.warn('[renderlist]', err.message);
-      }
-      return orig.call(this, renderList, cam, scn, lightsNode, passId);
     };
   }
 }
