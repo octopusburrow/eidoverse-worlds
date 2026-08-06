@@ -166,6 +166,7 @@ function drawTypingDots(sprite, t, state) {
 const _v = new THREE.Vector3();
 const _pq = new THREE.Quaternion();
 const _X = new THREE.Vector3(1, 0, 0);      // scratch — hot paths must not allocate
+const _Z = new THREE.Vector3(0, 0, 1);
 const _v2 = new THREE.Vector3();
 
 export class Avatar {
@@ -635,6 +636,21 @@ export class Avatar {
       }
       this._composeEnd(this.head, r);
     }
+    // ---- per-body tune (sidecar json): armSpread lifts the upper arms away
+    // from the torso by N degrees. Human-proportioned clips put a correct
+    // relaxed arm INSIDE a wide or fluffy silhouette; the body's own sidecar
+    // says how much air it needs. Composes on the clip pose (post-mixer,
+    // pre-vrm.update — same rule as the head pitch above).
+    BC('av:tune');
+    const spread = this.tune?.armSpread;
+    if (spread && !this._limp) {
+      const rad = THREE.MathUtils.degToRad(spread);
+      for (const [n, sign] of [['leftUpperArm', 1], ['rightUpperArm', -1]]) {
+        const b = this.vrm.humanoid?.getNormalizedBoneNode?.(n);
+        if (b) b.quaternion.premultiply(_pq.setFromAxisAngle(_Z, sign * rad));
+      }
+    }
+
     BC('av:override');
     if (this._override) this._applyOverride(dt, now);
 
@@ -774,7 +790,14 @@ export async function makeAvatar(id, libPath, { full = false, urgent = false } =
     const slots = full ? CLIP_SLOTS : CORE_CLIPS;
     work.phase('body');
     // VRM + the clip bytes we actually need download in PARALLEL.
-    const [vrm] = await Promise.all([loadVRM(libPath, { priority }), ...slots.map(vrmaBytes)]);
+    const [vrm, tune] = await Promise.all([
+      loadVRM(libPath, { priority }),
+      // Optional per-avatar tuning SIDECAR (<body>.tune.json beside the VRM).
+      // Data with the asset, never a table in this file: human-proportioned
+      // clips on a wide or chibi body need per-BODY taste (arm spread, etc.),
+      // and the body's author is the one who knows the number.
+      fetch(`/library/${libPath}.tune.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+      ...slots.map(vrmaBytes)]);
     work.phase('clips');
     const clips = {};
     for (const slot of slots) { // sequential: each may be a VRMA parse (once ever, cached)
@@ -786,6 +809,7 @@ export async function makeAvatar(id, libPath, { full = false, urgent = false } =
     await enqueue(() => renderer.compileAsync(vrm.scene, camera, scene).catch(() => {}),
       { lane: 'gpu', priority });
     const av = new Avatar(id, vrm, clips);
+    av.tune = tune ?? null;
     // The rest arrives behind you. Remote bodies hydrate too — someone else
     // breaking into a run should not be stuck walking on your screen.
     if (!full) av.hydrateClips();
