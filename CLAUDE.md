@@ -40,3 +40,17 @@ Server: bun --watch on :8940 (auto-reloads; key=workbench-2026), data in
 - Suites: `bun tools/smoke.ts` (85), voice lifecycle 31 / wiring 26.
 - Avatars: tune sidecars `<vrm>.tune.json`; converter (basis-key lesson!) in
   /mnt/c/Users/Claude/code/avatar-forge/convert_tigerbee_vrm.py.
+
+## three r186 watch (2026-08-06 — delete this section when done)
+Pinned three r185 + a shim: `client/lib/core.js` null-guards
+`renderer.xr.foveateBoundTexture` (r185 shipping bug — every WebGL-backend XR
+frame throws on a null framebuffer target when no post-processing pass exists;
+world freezes, tracking lives; fixed on three dev). When **three ≥ 0.186**:
+1. `bun add three@0.186.x` in client/
+2. Delete the shim block in core.js (marked "delete when three ≥ r186")
+3. Consider retiring the `?xr=1` boot flag for r186's per-session WebGL-XR
+   fallback (addons/webxr/WebGLXRFallback.js pattern) — that's the shape the
+   upstream #32 VR-entry PR wants.
+4. Verify: `node tools/vr-lab.mjs` — 16-pose sweep, loop live, label hidden.
+XR entry context: R's headset = Steam Frame → desktop Chrome + SteamVR/OpenXR
+stream → always the WebGL fallback path. On-device Frame browser has NO WebXR.
