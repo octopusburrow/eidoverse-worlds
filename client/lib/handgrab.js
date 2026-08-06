@@ -156,8 +156,11 @@ function litFor(id, amount) {
   const obj = entities.get(id);
   if (!obj) return;
   obj.traverse((o) => {
+    if (!o.material || !('emissive' in o.material)) return;
+    // own material first — shared GLB-cache materials made a hover warm every
+    // sibling of the same model (same leak as notice.js, fixed 08-06)
+    if (!o.userData.ownMat) { o.material = o.material.clone(); o.userData.ownMat = true; }
     const m = o.material;
-    if (!m || !('emissive' in m)) return;
     if (!_lit.has(m)) _lit.set(m, m.emissive.getHex());
     m.emissive.setHex(_lit.get(m)).lerp(_warm, amount);
   });
