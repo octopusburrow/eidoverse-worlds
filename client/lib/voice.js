@@ -19,6 +19,7 @@ import { sendRtc } from './net.js';
 import { remotes } from './remotes.js';
 import { myState } from './controller.js';
 import { flashHint } from './ui.js';
+import { receivingVoice, volumeFor, isHushed } from './voiceconsent.js';
 
 const RTC_CFG = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 const FULL_M = 3, SILENT_M = 20;   // full volume inside 3m, gone by 20m
@@ -34,6 +35,33 @@ function humanIds() {
   return [...remotes.entries()].filter(([, r]) => !r.agent).map(([id]) => id);
 }
 
+/** The two consent bits, as a transceiver direction. This is the whole
+ *  consent model expressed structurally: not a check that code paths must
+ *  remember to consult, but the shape of the connection itself, so there is
+ *  no path — offer, answer, or renegotiation — that can negotiate media a
+ *  direction did not permit. (Review catch: offerToReceiveAudio:true asked
+ *  for inbound audio even with receive off, and an answer could then deliver
+ *  it. The old comment claimed the offer "cannot deliver audio we did not ask
+ *  for" — but the offer DID ask.) */
+function wantDirection() {
+  const send = !!micStream, recv = receivingVoice();
+  return send && recv ? 'sendrecv' : send ? 'sendonly' : recv ? 'recvonly' : 'inactive';
+}
+
+/** Force every audio transceiver on this peer to the currently-consented
+ *  direction. Called before any offer/answer, and again when consent moves. */
+function applyDirection(p) {
+  const dir = wantDirection();
+  try {
+    for (const t of p.pc.getTransceivers?.() ?? []) {
+      if (t.receiver?.track?.kind === 'audio' || t.sender?.track?.kind === 'audio' || !t.receiver) {
+        if (t.direction !== dir) t.direction = dir;
+      }
+    }
+  } catch (e) { report('voice direction', e); }
+  return dir;
+}
+
 function peerFor(id) {
   let p = peers.get(id);
   if (p) return p;
@@ -45,6 +73,10 @@ function peerFor(id) {
   peers.set(id, p);
   if (micStream) for (const t of micStream.getTracks()) pc.addTrack(t, micStream);
   pc.ontrack = (e) => {
+    // FAIL CLOSED: consent can be revoked mid-negotiation, and a track that
+    // was in flight when it happened must not land. Nothing is attached and
+    // nothing plays unless receive is on at the moment audio actually arrives.
+    if (!receivingVoice()) { try { for (const t of e.streams[0]?.getTracks() ?? []) t.stop(); } catch { /* best effort */ } return; }
     audio.srcObject = e.streams[0];
     p.stream = e.streams[0];        // kept so their mouth can move with their voice
     // autoplay policy: if the browser balks (receiver never clicked anything),
@@ -66,10 +98,26 @@ function dropPeer(id) {
   p.audio.srcObject = null;
 }
 
+/** Re-offer on an EXISTING peer after our track set changed (mic on/off while
+ *  a consented inbound leg is live). Silent no-op if we are mid-negotiation. */
+async function renegotiate(id) {
+  const p = peers.get(id);
+  if (!p || p.pc.signalingState !== 'stable') return;
+  try {
+    applyDirection(p);
+    const offer = await p.pc.createOffer();
+    await p.pc.setLocalDescription(offer);
+    sendRtc(id, { sdp: p.pc.localDescription });
+  } catch (e) { report('voice renegotiate', e); }
+}
+
 async function offerTo(id) {
   const p = peerFor(id);
   try {
-    const offer = await p.pc.createOffer({ offerToReceiveAudio: true });
+    // direction FIRST: the offer must describe what we consented to, not ask
+    // for everything and filter later
+    applyDirection(p);
+    const offer = await p.pc.createOffer();
     await p.pc.setLocalDescription(offer);
     sendRtc(id, { sdp: p.pc.localDescription });
   } catch (e) { report('voice offer', e); }
@@ -77,6 +125,29 @@ async function offerTo(id) {
 
 async function onRtc(msg) {
   const { from, payload } = msg;
+  // LATE-CONSENT WAKE (#34, matrix-proven 2026-08-06): an offer that arrives
+  // while receive is off is dropped BEFORE a peer exists — correct — but the
+  // sender is then wedged in have-local-offer, and every heal path skipped it
+  // (renegotiate bails on non-stable, roster re-offers only unknown ids).
+  // Deadlock until reload. So a receiver who turns consent ON announces it,
+  // and a live-mic sender rebuilds the wedged leg. This runs BEFORE the
+  // consent gate on purpose: it negotiates THEIR inbound, not ours — no
+  // consent of ours is needed to learn someone now wants to hear.
+  if (payload?.recvReady) {
+    if (micStream) {
+      const p = peers.get(from);
+      if (p && p.pc.signalingState !== 'stable') dropPeer(from);
+      if (!peers.has(from)) offerTo(from);
+      else renegotiate(from);
+    }
+    return;
+  }
+  // CONSENT GATE: with receive-voice off we never negotiate an inbound path.
+  // Not "answer then mute" — no audio path exists at all. An ANSWER to our
+  // own offer is still processed, but it is safe now for a structural reason
+  // rather than an assumed one: that offer was created sendonly, so there is
+  // no recv direction for an answer to fill. ontrack also fails closed.
+  if (!receivingVoice() && payload?.sdp?.type !== 'answer') return;
   const p = peerFor(from);
   try {
     if (payload.sdp?.type === 'offer') {
@@ -87,6 +158,7 @@ async function onRtc(msg) {
         await p.pc.setLocalDescription({ type: 'rollback' });
       }
       await p.pc.setRemoteDescription(payload.sdp);
+      applyDirection(p);            // our answer states OUR consent, not theirs
       const answer = await p.pc.createAnswer();
       await p.pc.setLocalDescription(answer);
       sendRtc(from, { sdp: p.pc.localDescription });
@@ -101,12 +173,23 @@ async function onRtc(msg) {
 export async function toggleMic(name) {
   myId = name ?? myId;
   if (micStream) {
-    // full off: stop tracks, tear down our outbound legs (peers who still
-    // send to us will re-offer if they care; simplest correct teardown)
+    // SEND state only. Going quiet must not deafen you: listening is a
+    // separate permission (review catch — the old teardown dropped every
+    // peer, including inbound legs, which then had no trigger to re-offer
+    // until the next roster event, so muting yourself silently deafened you
+    // for an unbounded time). We remove OUR track from each peer and keep
+    // the connection alive; if we are not listening either, THEN the peer
+    // has no purpose and comes down.
     for (const t of micStream.getTracks()) t.stop();
     micStream = null;
     muted = false;
-    for (const id of [...peers.keys()]) dropPeer(id);
+    for (const [id, p] of [...peers]) {
+      try {
+        for (const sender of p.pc.getSenders()) if (sender.track) p.pc.removeTrack(sender);
+      } catch (e) { report('voice untrack', e); }
+      if (!receivingVoice()) dropPeer(id);
+      else renegotiate(id);          // tell them our track is gone; keep theirs
+    }
     flashHint('🎙 off');
     bus.emit('voice', { on: false });
     return false;
@@ -159,23 +242,77 @@ export function toggleMute() {
 export function initVoice(name) {
   myId = name;
   bus.on('rtc', onRtc);
+  // revoking consent is retroactive: existing inbound legs come down at once.
+  // If our mic is live we re-offer, so our outbound (which they consented to)
+  // survives — revoking "I hear you" must not silently revoke "you hear me".
+  bus.on('audio:receive', (on) => {
+    if (on) {
+      // permit inbound on peers we already hold, then reach the rest
+      for (const p of peers.values()) applyDirection(p);
+      for (const id of [...peers.keys()]) renegotiate(id);
+      if (micStream) for (const id of humanIds()) if (!peers.has(id)) offerTo(id);
+      // and tell everyone: any sender whose offer we consent-dropped is
+      // wedged with no path to us until they hear this (#34 wake)
+      for (const id of humanIds()) sendRtc(id, { recvReady: true });
+      return;
+    }
+    // revoked: inbound legs come down. If our mic is live the outbound they
+    // consented to is re-established — SENDONLY, so the re-offer cannot
+    // smuggle back the inbound we just refused (review catch).
+    for (const id of [...peers.keys()]) dropPeer(id);
+    if (micStream) for (const id of humanIds()) offerTo(id);
+  });
   bus.on('roster', () => {
     // arrivals get an offer while we're live; departures get torn down
     if (micStream) for (const id of humanIds()) if (!peers.has(id)) offerTo(id);
     for (const id of [...peers.keys()]) if (!remotes.has(id)) dropPeer(id);
   });
+  // Two clocks on purpose. Distance is a slow fact — 300ms is plenty and
+  // keeps the per-frame cost near zero. The hush FADE is a gesture, and a
+  // gesture quantized to 300ms steps feels like a fade drawn with a ruler.
+  // So the target is recomputed slowly and the approach runs fast (R, testing
+  // live at 12:32: "I really like the audio fade — I'd halve the time").
+  // 700ms edge-to-edge, linear — and it genuinely reaches zero.
   setInterval(() => {
     for (const [id, p] of peers) {
       const r = remotes.get(id);
       if (!r?.avatar?.root || !p.audio.srcObject) continue;
       const d = r.avatar.root.position.distanceTo(myState.pos);
-      p.audio.volume = Math.min(1, Math.max(0, 1 - (d - FULL_M) / (SILENT_M - FULL_M)));
+      const roll = Math.min(1, Math.max(0, 1 - (d - FULL_M) / (SILENT_M - FULL_M)));
+      // distance × slider × hush. HUSH IS A GAIN, never a teardown: the stream
+      // keeps arriving and advancing, so unhushing rejoins the sentence already
+      // in progress instead of starting the next one — the way you rejoin a
+      // human voice you had stopped attending to. (Field report from a live
+      // desk test: a teardown-on-toggle cut the utterance mid-word.)
+      p.wantVolume = isHushed() ? 0 : roll * volumeFor('voices');
     }
   }, 300);
+  // LINEAR, not exponential. An exponential approach spends most of its life
+  // crawling through the quiet end — exactly where an ear is most alert to
+  // "is that still on?" — so a mute built from decaying multiplications
+  // leaves a faint voice hanging for seconds. Measured: the old curve was
+  // still nonzero at 2280ms and only crossed -40dB at 1140ms (field report,
+  // 12:35: "I can hear a really faint version of your voice for a number of
+  // seconds"). My -40dB snap threshold was itself far too quiet to be
+  // inaudible. A mute should travel at a constant rate and ARRIVE.
+  // Exponential still suits DISTANCE — a physical fact rather than an
+  // intention — and that stays on the 300ms pass above.
+  const FADE_MS = 700;                       // full-scale travel time
+  const STEP = 60 / FADE_MS;                 // per-tick delta at 60ms
+  setInterval(() => {
+    for (const p of peers.values()) {
+      if (!p.audio.srcObject || p.wantVolume == null) continue;
+      const d = p.wantVolume - p.audio.volume;
+      p.audio.volume = Math.abs(d) <= STEP
+        ? p.wantVolume                       // lands exactly, no residue
+        : p.audio.volume + Math.sign(d) * STEP;
+    }
+  }, 60);
 }
 
 // test/debug probe — connection states by peer id (the world_debug spirit)
-export const voiceDebug = () => Object.fromEntries([...peers].map(([id, p]) => [id, p.pc.connectionState]));
+export const voiceDebug = () => Object.fromEntries([...peers].map(([id, p]) => [id, p.pc.connectionState + '/' + p.pc.signalingState]));
+globalThis.__voicePcs = () => [...peers.values()].map((p) => p.pc);   // stats probes (voice-matrix)
 
 // ---- per-speaker levels (R, 23:30: mouths move in sync with the sound)
 // One analyser per inbound stream, built lazily. Same RMS math as the local
