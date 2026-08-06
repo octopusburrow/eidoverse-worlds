@@ -323,12 +323,12 @@ export async function initXR() {
   b.style.cssText = 'position:fixed; z-index:30; font-size:13px; padding:5px 10px;';
   let ro = null, seen = null;
   const seat = () => {
-    const hud = document.querySelector('#hud');
-    if (!hud) { setTimeout(seat, 300); return; }
-    const r = hud.getBoundingClientRect();
-    b.style.left = `${Math.round(r.right + 70)}px`;   // mic +6, ear +38, chip +70
+    const dock = document.querySelector('#dock');   // the top-RIGHT container (R, 22:58)
+    if (!dock) { setTimeout(seat, 300); return; }
+    const r = dock.getBoundingClientRect();
+    b.style.left = `${Math.round(r.left - b.offsetWidth - 8)}px`;
     b.style.top = `${Math.round(r.top + (r.height - b.offsetHeight) / 2)}px`;
-    if (hud !== seen) { seen = hud; ro?.disconnect(); ro = new ResizeObserver(seat); ro.observe(hud); }
+    if (dock !== seen) { seen = dock; ro?.disconnect(); ro = new ResizeObserver(seat); ro.observe(dock); }
   };
   window.addEventListener('resize', seat);
   seat();
