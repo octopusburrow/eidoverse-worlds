@@ -48,7 +48,7 @@ import { initMods, tickMods, modsApi } from './lib/mods.js';
 import { shedALight, litCount } from './lib/lights.js';
 import { initBoot, markPhase, finishBoot, bootDone } from './lib/boot.js';
 import { framesHeld } from './lib/loadwork.js';
-import { initXR, updateXR } from './lib/xr.js';
+import { initXR, updateXR, bindXRSelf } from './lib/xr.js';
 // satchel shelved 2026-08-05 (R): inventory needs a real design pass first.
 // Module kept in lib/ — re-import initSatchel + the call in init to revive.
 // import { initSatchel } from './lib/satchel.js';
@@ -1219,6 +1219,8 @@ function paintHud() {
 
 renderer.setAnimationLoop(frame);
 initXR();
+bindXRSelf(() => me);   // first-person split + own-label hide need the body
+globalThis.__me = () => me;   // probe access (vr-lab)
 
 // Idle bandwidth streams the rest of the library into the HTTP cache — fire
 // and forget; it waits out the boot and yields to every real load on its own

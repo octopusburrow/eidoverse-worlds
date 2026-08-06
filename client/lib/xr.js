@@ -23,6 +23,32 @@ import { myState, xrIntent, setCamYaw, setXrProbe } from './controller.js';
 import { entities, comps } from './world.js';
 import { sendVerb } from './net.js';
 import { flashHint } from './ui.js';
+
+// ---- self-body in first person ---------------------------------------------
+// R's first headset session (23:22): own body invisible (she stood INSIDE it,
+// camera at head height), own nameplate photobombing from above her own head.
+// porch-old's settled answer: hide the HEAD, keep the body (looking down and
+// seeing your own torso is the embodiment), hide your own label. Generic form
+// for arbitrary VRMs: three-vrm firstPerson layers — setup() splits/annotates
+// meshes onto FP-only (9) and TP-only (10) layers; eye cameras see 9 not 10,
+// the desktop camera sees 10 not 9. main.js binds the self-avatar getter.
+let getSelf = () => null;
+export const bindXRSelf = (fn) => { getSelf = fn; };
+const FP_LAYER = 9, TP_LAYER = 10;
+let fpVrm = null;   // which vrm the split ran on — re-runs after avatar swap,
+                    // and retries from the frame loop when entry beat the load
+function selfFirstPerson(on) {
+  const av = getSelf();
+  if (!av?.vrm) return;
+  if (on && av.vrm.firstPerson && fpVrm !== av.vrm) {
+    try {
+      av.vrm.firstPerson.setup({ firstPersonOnlyLayer: FP_LAYER, thirdPersonOnlyLayer: TP_LAYER });
+      camera.layers.enable(TP_LAYER);   // desktop view keeps seeing the head
+      fpVrm = av.vrm;
+    } catch (e) { report('firstPerson setup', e); }
+  }
+  if (av.label) av.label.visible = !on; // your own name is for OTHER eyes
+}
 import { recordPair } from './editundo.js';
 
 const rig = new THREE.Group();
@@ -217,10 +243,12 @@ async function enterVR() {
     hands.right ??= makeHand(1);
     presenting = true;
     xrIntent.active = true;
+    selfFirstPerson(true);
     xrPanelsEnter(rig);            // manifest + inspector as physical surfaces
     session.addEventListener('end', () => {
       presenting = false;
       xrIntent.active = false;
+      selfFirstPerson(false);
       xrPanelsExit(rig);
       releaseGrab();
       rig.remove(camera);
@@ -300,6 +328,18 @@ export function updateXR() {
       hands.right.laser.scale.z = panelDist ?? (hit ? hit.dist : 24);
     }
     triggerWasDown = trig;
+  }
+
+  // eye cameras see the first-person split, never the third-person head.
+  // Set every frame (idempotent, cheap): three recreates/repopulates the XR
+  // ArrayCamera's sub-cameras across session events, so a one-shot misses.
+  if (fpVrm !== getSelf()?.vrm) selfFirstPerson(true);
+  if (fpVrm) {
+    const xrCam = renderer.xr.getCamera?.();
+    if (xrCam) {
+      xrCam.layers.enable(FP_LAYER); xrCam.layers.disable(TP_LAYER);
+      for (const c of xrCam.cameras ?? []) { c.layers.enable(FP_LAYER); c.layers.disable(TP_LAYER); }
+    }
   }
 
   // the body moved by THEIR controller code; the rig goes where the body is
