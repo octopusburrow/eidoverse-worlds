@@ -102,6 +102,11 @@ function pick(ev) {
 function take(id) {
   const obj = entities.get(id);
   if (!obj) return;
+  // THE ROOM ACT, on the wire as itself (2026-08-06): grabbing used to be
+  // invisible to the server until release spoke a builder-gated `place` —
+  // which silently refused VISITORS the very thing the grab comp invites.
+  // `use take` is rank 0, gated by the comp and by reach, server-checked.
+  sendVerb('use', { id, action: 'take' });
   holder ??= new THREE.Object3D();
   if (!holder.parent) camera.add(holder);
   holder.position.set(0, -0.15, -HOLD_DIST);
@@ -131,14 +136,31 @@ function drop() {
       pos: [+obj.position.x.toFixed(3), +obj.position.y.toFixed(3), +obj.position.z.toFixed(3)],
       rot: [+obj.rotation.x.toFixed(4), +obj.rotation.y.toFixed(4), +obj.rotation.z.toFixed(4)],
     };
-    // the move becomes a sentence, so undo can unsay it — same contract as
-    // the VR hands, and the same one an agent speaking `place` would use
+    // the move becomes a sentence, so undo can unsay it. The sentence is now
+    // `use put` — the WORLD speaks the resulting place with the author's
+    // grab-component authority, so a visitor's pickup finally sticks. (The
+    // undo pair still replays as `place`: undo is an EDIT surface and stays
+    // builder-gated; a visitor's undo gets the polite refusal.)
     recordPair({ verb: 'place', args: prevPlace }, { verb: 'place', args });
-    sendVerb('place', args);
+    sendVerb('use', { id: held.id, action: 'put', pos: args.pos, yaw: +obj.rotation.y.toFixed(4) });
   }
   bus.emit('grab', { id: held.id, holding: false });
   held = null;
 }
+
+// If the server refuses the room act (out of reach, someone else holding),
+// the optimistic local hold must not stand — put the thing back where it was.
+bus.on('server-error', (text) => {
+  if (!held || typeof text !== 'string' || !text.includes(`"${held.id}"`)) return;
+  const obj = entities.get(held.id);
+  if (obj) {
+    held.prevParent.attach(obj);
+    obj.position.set(...held.prevPlace.pos);
+    obj.rotation.set(...held.prevPlace.rot);
+  }
+  bus.emit('grab', { id: held.id, holding: false });
+  held = null;
+});
 
 // ---- the affordance -------------------------------------------------------
 // You could pick things up but nothing said which things — the gate was
