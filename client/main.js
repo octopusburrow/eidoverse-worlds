@@ -49,6 +49,7 @@ import { shedALight, litCount } from './lib/lights.js';
 import { initBoot, markPhase, finishBoot, bootDone } from './lib/boot.js';
 import { framesHeld } from './lib/loadwork.js';
 import { initXR, updateXR, bindXRSelf } from './lib/xr.js';
+import { initMirror, bindMirrorSelf } from './lib/mirror.js';
 // satchel shelved 2026-08-05 (R): inventory needs a real design pass first.
 // Module kept in lib/ — re-import initSatchel + the call in init to revive.
 // import { initSatchel } from './lib/satchel.js';
@@ -223,6 +224,7 @@ function start() {
   initHandGrab();  // pick things up with a mouse — gated on the `grab` comp
   initVoice(CONFIG.name);
   initAudioPanel();   // 🔊 voices / world / TTS + both consent rows
+  initMirror();     // `mirror` comp — reflective glass on any entity
   initSceneGraph();
   initWorkshop();   // OUR edit mode — self-contained, their surfaces untouched
   // initSatchel();   // 🎒 shelved with its import above
@@ -1221,6 +1223,7 @@ function paintHud() {
 renderer.setAnimationLoop(frame);
 initXR();
 bindXRSelf(() => me);   // first-person split + own-label hide need the body
+bindMirrorSelf(() => me); // the glass shows your body even while FP hides it
 globalThis.__me = () => me;   // probe access (vr-lab)
 
 // Idle bandwidth streams the rest of the library into the HTTP cache — fire
