@@ -47,6 +47,10 @@ export function defaultsFor(type) {
 // in the evaluator that consumes it. This is descriptive metadata so the
 // editing surface can offer what the world already understands.
 
+registerComponent('ambient', {
+  hint: 'looping place-sound: this thing is the source',
+  defaults: { src: 'assets/porch_ambient.ogg', gain: 0.7, radius: 18, loop: true },
+});
 registerComponent('sockets', {
   hint: 'named attachment points (seats, mounts)',
   defaults: { seat: { pos: [0, 1, 0], yaw: 0, pose: 'sit' } },
