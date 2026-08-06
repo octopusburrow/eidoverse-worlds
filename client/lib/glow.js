@@ -12,10 +12,14 @@ import { THREE, bus } from './core.js';
 
 const active = new Map();   // entity id -> { root, shells: Mesh[], mat }
 
-// an entity removed mid-glow must not pin its dead subtree in this registry
-// (found in the 08-06 self-audit R demanded — keyed by root, the entry and
-// its material outlived the entity)
-bus.on('entity', ({ id, gone }) => { if (gone) glowRemove(id); });
+// an entity removed mid-glow must not pin its dead subtree in this registry.
+// SECOND fix (same hour): the first listener tested `{gone}` — a field this
+// bus NEVER emits (world.js says `kind: 'remove'`) — so the cleanup was dead
+// code and the audit that "proved" it was watching shells leave with the
+// removed subtree while the registry leaked anyway. antra caught the exact
+// same phantom field in ambient.js on #26. A listener you haven't seen FIRE
+// is not a cleanup path.
+bus.on('entity', ({ id, kind }) => { if (kind === 'remove') glowRemove(id); });
 
 export function glowSet(id, root, color, heat) {
   if (!root) return;
@@ -50,6 +54,10 @@ export function glowSet(id, root, color, heat) {
   // attention should murmur, not shout
   g.mat.opacity = Math.min(1, heat) * 0.13;
 }
+
+/** the registry itself, inspectable — an audit that watches the SCENE can be
+ *  fooled by shells leaving with a removed subtree (learned 08-06) */
+export const glowDebug = () => [...active.keys()];
 
 export function glowRemove(id) {
   const g = active.get(id);

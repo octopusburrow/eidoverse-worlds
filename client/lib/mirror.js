@@ -108,8 +108,8 @@ export function initMirror() {
     if (type !== 'mirror') return;
     if (data) attach(id, data); else detach(id);
   });
-  bus.on('entity', ({ id, gone }) => {
-    if (gone) { detach(id); return; }
+  bus.on('entity', ({ id, kind }) => {
+    if (kind === 'remove') { detach(id); return; }   // NOT `{gone}` — never emitted
     // late mesh arrival: the comp may land before the entity is buildable
     if (!active.has(id) && comps.get(id)?.mirror) attach(id, comps.get(id).mirror);
   });
