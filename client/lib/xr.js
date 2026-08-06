@@ -315,9 +315,25 @@ export async function initXR() {
 
   const b = document.createElement('button');
   b.className = 'panel xr-chip';
-  // rides the LEFT flank of the top-right menu (world frame: right edge -10,
-  // w 232) — dead-center right overlapped it (R, 22:48)
-  b.style.cssText = 'position:fixed; top:10px; right:254px; z-index:30; font-size:14px; padding:8px 14px;';
+  // Rides the LEFT flank of the top-right menu cluster — MEASURED, not
+  // guessed: the cluster's width varies with viewport, and two fixed-px
+  // attempts landed on top of it (R, 22:48/22:50). Headless probes can't see
+  // this chip at all (no WebXR → never rendered), so it positions itself.
+  b.style.cssText = 'position:fixed; top:10px; right:12px; z-index:30; font-size:14px; padding:8px 14px;';
+  const dockLeftOf = () => {
+    let edge = window.innerWidth;
+    for (const e of document.querySelectorAll('body > *')) {
+      if (e === b) continue;
+      const s = getComputedStyle(e);
+      if (s.position !== 'fixed' || s.display === 'none') continue;
+      const r = e.getBoundingClientRect();
+      if (r.top < 50 && r.width > 0 && r.right > window.innerWidth - 340) edge = Math.min(edge, r.left);
+    }
+    b.style.right = `${window.innerWidth - edge + 10}px`;
+  };
+  window.addEventListener('resize', dockLeftOf);
+  setTimeout(dockLeftOf, 500);
+  setTimeout(dockLeftOf, 3000);   // late-building panels move the edge
   if (!XR_BOOT) {
     b.textContent = '🥽 VR';
     b.onclick = () => {
