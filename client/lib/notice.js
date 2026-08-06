@@ -49,15 +49,6 @@ function applyHeat(id, n) {
   if (!obj) return;
   obj.traverse((o) => {
     if (!o.isMesh || !o.material || !('emissive' in o.material)) return;
-    // OWN MATERIAL FIRST (R, 08-06: "wtf is up with the crates blushing?"):
-    // clones from the GLB cache SHARE materials, so warming a shared emissive
-    // warmed every sibling of the same model — nc1 noticed, nc2/nc3 blushed
-    // (measured: one material uuid across all three). A thing that notices
-    // you must own the face it blushes with.
-    if (!o.userData.ownMat) {
-      o.material = o.material.clone();
-      o.userData.ownMat = true;
-    }
     if (!touched.has(o.material)) touched.set(o.material, o.material.emissive.getHex());
     const base = touched.get(o.material);
     o.material.emissive.setHex(base).lerp(n.color, n.heat * 0.85);
