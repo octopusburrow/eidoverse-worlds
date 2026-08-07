@@ -886,6 +886,15 @@ bus.on('command', ({ cmd, arg }) => {
       });
       const kinds = [...new Set([...cands.values()].map(c => c.candidateType))].join(',') || 'none';
       logChat('*', `voice[${id}] ${pc.iceConnectionState} · in=${inb} out=${outb} · path=${sel ?? 'NONE CHOSEN'} · candidates=${kinds}`);
+      // WHICH addresses, not just which kinds. "host->host" alone cannot
+      // distinguish same-LAN from a VPN that makes two networks look local —
+      // and a stale peer from a previous session reports its old path as if
+      // it were current. The actual IPs say which network this really is.
+      const mine  = [...cands.values()].filter(c => c.type === 'local-candidate');
+      const yours = [...cands.values()].filter(c => c.type === 'remote-candidate');
+      const addr = c => `${c.address ?? c.ip ?? '?'}${c.relatedAddress ? ` via ${c.relatedAddress}` : ''}`;
+      logChat('*', `  local: ${[...new Set(mine.map(addr))].join(' ') || '—'}`);
+      logChat('*', `  remote: ${[...new Set(yours.map(addr))].join(' ') || '—'}`);
       // The diagnosis, stated rather than left as an exercise.
       if (!sel && !kinds.includes('relay'))
         logChat('*', '  → no relay candidate. STUN alone cannot cross a carrier-grade NAT (phone on cellular): both ends learn an address neither can reach. A TURN server is the only path.');

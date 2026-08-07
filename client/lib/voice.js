@@ -284,6 +284,20 @@ export async function toggleMic(name) {
     flashHint('microphone unavailable — check browser permission');
     return false;
   }
+  // Attach the new track to peers that ALREADY EXIST before re-offering.
+  // addTrack runs only inside peerFor's construction path, and peerFor returns
+  // an existing peer unchanged — so a mic opened after a peer was built leaves
+  // that peer with a sender carrying no track, on a transceiver negotiated
+  // sendrecv. It renegotiates happily and transmits nothing, forever, while
+  // the UI says "mic LIVE". Receipt (2026-08-07, phone on cellular → Burrow):
+  // in=1179 out=0, senders=['SENDER WITH NO TRACK'].
+  for (const [, p] of peers) {
+    const track = micStream.getAudioTracks()[0];
+    if (!track) break;
+    const sender = p.pc.getSenders().find((s) => s.track?.kind === 'audio' || !s.track);
+    if (sender) sender.replaceTrack(track).catch((e) => report('voice track', e));
+    else p.pc.addTrack(track, micStream);   // no audio slot yet: make one
+  }
   for (const id of humanIds()) offerTo(id);
   flashHint('🎙 live — speak, neighbors hear · <b>mute</b> in the dock');
   bus.emit('voice', { on: true });
