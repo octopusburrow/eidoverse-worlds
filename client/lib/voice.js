@@ -440,6 +440,9 @@ export const peerVolume = (id) => peers.get(id)?.audio.volume ?? null;
 // test/debug probe — connection states by peer id
 export const voiceDebug = () => Object.fromEntries([...peers].map(([id, p]) => [id, p.pc.connectionState]));
 export const voicePcs = () => [...peers.values()].map((p) => p.pc); // experiment branch: raw pcs for stats probes
+// Same connections, carrying the peer id — /voice reports per-peer, and a
+// bare pc cannot say who it failed to reach.
+export const voicePeers = () => [...peers].map(([id, p]) => ({ id, pc: p.pc }));
 
 // ---- per-speaker levels (R, 23:30: mouths move in sync with the sound)
 // One analyser per inbound stream, built lazily. Same RMS math as the local

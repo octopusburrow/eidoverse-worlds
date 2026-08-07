@@ -31,7 +31,7 @@ import {
   hasGhost, hasSelection, toggleEditMode, isEditing,
 } from './lib/build.js';
 import { initConjure } from './lib/conjure.js';
-import { initVoice, micOn, isMuted, micAnalyserLevel, peerLevels } from './lib/voice.js';
+import { initVoice, micOn, isMuted, micAnalyserLevel, peerLevels, voicePeers } from './lib/voice.js';
 import './lib/mictoggle.js'; // mic + headphone toggles beside the HUD, both off by default
 import { initAudioPanel } from './lib/audiopanel.js';
 import { initSceneGraph, sceneAttach, sceneDetach } from './lib/scenegraph.js';
@@ -861,6 +861,39 @@ bus.on('command', ({ cmd, arg }) => {
         + `if you mean it: /reset ${CONFIG.world}`);
     }
     sendWorldReset();
+    return;
+  }
+  if (cmd === 'voice') {
+    // /voice — why a call did not connect, printed where a phone can read it.
+    // WebRTC fails SILENTLY when ICE finds no usable path: no error, no audio,
+    // nothing in any server log, because the negotiation is between browsers
+    // and the server never sees it. The state lives in the page, and on mobile
+    // there is no console to inspect it with — so it comes to the chat log.
+    const pcs = voicePeers();
+    if (!pcs.length) {
+      logChat('*', 'voice: no peer connections — nobody to talk to, or the mic never opened (the mic toggle waits on a speech-to-text prompt; answer it and the mic opens)');
+      return;
+    }
+    Promise.all(pcs.map(async ({ id, pc }) => {
+      const cands = new Map(); let sel = null, inb = 0, outb = 0;
+      const stats = await pc.getStats();
+      stats.forEach(s => { if (s.type.endsWith('-candidate')) cands.set(s.id, s); });
+      stats.forEach(s => {
+        if (s.type === 'inbound-rtp'  && s.kind === 'audio') inb  += s.packetsReceived ?? 0;
+        if (s.type === 'outbound-rtp' && s.kind === 'audio') outb += s.packetsSent ?? 0;
+        if (s.type === 'candidate-pair' && s.state === 'succeeded')
+          sel = `${cands.get(s.localCandidateId)?.candidateType}->${cands.get(s.remoteCandidateId)?.candidateType}`;
+      });
+      const kinds = [...new Set([...cands.values()].map(c => c.candidateType))].join(',') || 'none';
+      logChat('*', `voice[${id}] ${pc.iceConnectionState} · in=${inb} out=${outb} · path=${sel ?? 'NONE CHOSEN'} · candidates=${kinds}`);
+      // The diagnosis, stated rather than left as an exercise.
+      if (!sel && !kinds.includes('relay'))
+        logChat('*', '  → no relay candidate. STUN alone cannot cross a carrier-grade NAT (phone on cellular): both ends learn an address neither can reach. A TURN server is the only path.');
+      else if (!sel)
+        logChat('*', '  → relay candidates exist but no pair succeeded — TURN is configured but unreachable or refusing credentials.');
+    }));
+    const log = window.__iceLog ?? [];
+    if (log.length) logChat('*', `ice log (last 8): ${log.slice(-8).join(' | ')}`);
     return;
   }
   if (cmd === 'debug') {

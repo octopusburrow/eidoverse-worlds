@@ -586,6 +586,12 @@ function runCommand(raw) {
     case 'help':
       bus.emit('command', { cmd: 'help' });
       return true;
+    case 'voice':
+      // WebRTC fails silently when ICE finds no path — no error anywhere, and
+      // on a phone there is no console to inspect. This brings the candidate
+      // types and the chosen pair to the chat log, where anyone can read them.
+      bus.emit('command', { cmd: 'voice', arg });
+      return true;
     default:
       logChat('*', `unknown command /${cmd} — try /help`);
       return true;
