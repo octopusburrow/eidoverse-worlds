@@ -22,7 +22,33 @@ import { myState } from './controller.js';
 import { flashHint } from './ui.js';
 import { receivingVoice, volumeFor, isHushed } from './voiceconsent.js';
 
-const RTC_CFG = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+// STUN alone cannot cross a symmetric or carrier-grade NAT: both ends learn
+// their public address and neither can be reached at it. A TURN relay is the
+// only path for those networks, so the world stays reachable from a phone on
+// cellular — which is exactly where hole-punching fails.
+//
+// Configured by the page, never hardcoded: ?turn=host:port&turnUser=&turnPass=
+// or window.TURN_CFG. Absent, this is byte-identical to the STUN-only default,
+// so no deployment inherits a relay it did not ask for.
+function rtcConfig() {
+  const q = new URLSearchParams(location.search);
+  const t = window.TURN_CFG ?? (q.get('turn') ? {
+    host: q.get('turn'), user: q.get('turnUser'), pass: q.get('turnPass'),
+  } : null);
+  const ice = [{ urls: 'stun:stun.l.google.com:19302' }];
+  if (t?.host) ice.push({
+    urls: [`turn:${t.host}?transport=udp`, `turn:${t.host}?transport=tcp`],
+    username: t.user, credential: t.pass,
+  });
+  // relay-forced is a TEST mode: it discards host/srflx candidates so a pass
+  // proves the relay carried it, not that hole-punching got lucky. Meaningless
+  // without a TURN entry above — with none, ICE has nothing left and stays 0,
+  // which is the negative control.
+  const cfg = { iceServers: ice };
+  if (q.get('rtc') === 'relay') cfg.iceTransportPolicy = 'relay';
+  return cfg;
+}
+const RTC_CFG = rtcConfig();
 const FULL_M = 3, SILENT_M = 20;   // full volume inside 3m, gone by 20m
 
 let micStream = null;
