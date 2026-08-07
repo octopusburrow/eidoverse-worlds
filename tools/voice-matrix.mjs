@@ -57,7 +57,13 @@ const mk = async (name) => {
     }, { ice });
   }
   page.on('pageerror', () => {});
-  await page.goto(`http://localhost:8940/?key=workbench-2026&name=${name}&world=workbench`, { waitUntil: 'domcontentloaded' });
+  // BASE/KEY/WORLD env-able so the matrix can certify production (a scratch
+  // world on the prod sequencer — never the commons room itself; two fake-mic
+  // bots do not belong in anyone's living room).
+  const base = process.env.MATRIX_BASE ?? 'http://localhost:8940';
+  const key = process.env.MATRIX_KEY ?? 'workbench-2026';
+  const world = process.env.MATRIX_WORLD ?? 'workbench';
+  await page.goto(`${base}/?key=${key}&name=${name}&world=${world}`, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => globalThis.__wired ?? true, { timeout: 15000 }).catch(() => {});
   await page.evaluate(async () => {
     const net = await import('/lib/net.js');
