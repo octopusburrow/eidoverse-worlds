@@ -107,6 +107,38 @@ function peerFor(id) {
   return p;
 }
 
+/** Re-attach inbound audio the consent gate refused earlier.
+ *
+ *  `ontrack` fires ONCE per transceiver. When it fired while receive was off,
+ *  the gate stopped the tracks and returned without wiring anything — correct,
+ *  that IS the consent model. But turning receive on afterwards only repairs
+ *  the DIRECTION: the remote track object is unchanged, so no second ontrack
+ *  arrives, and nothing re-wires what was refused. The transceiver then reads
+ *  sendrecv while no audio element was ever connected.
+ *
+ *  Result, reported live 2026-08-08: "they can hear me, I can't hear them" —
+ *  one-way, because our outbound leg was never affected. Order-dependent, so it
+ *  presents as a who-joined-first problem.
+ *
+ *  Reading the receivers is the only way back: they hold the tracks that
+ *  already exist. Idempotent — re-attaching a stream that is already attached
+ *  is a no-op, so this is safe to run on every consent flip. */
+function reattachInbound(p) {
+  if (!receivingVoice()) return;
+  try {
+    const tracks = (p.pc.getReceivers?.() ?? [])
+      .map((r) => r.track)
+      .filter((t) => t && t.kind === 'audio' && t.readyState === 'live');
+    if (!tracks.length) return;
+    if (p.audio.srcObject && p.stream
+        && tracks.every((t) => p.stream.getTracks().includes(t))) return;   // already wired
+    const stream = new MediaStream(tracks);
+    p.audio.srcObject = stream;
+    p.stream = stream;
+    p.audio.play().catch(() => addEventListener('click', () => p.audio.play().catch(() => {}), { once: true }));
+  } catch (e) { report('voice reattach', e); }
+}
+
 function dropPeer(id) {
   const p = peers.get(id);
   if (!p) return;
@@ -357,6 +389,9 @@ export function initVoice(name) {
     if (on) {
       // permit inbound on peers we already hold, then reach the rest
       for (const p of peers.values()) applyDirection(p);
+      // …and re-wire anything the gate refused while we were not listening:
+      // direction alone does not bring back a track ontrack already delivered.
+      for (const p of peers.values()) reattachInbound(p);
       for (const id of [...peers.keys()]) renegotiate(id);
       if (micStream) for (const id of humanIds()) if (!peers.has(id)) offerTo(id);
       // and tell everyone: any sender whose offer we consent-dropped is

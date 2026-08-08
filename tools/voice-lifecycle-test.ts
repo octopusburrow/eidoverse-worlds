@@ -110,6 +110,12 @@ class FakePC {
   }
   close() { this.closed = true; this.connectionState = "closed"; }
   playedAudio = false;
+  /** Tracks the far end has delivered. A track the consent gate refused is
+   *  still HERE — the receiver holds it whether or not we wired it to an
+   *  <audio> element. Modelling this is what makes the one-way bug visible:
+   *  without it, a refused track looks indistinguishable from no track. */
+  _receivers: Array<{ track: { kind: string; readyState: string } }> = [];
+  getReceivers() { return this._receivers; }
   /** Simulate the far end delivering audio. Acceptance is observed the way
    *  the code expresses it: an accepted track gets attached to an <audio>
    *  element (srcObject set); a refused one is stopped and dropped. We read
@@ -117,10 +123,23 @@ class FakePC {
   deliverAudio() {
     const stream = new FakeStream();
     stream.attached = false;
+    const track = { kind: "audio", readyState: "live" };
+    this._receivers = [{ track }];        // the receiver holds it either way
+    this._lastStream = stream;
     this.ontrack?.({ streams: [stream] });
     if (stream.attached) this.playedAudio = true;
   }
+  _lastStream: { attached?: boolean } | null = null;
 }
+// MediaStream: the re-attach path builds one from the receivers' tracks.
+class FakeMediaStream {
+  attached = false;
+  constructor(private tracks: unknown[] = []) {
+    (globalThis as { __lastMediaStream?: unknown }).__lastMediaStream = this;
+  }
+  getTracks() { return this.tracks; }
+}
+(globalThis as Record<string, unknown>).MediaStream = FakeMediaStream;
 (globalThis as Record<string, unknown>).RTCPeerConnection = FakePC;
 
 let micGrants = 0, micDenies = 0;
@@ -737,6 +756,129 @@ check("unhush rejoins the SAME peer at full volume",
   const liveStale = pcStale.getSenders().filter((s) => s.track);
   check("stale-offer: the peer carries exactly one live track after a mid-offer toggle",
     liveStale.length === 1, `${liveStale.length} live of ${pcStale.getSenders().length}`);
+}
+
+{
+  // GLARE ASYMMETRY (reported live 2026-08-08: "they can hear me, I can't hear
+  // them"). Both sides offer at once. Resolution is by id comparison:
+  //
+  //     if (p.pc.signalingState === 'have-local-offer') {
+  //       if ((myId ?? '') < from) return;          // mine stands; ignore theirs
+  //       await p.pc.setLocalDescription({type:'rollback'});
+  //     }
+  //
+  // The winner DISCARDS the incoming offer. But offerOn() runs applyDirection
+  // first, so each offer describes ONLY ITS OWN consent. If the winner offered
+  // while its own receive was off (sendonly), the surviving negotiation has no
+  // inbound direction — and the discarded offer was the one that would have
+  // opened it. Nothing re-offers, because the peer ends up 'stable'.
+  //
+  // Result: the loser hears fine, the winner is deaf. Which side is which is
+  // decided by id ordering, which is why it presents as "a who-joined-first
+  // problem".
+  if (voice.micOn()) { await voice.toggleMic("aaa"); await settle(); }
+  consent.setReceiveVoice(false);          // OUR receive is OFF...
+  await voice.toggleMic("aaa"); await settle();   // ...but our mic is ON → sendonly
+  created.length = 0;
+  stubs.remotes.set("zzz", { agent: false });
+  // let our offer COMPLETE (a parked createOffer leaves state 'stable' — the
+  // local description is what moves it to have-local-offer)
+  bus.emit("roster"); await settle(); await settle();
+  const pcG = created.at(-1)!;
+  check("glare: we hold a completed offer, awaiting their answer",
+    pcG.signalingState === "have-local-offer", pcG.signalingState);
+  const ourDir = pcG.getTransceivers().map((t: {direction: string}) => t.direction);
+  check("  ...and it is sendonly, because our receive is off",
+    ourDir.every((d: string) => d === "sendonly" || d === "inactive"),
+    JSON.stringify(ourDir));
+
+  // they offer too — sendrecv, because THEIR receive is on and they want to hear us
+  bus.emit("rtc", { from: "zzz", payload: { sdp: { type: "offer", sdp: "theirs-sendrecv" } } });
+  await settle(); await settle();
+
+  // now WE turn receive on. The peer is stable, so nothing re-offers it.
+  consent.setReceiveVoice(true);
+  await settle(); await settle();
+
+  const dirs = pcG.getTransceivers().map((t: {direction: string}) => t.direction);
+  check("glare: after enabling receive, an inbound direction exists",
+    dirs.some((d: string) => d === "sendrecv" || d === "recvonly"),
+    `directions: ${JSON.stringify(dirs)}`);
+}
+
+{
+  // The reported ordering: BOTH sides already consented to receive, both mic up,
+  // and the offers cross. The glare winner discards the incoming offer — but by
+  // now both offers are sendrecv, so the surviving negotiation has an inbound
+  // direction and the loser answers it. This SHOULD be fine. Pinned so that if
+  // someone later changes the discard branch, the difference is visible.
+  if (!voice.micOn()) { await voice.toggleMic("aaa"); await settle(); }
+  consent.setReceiveVoice(true);
+  await settle();
+  created.length = 0;
+  stubs.remotes.set("zzz2", { agent: false });
+  bus.emit("roster"); await settle(); await settle();
+  const pcH = created.at(-1)!;
+  const before = stubs.sent.filter((m: {to: string; payload: {sdp?: {type?: string}}}) =>
+    m.to === "zzz2" && m.payload?.sdp?.type === "answer").length;
+  bus.emit("rtc", { from: "zzz2", payload: { sdp: { type: "offer", sdp: "crossed" } } });
+  await settle(); await settle();
+  const after = stubs.sent.filter((m: {to: string; payload: {sdp?: {type?: string}}}) =>
+    m.to === "zzz2" && m.payload?.sdp?.type === "answer").length;
+  check("glare (both consented): low id discards their offer, sends no answer",
+    after === before, `${after - before} answers sent`);
+  const d2 = pcH.getTransceivers().map((t: {direction: string}) => t.direction);
+  check("  ...and our own offer already carried an inbound direction",
+    d2.some((x: string) => x === "sendrecv" || x === "recvonly"), JSON.stringify(d2));
+}
+
+{
+  // THE ONE-WAY REPORT ("they can hear me, I can't hear them", 2026-08-08).
+  // ontrack fires ONCE per transceiver. If receive is off at that instant the
+  // handler stops the tracks and returns without setting audio.srcObject —
+  // correct, it is the fail-closed consent gate. Turning receive on later runs
+  // applyDirection + renegotiate, which repairs the DIRECTION, but a
+  // renegotiation over an existing transceiver does not necessarily fire
+  // ontrack again: the remote track object is the same one. So the direction
+  // says recv and no audio element was ever wired.
+  //
+  // Their side is unaffected — our sendonly leg worked the whole time. Exactly
+  // one-way, exactly "I can hear you, you can't hear me" from their view.
+  if (voice.micOn()) { await voice.toggleMic("aaa"); await settle(); }
+  consent.setReceiveVoice(false);
+  await voice.toggleMic("aaa"); await settle();     // mic on, receive OFF
+  created.length = 0;
+  stubs.remotes.set("deaf1", { agent: false });
+  bus.emit("roster"); await settle(); await settle();
+  const pcD = created.at(-1)!;
+
+  // their audio arrives while our receive is off — the gate stops it.
+  // deliverAudio() is the harness's own idiom: it observes acceptance by
+  // whether the stream got attached, rather than trusting a flag we set.
+  pcD.deliverAudio();
+  await settle();
+  check("consent gate: nothing is attached while receive is off",
+    pcD.playedAudio === false, "audio was attached with receive off");
+
+  // now consent arrives. direction is repaired by applyDirection + renegotiate...
+  consent.setReceiveVoice(true);
+  await settle(); await settle();
+  const dirD = pcD.getTransceivers().map((t: {direction: string}) => t.direction);
+  check("after consent: the direction permits inbound",
+    dirD.some((x: string) => x === "sendrecv" || x === "recvonly"), JSON.stringify(dirD));
+
+  // ...but the remote track object is UNCHANGED, so no new ontrack fires.
+  // Nothing in the consent handler re-attaches what the gate refused. The
+  // existing suite only ever tests a FRESH deliverAudio() after consent, which
+  // is why this gap survived.
+  // The re-attach builds a MediaStream from getReceivers() and assigns it to
+  // the peer's <audio>; the srcObject observer stamps `attached` on whatever is
+  // assigned, whichever route set it. Reading that is reading the code's real
+  // behaviour, not a flag the test controls.
+  const reattached = (globalThis as { __lastMediaStream?: { attached?: boolean } }).__lastMediaStream;
+  check("AFTER CONSENT: the refused inbound is re-attached, not merely permitted",
+    !!reattached?.attached,
+    "direction says recv, but the track refused earlier was never re-wired — one-way audio");
 }
 
 // T5 (relay half) lives in tools/voice-matrix.mjs: RTC_MODE=relay-noturn must
