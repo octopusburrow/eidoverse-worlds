@@ -18,7 +18,13 @@ const check = (name: string, ok: boolean, detail = "") => {
 
 // ---- fakes ----------------------------------------------------------------
 const created: FakePC[] = [];
-class FakeTrack { stopped = false; kind = "audio"; stop() { this.stopped = true; } }
+class FakeTrack {
+  enabled = true;          // the consent gate silences via enabled, never stop()
+  stopped = false;
+  readyState = "live";
+  kind = "audio";
+  stop() { this.stopped = true; this.readyState = "ended"; }
+}
 class FakeStream {
   tracks = [new FakeTrack()];
   attached = false;
@@ -123,13 +129,25 @@ class FakePC {
   deliverAudio() {
     const stream = new FakeStream();
     stream.attached = false;
-    const track = { kind: "audio", readyState: "live" };
-    this._receivers = [{ track }];        // the receiver holds it either way
+    // The receiver and the stream expose the SAME track object, as a real
+    // browser does — the first version of this fake made two, so disabling the
+    // stream's track left the receiver's looking untouched and the assertion
+    // read a track nothing had acted on.
+    this._receivers = [{ track: stream.tracks[0] }];
     this._lastStream = stream;
     this.ontrack?.({ streams: [stream] });
     if (stream.attached) this.playedAudio = true;
   }
   _lastStream: { attached?: boolean } | null = null;
+  /** Audible = a track exists, is attached, and is enabled. */
+  inboundAudible() {
+    const t = this._receivers[0]?.track as { enabled?: boolean; readyState?: string } | undefined;
+    return !!(t && t.enabled && t.readyState === "live" && this._lastStream?.attached);
+  }
+  inboundStopped() {
+    const t = this._receivers[0]?.track as { readyState?: string } | undefined;
+    return t?.readyState === "ended";
+  }
 }
 // MediaStream: the re-attach path builds one from the receivers' tracks.
 class FakeMediaStream {
@@ -277,8 +295,14 @@ check("mic-ON + receive-OFF: no blanket offerToReceiveAudio",
   !JSON.stringify(outbound.lastOfferOpts ?? {}).includes("offerToReceiveAudio"));
 outbound.deliverAudio();                 // far end tries to send anyway
 await settle();
-check("mic-ON + receive-OFF: an inbound track is refused, not played",
-  !outbound.playedAudio, "audio was attached/played");
+// The gate silences rather than destroying: `stop()` on a REMOTE track is a
+// one-way door (receiver.track is never reassigned, so no renegotiation and no
+// second ontrack can revive it — WebRTC-PC §5.3.1). What must be true is that
+// nothing is AUDIBLE, not that nothing is attached.
+check("mic-ON + receive-OFF: an inbound track is silenced, not audible",
+  outbound.inboundAudible() === false, "audio was audible with receive off");
+check("mic-ON + receive-OFF: …and the track is NOT destroyed (revocable, not fatal)",
+  outbound.inboundStopped() === false, "the gate stopped a remote track — one-way door");
 
 // now consent to hear: direction opens and tracks are accepted
 consent.setReceiveVoice(true);
@@ -857,8 +881,10 @@ check("unhush rejoins the SAME peer at full volume",
   // whether the stream got attached, rather than trusting a flag we set.
   pcD.deliverAudio();
   await settle();
-  check("consent gate: nothing is attached while receive is off",
-    pcD.playedAudio === false, "audio was attached with receive off");
+  check("consent gate: nothing is AUDIBLE while receive is off",
+    pcD.inboundAudible() === false, "audio was audible with receive off");
+  check("consent gate: the track is silenced, not destroyed",
+    pcD.inboundStopped() === false, "a remote track was stopped — one-way door");
 
   // now consent arrives. direction is repaired by applyDirection + renegotiate...
   consent.setReceiveVoice(true);
@@ -875,10 +901,9 @@ check("unhush rejoins the SAME peer at full volume",
   // the peer's <audio>; the srcObject observer stamps `attached` on whatever is
   // assigned, whichever route set it. Reading that is reading the code's real
   // behaviour, not a flag the test controls.
-  const reattached = (globalThis as { __lastMediaStream?: { attached?: boolean } }).__lastMediaStream;
-  check("AFTER CONSENT: the refused inbound is re-attached, not merely permitted",
-    !!reattached?.attached,
-    "direction says recv, but the track refused earlier was never re-wired — one-way audio");
+  check("AFTER CONSENT: the silenced inbound becomes audible again",
+    pcD.inboundAudible() === true,
+    "direction says recv, but the track refused earlier is still silent — one-way audio");
 }
 
 // T5 (relay half) lives in tools/voice-matrix.mjs: RTC_MODE=relay-noturn must

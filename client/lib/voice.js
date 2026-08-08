@@ -91,9 +91,23 @@ function peerFor(id) {
     // FAIL CLOSED: consent can be revoked mid-negotiation, and a track that
     // was in flight when it happened must not land. Nothing is attached and
     // nothing plays unless receive is on at the moment audio actually arrives.
-    if (!receivingVoice()) { try { for (const t of e.streams[0]?.getTracks() ?? []) t.stop(); } catch { /* best effort */ } return; }
+    // FAIL CLOSED, but REVERSIBLY. The old gate called t.stop() on their
+    // track, which is a ONE-WAY DOOR: per mediacapture-streams, stop() ends
+    // the track permanently, and per WebRTC-PC §5.3.1 `receiver.track` is
+    // never reassigned — so that transceiver's remote track is gone for its
+    // whole lifetime. No renegotiation, no direction change, and no second
+    // ontrack can bring it back. A listener who consented AFTER someone's
+    // track arrived was deaf to that person until reload, while remaining
+    // audible to them: the one-way report of 2026-08-08.
+    //
+    // `enabled = false` is the mechanism the spec provides for exactly this:
+    // synchronous, local, spec-mandated to render silence, and reversible with
+    // no negotiation. RTP keeps arriving and is discarded — the same cost the
+    // stop() version paid anyway, since stop() never stopped the wire either.
+    for (const t of e.streams[0]?.getTracks() ?? []) t.enabled = receivingVoice();
     audio.srcObject = e.streams[0];
     p.stream = e.streams[0];        // kept so their mouth can move with their voice
+    if (!receivingVoice()) return;  // attached but silent until consent
     // autoplay policy: if the browser balks (receiver never clicked anything),
     // retry on the next user gesture rather than failing silently
     audio.play().catch(() => addEventListener('click', () => audio.play().catch(() => {}), { once: true }));
@@ -128,11 +142,18 @@ function reattachInbound(p) {
   try {
     const tracks = (p.pc.getReceivers?.() ?? [])
       .map((r) => r.track)
-      .filter((t) => t && t.kind === 'audio' && t.readyState === 'live');
+      .filter((t) => t && t.kind === 'audio');
     if (!tracks.length) return;
+    // Un-silence anything the gate disabled. Cheap and idempotent.
+    for (const t of tracks) t.enabled = true;
+    // A track stopped by an OLDER build of this file is ended and cannot be
+    // revived (receiver.track is never reassigned) — nothing to do but leave
+    // it; the peer will be rebuilt on the next drop/roster cycle.
+    const live = tracks.filter((t) => t.readyState === 'live');
+    if (!live.length) return;
     if (p.audio.srcObject && p.stream
-        && tracks.every((t) => p.stream.getTracks().includes(t))) return;   // already wired
-    const stream = new MediaStream(tracks);
+        && live.every((t) => p.stream.getTracks().includes(t))) return;   // already wired
+    const stream = new MediaStream(live);
     p.audio.srcObject = stream;
     p.stream = stream;
     p.audio.play().catch(() => addEventListener('click', () => p.audio.play().catch(() => {}), { once: true }));
