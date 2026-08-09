@@ -27,18 +27,13 @@ const DEFAULTS = { recvVoice: false, volVoices: 1, volWorld: 0.6, volTts: 1, stt
   // ABOVE the measured room noise (see onsetTick). 0.06 is the lowest value that
   // took zero false triggers across 200 simulated room/noise combinations while
   // never missing speech, so the slider has honest room in both directions.
-  // 55% = -27 dBFS. R's number, and the search backs the neighbourhood: Discord
-  // has no published default (auto mode is on by default there), but its own
-  // guidance says noise above -50 dBFS while you are NOT speaking counts as
-  // significant background noise — so real gates land in the -40..-60 region for
-  // a quiet room, and higher when there is a person audible nearby. -27 dB sits
-  // clear of a conversation in another room (~-30 dB) while leaving ~15 dB of
-  // headroom under ordinary speech.
-  //
-  // Discord's tuning method is the one to hand a user, and our meter now
-  // supports it exactly: drag fully left, then right until the bar stops going
-  // gold while you are silent.
-  micFloor: 0.11 };
+  // 60% = -24 dBFS. R's number, found by TESTING IT IN HER ROOM — "seems like
+  // 60% is a good place" — which beats my four earlier defaults, every one of
+  // them reasoned from published reference levels rather than measured against
+  // a real mic at a real gain. The slider is honest and 1:1 now, so anyone
+  // else's number is a drag away; this is a good place to start, not a claim
+  // about everyone's room.
+  micFloor: 0.12 };
 
 let prefs = { ...DEFAULTS };
 try {
