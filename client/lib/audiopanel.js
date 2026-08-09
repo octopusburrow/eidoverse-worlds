@@ -115,10 +115,20 @@ function ttsRow() {
       // touches a 60 MB file. The address box survives as the advanced option
       // for a custom voice (ours is not in the public catalog) or a GPU synth.
       : (localVoiceSupported()
+          // The address box is emitted ALONGSIDE the select, hidden, not instead
+          // of it. It used to be an either/or, so on a machine with local voices
+          // the input did not exist in the DOM at all — picking "custom
+          // endpoint…" printed "use ?tts=PORT for now" and there was nowhere to
+          // type. A dropdown option that names a capability has to reveal the
+          // control for it (R, 2026-08-09: "the dropdown says 'custom endpoint'
+          // but I can't point it anywhere").
           ? `<select style="flex:1;min-width:0;background:#222;color:inherit;border:1px solid #444;padding:1px 4px">` +
             `<option value="">microphone (no synthesized voice)</option>` +
             `<option value="__loading">loading voices…</option>` +
-            `<option value="__custom">custom endpoint…</option></select>`
+            `<option value="__custom">custom endpoint…</option></select>` +
+            `<input type="text" placeholder="ws://127.0.0.1:8927 or http://host/tts" ` +
+            `style="display:none;flex:1;min-width:0;background:#222;color:inherit;border:1px solid #444;padding:1px 4px" ` +
+            `title="${hint}">`
           : `<input type="text" placeholder="ws://127.0.0.1:8927  (blank = microphone)" ` +
             `style="flex:1;min-width:0;background:#222;color:inherit;border:1px solid #444;padding:1px 4px" ` +
             `title="${hint}">`)) +
@@ -156,7 +166,14 @@ function ttsRow() {
 
     sel.onchange = async () => {
       const key = sel.value;
-      if (key === '__custom') { note.textContent = 'custom endpoint: use ?tts=PORT for now'; return; }
+      if (key === '__custom') {
+        // Reveal the address box and hand it the caret, rather than telling the
+        // user to go relaunch with a URL parameter.
+        const box2 = row.querySelector('input[type=text]');
+        if (box2) { box2.style.display = ''; sel.style.display = 'none'; box2.focus(); note.textContent = ''; }
+        else note.textContent = 'no address box in this build';
+        return;
+      }
       if (!key) {
         setTtsSource(null); localStorage.removeItem('eido.localVoice');
         box.checked = false; box.disabled = true; note.textContent = '';

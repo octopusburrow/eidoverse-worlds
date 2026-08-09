@@ -1211,8 +1211,32 @@ startPrefetch().catch((e) => report('prefetch', e));
       .then((m) => m.initPiperVoice({ port }))
       .then(async (ok) => {
         console.log(ok ? `[voice] synthesized voice ready on :${port}`
-                       : `[voice] no synthesizer on :${port} — using microphone`);
-        if (!ok) return;
+                       : `[voice] no synthesizer on :${port} — falling back to browser speech`);
+        if (!ok) {
+          // R, 2026-08-09: "The TTS endpoint should probably default to the
+          // browser default if it can't resolve your TTS endpoint so you don't
+          // get crazy beeping." An unreachable endpoint used to mean NO voice —
+          // the body joined, asked to speak, and produced nothing (or, with a
+          // tone generator installed, beeped). browservoice.js already existed
+          // and was never imported anywhere: the fallback was written and dead.
+          // Web Speech is worse than Piper and strictly better than silence.
+          try {
+            const { speechSynthesis } = window;
+            if (!speechSynthesis) { console.warn('[voice] no speechSynthesis — microphone only'); return; }
+            const vs0 = await import('./lib/voicesource.js');
+            // Web Speech renders to the SPEAKERS, not to a PCM buffer we can put
+            // on the mic lane — so this is audible locally and NOT transmitted.
+            // Being honest about that is the point: silence used to be
+            // indistinguishable from a broken endpoint.
+            vs0.setTtsSource(async (text) => {
+              try { speechSynthesis.speak(new SpeechSynthesisUtterance(text)); } catch {}
+              return { pcm: new Int16Array(0), sampleRate: 22050, localOnly: true };
+            }, 'browser speech (local only — peers will NOT hear this)');
+            vs0.setTtsEnabled(true);
+            console.warn('[voice] FALLBACK: browser speech. Audible to YOU, not to peers.'
+                       + ` Start a synthesizer on :${port} for transmitted voice.`);
+          } catch (e) { console.warn('[voice] browser-speech fallback failed:', e); return; }
+        }
         const vs = await import('./lib/voicesource.js');
         vs.speakOwnSays(bus, () => me);
         // A body that registered a voice means to be heard: open the mic lane
