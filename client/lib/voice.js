@@ -18,7 +18,7 @@ import { bus, report } from './core.js';
 import { sendRtc, sendTyping } from './net.js';
 import { remotes } from './remotes.js';
 import { micFloor } from './voiceconsent.js';
-import { voiceSource } from './voicesource.js';
+import { voiceSource, setGeneratorRebuildHook } from './voicesource.js';
 import { myState } from './controller.js';
 import { flashHint } from './ui.js';
 import { receivingVoice, volumeFor, isHushed } from './voiceconsent.js';
@@ -673,6 +673,33 @@ export function peerLevels() {
 /** Sender-side truth for probes: what track, if any, each peer is actually
  *  sending — id, readyState and enabled. Pair it with genTrackInfo() to answer
  *  "am I feeding the track I am sending?", which no local success check can. */
+// A REBUILT SOURCE MUST REACH THE SENDERS. When the synthesizer's generator
+// dies and is re-made, the new track is a different object; every sender still
+// holds the dead one and transmits silence forever while ICE and direction look
+// perfectly healthy — indistinguishable from the audio:ended blocker seen in
+// the field. replaceTrack needs no renegotiation, so the repair is cheap and
+// safe in any signaling state.
+setGeneratorRebuildHook((track) => {
+  if (!micStream) return;
+  // Keep the local stream in step where it CAN be — a synthetic or stubbed
+  // source is not always a real MediaStream (the suite caught this hook
+  // throwing on removeTrack, inside the very recovery it exists to perform).
+  // Re-binding the senders is the part that matters; stream bookkeeping is not
+  // worth failing the repair for.
+  try {
+    if (typeof micStream.removeTrack === 'function' && typeof micStream.addTrack === 'function') {
+      for (const t of micStream.getTracks()) if (t !== track) micStream.removeTrack(t);
+      if (!micStream.getTracks().includes(track)) micStream.addTrack(track);
+    }
+  } catch (e) { report('voice stream rebind', e); }
+  for (const p of peers.values()) {
+    for (const s of p.pc.getSenders()) {
+      if (s.track && s.track.kind !== 'audio') continue;
+      s.replaceTrack(track).catch((e) => report('voice track rebind', e));
+    }
+  }
+});
+
 export function senderTrackInfo() {
   const out = [];
   for (const [id, p] of peers) {

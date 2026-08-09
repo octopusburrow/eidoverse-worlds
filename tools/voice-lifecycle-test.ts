@@ -1096,5 +1096,37 @@ check("unhush rejoins the SAME peer at full volume",
 // stay at 0 inbound pkts; RTC_MODE=relay-turn must exceed 0. External harness
 // by design — fake RTC cannot prove media.
 
+
+// ---- a rebuilt generator must reach the senders --------------------------
+// THE SILENT-FOREVER FAILURE. The synthesizer's generator dies; speak() quietly
+// makes a NEW track and every sender keeps the dead one. ICE stays connected,
+// direction stays sendonly, speak() returns true — and the room hears nothing.
+// Indistinguishable from the audio:ended blocker seen in the field.
+// sourceIsDead() was written for exactly this and had ZERO callers, the same
+// way toggleMute did while the HUD button called the destructive path.
+{
+  const vs = await import("../client/lib/voicesource.js");
+  check("voicesource exposes a rebuild hook", typeof vs.setGeneratorRebuildHook === "function");
+  check("sourceIsDead recognises an ended track",
+    vs.sourceIsDead({ getAudioTracks: () => [{ readyState: "ended" }] }) === true);
+  check("sourceIsDead does NOT flag a live one",
+    vs.sourceIsDead({ getAudioTracks: () => [{ readyState: "live" }] }) === false);
+
+  // voice.js installs the real hook at import time; prove it re-binds senders.
+  const peer = created.at(-1);
+  if (peer) {
+    const dead = { id: "dead", kind: "audio", readyState: "ended", enabled: true, stop() {} };
+    for (const s of peer.getSenders()) s.track = dead;
+    check("precondition: a sender is holding an ENDED track",
+      peer.getSenders().some((s) => s.track?.readyState === "ended"));
+
+    const fresh = { id: "fresh", kind: "audio", readyState: "live", enabled: true, stop() {} };
+    vs.__fireRebuild?.(fresh);
+    check("after a rebuild no sender is left holding the dead track",
+      peer.getSenders().every((s) => s.track?.id !== "dead"),
+      peer.getSenders().map((s) => s.track?.id).join(","));
+  }
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

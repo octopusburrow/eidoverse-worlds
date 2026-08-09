@@ -103,8 +103,21 @@ const CHUNK_MS = 20;
 
 export const canSynthesize = () => typeof MediaStreamTrackGenerator !== 'undefined';
 
+// Fired when a DEAD generator is replaced by a live one. The new track is a
+// different object, so every sender still holding the old one transmits silence
+// forever — ICE healthy, direction sendonly, nothing to see. voice.js listens
+// and replaceTrack()s it onto the existing senders (no renegotiation).
+// sourceIsDead() was written for exactly this and had ZERO callers, the same
+// way toggleMute did while the HUD called the destructive path.
+let onRebuild = null;
+export const setGeneratorRebuildHook = (fn) => { onRebuild = fn; };
+/** Test seam: fire the installed hook without having to kill a real generator
+ *  (MediaStreamTrackGenerator does not exist under happy-dom). */
+export const __fireRebuild = (track) => onRebuild?.(track);
+
 function ensureGenerator() {
   if (genTrack && genTrack.readyState === 'live') return genTrack;
+  const replacing = !!genTrack;
   // An ENDED generator is not a dead end: make a new one and hand it back. The
   // caller replaceTrack()s it onto the existing sender — no device, no
   // permission prompt, no renegotiation. This is the recovery a microphone
@@ -112,6 +125,10 @@ function ensureGenerator() {
   // mic (R, 2026-08-08).
   genTrack = new MediaStreamTrackGenerator({ kind: 'audio' });
   writer = genTrack.writable.getWriter();
+  if (replacing) {
+    console.warn('[voice] generator was dead — rebuilt; re-binding senders');
+    try { onRebuild?.(genTrack); } catch (e) { report('generator rebind', e); }
+  }
   return genTrack;
 }
 
