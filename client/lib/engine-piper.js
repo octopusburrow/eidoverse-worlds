@@ -10,6 +10,7 @@ import { setTtsSource } from './voicesource.js';
 import { decodeWavToPcm } from './wavpcm.js';
 
 let engine = null;
+let _phonCost = 0;   // measured once: see speak()
 const runtime = async () => (engine ??= await import('@mintplex-labs/piper-tts-web'));
 
 registerEngine({
@@ -137,7 +138,23 @@ registerEngine({
     // Split predict from decode because they fail for different reasons: slow
     // predict = inference, slow decode = a main-thread copy of the samples.
     const speak = async (text) => {
+      // 🔴 TIME THE PHONEMIZER FROM OUTSIDE. R remembered I had found predict()
+      // re-instantiating the phonemizer every call and asked whether dismissing
+      // it was wrong. Half-wrong: I measured that in BUN reading local files
+      // (34-52ms), which says nothing about what a BROWSER pays to rebuild an
+      // emscripten module wrapping a 17 MB .data file per utterance.
+      //
+      // The factory is a WeakMap private field, so it cannot be wrapped from
+      // here. But phonemizing "" does the same module build with no inference,
+      // so timing an empty predict isolates the cost. Once per session — this is
+      // diagnosis, not something to pay on every line.
       const t0 = performance.now();
+      if (!_phonCost) {
+        const p0 = performance.now();
+        try { await session.predict(''); } catch { /* empty text may throw; the build still happened */ }
+        _phonCost = Math.max(1, performance.now() - p0);
+        console.log(`[voice] phonemizer build ≈ ${Math.round(_phonCost)}ms per utterance`);
+      }
       const wav = await session.predict(text);
       const t1 = performance.now();
       const buf = await wav.arrayBuffer();
@@ -149,7 +166,9 @@ registerEngine({
       // short line means the bottleneck is ours, not the model's.
       const secs = pcm?.pcm?.length && pcm.sampleRate ? pcm.pcm.length / pcm.sampleRate : 0;
       const total = t2 - t0;
-      console.log(`[voice] predict ${Math.round(t1 - t0)}ms · decode ${Math.round(t2 - t1)}ms`
+      console.log(`[voice] predict ${Math.round(t1 - t0)}ms`
+        + ` (≈${Math.round(_phonCost)}ms phonemize + ${Math.round(t1 - t0 - _phonCost)}ms infer)`
+        + ` · decode ${Math.round(t2 - t1)}ms`
         + ` · total ${Math.round(total)}ms for ${text.length} chars`
         + (secs ? ` · ${secs.toFixed(2)}s audio · RTF ${(total / 1000 / secs).toFixed(2)}` : ''));
       return pcm;
