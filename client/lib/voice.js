@@ -154,10 +154,42 @@ function peerFor(id) {
     audio.play().catch(() => addEventListener('click', () => audio.play().catch(() => {}), { once: true }));
   };
   pc.onicecandidate = (e) => { if (e.candidate) sendRtc(id, { ice: e.candidate }); };
+  // restartIce() does not send anything by itself — it raises negotiationneeded
+  // and waits for the application to offer. With no handler the flag was set and
+  // nothing ever went out, so an ICE restart would have been a silent no-op.
+  // renegotiate() is exactly the "offer if we can, queue if mid-flight" path
+  // this needs, so route the event there rather than writing a second one.
+  pc.addEventListener?.('negotiationneeded', () => { renegotiate(id); });
   pc.addEventListener?.('connectionstatechange', () => (window.__iceLog ??= []).push(`conn[${id}]=${pc.connectionState}`));
   pc.addEventListener?.('iceconnectionstatechange', () => (window.__iceLog ??= []).push(`icestate[${id}]=${pc.iceConnectionState}`));
   pc.onconnectionstatechange = () => {
-    if (['failed', 'closed', 'disconnected'].includes(pc.connectionState)) dropPeer(id);
+    const st = pc.connectionState;
+    // 🔴 'disconnected' IS NOT 'failed'. It means ICE consent checks stopped
+    // arriving — a wifi blip, a handover, a laptop lid — and it recovers on its
+    // own most of the time. MDN is explicit: "don't call close() on
+    // disconnected — you'd be discarding a connection that may well recover."
+    // We were tearing the peer down instantly, so a momentary blip permanently
+    // destroyed a working link and nothing rebuilt it: the peer is gone from the
+    // map, so no renegotiation can reach it, and the other end still holds a
+    // live connection to a peer that no longer exists. That is the one-way
+    // audio, and it explains why it survives mic toggles (the peer is not
+    // there to re-offer) and why a full restart FLIPS which side is deaf (only
+    // the restarted side rebuilds).
+    //
+    // Give it a grace period and try an ICE restart before giving up. Only
+    // 'failed' and 'closed' are terminal.
+    if (st === 'failed' || st === 'closed') { clearTimeout(p._discoTimer); dropPeer(id); return; }
+    if (st === 'connected') { clearTimeout(p._discoTimer); p._discoTimer = null; return; }
+    if (st === 'disconnected' && !p._discoTimer) {
+      p._discoTimer = setTimeout(() => {
+        p._discoTimer = null;
+        if (pc.connectionState !== 'disconnected') return;    // recovered on its own
+        // Still down after the grace window: ask ICE to find a new path rather
+        // than destroying the peer. restartIce() renegotiates in place, which
+        // keeps the transceivers — and therefore the agreed direction — intact.
+        try { pc.restartIce?.(); } catch (e) { report('voice ice restart', e); }
+      }, 6000);
+    }
   };
   return p;
 }
@@ -165,6 +197,11 @@ function peerFor(id) {
 function dropPeer(id) {
   const p = peers.get(id);
   if (!p) return;
+  // A pending disconnect timer outlives the peer it was watching unless it is
+  // cleared here — it would fire against a closed pc and try to restart ICE on
+  // a connection nobody holds.
+  clearTimeout(p._discoTimer);
+  p._discoTimer = null;
   peers.delete(id);
   try { p.pc.close(); } catch (e) { report('voice close', e); }
   p.audio.srcObject = null;
