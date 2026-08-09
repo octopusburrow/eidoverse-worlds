@@ -18,111 +18,96 @@
 // build. So we do the same call ourselves and keep the module. Verified
 // re-entrant in Bun this morning: first callMain 44ms, second 4ms.
 
-let _mod = null;
-// Where the current call wants stdout/stderr to go. See the print note below.
-let _sink = null, _errSink = null;
-let _building = null;
+// 🔴 THE BUILD RUNS IN A WORKER, AND THAT IS WHAT MAKES IT FAST (2026-08-09).
+// Measured: 57ms in Bun vs 27,551ms on the browser main thread, SAME BYTES — so
+// the 17 MB data package was never the problem. piper-o91UDS6e.js loads via
+// `xhr.open(url, false)` (synchronous XHR), guarded by ENVIRONMENT_IS_WORKER:
+// legal and fast in a worker, deprecated and glacial on the main thread.
+// See phon.worker.js. Everything below keeps its old signature; only the place
+// the work happens changed.
+let _worker = null, _seq = 0;
+const _pending = new Map();
+let _ready = false;
 
-/** Build (once) and return the phonemize module. */
-async function phonModule(wasmPaths) {
-  if (_mod) return _mod;
-  // Single-flight: two utterances in the same tick must not each start a
-  // 30-second build. The second awaits the first.
-  if (_building) return _building;
-  _building = (async () => {
-    // 🔴 IMPORT THE CHUNK BY URL. Two dead ends first, both checked rather than
-    // assumed: a bare specifier for a hashed dist file is unresolvable in a
-    // browser (the library reaches it by a path relative to ITS OWN file), and
-    // the package root does NOT re-export createPiperPhonemize — its exports are
-    // HF_BASE, ONNX_BASE, PATH_MAP, TtsSession, WASM_BASE, download, flush,
-    // predict, remove, stored, voices.
-    //
-    // But the chunk is a real ES module sitting in node_modules, which we serve.
-    // new URL(..., import.meta.url) is exactly how engine-piper.js already
-    // resolves the ORT and phonemizer wasm, so this is the established route out
-    // of the same problem.
-    //
-    // The hash is pinned to the installed version. If a bump changes it this
-    // throws a clear error rather than silently falling back to the 30s path —
-    // which is the failure mode worth protecting: silently slow reads as fine.
-    const chunkUrl = new URL(
-      '../node_modules/@mintplex-labs/piper-tts-web/dist/piper-o91UDS6e.js',
-      import.meta.url,
-    ).href;
-    const { createPiperPhonemize } = await import(/* @vite-ignore */ chunkUrl);
-    if (typeof createPiperPhonemize !== 'function') {
-      throw new Error(`piper: no createPiperPhonemize at ${chunkUrl} — did the package version change?`);
-    }
-    const m = await createPiperPhonemize({
-      // 🔴 EMSCRIPTEN CAPTURES print ONCE, AT CONSTRUCTION:
-      //     var out = Module["print"] || console.log.bind(console);   (line 292)
-      // I had assumed it was read per call and reassigned m.print in phonemize(),
-      // which did nothing — the ids went to console.log and we reported
-      // "phonemizer produced no ids" (R, 2026-08-09). So install a PERMANENT
-      // print here that forwards to a swappable sink, and let each call set the
-      // sink instead of the handler.
-      print: (data) => { _sink?.(data); },
-      printErr: (msg) => { _errSink?.(msg); },
-      locateFile: (url) => {
-        if (url.endsWith('.wasm')) return wasmPaths.piperWasm;
-        if (url.endsWith('.data')) return wasmPaths.piperData;
-        return url;
-      },
-    });
-    _mod = m;
-    _building = null;
-    return m;
-  })();
-  return _building;
+function worker() {
+  if (_worker) return _worker;
+  _worker = new Worker(new URL('./phon.worker.js', import.meta.url), { type: 'module' });
+  _worker.onmessage = (e) => {
+    const { id, ok, ids, error } = e.data || {};
+    const p = _pending.get(id);
+    if (!p) return;                      // a reply to a call that already gave up
+    _pending.delete(id);
+    ok ? p.resolve(ids) : p.reject(new Error(error || 'phonemizer failed'));
+  };
+  // A worker that dies takes every in-flight call with it — fail them loudly
+  // rather than leaving promises that never settle (silent hang > visible error
+  // is exactly backwards for a voice path).
+  _worker.onerror = (e) => {
+    const err = new Error(`phonemizer worker died: ${e.message || 'unknown'}`);
+    for (const p of _pending.values()) p.reject(err);
+    _pending.clear(); _worker = null; _ready = false;
+  };
+  return _worker;
 }
 
-/** text → phoneme ids, reusing the module across calls.
- *  `voice` is the espeak voice from the model config (e.g. "en-us"). */
-export async function phonemize(text, voice, wasmPaths) {
-  const m = await phonModule(wasmPaths);
+/** The chunk URL must be resolved HERE, not in the worker: import.meta.url
+ *  differs inside a worker, and a path that resolves on the main thread would
+ *  silently 404 there. */
+function wasmBundle(wasmPaths) {
+  return {
+    js: new URL('../node_modules/@mintplex-labs/piper-tts-web/dist/piper-o91UDS6e.js',
+                import.meta.url).href,
+    wasm: new URL(wasmPaths.piperWasm, location.href).href,
+    data: new URL(wasmPaths.piperData, location.href).href,
+  };
+}
+
+function ask(op, payload, timeoutMs = 120_000) {
+  const id = ++_seq;
   return new Promise((resolve, reject) => {
-    let out = null;
-    _sink = (data) => {
-      try { out = JSON.parse(data).phoneme_ids; } catch { /* not our line */ }
-    };
-    _errSink = (msg) => reject(new Error(String(msg)));
-    try {
-      m.callMain([
-        '-l', voice,
-        '--input', JSON.stringify([{ text: String(text).trim() }]),
-        '--espeak_data', '/espeak-ng-data',
-      ]);
-    } catch (e) {
-      // Emscripten signals main()'s return by THROWING its exit status. A
-      // number (or an object carrying `status`) is a normal exit, not a
-      // failure — treating it as one would make every successful call an error.
-      if (typeof e !== 'number' && e?.status === undefined) return reject(e);
-    }
-    _sink = null; _errSink = null;
-    if (out) resolve(out);
-    else reject(new Error('phonemizer produced no ids'));
+    const timer = setTimeout(() => {
+      _pending.delete(id);
+      reject(new Error(`phonemizer ${op} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+    _pending.set(id, {
+      resolve: (v) => { clearTimeout(timer); resolve(v); },
+      reject:  (e) => { clearTimeout(timer); reject(e); },
+    });
+    worker().postMessage({ id, op, ...payload });
   });
+}
+
+
+/** Text → phoneme ids. Same signature as before; the work now happens in the
+ *  worker, where the library's synchronous loader is legal and fast. */
+export async function phonemize(text, voice, wasmPaths) {
+  const ids = await ask('phonemize', { text, voice, wasmPaths: wasmBundle(wasmPaths) });
+  _ready = true;
+  return ids;
 }
 
 /** Build the module NOW, before anyone speaks.
  *
- *  🔴 Measured 2026-08-09: the build is ~27s. Caching it fixed the per-word cost
- *  (30s → 4ms) but left the whole 27s sitting in front of the FIRST utterance —
- *  lazily, at the worst possible moment, with the user waiting on a word they
- *  already typed. It depends on nothing but the wasm paths, so it can happen
- *  during voice loading instead, under the progress the user is already
- *  watching. Same total work, moved to where it is expected. */
+ *  The build is the expensive part (~27s on the main thread, which is why it
+ *  moved to a worker). It depends on nothing but the wasm paths, so it belongs
+ *  inside the load the user is already watching rather than in front of their
+ *  first utterance. */
 export async function warmPhonemizer(wasmPaths, onProgress = () => {}) {
-  if (_mod) return true;
+  if (_ready) return true;
   const t0 = performance.now();
   const tick = setInterval(() => {
     onProgress({ phase: 'phonemizer',
       text: `preparing speech — ${Math.round((performance.now() - t0) / 1000)}s` });
   }, 1000);
-  try { await phonModule(wasmPaths); return true; }
-  catch (e) { console.warn('[voice] phonemizer warm-up failed:', e); return false; }
-  finally { clearInterval(tick); }
+  try {
+    await ask('warm', { wasmPaths: wasmBundle(wasmPaths) });
+    _ready = true;
+    console.log(`[voice] phonemizer ready in ${Math.round(performance.now() - t0)}ms (worker)`);
+    return true;
+  } catch (e) {
+    console.warn('[voice] phonemizer warm-up failed:', e);
+    return false;
+  } finally { clearInterval(tick); }
 }
 
-/** Whether a module is already built — for logging honestly about first-call cost. */
-export const phonReady = () => !!_mod;
+export const phonReady = () => _ready;
