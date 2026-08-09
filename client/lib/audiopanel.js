@@ -113,7 +113,10 @@ function ttsRow() {
     // dimmed otherwise. R asked for exactly this — a row that is off should read
     // as off at a glance, without parsing the checkbox (2026-08-09).
     `<span class="sp-label" title="${why}" style="opacity:${ttsAvailable() && isTtsEnabled() ? '1' : '.45'}">` +
-    `${agentVoice ? 'TTS voice' : 'TTS endpoint'}</span>` +
+    // "TTS endpoint" named ONE of the two things this row accepts, so it was
+    // wrong the moment a model file became the other. The label says what the
+    // row DOES; the rows below say what it takes.
+    `${agentVoice ? 'TTS voice' : 'text-to-speech'}</span>` +
     (agentVoice
       ? `<span style="flex:1;opacity:.6">${ttsVoiceName()}</span>`
       // A DROPDOWN, NOT AN ADDRESS (R, 2026-08-09: "seeing a port is going to be

@@ -99,8 +99,16 @@ export function renderVoiceList(host, { items, selected, on, busy }) {
   const add = document.createElement('div');
   add.className = 'vl-row vl-add';
   add.tabIndex = 0;
-  add.textContent = busy ? `+ ${busy}` : '+ add a voice file…';
-  add.title = 'a Piper .onnx model and its .onnx.json, from this computer';
+  // SAY WHAT THE CONTROL WANTS, in the words of the thing it wants (R,
+  // 2026-08-09: "I might label it text-to-speech model or something like that
+  // just to make what this option is looking for most explicit"). "voice file"
+  // could be a .wav; "text-to-speech model" can only be the thing it is. The two
+  // rows deliberately do NOT share a noun — a .onnx is a model, an endpoint is a
+  // running service, and calling both "voice" is what made the old field ask for
+  // a file and get an address (R, 2026-08-08: "it looks like some kind of ip
+  // string instead of a file path...?").
+  add.textContent = busy ? `+ ${busy}` : '+ add a text-to-speech model…';
+  add.title = 'a Piper .onnx model and its matching .onnx.json, from this computer';
   if (!busy) {
     add.onclick = () => on.addFile?.();
     add.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); on.addFile?.(); } };
@@ -110,8 +118,8 @@ export function renderVoiceList(host, { items, selected, on, busy }) {
   const ep = document.createElement('div');
   ep.className = 'vl-row vl-add';
   ep.tabIndex = 0;
-  ep.textContent = '+ add a network endpoint…';
-  ep.title = 'a synthesizer you are already running (ws:// or http://)';
+  ep.textContent = '+ add a speech server…';
+  ep.title = 'the address of a text-to-speech server you are already running (ws:// or http://)';
   ep.onclick = () => on.addEndpoint?.();
   ep.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); on.addEndpoint?.(); } };
   host.appendChild(ep);
