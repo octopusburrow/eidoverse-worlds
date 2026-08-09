@@ -161,7 +161,12 @@ function ttsRow() {
 
   const box = row.querySelector('input[type=checkbox]');
   const note = row.querySelector('.sp-note');
-  if (!ttsAvailable() && !agentVoice) note.textContent = 'needs an endpoint';
+  // No "needs an endpoint" here any more. It dated from when an address was the
+  // only way to get a voice, and it fires whenever nothing is LOADED — which,
+  // now that voices load lazily on tick, is the ordinary startup state. R saw it
+  // sitting under a perfectly valid selected voice (2026-08-09), which reads as
+  // "this voice is broken" when the truth is "not loaded yet, tick to load".
+  if (!ttsAvailable() && !agentVoice) note.textContent = '';
   // One place that decides how "live" looks, so the label can never disagree
   // with the checkbox — every path that changes voice state calls this.
   // A loaded file becomes a REAL option, selected — so the dropdown shows the
@@ -203,7 +208,26 @@ function ttsRow() {
       if (note2) note2.textContent = 'local only';
       return true;
     }
-    return false;   // catalog/file keys are handled by their own paths
+    // A CATALOG VOICE. This used to return false — so ticking the box with a
+    // catalog voice showing could never work, independently of the restore bug.
+    // Two ways to reach the same dead end is why R saw it as "can't check it
+    // on": the selection was real, and nothing here would honour it.
+    try {
+      const { useLocalVoice } = await import('./localvoice.js');
+      await useLocalVoice(key, (p) => {
+        if (!note2) return;
+        note2.textContent = p.phase === 'download'
+          ? `downloading${p.pct != null ? ` ${p.pct}%` : `… ${p.mb} MB`}`
+          : p.phase === 'runtime' ? 'loading runtime…' : '';
+      });
+      localStorage.setItem('eido.localVoice', key);
+      if (note2) note2.textContent = 'ready';
+      return true;
+    } catch (e) {
+      if (note2) note2.textContent = 'failed — see console';
+      report('local voice', e);
+      return false;
+    }
   }
 
   const lab = row.querySelector('.sp-label');
@@ -251,7 +275,18 @@ function ttsRow() {
           o.textContent = v.mb ? `${v.label} — ${v.mb} MB` : v.label;
           sel.insertBefore(o, custom);
         }
-        if (saved) sel.value = saved;
+        // Restoring the SELECTION is not restoring the VOICE. This line used to
+        // be the whole restore: the dropdown showed "alba", nothing was loaded,
+        // and ticking the box found no source — so a valid-looking choice could
+        // not be switched on until you selected away and back, which is the only
+        // thing that fired onchange (R, 2026-08-09).
+        //
+        // Deliberately still LAZY: eagerly compiling a 63 MB graph on every page
+        // load would trade this bug for a slow start on a voice you may not use.
+        // The tick is what loads it. What was missing is that the tick had no
+        // way to know which voice was showing — now it reads the dropdown, so
+        // display and action finally refer to the same thing.
+        if (saved) { sel.value = saved; if (!sel.value) sel.value = '__default'; }
       } catch (e) {
         sel.querySelector('option[value="__loading"]')?.remove();
         note.textContent = 'voice list unavailable';
@@ -380,21 +415,17 @@ function ttsRow() {
         paintLive();
         return;
       }
+      // ONE loading path. This block used to duplicate activate()'s catalog
+      // logic, which is how the two could disagree about whether a voice was
+      // loaded — the dropdown's copy ran on change, activate()'s did not exist,
+      // and the checkbox believed activate(). Same function now, both callers.
       sel.disabled = true;
       try {
-        const { useLocalVoice } = await import('./localvoice.js');
-        await useLocalVoice(key, (p) => {
-          note.textContent = p.phase === 'download'
-            ? `downloading${p.pct != null ? ` ${p.pct}%` : `… ${p.mb} MB`}`
-            : p.phase === 'runtime' ? 'loading runtime…' : '';
-        });
-        localStorage.setItem('eido.localVoice', key);
-        note.textContent = 'ready';
-        box.disabled = false;
-        box.checked = setTtsEnabled(true);   // choosing a voice means wanting it
-      } catch (e) {
-        note.textContent = 'failed — see console';
-        report('local voice', e);
+        const ok = await activate(key);
+        // Choosing a voice means wanting it: switch on. But only claim "on" if
+        // the source actually installed — setTtsEnabled returns the truth.
+        if (ok) box.checked = setTtsEnabled(true);
+        paintLive();
       } finally { sel.disabled = false; }
     };
   }
