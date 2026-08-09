@@ -773,19 +773,35 @@ function micFloorRow() {
     `<span data-meter title="${hint}" style="flex:1;min-width:60px;position:relative;height:14px;` +
     `background:#000;border-radius:2px;overflow:hidden;cursor:ew-resize">` +
     `<span data-lvl style="position:absolute;left:0;top:0;height:100%;width:0;background:#3c5"></span>` +
-    `<span data-thr style="position:absolute;top:0;height:100%;width:2px;background:#9f9;opacity:.9"></span>` +
+    // TWO MARKS, because there are two different facts and I wrongly made them one
+    // element (R, 2026-08-09: "I can't grab where the bar actually is, and I have
+    // to move my cursor farther than the bar moves"). The HANDLE is where you set
+    // the control — it follows your pointer 1:1, always. The THRESHOLD is where
+    // the gate opens right now, which moves with the room and is not draggable.
+    // Drawing the setting at the live threshold's position meant dragging the full
+    // width moved the mark 27%.
+    `<span data-thr style="position:absolute;top:0;height:100%;width:2px;background:#9f9;` +
+    `opacity:.55" title="where the gate opens right now — moves with the room"></span>` +
+    `<span data-handle style="position:absolute;top:-2px;height:18px;width:3px;background:#fff;` +
+    `border-radius:2px" title="drag to set sensitivity"></span>` +
     `</span>` +
-    `<span data-out style="min-width:34px;text-align:right">${gateMultiplier().toFixed(1)}×</span>`;
+    `<span data-out style="min-width:34px;text-align:right">${Math.round((micFloor() / 0.2) * 100)}%</span>`;
   const meter = row.querySelector('[data-meter]');
   const out = row.querySelector('[data-out]');
   const lvl = row.querySelector('[data-lvl]');
   const thr = row.querySelector('[data-thr]');
+  const handle = row.querySelector('[data-handle]');
   const paintThr = () => {
-    // The marker is painted by the live beat() below from micGateInfo().on — the
-    // REAL threshold, which moves with the room. Painting it from micFloor here
-    // too would be two writers on one element, and the animation frame would win
-    // anyway; the drag just needs the value stored, not drawn twice.
-    out.textContent = `${gateMultiplier().toFixed(1)}×`;
+    // The HANDLE tracks the setting exactly — pointer to mark, 1:1, no scale in
+    // between. The live threshold is a separate element painted by beat().
+    handle.style.left = `calc(${Math.min(100, (micFloor() / 0.2) * 100)}% - 1px)`;
+    // 🔴 PERCENT, not a multiplier. R: "I'm not sure I agree with changing it
+    // away from a percentage. 0% means it picks up everything, 100% means it
+    // technically picks up nothing." She is right — a percentage of the
+    // control's own range is the thing the user is setting and the thing they
+    // can see themselves moving. "2.6×" was me leaking the implementation into
+    // the label; how many times the room noise it takes is MY business.
+    out.textContent = `${Math.round((micFloor() / 0.2) * 100)}%`;
   };
   paintThr();
   const setFromX = (ev) => {

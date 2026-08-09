@@ -27,10 +27,9 @@ const DEFAULTS = { recvVoice: false, volVoices: 1, volWorld: 0.6, volTts: 1, stt
   // ABOVE the measured room noise (see onsetTick). 0.06 is the lowest value that
   // took zero false triggers across 200 simulated room/noise combinations while
   // never missing speech, so the slider has honest room in both directions.
-  // ~7x the room noise. Rejects speech from another room (which lands around
-  // 3-4x a quiet floor) while your own voice clears it by more than 30x. The old
-  // 0.06 default predates the widened range and sat at the very bottom of it.
-  micFloor: 0.07 };
+  // 45% on the slider ≈ 6.4x the room noise: rejects speech from another room
+  // (~3-4x a quiet floor) with margin, while your own voice clears it by 30x+.
+  micFloor: 0.09 };
 
 let prefs = { ...DEFAULTS };
 try {
@@ -146,5 +145,19 @@ function defaultAsk() {
  *  floor by more than 30x. The top of the range is now genuinely strict and the
  *  bottom still catches a whisper.
  */
-export const gateMultiplier = () =>
-  1.5 + Math.min(1, prefs.micFloor / 0.2) * 18.5;
+export const gateMultiplier = () => {
+  const t = Math.min(1, Math.max(0, prefs.micFloor / 0.2));
+  // 🔴 THE ENDS MEAN WHAT THE PERCENTAGE SAYS (R, 2026-08-09): "0% means it
+  // picks up everything, 100% means it technically picks up nothing, but maybe
+  // just caps at an arbitrarily high dB." So:
+  //   0%   → 1.0x, the floor itself: anything above the room noise opens it.
+  //   100% → 60x, which no voice reaches — effectively closed, without being a
+  //          special case in the gate. A cap rather than Infinity keeps it one
+  //          continuous curve with no branch to get wrong.
+  //
+  // EXPONENTIAL, not linear: the useful settings are all bunched at the low end
+  // (2x-8x covers every ordinary room), so a linear slider would spend most of
+  // its travel on values nobody wants and make the useful part impossible to
+  // land on — which is half of why the control felt unusable.
+  return 1.0 * Math.pow(60, t);
+};
