@@ -13,6 +13,7 @@
 //            not narration (or the reverse).
 
 import { makeSection, flashHint } from './ui.js';
+import { ttsSection } from './ttsrow.js';
 import { audioPrefs, setVolume, receivingVoice, setReceiveVoice,
   sttConsented, setSttConsent, isHushed, setHush,
   micFloor, setMicFloor, meterPos, gateThreshold } from './voiceconsent.js';
@@ -942,7 +943,13 @@ function paint(body) {
     body_.append(slider(cat, label, hint,
       cat === 'world' ? p.volWorld : cat === 'tts' ? p.volTts : p.volVoices));
   }
-  body_.append(ttsRow());
+  // The TTS section is a LIST now, not a dropdown — see ttsrow.js / voicelist.js.
+  // It repaints itself and asks us to repaint siblings when it changes state.
+  {
+    const host = document.createElement('div');
+    body_.appendChild(host);
+    ttsSection(host, () => paint());
+  }
   body_.append(checkRow('speech-to-text',
     'sends your mic audio to your browser vendor’s cloud to transcribe',
     sttConsented(), (on) => setSttConsent(on)));
