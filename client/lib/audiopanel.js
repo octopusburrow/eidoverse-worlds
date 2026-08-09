@@ -150,6 +150,17 @@ function ttsRow() {
             `<option value="__loading">loading voices…</option>` +
             `<option value="__file">voice file on this computer…</option>` +
             `<option value="__custom">custom endpoint…</option></select>` +
+            // ADD / REMOVE, beside the list they act on (R, 2026-08-09: "an
+            // add/remove pair of buttons lined up with the drop-down"). "+" is
+            // the same file picker the "voice file on this computer…" entry
+            // opened — a verb belongs on a button, not hidden as a fake item in
+            // a list of nouns. "−" forgets the selected voice, and is disabled
+            // for anything not removable (browser speech, the catalog) so it can
+            // never look like it will delete something it cannot.
+            `<button class="sp-add" title="add a voice file from this computer" ` +
+            `style="background:#222;color:inherit;border:1px solid #444;padding:0 6px;cursor:pointer">+</button>` +
+            `<button class="sp-del" title="forget the selected voice" disabled ` +
+            `style="background:#222;color:inherit;border:1px solid #444;padding:0 6px;cursor:pointer">−</button>` +
             `<input type="file" accept=".onnx,.json" multiple style="display:none">` +
             `<input type="text" placeholder="ws://127.0.0.1:8927 or http://host/tts" ` +
             `style="display:none;flex:1;min-width:0;background:#222;color:inherit;border:1px solid #444;padding:1px 4px" ` +
@@ -188,6 +199,9 @@ function ttsRow() {
     opt.title = label;
     opt.style.fontStyle = '';
     opt.style.opacity = '';
+    // Mark it removable so the "−" button can tell a voice YOU added from the
+    // built-ins it must never offer to delete.
+    opt.dataset.remembered = '1';
     sel.value = '__loaded';
   };
 
@@ -233,6 +247,28 @@ function ttsRow() {
       }, 'browser speech (local only — peers will not hear this)');
       if (note2) note2.textContent = 'local only';
       return true;
+    }
+    // A REMEMBERED FILE VOICE. Reached only from the tick or a click — both
+    // user gestures — which is what lets requestPermission() actually ask
+    // instead of throwing. If the grant is refused the honest outcome is
+    // false: the caller unticks and the voice stays visibly not-live.
+    if (key.startsWith('file:')) {
+      try {
+        const { listVoices, openVoice } = await import('./voicestore.js');
+        const entry = (await listVoices()).find((v) => v.id === key);
+        if (!entry) { if (note2) note2.textContent = 'that voice is no longer remembered'; return false; }
+        const files = await openVoice(entry, { allowPrompt: true });
+        const { loadFromFiles } = await import('./voiceengines.js');
+        await import('./engines.js');
+        const { label } = await loadFromFiles(files, (p) => { if (note2) note2.textContent = p.text || p.phase || 'loading…'; });
+        if (note2) note2.textContent = 'ready';
+        localStorage.setItem('eido.localVoice', key);
+        return !!label || ttsAvailable();
+      } catch (e) {
+        if (note2) note2.textContent = String(e?.message || e).slice(0, 90);
+        report('remembered voice', e);
+        return false;
+      }
     }
     // A CATALOG VOICE. This used to return false — so ticking the box with a
     // catalog voice showing could never work, independently of the restore bug.
@@ -367,6 +403,33 @@ function ttsRow() {
         // The tick is what loads it. What was missing is that the tick had no
         // way to know which voice was showing — now it reads the dropdown, so
         // display and action finally refer to the same thing.
+        // REMEMBERED FILE VOICES rejoin the list here, before the selection is
+        // restored — otherwise `saved` names an option that does not exist yet
+        // and the <select> silently falls back to its first entry.
+        //
+        // 🔴 The handle survives; the PERMISSION usually does not. So the entry
+        // is listed but marked, and loading waits for the tick — a user gesture,
+        // the only context in which requestPermission() may ask. Listing it
+        // greyed is honest: we know which file you chose, and we may still have
+        // to ask before reading it.
+        try {
+          const { listVoices, voiceReadable, canRemember } = await import('./voicestore.js');
+          if (canRemember()) {
+            for (const v of await listVoices()) {
+              const state = await voiceReadable(v);
+              if (state === 'denied' || state === 'gone') continue;   // dead weight
+              const o = document.createElement('option');
+              o.value = v.id;
+              o.dataset.remembered = '1';
+              o.dataset.voiceId = v.id;
+              o.textContent = state === 'granted' ? v.name : `${v.name} (click to allow)`;
+              o.title = state === 'granted'
+                ? `${v.name} — on this computer`
+                : `${v.name} — remembered, but this browser must ask before reading it again`;
+              sel.insertBefore(o, custom);
+            }
+          }
+        } catch (e) { console.warn('[voice] could not list remembered voices:', e); }
         if (saved) { sel.value = saved; if (!sel.value) sel.value = '__default'; }
       } catch (e) {
         sel.querySelector('option[value="__loading"]')?.remove();
@@ -375,8 +438,49 @@ function ttsRow() {
       }
     })();
 
+    // "+" is the SAME path as choosing "voice file on this computer…", not a
+    // parallel implementation of it: set the value and fire the one handler, so
+    // the two entry points can never drift into behaving differently.
+    const addBtn = row.querySelector('.sp-add');
+    const delBtn = row.querySelector('.sp-del');
+    if (addBtn) addBtn.onclick = () => { sel.value = '__file'; sel.onchange(); };
+
+    // Only a REMEMBERED voice can be forgotten. Browser speech is built in and
+    // catalog voices are just names we can fetch again — offering to delete
+    // either would be a button that lies about what it does. The one currently
+    // loaded is removable too: forgetting is about the saved list, not about
+    // what is playing right now.
+    const refreshDel = () => {
+      if (!delBtn) return;
+      const opt = sel.selectedOptions?.[0];
+      const removable = !!opt?.dataset?.remembered || sel.value === '__loaded';
+      delBtn.disabled = !removable;
+      delBtn.style.opacity = removable ? '1' : '.4';
+      delBtn.style.cursor = removable ? 'pointer' : 'default';
+      delBtn.title = removable ? 'forget the selected voice'
+        : 'only voices you added from this computer can be forgotten';
+    };
+    if (delBtn) delBtn.onclick = async () => {
+      const opt = sel.selectedOptions?.[0];
+      if (!opt) return;
+      const id = opt.dataset?.voiceId;
+      if (id) {
+        const { forgetVoice } = await import('./voicestore.js');
+        await forgetVoice(id);
+      }
+      opt.remove();
+      // Fall back to the built-in rather than to whatever happens to be first:
+      // a removal should land somewhere predictable and always-present.
+      sel.value = '__default';
+      localStorage.setItem('eido.ttsChoice', '__default');
+      localStorage.removeItem('eido.localVoice');
+      note.textContent = 'forgotten';
+      refreshDel();
+    };
+
     sel.onchange = async () => {
       const key = sel.value;
+      refreshDel();
       // Re-selecting the voice already loaded is a no-op, not a reload: the
       // model is in memory and re-running the 63 MB compile would look like a
       // hang for no reason.
@@ -449,6 +553,21 @@ function ttsRow() {
               note.title = label;
               box.disabled = false; box.checked = setTtsEnabled(true);
               adoptLoadedFile(label);
+              // REMEMBER IT. `handles` are FileSystemFileHandles and survive a
+              // reload; the File objects above do not. Best-effort: a voice
+              // that loaded must not fail because we could not write a note
+              // about it (private browsing refuses IndexedDB outright).
+              try {
+                const { rememberVoice, canRemember } = await import('./voicestore.js');
+                if (canRemember()) {
+                  const vid = `file:${shown || label}`;
+                  if (await rememberVoice(vid, shown || label, handles)) {
+                    const o = sel.querySelector('option[value="__loaded"]');
+                    if (o) o.dataset.voiceId = vid;
+                    localStorage.setItem('eido.localVoice', vid);
+                  }
+                }
+              } catch (e) { console.warn('[voice] not remembered:', e); }
               paintLive();
             } catch (e) {
               // loadFromFiles throws a message naming the known formats — show
