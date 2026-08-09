@@ -42,9 +42,14 @@ import { report } from './core.js';
 // 1.5s smear 0.06 produced. Attack faster than release, always: opening late
 // loses a consonant, closing early cuts a word in half. And the 700ms hang-time
 // runs BEFORE this fade even begins, so a pause mid-sentence never reaches it.
-const ATTACK = 0.35;
-const RELEASE = 0.18;
-const FRAME_MS = 40;
+// TIME CONSTANTS, in seconds — setTargetAtTime reaches ~63% of the target in one
+// tau and ~95% in three. Attack 0.02s → audibly open in ~60ms, inside a syllable
+// (~80-150ms), so the first consonant survives. Release 0.12s → a soft ~360ms
+// tail, and the 700ms hang-time runs BEFORE the fade even starts, so a pause
+// mid-sentence never reaches it. Attack always faster than release: opening late
+// loses a consonant, closing early cuts a word in half.
+const ATTACK_TAU = 0.02;
+const RELEASE_TAU = 0.12;
 
 let _ctx = null, _src = null, _gain = null, _dest = null, _timer = null;
 let _rawStream = null, _gatedStream = null, _level = () => 0;
@@ -85,19 +90,22 @@ export function gateStream(stream, levelFn) {
  *  smoothing lives here so the decision logic stays readable. */
 export function driveGate(open) {
   if (!_gain || !_ctx) return;
+  // 🔴 DO NOT DOUBLE-SMOOTH. This used to compute a lerped step and then hand it
+  // to setTargetAtTime — which is ITSELF an exponential approach, so the gain
+  // never actually reached the step, and reading .value back on the next tick
+  // fed that lag forward. The result was a gate that never fully closed: R heard
+  // her own monitor ignoring the sensitivity setting entirely (2026-08-09).
+  //
+  // setTargetAtTime already IS the envelope. Target the true endpoint (1 or 0)
+  // and let the time constant do the shaping — one smoothing stage, not two.
   const target = open ? 1 : 0;
-  const now = _ctx.currentTime;
-  const cur = _gain.gain.value;
-  const coeff = open ? ATTACK : RELEASE;
-  const next = cur + (target - cur) * coeff;
+  const tau = open ? ATTACK_TAU : RELEASE_TAU;
   try {
-    // setTargetAtTime rather than a linear ramp: it is the exponential approach
-    // an ear expects from a gate, and it never leaves a scheduled ramp behind to
-    // fight the next call (a known trap in this codebase — see the WebAudio
-    // gotchas note about setValueAtTime races).
-    _gain.gain.setTargetAtTime(next, now, FRAME_MS / 1000);
-  } catch { _gain.gain.value = next; }
+    _gain.gain.setTargetAtTime(target, _ctx.currentTime, tau);
+  } catch { _gain.gain.value = target; }
+  _wanted = target;
 }
+
 
 // ── MONITOR: hear your own lane, exactly as the room hears it ───────────────
 // R, 2026-08-09: "can you feed my own audio lane back to me for this test so I
@@ -111,16 +119,34 @@ export function driveGate(open) {
 //
 // 🔴 FEEDBACK: on speakers this WILL howl — mic hears monitor hears mic. Ship it
 // at a low default, and say so in the UI rather than discovering it at volume.
-let _mon = null;
+let _mon = null, _delay = null, _wanted = 0;
+// Long enough to be heard as a separate event rather than as an echo of your
+// own voice. Tunable live via setMonitorDelay() while testing.
+let MONITOR_DELAY = 0.4;
 export function setMonitor(on, level = 0.35) {
   if (!_ctx || !_gain) return false;
   if (!on) {
-    if (_mon) { try { _mon.disconnect(); } catch { /* gone */ } _mon = null; }
+    if (_mon) {
+      try { _mon.disconnect(); } catch { /* gone */ }
+      try { _delay?.disconnect(); } catch { /* gone */ }
+      _mon = null; _delay = null;
+    }
     return false;
   }
   if (!_mon) {
     _mon = _ctx.createGain();
-    _gain.connect(_mon);
+    // A DELIBERATE DELAY. R, 2026-08-09: "can you delay the sound a bit so it's
+    // easier to hear? It's so quick it's actually hard to tell if I'm hearing it
+    // in the environment or in my headphones." Zero-latency monitoring is
+    // correct for performing and useless for TESTING — it phases with your own
+    // voice conducting through your skull and becomes indistinguishable from the
+    // room. 400ms is past the echo threshold (~50ms), so it reads as a distinct
+    // repeat you can compare against what you just said: did the gate clip the
+    // start of that word, or not?
+    _delay = _ctx.createDelay(2.0);
+    _delay.delayTime.value = MONITOR_DELAY;
+    _gain.connect(_delay);
+    _delay.connect(_mon);
     _mon.connect(_ctx.destination);
   }
   // setTargetAtTime, not a bare assignment: a step change in a monitor path is
@@ -133,7 +159,11 @@ export const monitoring = () => !!_mon;
 
 /** Is any signal actually reaching the wire right now? The honest answer to
  *  "am I being broadcast", read from the gain itself rather than inferred. */
-export const gateOpenness = () => (_gain ? _gain.gain.value : 0);
+// Reports the gate's INTENT, not the instantaneous .value: during a fade the
+// real gain is mid-slope, and an indicator that flickers through every envelope
+// would misreport 'am I being heard' at exactly the moments that matter.
+export const gateOpenness = () => (_gain ? _wanted : 0);
+export const gateGainNow = () => (_gain ? _gain.gain.value : 0);
 export const isGated = () => !!_gain;
 
 /** Detach the DEVICE from the lane, keeping the lane itself alive.
@@ -182,3 +212,15 @@ export function release() {
 /** The RAW stream, for anything that must measure the true input — the analyser
  *  especially. Measuring the gated output would make the gate self-latching. */
 export const rawStream = () => _rawStream;
+
+/** Retune the monitor delay live, in seconds (0…2). For finding the spacing that
+ *  makes a clipped consonant obvious rather than ambiguous. */
+export function setMonitorDelay(sec) {
+  MONITOR_DELAY = Math.max(0, Math.min(2, Number(sec) || 0));
+  if (_delay && _ctx) {
+    try { _delay.delayTime.setTargetAtTime(MONITOR_DELAY, _ctx.currentTime, 0.05); }
+    catch { _delay.delayTime.value = MONITOR_DELAY; }
+  }
+  return MONITOR_DELAY;
+}
+export const monitorDelay = () => MONITOR_DELAY;

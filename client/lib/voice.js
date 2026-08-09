@@ -53,7 +53,18 @@ let myId = null;
 // — the control would look broken precisely while it worked. `muted` is the
 // user's intent and does not move on its own, which is the question every caller
 // is actually asking: am I open to the room?
-export const micOn = () => !!micStream && !muted;
+// 🔴 THREE STATES, NOT TWO. `muted` and "mic off" are different things and used
+// to be told apart by track.enabled — which the NOISE GATE now owns, toggling it
+// between words. When I repointed micOn() at `muted` I collapsed them, and
+// toggleMic's off-path (which sets enabled=false but muted=false) then left
+// micOn() permanently TRUE: R, 2026-08-09, "I'm not sure what the microphone
+// option does? It's just stuck on and I can't do anything with it."
+//
+//   _micLive false          → mic off: nothing is captured, the row reads off
+//   _micLive true + muted   → open but deliberately silent
+//   _micLive true + !muted  → open; the gate decides moment to moment
+let _micLive = false;
+export const micOn = () => !!micStream && _micLive && !muted;
 /** Am I audible RIGHT NOW — i.e. is the gate open this instant? For a live
  *  indicator, not for state. This is the affordance R asked for: "we have no
  *  affordance to say when audio is getting broadcasted." */
@@ -447,9 +458,11 @@ export async function toggleMic(name) {
     // transceiver stays sendonly, the SDP does not change, and coming back is
     // one assignment rather than getUserMedia + renegotiate. Muting cannot
     // deafen you because no peer is touched at all.
-    for (const t of micStream.getTracks()) t.enabled = false;
+    for (const t of (_rawMic || micStream).getTracks()) t.enabled = false;
     stopOnsetWatch();
+    _micLive = false;                // the state the checkbox and HUD icon read
     muted = false;
+    driveGate(false);                // close the lane; never tear it down
     flashHint('🎙 off');
     bus.emit('voice', { on: false });
     return false;
@@ -503,6 +516,7 @@ export async function toggleMic(name) {
   // have-local-offer (Mica, #34). renegotiate() above already covers the
   // stable ones; this covers the strangers.
   for (const id of humanIds()) if (!peers.has(id)) offerTo(id);
+  _micLive = true;
   flashHint('🎙 live — speak, neighbors hear · <b>mute</b> in the dock');
   bus.emit('voice', { on: true });
   startOnsetWatch();
