@@ -143,7 +143,13 @@ send("Runtime.evaluate", {
         const C = window.AudioContext || window.webkitAudioContext;
         const probeCtx = new C(); actx = probeCtx.state; probeCtx.close();
       } catch (e) { actx = 'ERR ' + e.message; }
-      const stored = localStorage.getItem('eido.voiceprefs') || localStorage.getItem('eido.consent') || null;
+      // THE REAL KEY IS eido.audio.prefs. This probe guessed 'eido.voiceprefs'
+      // and 'eido.consent', neither of which exists — so it reported
+      // "storedPrefs: null" all night and I read a typo as evidence that
+      // nothing was stored. A probe that looks in the wrong place does not
+      // report an error; it reports absence, which is indistinguishable from a
+      // finding (2026-08-08).
+      const stored = localStorage.getItem('eido.audio.prefs');
       const ok = await globalThis.__voiceSpeak('Hello Rabscuttle. This is my actual voice, coming out of the microphone lane.');
       const a = globalThis.__voiceProbe();
       await new Promise(r => setTimeout(r, 3000));
