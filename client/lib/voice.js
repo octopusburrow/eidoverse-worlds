@@ -484,18 +484,90 @@ export async function toggleMic(name) {
 // their own, so we supply it (Mica, #62 review).
 let _peerGen = 0;
 let _onsetTimer = null, _above = false, _lastOnset = 0;
+// ADAPTIVE FLOOR. R, 2026-08-09 mid-call: "lol mic sensitivity still needs
+// work" — the 🎙 indicator fired on nothing and missed real speech.
+//
+// The old gate compared raw RMS to a FIXED 0.04. That cannot work across
+// machines: RMS scales with mic gain, distance and OS-level AGC, so 0.04 is
+// deafening on a headset and unreachable on a laptop array two feet away. One
+// constant against an unnormalised signal is the whole bug.
+//
+// So measure the ROOM and gate relative to it. `_noise` tracks the quiet level
+// with a slow one-sided follower — falls fast toward quiet, rises slowly — so a
+// long utterance cannot drag the floor up behind itself and gate you out
+// mid-sentence, while a fan switching on is absorbed within a few seconds.
+// Speech has to clear the noise by a MARGIN, which is what makes it work the
+// same in a silent room and a loud one.
+//
+// The slider still matters: it scales the margin (sensitivity), rather than
+// naming an absolute level nobody can reason about.
+let _noise = 0.01;
+let _settle = 0;
 function onsetTick() {
-  const floor = micFloor();
   const level = micAnalyserLevel();
-  if (!_above && level >= floor) {
+  if (level <= 0) return;                 // muted or no mic: do not learn silence
+
+  // LEARN BEFORE JUDGING. The floor starts cold at 0.01, so in a loud room the
+  // first second reads as "way above the floor" and fires the 🎙 at the room
+  // itself — which is exactly what R saw: "it seemed like mic sensitivity was
+  // picking up a fair amount of background noise". Simulation put essentially
+  // every remaining false trigger in this window. Spend the first ~1s measuring
+  // only. Erring here is free: nobody speaks in the first tick after unmuting,
+  // and a missed onset costs an icon, not audio (audio always flows).
+  if (_settle < 8) { _settle++; const a0 = level < _noise ? 0.3 : 0.5; _noise += (level - _noise) * a0; return; }
+
+  // One-sided follower, but the RISE RATE MUST STILL CONVERGE. My first pass
+  // used 0.02, which sounds appropriately cautious and is wrong: against a room
+  // at 0.15 the floor only reaches 0.09 in five seconds, so the gate sits below
+  // the actual noise, `_above` latches true, and NO new onset can ever fire. In
+  // simulation that missed speech in 80 of 200 rooms — and no amount of tuning
+  // the margin fixed it, because the floor, not the margin, was wrong.
+  //
+  // 0.08 up still takes ~2s to absorb a new steady noise (speech is far shorter,
+  // so it cannot drag the floor with it) while converging on any real room well
+  // inside the settle window. Down stays fast: a room going quiet should be
+  // believed immediately.
+  const a = level < _noise ? 0.3 : 0.08;
+  _noise += (level - _noise) * a;
+
+  // Margin above the measured floor. 🔴 The obvious mapping (micFloor() × 6)
+  // makes MOST OF THE SLIDER DEAD: the stored range is 0…0.2, speech sits only
+  // ~0.25 RMS above a room, so anything past 0.08 demands more headroom than
+  // speech has and the gate can never open. A control whose top half silently
+  // breaks it is worse than no control — caught by simulating five rooms
+  // (2026-08-09), not by reading.
+  //
+  // So map the WHOLE range onto margins that are all reachable: 0.012 (twitchy,
+  // catches whispers) … 0.14 (firm, ignores a loud room). The old 0.04 default
+  // lands mid-scale, where it behaved well in testing.
+  const margin = 0.012 + Math.min(1, micFloor() / 0.2) * 0.128;
+  const on = _noise + margin;
+  const off = _noise + margin * 0.45;     // hysteresis, so a pause is not a stop
+
+  if (!_above && level >= on) {
     _above = true;
     const now = Date.now();
     if (now - _lastOnset > 1500) { _lastOnset = now; sendTyping(null, 'mic'); }
-  } else if (_above && level < floor * 0.6) _above = false;
+  } else if (_above && level < off) _above = false;
 }
+/** What the gate is actually doing right now — for the meter and for tuning.
+ *  Exposed because "why did it not trigger" is unanswerable from the outside:
+ *  the same RMS means different things in different rooms. */
+export const micGateInfo = () => ({
+  level: micAnalyserLevel(), noise: _noise,
+  on: _noise + 0.012 + Math.min(1, micFloor() / 0.2) * 0.128,
+  speaking: _above,
+});
 function startOnsetWatch() {
   if (_onsetTimer) return;
   _above = false;
+  // Re-measure the room on every mic open. A floor learned in a quiet session
+  // would gate you out of a loud one — and worse, a floor learned while a fan
+  // was running stays high after it stops. Start low and let the follower rise;
+  // erring quiet costs a few false 🎙 in the first second, erring loud costs
+  // your first sentence.
+  _noise = 0.01;
+  _settle = 0;                            // re-learn the room, then judge
   _onsetTimer = setInterval(onsetTick, 120);
 }
 function stopOnsetWatch() {

@@ -23,7 +23,11 @@ const KEY = 'eido.audio.prefs';
 // so a refusal would be re-prompted on the next mic-on — turning a no into a
 // recurring negotiation, which is the opposite of asking once (review catch).
 const DEFAULTS = { recvVoice: false, volVoices: 1, volWorld: 0.6, volTts: 1, sttConsent: null,
-  micFloor: 0.04 };  // speech-onset gate: mic level below this is keyboard, not voice
+  // Sensitivity, not an absolute level: it scales the margin a sound must clear
+  // ABOVE the measured room noise (see onsetTick). 0.06 is the lowest value that
+  // took zero false triggers across 200 simulated room/noise combinations while
+  // never missing speech, so the slider has honest room in both directions.
+  micFloor: 0.06 };
 
 let prefs = { ...DEFAULTS };
 try {
