@@ -135,11 +135,21 @@ send("Runtime.evaluate", {
       // updateAmbient() detaches any source whose entity it cannot find — and
       // on a joiner the comp can replay before the spawn has settled.
       const ents = globalThis.EW ? [...globalThis.EW.entities.keys()] : [];
+      // The two classic silencers, neither of which a fresh probe profile can
+      // see: a suspended AudioContext (no user gesture) and a persisted world
+      // slider sitting at 0 in localStorage from some earlier session.
+      let actx = 'unknown';
+      try {
+        const C = window.AudioContext || window.webkitAudioContext;
+        const probeCtx = new C(); actx = probeCtx.state; probeCtx.close();
+      } catch (e) { actx = 'ERR ' + e.message; }
+      const stored = localStorage.getItem('eido.voiceprefs') || localStorage.getItem('eido.consent') || null;
       const ok = await globalThis.__voiceSpeak('Hello Rabscuttle. This is my actual voice, coming out of the microphone lane.');
       const a = globalThis.__voiceProbe();
       await new Promise(r => setTimeout(r, 3000));
       const b = globalThis.__voiceProbe();
-      return JSON.stringify({ ambient: amb, entities: ents, spoke: ok, before: a, after: b,
+      return JSON.stringify({ audioCtx: actx, storedPrefs: stored,
+        ambient: amb, entities: ents, spoke: ok, before: a, after: b,
         drained: a.queued > 0 && b.queued === 0,
         advanced: b.playhead - a.playhead });
     } catch (e) { return 'import failed: ' + e.message; }

@@ -30,12 +30,38 @@ const DEFAULT_SRC = 'assets/porch_ambient.ogg';
 const sources = new Map();          // entityId -> { el, node, gain, data }
 let ctx = null;
 
+// A SUSPENDED CONTEXT ONLY RESUMES INSIDE A REAL USER GESTURE. Calling
+// resume() from ordinary code is not a gesture, so the old opportunistic call
+// failed silently every time and the retry below re-played the ELEMENT into a
+// context that was still suspended — everything correct, nothing audible, no
+// error anywhere (R heard nothing from a −14.7 dBFS beacon, 2026-08-08).
+// So: arm a one-shot resume on the first real gesture of any kind, and keep it
+// armed until the context is actually running.
+let gestureArmed = false;
+function armGestureResume() {
+  if (gestureArmed) return;
+  gestureArmed = true;
+  const kick = () => {
+    if (!ctx) return;
+    ctx.resume().then(() => {
+      if (ctx.state === 'running') {
+        for (const s of sources.values()) s.el.play().catch(() => {});
+        for (const ev of ['pointerdown', 'keydown', 'touchstart']) removeEventListener(ev, kick);
+        gestureArmed = false;
+      }
+    }).catch(() => {});
+  };
+  for (const ev of ['pointerdown', 'keydown', 'touchstart']) addEventListener(ev, kick);
+}
+
 function audioCtx() {
   if (!ctx) ctx = new (window.AudioContext ?? window.webkitAudioContext)();
-  // browsers start suspended until a gesture; resume opportunistically
-  if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+  if (ctx.state === 'suspended') { ctx.resume().catch(() => {}); armGestureResume(); }
   return ctx;
 }
+
+/** harness/debug: why is the world silent? */
+export const audioState = () => ({ ctx: ctx?.state ?? 'none', sources: sources.size, gestureArmed });
 
 function attach(id, data) {
   detach(id);
