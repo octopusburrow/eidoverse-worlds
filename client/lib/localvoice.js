@@ -75,7 +75,12 @@ async function runtime() {
   return engine;
 }
 
-/** Use a Piper voice ALREADY ON THIS COMPUTER — no server, no endpoint, no
+/** @deprecated Superseded by engine-piper.js, which owns this logic as a plugin
+ *  behind the voiceengines.js slot. Kept only until the download path (
+ *  useLocalVoice, still live below) is moved behind the slot too; delete then
+ *  rather than letting two copies of the OPFS trick drift apart.
+ *
+ *  Use a Piper voice ALREADY ON THIS COMPUTER — no server, no endpoint, no
  *  download. R asked for exactly this (2026-08-09): "it would be best if the
  *  endpoints are file names on a person's own machine and the engine sets up all
  *  the endpoint stuff for them automatically."
