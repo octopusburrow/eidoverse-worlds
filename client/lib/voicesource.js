@@ -67,8 +67,21 @@ export function setTtsSource(fn, name = 'TTS') {
 // go through setTtsSource unchanged. The seam is already symmetric; what a
 // human lacks is a bundled source, not a different API.
 //
-// Until one ships, the UI row is honest about it: the toggle is disabled and
-// the field reads "system default (microphone)". No pretend voice picker.
+// The in-browser option is REAL and close: kokoro-js runs an 82M TTS entirely
+// client-side (WASM, or WebGPU where available) and tts.generate(text) hands
+// back samples — ~82MB cached after first load, 21 voices, no server and no
+// install. Piper-via-onnxruntime-web is the same shape (~75MB, VITS, ~0.03
+// realtime factor, first audio ~40ms). Either is a drop-in `(text) =>
+// {pcm, sampleRate}`; neither needs one line of this file to change.
+//
+// So the honest statement is narrow: the browser's BUILT-IN speechSynthesis
+// cannot feed the mic lane. Every other synthesizer can, including ones that
+// run in the same page. Do not read the paragraph above as "browsers cannot do
+// TTS into WebRTC" — they can, and this codebase already does it with Piper
+// over a socket (2.70s of audio in 0.08s, measured 2026-08-08).
+//
+// Until a source is bundled the UI row stays honest: toggle disabled, field
+// reads "system default (microphone)". No pretend voice picker.
 
 /** The audio panel's toggle. Humans leave this off and use a mic; an agent
  *  turns it on once its source is registered. */

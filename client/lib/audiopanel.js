@@ -16,7 +16,8 @@ import { makeSection } from './ui.js';
 import { audioPrefs, setVolume, receivingVoice, setReceiveVoice,
   sttConsented, setSttConsent, isHushed, setHush,
   micFloor, setMicFloor } from './voiceconsent.js';
-import { ttsAvailable, ttsVoiceName, isTtsEnabled, setTtsEnabled } from './voicesource.js';
+import { ttsAvailable, ttsVoiceName, isTtsEnabled, setTtsEnabled, setTtsSource } from './voicesource.js';
+import { setEndpointVoice } from './browservoice.js';
 import { micAnalyserLevel } from './voice.js';
 import { bus } from './core.js';
 
@@ -80,19 +81,49 @@ function checkRow(label, hint, checked, onChange) {
 function ttsRow() {
   const row = document.createElement('div');
   row.className = 'sp-row';
-  const has = ttsAvailable();
-  const hint = has
-    ? `synthesized voice: ${ttsVoiceName()} — spatialized like any other speaker`
-    : 'no synthesized voice registered; the microphone is the source';
+  const agentVoice = ttsAvailable() && !ttsVoiceName().startsWith('endpoint:');
+  const hint = agentVoice
+    ? `synthesized voice: ${ttsVoiceName()} — set by this body's harness`
+    : 'point at a synthesizer you run yourself (ws:// or http://). Nothing is ' +
+      'downloaded from this server and nothing is uploaded from your machine.';
   row.innerHTML =
-    `<input type="checkbox" ${isTtsEnabled() ? 'checked' : ''} ${has ? '' : 'disabled'} title="${hint}">` +
+    `<input type="checkbox" ${isTtsEnabled() ? 'checked' : ''} ${ttsAvailable() ? '' : 'disabled'} title="${hint}">` +
     `<span class="sp-label" title="${hint}">TTS voice</span>` +
-    `<span style="flex:1;opacity:.6;font-style:${has ? 'normal' : 'italic'}">` +
-    `${has ? ttsVoiceName() : 'system default (microphone)'}</span>`;
-  row.querySelector('input').onchange = (e) => {
-    const on = setTtsEnabled(e.target.checked);
-    e.target.checked = on;                 // refuses if no source is registered
-  };
+    (agentVoice
+      ? `<span style="flex:1;opacity:.6">${ttsVoiceName()}</span>`
+      : `<input type="text" placeholder="ws://127.0.0.1:8927  (blank = microphone)" ` +
+        `style="flex:1;min-width:0;background:#222;color:inherit;border:1px solid #444;padding:1px 4px" ` +
+        `title="${hint}">`) +
+    `<span class="sp-note" style="opacity:.5;font-size:11px"></span>`;
+
+  const box = row.querySelector('input[type=checkbox]');
+  const note = row.querySelector('.sp-note');
+  box.onchange = (e) => { e.target.checked = setTtsEnabled(e.target.checked); };
+
+  const url = row.querySelector('input[type=text]');
+  if (url) {
+    url.value = localStorage.getItem('eido.ttsEndpoint') || '';
+    const apply = async () => {
+      const v = url.value.trim();
+      if (!v) {
+        setTtsSource(null); localStorage.removeItem('eido.ttsEndpoint');
+        box.checked = false; box.disabled = true; note.textContent = '';
+        return;
+      }
+      url.disabled = true; note.textContent = 'connecting…';
+      const ok = await setEndpointVoice(v);
+      url.disabled = false;
+      // Say WHICH way it failed: an unreachable endpoint and a reachable one
+      // that returns nothing are different problems with different fixes.
+      if (!ok) { note.textContent = 'unreachable'; box.disabled = true; box.checked = false; return; }
+      localStorage.setItem('eido.ttsEndpoint', v);
+      note.textContent = '';
+      box.disabled = false;
+      box.checked = setTtsEnabled(true);   // naming a voice means wanting it
+    };
+    url.onchange = apply;
+    if (url.value) apply();                // restore across reloads
+  }
   return row;
 }
 
