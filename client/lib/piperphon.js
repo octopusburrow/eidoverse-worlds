@@ -28,9 +28,29 @@ async function phonModule(wasmPaths) {
   // 30-second build. The second awaits the first.
   if (_building) return _building;
   _building = (async () => {
-    const { createPiperPhonemize } = await import(
-      /* @vite-ignore */ '@mintplex-labs/piper-tts-web/dist/piper-o91UDS6e.js'
-    );
+    // 🔴 IMPORT THE CHUNK BY URL. Two dead ends first, both checked rather than
+    // assumed: a bare specifier for a hashed dist file is unresolvable in a
+    // browser (the library reaches it by a path relative to ITS OWN file), and
+    // the package root does NOT re-export createPiperPhonemize — its exports are
+    // HF_BASE, ONNX_BASE, PATH_MAP, TtsSession, WASM_BASE, download, flush,
+    // predict, remove, stored, voices.
+    //
+    // But the chunk is a real ES module sitting in node_modules, which we serve.
+    // new URL(..., import.meta.url) is exactly how engine-piper.js already
+    // resolves the ORT and phonemizer wasm, so this is the established route out
+    // of the same problem.
+    //
+    // The hash is pinned to the installed version. If a bump changes it this
+    // throws a clear error rather than silently falling back to the 30s path —
+    // which is the failure mode worth protecting: silently slow reads as fine.
+    const chunkUrl = new URL(
+      '../node_modules/@mintplex-labs/piper-tts-web/dist/piper-o91UDS6e.js',
+      import.meta.url,
+    ).href;
+    const { createPiperPhonemize } = await import(/* @vite-ignore */ chunkUrl);
+    if (typeof createPiperPhonemize !== 'function') {
+      throw new Error(`piper: no createPiperPhonemize at ${chunkUrl} — did the package version change?`);
+    }
     const m = await createPiperPhonemize({
       // print/printErr are REBOUND per call in phonemize() below — emscripten
       // reads them off the module object at call time, so one module can serve
