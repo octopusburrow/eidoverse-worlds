@@ -92,13 +92,18 @@ function paint() {
 }
 // hot = your voice is actually registering: a tiny analyser on the mic track,
 // polled at 8Hz, drives the yellow glow in step with STT pickup
-import { micAnalyserLevel } from './voice.js';
+// 🔴 THE GLOW IS THE "YOU ARE BEING HEARD" LIGHT, so it must read the SAME gate
+// that decides what leaves this machine. It used to compare the level to its own
+// hardcoded 0.02, unrelated to the sensitivity threshold — so the button could
+// glow while nothing was sent, or stay dark while the room heard your fan. R,
+// 2026-08-09: "we have no affordance to say when audio is getting broadcasted."
+// This is that affordance, and the only honest source is the gate itself.
+import { micTransmitting } from './voice.js';
 setInterval(() => {
   if (!micOn()) { if (micHot) { micHot = false; paint(); } return; }
-  const lvl = micAnalyserLevel?.() ?? 0;
-  const hot = lvl > 0.02;
+  const hot = micTransmitting();
   if (hot !== micHot) { micHot = hot; paint(); }
-}, 125);
+}, 60);
 
 async function flipMic() {
   const on = await toggleMic(CONFIG.name);

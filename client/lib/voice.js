@@ -39,7 +39,17 @@ let myId = null;
 // track instead of stopping it (see toggleMic), so micStream outlives mic-off
 // and `!!micStream` would leave the HUD stuck reading ON. Every caller of
 // micOn() is UI asking "am I being heard right now?" — this is that question.
-export const micOn = () => !!micStream && micStream.getAudioTracks().some((t) => t.enabled);
+// 🔴 NOT track.enabled ANY MORE. The noise gate now toggles `enabled` between
+// words, so reading it here would make the HUD flicker "mic off" in every pause
+// — the control would look broken precisely while it worked. `muted` is the
+// user's intent and does not move on its own, which is the question every caller
+// is actually asking: am I open to the room?
+export const micOn = () => !!micStream && !muted;
+/** Am I audible RIGHT NOW — i.e. is the gate open this instant? For a live
+ *  indicator, not for state. This is the affordance R asked for: "we have no
+ *  affordance to say when audio is getting broadcasted." */
+export const micTransmitting = () =>
+  !!micStream && !muted && micStream.getAudioTracks().some((t) => t.enabled);
 export const isMuted = () => muted;
 
 function humanIds() {
@@ -483,7 +493,7 @@ export async function toggleMic(name) {
 // must not land on the new one — answers carry no negotiation identity of
 // their own, so we supply it (Mica, #62 review).
 let _peerGen = 0;
-let _onsetTimer = null, _above = false, _lastOnset = 0;
+let _onsetTimer = null, _above = false, _lastOnset = 0, _openUntil = 0;
 // ADAPTIVE FLOOR. R, 2026-08-09 mid-call: "lol mic sensitivity still needs
 // work" — the 🎙 indicator fired on nothing and missed real speech.
 //
@@ -544,11 +554,44 @@ function onsetTick() {
   const on = _noise + margin;
   const off = _noise + margin * 0.45;     // hysteresis, so a pause is not a stop
 
-  if (!_above && level >= on) {
-    _above = true;
-    const now = Date.now();
-    if (now - _lastOnset > 1500) { _lastOnset = now; sendTyping(null, 'mic'); }
-  } else if (_above && level < off) _above = false;
+  const now = Date.now();
+  if (level >= on) {
+    _openUntil = now + 700;               // hang-time: see gateAudio()
+    if (!_above) {
+      _above = true;
+      if (now - _lastOnset > 1500) { _lastOnset = now; sendTyping(null, 'mic'); }
+    }
+  } else if (_above && level < off && now > _openUntil) _above = false;
+  gateAudio(now);
+}
+
+// 🔴 THE GATE MUST GATE THE AUDIO, NOT JUST THE ICON. R, 2026-08-09: "I would
+// DEFINITELY gate the mic sensitivity to cover the full audio channel so every
+// little background noise isn't broadcasted to the room. That's extra confusing
+// because we have no affordance to say when audio is getting broadcasted."
+//
+// She is right and I had this backwards: I spent an hour tuning this thing as an
+// INDICATOR problem, when the indicator was reporting truthfully — audio really
+// was always flowing. Your keyboard, your fan and your family went to the room
+// whenever the mic was open, and the only thing the threshold changed was a
+// glyph. A "sensitivity" control that does not control what anyone hears is
+// worse than none, because it reads as if it does.
+//
+// track.enabled is the right mechanism: universal (unlike
+// MediaStreamTrackGenerator, which is Chromium-only), synchronous, spec-mandated
+// to render silence, and already what mute uses — so this cannot fight it.
+//
+// HANG-TIME, not a hard cut. Speech is full of gaps: stops, breaths, the pause
+// before a clause. Closing the instant level drops chops words in half, so the
+// gate stays open 700ms past the last sound above threshold and only then
+// closes. Cost is 700ms of room tone after each utterance; the alternative is
+// being unintelligible.
+function gateAudio(now) {
+  if (!micStream || muted) return;        // mute is authoritative; never override it
+  const open = _above || now <= _openUntil;
+  for (const t of micStream.getAudioTracks()) {
+    if (t.enabled !== open) t.enabled = open;
+  }
 }
 /** What the gate is actually doing right now — for the meter and for tuning.
  *  Exposed because "why did it not trigger" is unanswerable from the outside:
@@ -568,7 +611,11 @@ function startOnsetWatch() {
   // your first sentence.
   _noise = 0.01;
   _settle = 0;                            // re-learn the room, then judge
-  _onsetTimer = setInterval(onsetTick, 120);
+  // 40ms, not 120: the tick interval is the WORST-CASE CLIP on the first
+  // syllable now that this gates audio. 120ms removes an audible chunk of a
+  // word's attack; 40ms is under the threshold where a missing onset is
+  // perceptible, and the work per tick is one FFT read.
+  _onsetTimer = setInterval(onsetTick, 40);
 }
 function stopOnsetWatch() {
   if (_onsetTimer) { clearInterval(_onsetTimer); _onsetTimer = null; }
@@ -610,7 +657,13 @@ export function micAnalyserLevel() {
 export function toggleMute() {
   if (!micStream) return false;
   muted = !muted;
-  for (const t of micStream.getTracks()) t.enabled = !muted;
+  // Unmuting hands control back to the NOISE GATE, it does not open the mic.
+  // Setting enabled=true here would broadcast whatever the room is doing until
+  // the next tick closed it again — a small leak, but exactly the one this gate
+  // exists to prevent. Muting still forces false immediately: mute must be
+  // instant and must never wait for a tick.
+  for (const t of micStream.getTracks()) t.enabled = false;
+  if (!muted) { _above = false; _openUntil = 0; }   // gate decides from here
   flashHint(muted ? '🔇 muted' : '🎙 unmuted');
   bus.emit('voice', { on: true, muted });
   return muted;
