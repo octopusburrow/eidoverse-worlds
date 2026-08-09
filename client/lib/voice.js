@@ -17,7 +17,7 @@
 import { bus, report } from './core.js';
 import { sendRtc, sendTyping } from './net.js';
 import { remotes } from './remotes.js';
-import { micFloor } from './voiceconsent.js';
+import { micFloor, gateMultiplier } from './voiceconsent.js';
 import { voiceSource, setGeneratorRebuildHook } from './voicesource.js';
 import { gateStream, attachSource, detachSource, driveGate, gateOpenness,
          setMonitor, monitoring, release as releaseGate } from './micgate.js';
@@ -602,7 +602,7 @@ function onsetTick() {
   // only form that behaves the same on a headset and a laptop array.
   //
   // The slider picks k over 1.6…5.0, with 2.5 (their default) mid-scale.
-  const k = 1.6 + Math.min(1, micFloor() / 0.2) * 3.4;
+  const k = gateMultiplier();
   const on = _noise * k;
   const off = _noise * (1 + (k - 1) * 0.6);   // hysteresis in the same units
 
@@ -651,7 +651,7 @@ export const micGateInfo = () => ({
   // multiplicative — it still carried the old additive margin, so the panel and
   // the gate reported DIFFERENT thresholds. Derived from the same expression
   // now; if the gate changes, this cannot silently disagree.
-  on: _noise * (1.6 + Math.min(1, micFloor() / 0.2) * 3.4),
+  on: _noise * gateMultiplier(),
   speaking: _above,
 });
 function startOnsetWatch() {

@@ -15,7 +15,7 @@
 import { makeSection, flashHint } from './ui.js';
 import { audioPrefs, setVolume, receivingVoice, setReceiveVoice,
   sttConsented, setSttConsent, isHushed, setHush,
-  micFloor, setMicFloor } from './voiceconsent.js';
+  micFloor, setMicFloor, gateMultiplier } from './voiceconsent.js';
 import { ttsAvailable, ttsVoiceName, isTtsEnabled, setTtsEnabled, setTtsSource } from './voicesource.js';
 import { localVoiceSupported } from './localvoice.js';
 import { report, CONFIG } from './core.js';
@@ -761,7 +761,13 @@ function micFloorRow() {
   row.className = 'sp-row';
   const hint = 'mic level below the marker is treated as room noise, not speech — ' +
     'raise it if typing pings nearby agents; the bar shows your live mic level';
-  const FS = 0.2;  // full-scale mic level = right edge of the meter
+  // Full-scale = the right edge of the meter. 0.2 SATURATED on ordinary speech
+  // (normal talking is ~0.2-0.4 RMS), so the bar pinned at 100% and the marker
+  // could be pushed off the end — part of why R read the slider as doing
+  // nothing: "even someone talking in another room here is hitting 100% from
+  // time to time." Both the level and the threshold are drawn against this, so
+  // it has to span the loud end too.
+  const FS = 0.6;
   row.innerHTML =
     `<span class="sp-label" title="${hint}">mic sensitivity</span>` +
     `<span data-meter title="${hint}" style="flex:1;min-width:60px;position:relative;height:14px;` +
@@ -769,19 +775,28 @@ function micFloorRow() {
     `<span data-lvl style="position:absolute;left:0;top:0;height:100%;width:0;background:#3c5"></span>` +
     `<span data-thr style="position:absolute;top:0;height:100%;width:2px;background:#9f9;opacity:.9"></span>` +
     `</span>` +
-    `<span data-out style="min-width:34px;text-align:right">${(1.6 + Math.min(1, micFloor() / 0.2) * 3.4).toFixed(1)}×</span>`;
+    `<span data-out style="min-width:34px;text-align:right">${gateMultiplier().toFixed(1)}×</span>`;
   const meter = row.querySelector('[data-meter]');
   const out = row.querySelector('[data-out]');
   const lvl = row.querySelector('[data-lvl]');
   const thr = row.querySelector('[data-thr]');
   const paintThr = () => {
-    thr.style.left = `calc(${Math.min(100, (micFloor() / FS) * 100)}% - 1px)`;
-    out.textContent = `${(1.6 + Math.min(1, micFloor() / 0.2) * 3.4).toFixed(1)}×`;
+    // The marker is painted by the live beat() below from micGateInfo().on — the
+    // REAL threshold, which moves with the room. Painting it from micFloor here
+    // too would be two writers on one element, and the animation frame would win
+    // anyway; the drag just needs the value stored, not drawn twice.
+    out.textContent = `${gateMultiplier().toFixed(1)}×`;
   };
   paintThr();
   const setFromX = (ev) => {
     const r = meter.getBoundingClientRect();
-    setMicFloor(((ev.clientX - r.left) / r.width) * FS);
+    // 🔴 DRAG SPANS THE FULL WIDTH, independent of the meter's scale. This used
+    // to map x through FS — fine while the marker's position and the stored
+    // value shared a coordinate system, but the gate is relative now and FS had
+    // to grow to stop the bar saturating. Coupling them would squeeze the whole
+    // adjustable range into the left third of the bar. The pointer picks a
+    // FRACTION of the control; what that fraction means is the gate's business.
+    setMicFloor(((ev.clientX - r.left) / r.width) * 0.2);
     paintThr();
   };
   meter.onpointerdown = (ev) => { meter.setPointerCapture(ev.pointerId); setFromX(ev); };

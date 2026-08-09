@@ -27,7 +27,10 @@ const DEFAULTS = { recvVoice: false, volVoices: 1, volWorld: 0.6, volTts: 1, stt
   // ABOVE the measured room noise (see onsetTick). 0.06 is the lowest value that
   // took zero false triggers across 200 simulated room/noise combinations while
   // never missing speech, so the slider has honest room in both directions.
-  micFloor: 0.06 };
+  // ~7x the room noise. Rejects speech from another room (which lands around
+  // 3-4x a quiet floor) while your own voice clears it by more than 30x. The old
+  // 0.06 default predates the widened range and sat at the very bottom of it.
+  micFloor: 0.07 };
 
 let prefs = { ...DEFAULTS };
 try {
@@ -127,3 +130,21 @@ function defaultAsk() {
     'Voice chat itself does NOT require this — you can talk without it.',
   ));
 }
+
+/** How many times the measured room noise a sound must be, to count as speech.
+ *
+ *  🔴 THE ONE DEFINITION. This formula lived in FOUR places (the gate, the gate's
+ *  own info dump, and two panel readouts) and had already drifted once — the
+ *  panel kept an old additive version after the gate went multiplicative, so the
+ *  two reported different thresholds (2026-08-09). Anything that needs it
+ *  imports it from here.
+ *
+ *  Range 1.5x…20x, widened after R found the old 5x ceiling too low: "even
+ *  someone talking in another room here is hitting 100% from time to time."
+ *  She was right — distant speech lands around 3-4x a quiet room's floor, so a
+ *  5x maximum left almost no rejection headroom, while her own voice clears the
+ *  floor by more than 30x. The top of the range is now genuinely strict and the
+ *  bottom still catches a whisper.
+ */
+export const gateMultiplier = () =>
+  1.5 + Math.min(1, prefs.micFloor / 0.2) * 18.5;
