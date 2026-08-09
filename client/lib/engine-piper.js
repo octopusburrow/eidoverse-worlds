@@ -128,9 +128,31 @@ registerEngine({
     // running counts up forever under an error message.
     try { await session.waitReady; } finally { clearInterval(ticker); }
 
+    // MEASURE, DO NOT THEORIZE. R: "why is it so slow? Piper is supposed to be
+    // stupid fast" — and she was right to push. I had two confident causes
+    // (single-threaded ONNX; per-utterance phonemizer re-instantiation) and
+    // BOTH were wrong: I measured the phonemizer at 34–52 ms, not seconds. The
+    // model lives in the browser's own cache, so none of this is reproducible
+    // from the server side — the only way to know is to time it where it runs.
+    // Split predict from decode because they fail for different reasons: slow
+    // predict = inference, slow decode = a main-thread copy of the samples.
     const speak = async (text) => {
+      const t0 = performance.now();
       const wav = await session.predict(text);
-      return decodeWavToPcm(await wav.arrayBuffer());
+      const t1 = performance.now();
+      const buf = await wav.arrayBuffer();
+      const pcm = decodeWavToPcm(buf);
+      const t2 = performance.now();
+      // Real-time factor is the number that says whether this is Piper being
+      // slow or us being slow: RTF < 1 means it synthesizes faster than it
+      // plays, which is the whole point of Piper. Anything above ~0.5 on a
+      // short line means the bottleneck is ours, not the model's.
+      const secs = pcm?.pcm?.length && pcm.sampleRate ? pcm.pcm.length / pcm.sampleRate : 0;
+      const total = t2 - t0;
+      console.log(`[voice] predict ${Math.round(t1 - t0)}ms · decode ${Math.round(t2 - t1)}ms`
+        + ` · total ${Math.round(total)}ms for ${text.length} chars`
+        + (secs ? ` · ${secs.toFixed(2)}s audio · RTF ${(total / 1000 / secs).toFixed(2)}` : ''));
+      return pcm;
     };
     const label = `Piper: ${base}${sr ? ` (${sr} Hz)` : ''}`;
     setTtsSource(speak, label);
