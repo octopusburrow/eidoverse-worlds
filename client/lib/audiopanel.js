@@ -16,6 +16,7 @@ import { makeSection } from './ui.js';
 import { audioPrefs, setVolume, receivingVoice, setReceiveVoice,
   sttConsented, setSttConsent, isHushed, setHush,
   micFloor, setMicFloor } from './voiceconsent.js';
+import { ttsAvailable, ttsVoiceName, isTtsEnabled, setTtsEnabled } from './voicesource.js';
 import { micAnalyserLevel } from './voice.js';
 import { bus } from './core.js';
 
@@ -66,6 +67,32 @@ function checkRow(label, hint, checked, onChange) {
     `<input type="checkbox" ${checked ? 'checked' : ''} title="${hint}">` +
     `<span class="sp-label" title="${hint}">${label}</span>`;
   row.querySelector('input').onchange = (e) => onChange(e.target.checked);
+  return row;
+}
+
+
+// Voice source. Blank for a human — their microphone is whatever the OS and
+// browser already chose, and this panel does not second-guess it. An agent
+// registers a synthesizer (setTtsSource) and its name appears here, so the
+// question "how is that one speaking?" always has a visible answer instead of
+// being a property of some other process nobody can see. Off by default:
+// speaking is opt-in exactly like a mic (R, 2026-08-08).
+function ttsRow() {
+  const row = document.createElement('div');
+  row.className = 'sp-row';
+  const has = ttsAvailable();
+  const hint = has
+    ? `synthesized voice: ${ttsVoiceName()} — spatialized like any other speaker`
+    : 'no synthesized voice registered; the microphone is the source';
+  row.innerHTML =
+    `<input type="checkbox" ${isTtsEnabled() ? 'checked' : ''} ${has ? '' : 'disabled'} title="${hint}">` +
+    `<span class="sp-label" title="${hint}">TTS voice</span>` +
+    `<span style="flex:1;opacity:.6;font-style:${has ? 'normal' : 'italic'}">` +
+    `${has ? ttsVoiceName() : 'system default (microphone)'}</span>`;
+  row.querySelector('input').onchange = (e) => {
+    const on = setTtsEnabled(e.target.checked);
+    e.target.checked = on;                 // refuses if no source is registered
+  };
   return row;
 }
 
@@ -137,6 +164,7 @@ function paint(body) {
       cat === 'world' ? p.volWorld : cat === 'tts' ? p.volTts : p.volVoices));
   }
   body_.append(micFloorRow());
+  body_.append(ttsRow());
   body_.append(checkRow('speech-to-text',
     'sends your mic audio to your browser vendor’s cloud to transcribe',
     sttConsented(), (on) => setSttConsent(on)));

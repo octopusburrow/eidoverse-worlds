@@ -18,6 +18,7 @@ import { bus, report } from './core.js';
 import { sendRtc, sendTyping } from './net.js';
 import { remotes } from './remotes.js';
 import { micFloor } from './voiceconsent.js';
+import { voiceSource } from './voicesource.js';
 import { myState } from './controller.js';
 import { flashHint } from './ui.js';
 import { receivingVoice, volumeFor, isHushed } from './voiceconsent.js';
@@ -389,9 +390,12 @@ export async function toggleMic(name) {
     return false;
   }
   try {
-    micStream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true },
-    });
+    // WHERE THE VOICE COMES FROM is now a property of this body, not a
+    // hardcoded device call: a human gets the microphone, an agent gets its own
+    // synthesizer, and everything downstream is identical either way. See
+    // voicesource.js — the alternative was a second WebRTC client holding the
+    // same identity, which is what produced 543 takeovers on 2026-08-08.
+    micStream = await voiceSource();
   } catch (e) {
     report('microphone', e);
     flashHint('microphone unavailable — check browser permission');

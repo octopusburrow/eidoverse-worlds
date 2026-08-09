@@ -1188,6 +1188,21 @@ startPrefetch().catch((e) => report('prefetch', e));
 
 // ---------------------------------------------------------------- debug
 
+// Opt-in synthesized voice: ?tts or ?tts=<port>. Absent — the overwhelmingly
+// common case — nothing connects and the microphone stays the only source, so
+// a human client is byte-for-byte unaffected.
+{
+  const q = new URLSearchParams(location.search);
+  if (q.has('tts')) {
+    const port = Number(q.get('tts')) || 8927;
+    import('./lib/piperbridge.js')
+      .then((m) => m.initPiperVoice({ port }))
+      .then((ok) => console.log(ok ? `[voice] synthesized voice ready on :${port}`
+                                   : `[voice] no synthesizer on :${port} — using microphone`))
+      .catch(() => {});
+  }
+}
+
 globalThis.EW = {
   me: () => me, remotes, entities, myState, THREE, net, scene, camera, renderer, bus,
   skyArgs, sendVerb, setPosable, get posable() { return posable; },
