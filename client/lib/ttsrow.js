@@ -22,6 +22,21 @@ import { report } from './core.js';
 // The id of whatever is currently installed, so the list can show a filled dot
 // against it. Null when nothing is loaded — which is a real state, not an error.
 let _selected = null;
+/** Transient "you need a voice first" prompt, shown only after the user tries
+ *  to tick the box with nothing loaded, and cleared the moment they act on it.
+ *  NOT the permanent 'add a voice below' note R rejected twice — that pointed
+ *  at rows already visible. This appears in response to a specific attempt and
+ *  answers why the tick did not take. */
+let _needVoice = false;
+
+/** The other half of the mic/TTS exclusion (see mictoggle.js). Turning TTS on
+ *  turns the mic off, symmetrically — last action wins. */
+async function muteMicForTts() {
+  try {
+    const { micOn, toggleMic } = await import('./voice.js');
+    if (micOn()) await toggleMic();
+  } catch { /* no mic in this build */ }
+}
 let _busy = null;          // a phase string while loading, else null
 // A pick that is missing its other half — kept so it can be resumed rather than
 // discarded. See addFile().
@@ -104,6 +119,9 @@ export function ttsSection(host, onPaint = () => {}) {
         await loadFromFiles(files, (p) => { _busy = p.text || p.phase || 'loading…'; build(); });
       }
       _selected = id;
+    // Remember it so ticking the box later picks what they used last.
+    try { localStorage.setItem('eido.tts.lastVoice', id); } catch { /* private mode */ }
+    _needVoice = false;   // they acted on the prompt; it has served its purpose
       setTtsEnabled(true);
     } catch (e) {
       report('tts voice', e);
@@ -268,10 +286,27 @@ export function ttsSection(host, onPaint = () => {}) {
       // do next — the rows below ARE what to do next, and a note pointing at them
       // was the second "add a voice below" R found. Empty when there is nothing to
       // report: a row with nothing to say should be quiet.
-      `${_busy || (live ? ttsVoiceName() : ttsAvailable() ? 'ready' : '')}</span>` +
+      `${_busy || (_needVoice ? 'add a voice with one of the options below'
+        : live ? ttsVoiceName() : ttsAvailable() ? 'ready' : '')}</span>` +
       `</span>`;
-    head.querySelector('input').onchange = (e) => {
-      setTtsEnabled(e.target.checked);
+    head.querySelector('input').onchange = async (e) => {
+      if (!e.target.checked) { _needVoice = false; setTtsEnabled(false); repaint(); return; }
+      // TICKING THE BOX MEANS "SPEAK" — so make that true if it can be
+      // (R, 2026-08-09). Three cases:
+      //   no voices  → refuse, and SAY why (transient, clears when they add one)
+      //   one voice  → use it; asking which of one is busywork
+      //   several    → last used, else the first
+      await muteMicForTts();
+      if (ttsAvailable()) { _needVoice = false; setTtsEnabled(true); repaint(); return; }
+      const items = await collectVoices();
+      if (!items.length) {
+        e.target.checked = false;          // the tick did not take; do not lie about it
+        _needVoice = true; repaint(); return;
+      }
+      _needVoice = false;
+      const last = (() => { try { return localStorage.getItem('eido.tts.lastVoice'); } catch { return null; } })();
+      const pickId = (last && items.some((i) => i.id === last)) ? last : items[0].id;
+      await pick(pickId);                   // loads, sets the source, enables
       repaint();
     };
     host.appendChild(head);

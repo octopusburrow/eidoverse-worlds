@@ -107,6 +107,21 @@ setInterval(() => {
 
 async function flipMic() {
   const on = await toggleMic(CONFIG.name);
+  // MIC AND TTS ARE MUTUALLY EXCLUSIVE (R, 2026-08-09: "enabling mic or TTS with
+  // the other enabled should DISABLE the other"). Nobody wants both lanes live —
+  // a human with a working mic just talks, and an agent has no mic.
+  //
+  // Deliberately SYMMETRIC and last-action-wins rather than mic-always-priority.
+  // In practice that gives R what she asked for: she reaches for the mic, TTS
+  // steps aside. But a fixed "mic beats TTS" rule mutes any agent whose mic
+  // happens to be on, and TTS is the only voice an agent has. Whichever control
+  // you touched most recently is the one you meant.
+  if (on) {
+    try {
+      const { isTtsEnabled, setTtsEnabled } = await import('./voicesource.js');
+      if (isTtsEnabled()) { setTtsEnabled(false); window.dispatchEvent(new Event('eido:tts-changed')); }
+    } catch { /* TTS not present in this build */ }
+  }
   // Speech-to-text is a SEPARATE consent from speaking: it ships microphone
   // audio to the browser vendor's cloud service. Turning a mic on in a world
   // is not agreement to that, so we ask once, plainly, and remember either
