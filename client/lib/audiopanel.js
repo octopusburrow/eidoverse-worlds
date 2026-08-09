@@ -177,15 +177,74 @@ function ttsRow() {
         // a port, nothing leaves the machine.
         const fp = row.querySelector('input[type=file]');
         if (!fp) { note.textContent = 'no file picker in this build'; return; }
+
+        // Best path where it exists: showOpenFilePicker lets us ASK for the pair
+        // in one dialog and, crucially, re-open on demand — so "retry" is a real
+        // affordance rather than a reload. Falls back to <input type=file> on
+        // Firefox/Safari, which cannot do this.
+        if (window.showOpenFilePicker) {
+          try {
+            const handles = await window.showOpenFilePicker({
+              multiple: true,
+              types: [{ description: 'Piper voice (.onnx + .onnx.json)',
+                        accept: { 'application/octet-stream': ['.onnx'], 'application/json': ['.json'] } }],
+            });
+            const picked = await Promise.all(handles.map((h) => h.getFile()));
+            const onnx = picked.find((f) => f.name.toLowerCase().endsWith('.onnx'));
+            let cfg = picked.find((f) => f.name.toLowerCase().endsWith('.json'));
+            if (!onnx) { note.textContent = 'pick the .onnx file'; sel.value = saved || ''; return; }
+            // Only one file chosen? Do not scold — the config almost always sits
+            // beside the model, so ask for it in a second dialog rather than
+            // making the user start over.
+            if (!cfg) {
+              note.textContent = `now pick ${onnx.name}.json`;
+              const more = await window.showOpenFilePicker({
+                types: [{ description: 'Piper voice config', accept: { 'application/json': ['.json'] } }],
+              }).catch(() => null);
+              if (more?.[0]) cfg = await more[0].getFile();
+            }
+            if (!cfg) { note.textContent = 'needs the .json too — try again'; sel.value = saved || ''; return; }
+            sel.disabled = true; note.textContent = 'loading…';
+            try {
+              const { useVoiceFiles } = await import('./localvoice.js');
+              await useVoiceFiles(onnx, cfg);
+              note.textContent = 'ready';
+              box.disabled = false; box.checked = setTtsEnabled(true);
+            } catch (e) {
+              note.textContent = 'failed — see console. Try again.';
+              sel.value = saved || '';
+              report('local voice file', e);
+            } finally { sel.disabled = false; }
+          } catch {
+            // User dismissed the dialog — not an error, but the dropdown still
+            // has to come back or they cannot reopen it.
+            note.textContent = ''; sel.value = saved || '';
+          }
+          return;
+        }
+        // 🔴 EVERY EXIT FROM HERE MUST LEAVE THE CONTROL USABLE. Selecting an
+        // option that then refuses is a dead end: <select> fires no change event
+        // when you pick the value it already holds, so R picked one file, got
+        // "also pick the .json", and could not retry (2026-08-09). Any early
+        // return has to hand the dropdown back.
+        const rearm = (msg) => {
+          note.textContent = msg;
+          sel.value = saved || '';        // release __file so it is selectable again
+          fp.value = '';                  // and let the same file re-trigger change
+        };
         fp.onchange = async () => {
           const files = [...(fp.files || [])];
-          const onnx = files.find((f) => f.name.endsWith('.onnx'));
-          const cfg = files.find((f) => f.name.endsWith('.json'));
-          if (!onnx) { note.textContent = 'pick a .onnx voice file'; return; }
-          // The config is not optional to Piper: it carries the sample rate and
-          // phoneme map. Say so plainly instead of failing deep inside the
-          // runtime with something unreadable.
-          if (!cfg) { note.textContent = `also pick ${onnx.name}.json (ctrl-click both)`; return; }
+          const onnx = files.find((f) => f.name.toLowerCase().endsWith('.onnx'));
+          const cfg = files.find((f) => f.name.toLowerCase().endsWith('.json'));
+          if (!onnx) return rearm('pick the .onnx file (and its .json)');
+          // BOTH FILES ARE GENUINELY REQUIRED, and not as bookkeeping: the .onnx
+          // is just the network. Its .json carries the phoneme→id map (154
+          // entries), the sample rate, and the espeak language — none of which
+          // is recoverable from the model. Piper cannot turn text into input
+          // without it. Say that, rather than implying it is a formality.
+          if (!cfg) {
+            return rearm(`also pick ${onnx.name}.json — it holds the phoneme map. Try again.`);
+          }
           sel.disabled = true; note.textContent = 'loading…';
           try {
             const { useVoiceFiles } = await import('./localvoice.js');
@@ -193,7 +252,9 @@ function ttsRow() {
             note.textContent = 'ready';
             box.disabled = false; box.checked = setTtsEnabled(true);
           } catch (e) {
-            note.textContent = 'failed — see console';
+            // Same rule: a failure must leave the picker usable, not stranded on
+            // an option that refuses to re-fire.
+            rearm('failed — see console. Try again.');
             report('local voice file', e);
           } finally { sel.disabled = false; }
         };
