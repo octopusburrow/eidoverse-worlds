@@ -90,6 +90,8 @@ while (Date.now() - t0 < SECS * 1000) {
     return out;
   });
   console.log(`  t+${Math.round((Date.now() - t0) / 1000)}s`, JSON.stringify(s.stats), 'mouth:', JSON.stringify(s.mouth));
+  if (s.ice) console.log('     ice:', JSON.stringify(s.ice));
+  if (s.tx)  console.log('     tx :', JSON.stringify(s.tx));
 }
 
 await browser.close();
