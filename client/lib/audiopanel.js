@@ -186,6 +186,32 @@ function ttsRow() {
     }
     opt.textContent = label;
     opt.title = label;
+    opt.style.fontStyle = '';
+    opt.style.opacity = '';
+    sel.value = '__loaded';
+  };
+
+  // THE SELECTION MUST APPEAR THE INSTANT IT IS MADE. Loading a local voice can
+  // take tens of seconds, and until it finished the dropdown still showed the
+  // PREVIOUS entry — so the one control you just used looked like it had ignored
+  // you (R, 2026-08-09: "it should put the voice name into the dropdown right
+  // away to show that the selection is being processed"). Same option element as
+  // adoptLoadedFile, so there is no second code path to drift: italic + dimmed
+  // says "this is what you picked, and it is not usable yet", and the seconds
+  // counter beside it says the wait is progressing rather than hung.
+  const pendingLoadedFile = (name) => {
+    const sel = row.querySelector('select');
+    if (!sel) return;
+    let opt = sel.querySelector('option[value="__loaded"]');
+    if (!opt) {
+      opt = document.createElement('option');
+      opt.value = '__loaded';
+      sel.insertBefore(opt, sel.firstChild);
+    }
+    opt.textContent = `${name} — loading…`;
+    opt.title = `${name} (loading — not usable yet)`;
+    opt.style.fontStyle = 'italic';
+    opt.style.opacity = '0.6';
     sel.value = '__loaded';
   };
 
@@ -377,6 +403,11 @@ function ttsRow() {
                         accept: { 'application/octet-stream': ['.onnx'], 'application/json': ['.json'] } }],
             });
             let picked = await Promise.all(handles.map((h) => h.getFile()));
+            // Name it in the dropdown BEFORE the slow part, using the .onnx if
+            // one is in the batch — that is the file a person thinks of as "the
+            // voice"; the .json is its config.
+            const shown = (picked.find((f) => /\.onnx$/i.test(f.name)) || picked[0])?.name;
+            if (shown) pendingLoadedFile(shown.replace(/\.onnx$/i, ''));
             sel.disabled = true; note.textContent = 'loading…';
             try {
               const { loadFromFiles, matchEngine } = await import('./voiceengines.js');
@@ -386,8 +417,29 @@ function ttsRow() {
               // rejecting. Which files are missing is the engine's business, not
               // the panel's — we just ask for more and re-match.
               if (!matchEngine(picked) || picked.length === 1) {
-                const more = await window.showOpenFilePicker({ multiple: true })
-                  .catch(() => null);
+                // A SECOND DIALOG MUST SAY WHAT IT WANTS. This used to open bare
+                // — no description, no filter — so it read as the same dialog
+                // appearing again for no reason (R, 2026-08-09). A file picker
+                // with no title is indistinguishable from a bug. Name the file
+                // already in hand and the extension still missing, and filter to
+                // that extension so the right file is the obvious one to click.
+                const have = picked[0]?.name || 'a file';
+                const wantExt = /\.onnx$/i.test(have) ? '.onnx.json'
+                  : /\.json$/i.test(have) ? '.onnx' : null;
+                note.textContent = wantExt
+                  ? `${have} selected — now pick the matching ${wantExt}`
+                  : `${have} selected — pick the rest of the voice`;
+                const more = await window.showOpenFilePicker({
+                  multiple: true,
+                  // The description is the only text a native dialog reliably
+                  // shows us, so it carries the instruction.
+                  types: wantExt
+                    ? [{ description: `Matching ${wantExt} for ${have}`,
+                         accept: wantExt === '.onnx'
+                           ? { 'application/octet-stream': ['.onnx'] }
+                           : { 'application/json': ['.json'] } }]
+                    : undefined,
+                }).catch(() => null);
                 if (more?.length) picked = [...picked, ...await Promise.all(more.map((h) => h.getFile()))];
               }
               const { label } = await loadFromFiles(picked, (p) => {
@@ -402,6 +454,10 @@ function ttsRow() {
               // loadFromFiles throws a message naming the known formats — show
               // it, since "failed" tells the user nothing actionable.
               note.textContent = String(e?.message || e).slice(0, 120);
+              // Drop the pending entry — see rearm(): a name left in the list
+              // after a failed load claims a working voice that is not there.
+              const stale2 = sel.querySelector('option[value="__loaded"]');
+              if (stale2 && !ttsAvailable()) stale2.remove();
               sel.value = saved || '';
               report('local voice file', e);
             } finally { sel.disabled = false; }
@@ -419,12 +475,25 @@ function ttsRow() {
         // return has to hand the dropdown back.
         const rearm = (msg) => {
           note.textContent = msg;
+          // A FAILED LOAD MUST NOT LEAVE ITS NAME IN THE LIST. The pending entry
+          // says "you picked this"; if the load then failed, leaving it behind
+          // claims a voice is selected that cannot speak — the dropdown would be
+          // lying about state, which is the bug class that has cost the most
+          // time here. Drop it unless a real voice is actually loaded.
+          const stale = sel.querySelector('option[value="__loaded"]');
+          if (stale && !ttsAvailable()) stale.remove();
           sel.value = saved || '';        // release __file so it is selectable again
           fp.value = '';                  // and let the same file re-trigger change
         };
         fp.onchange = async () => {
           const files = [...(fp.files || [])];
           if (!files.length) return rearm('');
+          // Same instant feedback as the showOpenFilePicker path. This branch is
+          // Firefox/Safari, where we CANNOT open a second dialog — so the picker
+          // is multi-select (`multiple` on the input) and a short selection has
+          // to come back as a clear message rather than a second popup.
+          const shown0 = (files.find((f) => /\.onnx$/i.test(f.name)) || files[0])?.name;
+          if (shown0) pendingLoadedFile(shown0.replace(/\.onnx$/i, ''));
           sel.disabled = true; note.textContent = 'loading…';
           try {
             const { loadFromFiles } = await import('./voiceengines.js');
