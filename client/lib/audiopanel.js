@@ -230,6 +230,36 @@ function ttsRow() {
     }
   }
 
+  // The dropdown⇄address-box swap, with a door in BOTH directions. The back
+  // door is a real control (a "←" button), not a keyboard escape or a reload,
+  // because a way back you cannot see is not a way back.
+  function showEndpointBox(on) {
+    const sel2 = row.querySelector('select');
+    const box2 = row.querySelector('input[type=text]');
+    if (!sel2 || !box2) return;
+    box2.style.display = on ? '' : 'none';
+    sel2.style.display = on ? 'none' : '';
+    let back = row.querySelector('.sp-back');
+    if (on && !back) {
+      back = document.createElement('button');
+      back.className = 'sp-back';
+      back.textContent = '←';
+      back.title = 'back to the voice list';
+      back.style.cssText = 'background:#222;color:inherit;border:1px solid #444;'
+        + 'padding:1px 6px;cursor:pointer;flex-shrink:0';
+      // Read the stored choice rather than closing over `saved`, which is
+      // declared in a later block — the closure would throw at click time
+      // (TDZ), turning the way back into a second dead end.
+      back.onclick = () => {
+        showEndpointBox(false);
+        sel2.value = localStorage.getItem('eido.localVoice')
+          || localStorage.getItem('eido.ttsChoice') || '__default';
+      };
+      box2.after(back);
+    }
+    if (back) back.style.display = on ? '' : 'none';
+  }
+
   const lab = row.querySelector('.sp-label');
   const paintLive = () => {
     if (lab) lab.style.opacity = (ttsAvailable() && isTtsEnabled()) ? '1' : '.45';
@@ -400,7 +430,12 @@ function ttsRow() {
         // Reveal the address box and hand it the caret, rather than telling the
         // user to go relaunch with a URL parameter.
         const box2 = row.querySelector('input[type=text]');
-        if (box2) { box2.style.display = ''; sel.style.display = 'none'; box2.focus(); note.textContent = ''; }
+        // 🔴 EVERY SWAP NEEDS ITS WAY BACK. Hiding the dropdown to reveal the
+        // address box was one-way: no control on screen could bring the list
+        // back, so choosing "custom endpoint…" cost you every other voice until
+        // a hard reload (R, 2026-08-09 — the THIRD one-way exit in this panel
+        // today; the rule is the fix, not the individual door).
+        if (box2) { showEndpointBox(true); box2.focus(); note.textContent = ''; }
         else note.textContent = 'no address box in this build';
         return;
       }
@@ -450,8 +485,14 @@ function ttsRow() {
       if (!ok) { note.textContent = 'unreachable'; box.checked = setTtsEnabled(false); paintLive(); return; }
       localStorage.setItem('eido.ttsEndpoint', v);
       note.textContent = '';
-      box.disabled = false;
       box.checked = setTtsEnabled(true);   // naming a voice means wanting it
+      // A working endpoint becomes an entry in the list and hands the list
+      // back, so "custom endpoint" is a round trip rather than a place you end
+      // up. Same treatment as a loaded file: what you configured is now a thing
+      // you can see and re-select.
+      adoptLoadedFile(ttsVoiceName() || `endpoint: ${v}`);
+      showEndpointBox(false);
+      paintLive();
     };
     url.onchange = apply;
     if (url.value) apply();                // restore across reloads
