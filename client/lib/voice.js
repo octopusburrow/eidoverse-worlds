@@ -1112,6 +1112,41 @@ export function voiceDiag() {
   return { me: myId, mic: micStream ? 'open' : 'CLOSED',
     wantDirection: wantDirection(), peers: out };
 }
+/** WHY IS MY MIC NOT LIVE — the one question voiceDiag() cannot answer, because
+ *  a mic that silently became a synth generator looks identical to a healthy one
+ *  from every angle we had. R, 2026-08-09: "sometimes I toggle the mic and it
+ *  seems to be live and sometimes not, and it's just silently failing."
+ *
+ *  The decisive fact is WHAT KIND OF TRACK we are sending. A real microphone
+ *  track has a deviceId and a label from the OS; a MediaStreamTrackGenerator has
+ *  neither. Nothing else distinguishes them — same kind, same readyState, same
+ *  enabled. */
+export function micDiag() {
+  const raw = _rawMic?.getAudioTracks?.()[0] || null;
+  const sent = micStream?.getAudioTracks?.()[0] || null;
+  const settings = (t) => { try { return t?.getSettings?.() || {}; } catch { return {}; } };
+  const kindOf = (t) => {
+    if (!t) return 'none';
+    const s = settings(t);
+    // A real device reports a deviceId; a generator or a graph destination does not.
+    if (s.deviceId) return `microphone (${t.label || 'unnamed'})`;
+    return t.label ? `synthetic (${t.label})` : 'synthetic/graph output';
+  };
+  return {
+    micLive: micOn(), muted, gateOpen: gateOpenness() > 0.05,
+    rawSource: kindOf(raw),
+    sentToPeers: kindOf(sent),
+    rawEnabled: raw ? raw.enabled : null,
+    sentEnabled: sent ? sent.enabled : null,
+    // The tell: if these disagree about being a microphone, the mic silently
+    // became something else.
+    verdict: !raw ? 'NO DEVICE — nothing was ever opened'
+      : !sent ? 'no track being sent'
+      : /microphone/.test(kindOf(raw)) ? 'ok: a real microphone is the source'
+      : 'BROKEN: the source is not a microphone',
+  };
+}
+if (typeof window !== 'undefined') window.micDiag = micDiag;
 if (typeof window !== 'undefined') window.voiceDiag = voiceDiag;
 
 
