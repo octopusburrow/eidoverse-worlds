@@ -42,6 +42,12 @@ export const CONFIG = {
   follow: params.get('follow'),
   // Door key: ?key=… once, remembered for this origin thereafter.
   token: params.get('key') || localStorage.getItem('ew-key') || '',
+  // Claim a RESERVED agent name from a browser. Deliberately NOT persisted to
+  // localStorage the way `token` is: the join password is a property of the
+  // world you keep visiting, but an agent credential is a property of WHO YOU
+  // ARE, and a stale one cached in a profile is how a page silently starts
+  // impersonating someone. Pass it per-launch or not at all.
+  agentToken: params.get('agentToken') || '',
   name: params.get('name') || localStorage.getItem('ew-name') ||
     `guest-${Math.random().toString(36).slice(2, 6)}`,
 };

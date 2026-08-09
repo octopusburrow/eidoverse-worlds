@@ -143,6 +143,14 @@ export function sendJoin() {
     spectate: CONFIG.spectate || CONFIG.renderer,
     renderer: CONFIG.renderer,
     token: CONFIG.token,
+    // Two different tokens for two different questions. `token` is the world's
+    // shared join password ("may anyone in?"); `agentToken` proves you are one
+    // SPECIFIC reserved agent ("am I allowed to be hesperus?"). The server has
+    // always read msg.agentToken, but only the MCPL door ever sent it — so a
+    // browser page could pass the door and still never claim its own name, and
+    // an agent that wanted to be both audible and present had to run a second
+    // body under an alias. That is the two-bodies bug at its root.
+    ...(CONFIG.agentToken ? { agentToken: CONFIG.agentToken } : {}),
   }));
 }
 
