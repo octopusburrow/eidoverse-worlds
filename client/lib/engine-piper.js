@@ -117,17 +117,11 @@ registerEngine({
       onProgress({ phase: 'compile', elapsed: s, text: `preparing voice — ${s}s (first load is slow)` });
     }, 1000);
     onProgress({ phase: 'compile', elapsed: 0, text: 'preparing voice (first load is slow)' });
-    const session = new e.TtsSession({
-      voiceId: base,
-      wasmPaths: {
-        onnxWasm: new URL('../node_modules/onnxruntime-web/dist/', import.meta.url).href,
-        piperData: new URL('../vendor/piper/piper_phonemize.data', import.meta.url).href,
-        piperWasm: new URL('../vendor/piper/piper_phonemize.wasm', import.meta.url).href,
-      },
-    });
-    // finally, not a trailing clearInterval: if waitReady rejects, a ticker left
-    // running counts up forever under an error message.
-    try { await session.waitReady; } finally { clearInterval(ticker); }
+    // The library's own TtsSession is no longer built: we construct the ORT
+    // session ourselves below, and building both would compile the 63 MB graph
+    // TWICE per load. The OPFS seeding above still matters — it is how the model
+    // bytes get somewhere the runtime can reach without touching the network.
+    clearInterval(ticker);
 
     // MEASURE, DO NOT THEORIZE. R: "why is it so slow? Piper is supposed to be
     // stupid fast" — and she was right to push. I had two confident causes
@@ -137,41 +131,53 @@ registerEngine({
     // from the server side — the only way to know is to time it where it runs.
     // Split predict from decode because they fail for different reasons: slow
     // predict = inference, slow decode = a main-thread copy of the samples.
+    // 🔴 OUR OWN SESSION, BYPASSING predict(). Measured: the library rebuilds the
+    // phonemizer module on EVERY call — 30,359ms in the browser, which was the
+    // entire delay R heard. Its factory and session are WeakMap private fields,
+    // so neither can be wrapped or reached; the only way out is to do both steps
+    // ourselves and keep the module. See piperphon.js.
+    //
+    // Inference is cheap once phonemization is not being rebuilt: the same ORT
+    // session, run directly.
+    const ort = await import('onnxruntime-web');
+    const cfgJson = JSON.parse(await cfg.text());
+    const espeakVoice = cfgJson?.espeak?.voice || 'en-us';
+    const inf = cfgJson?.inference || {};
+    const wasmPaths = {
+      piperData: new URL('../vendor/piper/piper_phonemize.data', import.meta.url).href,
+      piperWasm: new URL('../vendor/piper/piper_phonemize.wasm', import.meta.url).href,
+    };
+    ort.env.wasm.numThreads = navigator.hardwareConcurrency || 4;
+    ort.env.wasm.wasmPaths = new URL('../node_modules/onnxruntime-web/dist/', import.meta.url).href;
+    const ortSession = await ort.InferenceSession.create(await onnx.arrayBuffer());
+
+    const { phonemize, phonReady } = await import('./piperphon.js');
+
     const speak = async (text) => {
-      // 🔴 TIME THE PHONEMIZER FROM OUTSIDE. R remembered I had found predict()
-      // re-instantiating the phonemizer every call and asked whether dismissing
-      // it was wrong. Half-wrong: I measured that in BUN reading local files
-      // (34-52ms), which says nothing about what a BROWSER pays to rebuild an
-      // emscripten module wrapping a 17 MB .data file per utterance.
-      //
-      // The factory is a WeakMap private field, so it cannot be wrapped from
-      // here. But phonemizing "" does the same module build with no inference,
-      // so timing an empty predict isolates the cost. Once per session — this is
-      // diagnosis, not something to pay on every line.
       const t0 = performance.now();
-      if (!_phonCost) {
-        const p0 = performance.now();
-        try { await session.predict(''); } catch { /* empty text may throw; the build still happened */ }
-        _phonCost = Math.max(1, performance.now() - p0);
-        console.log(`[voice] phonemizer build ≈ ${Math.round(_phonCost)}ms per utterance`);
-      }
-      const wav = await session.predict(text);
+      const warm = phonReady();
+      const ids = await phonemize(text, espeakVoice, wasmPaths);
       const t1 = performance.now();
-      const buf = await wav.arrayBuffer();
-      const pcm = decodeWavToPcm(buf);
+      const feeds = {
+        input: new ort.Tensor('int64', BigInt64Array.from(ids.map(BigInt)), [1, ids.length]),
+        input_lengths: new ort.Tensor('int64', BigInt64Array.from([BigInt(ids.length)])),
+        scales: new ort.Tensor('float32', Float32Array.from([
+          inf.noise_scale ?? 0.667, inf.length_scale ?? 1.0, inf.noise_w ?? 0.8,
+        ])),
+      };
+      const res = await ortSession.run(feeds);
       const t2 = performance.now();
-      // Real-time factor is the number that says whether this is Piper being
-      // slow or us being slow: RTF < 1 means it synthesizes faster than it
-      // plays, which is the whole point of Piper. Anything above ~0.5 on a
-      // short line means the bottleneck is ours, not the model's.
-      const secs = pcm?.pcm?.length && pcm.sampleRate ? pcm.pcm.length / pcm.sampleRate : 0;
-      const total = t2 - t0;
-      console.log(`[voice] predict ${Math.round(t1 - t0)}ms`
-        + ` (≈${Math.round(_phonCost)}ms phonemize + ${Math.round(t1 - t0 - _phonCost)}ms infer)`
-        + ` · decode ${Math.round(t2 - t1)}ms`
-        + ` · total ${Math.round(total)}ms for ${text.length} chars`
-        + (secs ? ` · ${secs.toFixed(2)}s audio · RTF ${(total / 1000 / secs).toFixed(2)}` : ''));
-      return pcm;
+      const raw = res[ortSession.outputNames[0]].data;      // Float32Array, -1..1
+      const pcmData = new Int16Array(raw.length);
+      for (let k = 0; k < raw.length; k++) {
+        pcmData[k] = Math.max(-32768, Math.min(32767, Math.round(raw[k] * 32767)));
+      }
+      const rate = sr || 22050;
+      const secs = pcmData.length / rate;
+      console.log(`[voice] phonemize ${Math.round(t1 - t0)}ms${warm ? '' : ' (first, builds the module)'}`
+        + ` · infer ${Math.round(t2 - t1)}ms · ${secs.toFixed(2)}s audio`
+        + ` · RTF ${((t2 - t0) / 1000 / Math.max(secs, 1e-6)).toFixed(3)}`);
+      return { pcm: pcmData, sampleRate: rate };
     };
     const label = `Piper: ${base}${sr ? ` (${sr} Hz)` : ''}`;
     setTtsSource(speak, label);
