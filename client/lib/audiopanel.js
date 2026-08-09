@@ -861,6 +861,12 @@ function micFloorRow() {
     // past it, which is what makes it draggable.
     lvl.style.width = `${meterPos(level) * 100}%`;
     handle.style.left = `calc(${meterPos(gateThreshold()) * 100}% - 1px)`;
+    // 🔴 COLOUR BY GATE STATE. My dB rewrite replaced the block this line lived in
+    // and silently dropped it, so the bar sat dark gold forever — R: "right now
+    // it's all dark gold". g.speaking includes the 700ms hang-time, so the bar
+    // stays bright through a pause mid-sentence, which is exactly when audio is
+    // still going out.
+    lvl.style.background = g.speaking ? '#ffd66b' : '#6b5420';
     requestAnimationFrame(beat);
   };
   requestAnimationFrame(beat);

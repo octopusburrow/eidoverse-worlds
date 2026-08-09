@@ -668,7 +668,13 @@ export const micGateInfo = () => ({
   // the gate reported DIFFERENT thresholds. Derived from the same expression
   // now; if the gate changes, this cannot silently disagree.
   on: gateThreshold(),
-  speaking: _above,
+  // 🔴 THRESHOLD *PLUS HANG-TIME* — R: "turn the bar gold when it's streaming
+  // live audio over the threshold + hangtime". `_above` alone goes false the
+  // instant your level dips, but the gate is still open for another 700ms and
+  // the room is still hearing you. Reporting _above would make the bar flicker
+  // dark through every pause in a sentence while audio was flowing: an
+  // indicator that contradicts the thing it indicates.
+  speaking: _above || Date.now() <= _openUntil,
 });
 function startOnsetWatch() {
   if (_onsetTimer) return;
