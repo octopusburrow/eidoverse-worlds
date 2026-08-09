@@ -31,6 +31,7 @@ import {
   hasGhost, hasSelection, toggleEditMode, isEditing,
 } from './lib/build.js';
 import { initConjure } from './lib/conjure.js';
+import './lib/ambient.js';   // `ambient` comp: world sound that belongs to a place
 import { initVoice, micOn, isMuted, micAnalyserLevel, peerLevels,
          voiceDebug, voicePcs, voiceMouthBound, voicePendingReneg } from './lib/voice.js';
 import './lib/mictoggle.js'; // mic + headphone toggles beside the HUD, both off by default
