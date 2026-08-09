@@ -57,13 +57,29 @@ registerEngine({
     // OPFS cache FIRST, keyed by basename. So seed the cache under the names it
     // will look for and it never touches the network. Its own cache, used the
     // way it already works — no fork, no patch.
-    onProgress({ phase: 'copy', text: `copying ${Math.round(onnx.size / 1e6)} MB…` });
+    // The copy IS measurable — we are the ones moving the bytes — so stream it
+    // in chunks and report real percentages rather than a single silent await.
+    // This is the one phase where a number is honest, so it gets a number.
     const root = await navigator.storage.getDirectory();
     const dir = await root.getDirectoryHandle('piper', { create: true });
+    const totalMb = Math.round(onnx.size / 1e6);
     for (const [name, file] of [[`${base}.onnx`, onnx], [`${base}.onnx.json`, cfg]]) {
       const h = await dir.getFileHandle(name, { create: true });
       const w = await h.createWritable();
-      await w.write(await file.arrayBuffer());
+      const big = file.size > 4e6;
+      if (big) {
+        const CHUNK = 4 << 20;
+        for (let off = 0; off < file.size; off += CHUNK) {
+          const slice = file.slice(off, Math.min(off + CHUNK, file.size));
+          await w.write(await slice.arrayBuffer());
+          onProgress({
+            phase: 'copy', pct: Math.round(((off + CHUNK) / file.size) * 100),
+            text: `copying ${totalMb} MB — ${Math.min(100, Math.round(((off + CHUNK) / file.size) * 100))}%`,
+          });
+        }
+      } else {
+        await w.write(await file.arrayBuffer());
+      }
       await w.close();
     }
     if (e.PATH_MAP && !e.PATH_MAP[base]) e.PATH_MAP[base] = `${base}.onnx`;
@@ -85,7 +101,21 @@ registerEngine({
     if (e.TtsSession._instance) e.TtsSession._instance = null;
     // The silent stretch: compiling the ONNX graph. Say so, and say it may take
     // a while, rather than leaving "loading…" to look like a hang.
-    onProgress({ phase: 'compile', text: 'preparing voice (first load is slow)…' });
+    // THE UNMEASURABLE PHASE. InferenceSession.create() compiles a 63 MB graph
+    // and reports nothing — there is no fraction to show, and inventing one
+    // would be a progress bar that lies. But a static "preparing voice…" for
+    // 30+ seconds is its OWN lie: it is indistinguishable from a hang, which is
+    // exactly how R read it (2026-08-09).
+    //
+    // So: count UP. Elapsed seconds is true, visibly moving, and needs no
+    // estimate. "still working, 12s" answers the only question a frozen label
+    // cannot — is this alive?
+    const t0 = performance.now();
+    const ticker = setInterval(() => {
+      const s = Math.round((performance.now() - t0) / 1000);
+      onProgress({ phase: 'compile', elapsed: s, text: `preparing voice — ${s}s (first load is slow)` });
+    }, 1000);
+    onProgress({ phase: 'compile', elapsed: 0, text: 'preparing voice (first load is slow)' });
     const session = new e.TtsSession({
       voiceId: base,
       wasmPaths: {
@@ -94,7 +124,9 @@ registerEngine({
         piperWasm: new URL('../vendor/piper/piper_phonemize.wasm', import.meta.url).href,
       },
     });
-    await session.waitReady;
+    // finally, not a trailing clearInterval: if waitReady rejects, a ticker left
+    // running counts up forever under an error message.
+    try { await session.waitReady; } finally { clearInterval(ticker); }
 
     const speak = async (text) => {
       const wav = await session.predict(text);

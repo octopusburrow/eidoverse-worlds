@@ -1323,6 +1323,13 @@ function contentType(path: string): string {
   if (path.endsWith(".wav")) return "audio/wav";
   if (path.endsWith(".m4a") || path.endsWith(".aac")) return "audio/mp4";
   if (path.endsWith(".webm")) return "audio/webm";
+  // WASM IS STRICTER THAN AUDIO. WebAssembly.compileStreaming / instantiate-
+  // Streaming REJECT anything that is not exactly application/wasm — no
+  // sniffing, no fallback, by spec. Served as octet-stream it fails with
+  // "Incorrect response MIME type", which is what R hit the moment a local
+  // voice tried to run (2026-08-09). The audio note above is the same lesson
+  // one file type short.
+  if (path.endsWith(".wasm")) return "application/wasm";
   return "application/octet-stream";
 }
 

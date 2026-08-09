@@ -260,6 +260,31 @@ function ttsRow() {
     if (back) back.style.display = on ? '' : 'none';
   }
 
+  // Progress with a REAL bar where a real fraction exists, and a moving elapsed
+  // count where none does. R: "It says 'preparing voice' for a looooong time and
+  // there's no loading bar" (2026-08-09). I had argued a fake percentage would
+  // be a bar that lies — true, but a frozen label for 30+ seconds is its own
+  // lie: it cannot be told apart from a hang. So: the copy phase knows its
+  // fraction (we are moving the bytes) and gets a bar; the compile phase cannot
+  // know one and gets seconds counting up, which is honest AND visibly alive.
+  const showProgress = (p) => {
+    const note2 = row.querySelector('.sp-note');
+    if (!note2) return;
+    note2.textContent = p.text || p.phase || 'loading…';
+    let bar = row.querySelector('.sp-bar');
+    if (p.pct == null) { if (bar) bar.remove(); return; }
+    if (!bar) {
+      bar = document.createElement('span');
+      bar.className = 'sp-bar';
+      bar.style.cssText = 'display:inline-block;width:52px;height:4px;background:#333;'
+        + 'border-radius:2px;overflow:hidden;margin-left:6px;vertical-align:middle';
+      bar.innerHTML = '<span style="display:block;height:100%;width:0;background:#6cf"></span>';
+      note2.after(bar);
+    }
+    const fill = bar.firstChild;
+    if (fill) fill.style.width = `${Math.max(0, Math.min(100, p.pct))}%`;
+  };
+
   const lab = row.querySelector('.sp-label');
   const paintLive = () => {
     if (lab) lab.style.opacity = (ttsAvailable() && isTtsEnabled()) ? '1' : '.45';
@@ -366,9 +391,9 @@ function ttsRow() {
                 if (more?.length) picked = [...picked, ...await Promise.all(more.map((h) => h.getFile()))];
               }
               const { label } = await loadFromFiles(picked, (p) => {
-                note.textContent = p.text || p.phase || 'loading…';
+                showProgress(p);
               });
-              note.textContent = 'ready';
+              showProgress({ text: 'ready' });   // pct absent → removes the bar
               note.title = label;
               box.disabled = false; box.checked = setTtsEnabled(true);
               adoptLoadedFile(label);
@@ -409,9 +434,9 @@ function ttsRow() {
             // Piper and false of the next one. Now a bad selection comes back as
             // that engine's own message.
             const { label } = await loadFromFiles(files, (p) => {
-              note.textContent = p.text || p.phase || 'loading…';
+              showProgress(p);
             });
-            note.textContent = 'ready';
+            showProgress({ text: 'ready' });   // pct absent → removes the bar
             note.title = label;
             box.disabled = false; box.checked = setTtsEnabled(true);
             adoptLoadedFile(label);
