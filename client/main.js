@@ -1233,6 +1233,53 @@ globalThis.__ambientDebug = ambientDebug;
 // One command R can paste to answer "why is it silent?" from her own console:
 // context state, how many sources exist, whether the gesture hook is waiting.
 globalThis.__audioState = audioState;
+// THE ISOLATION TEST, INSIDE THE WORLD PAGE. A separate probe page meant a new
+// URL to type, and the URL was its own obstacle course: /audio-probe 404s,
+// /audio-probe.html works, an extensionless copy downloads instead of
+// rendering. None of that is the bug we are chasing. This runs where she
+// already is. Call it from the console; it needs a click first for the
+// context, which console interaction does not provide — so it reports the
+// context state rather than pretending.
+globalThis.testAudioLayers = async () => {
+  const C = window.AudioContext || window.webkitAudioContext;
+  const ctx = new C();
+  await ctx.resume().catch(() => {});
+  const SRC = '/assets/audio_test_beacon.ogg';
+  const r = { ctx: ctx.state };
+
+  const a = new Audio(SRC); a.loop = true;
+  try { await a.play(); r.A_plainAudio = 'playing'; }
+  catch (e) { r.A_plainAudio = `FAILED ${e.name}`; }
+
+  const b = new Audio(SRC); b.loop = true;
+  try {
+    const n = ctx.createMediaElementSource(b);
+    const g = ctx.createGain(); g.gain.value = 1;
+    n.connect(g).connect(ctx.destination);
+    await b.play(); r.B_throughWebAudio = 'playing';
+  } catch (e) { r.B_throughWebAudio = `FAILED ${e.name}`; }
+
+  try {
+    const o = ctx.createOscillator(); const g = ctx.createGain();
+    g.gain.value = 0.15; o.frequency.value = 440;
+    o.connect(g).connect(ctx.destination); o.start();
+    setTimeout(() => { try { o.stop(); } catch {} }, 6000);
+    r.C_oscillator = 'started (6s)';
+  } catch (e) { r.C_oscillator = `FAILED ${e.message}`; }
+
+  setTimeout(() => {
+    console.log('%c[audio] after 3s — A t=' + a.currentTime.toFixed(2) +
+      '  B t=' + b.currentTime.toFixed(2) +
+      '  Aerr=' + (a.error?.code ?? 'none') + '  Berr=' + (b.error?.code ?? 'none'),
+      'font-size:14px;color:#6cf');
+    console.log('%cWHICH DID YOU HEAR?  A only → WebAudio output dead · A+C → ' +
+      'createMediaElementSource is the break · C only → decode/file · none → ' +
+      'below the page · all → page fine, ambient.js miswired', 'color:#fc6');
+  }, 3000);
+  console.log('%c[audio] ' + JSON.stringify(r, null, 1), 'font-size:14px;color:#6cf');
+  return r;
+};
+
 globalThis.whyIsItSilent = () => {
   const s = audioState(), a = ambientDebug();
   console.log('%c[audio] ' + JSON.stringify({ ...s, sources: a }, null, 1),
