@@ -1197,8 +1197,17 @@ startPrefetch().catch((e) => report('prefetch', e));
     const port = Number(q.get('tts')) || 8927;
     import('./lib/piperbridge.js')
       .then((m) => m.initPiperVoice({ port }))
-      .then((ok) => console.log(ok ? `[voice] synthesized voice ready on :${port}`
-                                   : `[voice] no synthesizer on :${port} — using microphone`))
+      .then(async (ok) => {
+        console.log(ok ? `[voice] synthesized voice ready on :${port}`
+                       : `[voice] no synthesizer on :${port} — using microphone`);
+        if (!ok) return;
+        const vs = await import('./lib/voicesource.js');
+        vs.speakOwnSays(bus, () => me);
+        // A body that registered a voice means to be heard: open the mic lane
+        // so the sender exists before the first utterance, rather than after.
+        const { toggleMic, micOn } = await import('./lib/voice.js');
+        if (!micOn()) await toggleMic(me);
+      })
       .catch(() => {});
   }
 }

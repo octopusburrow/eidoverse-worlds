@@ -163,3 +163,17 @@ export function sourceIsDead(stream) {
   const t = stream?.getAudioTracks?.()[0];
   return !!t && t.readyState === 'ended';
 }
+
+// ── speak your own says ─────────────────────────────────────────────────────
+// world.js already emits 'speech' for every say that was not already performed
+// (args.spoken marks the ones a voice paced itself, so this cannot
+// double-speak). A body with a synthesizer listens for its OWN and voices it:
+// that is the entire bridge from "posted text" to "made a sound", and it runs
+// through the ordinary sender, so distance, the category slider and consent all
+// apply exactly as they do to a microphone.
+export function speakOwnSays(bus, myId) {
+  bus.on('speech', ({ actor, text }) => {
+    if (actor !== myId() || !isTtsEnabled()) return;
+    void speak(text);
+  });
+}
