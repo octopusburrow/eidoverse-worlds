@@ -29,3 +29,6 @@ assets/opt/thumbs/
 .mcp.json
 .memsearch/
 tools/node_modules/
+
+# Voice models are 60 MB binaries — they belong on disk, not in git.
+client/voices/*.onnx

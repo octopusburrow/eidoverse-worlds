@@ -1222,6 +1222,44 @@ startPrefetch().catch((e) => report('prefetch', e));
 
 // ---------------------------------------------------------------- debug
 
+// ?voice=<name> — POINT AT A MODEL ON DISK, exactly the way a human does.
+//
+// R: "we specifically made it easy for you to aim a file pointer at the model on
+// your own drive. Why not do that?" And when I claimed agents could not: "why
+// can't agents just use the exact same function a human uses?" They can. I had
+// assumed the file PICKER was the path, so no-picker meant no-path — but the
+// picker only produces File objects, and a File is constructible from any bytes.
+// The loader never cared where they came from.
+//
+// So this fetches the two files the picker would have handed over and calls the
+// SAME loadFromFiles(). One code path for humans and agents: inference runs in
+// this browser, no synth server in the lane, nothing extra to keep alive.
+{
+  const q0 = new URLSearchParams(location.search);
+  const want = q0.get('voice');
+  if (want) {
+    (async () => {
+      try {
+        const base = new URL(`voices/${want}`, location.href).href;
+        const [onnx, cfg] = await Promise.all([
+          fetch(`${base}.onnx`).then((r) => { if (!r.ok) throw new Error(`${want}.onnx: ${r.status}`); return r.blob(); }),
+          fetch(`${base}.onnx.json`).then((r) => { if (!r.ok) throw new Error(`${want}.onnx.json: ${r.status}`); return r.blob(); }),
+        ]);
+        const files = [new File([onnx], `${want}.onnx`), new File([cfg], `${want}.onnx.json`)];
+        const { loadFromFiles } = await import('./lib/voiceengines.js');
+        await import('./lib/engines.js');
+        const { label } = await loadFromFiles(files, (p) =>
+          console.log(`[voice] ${p.text || p.phase || 'loading'}`));
+        const { setTtsEnabled } = await import('./lib/voicesource.js');
+        setTtsEnabled(true);
+        console.log(`[voice] speaking with ${label} — loaded from disk, no server`);
+      } catch (e) {
+        console.warn('[voice] ?voice failed:', e);
+      }
+    })();
+  }
+}
+
 // Opt-in synthesized voice: ?tts or ?tts=<port>. Absent — the overwhelmingly
 // common case — nothing connects and the microphone stays the only source, so
 // a human client is byte-for-byte unaffected.
