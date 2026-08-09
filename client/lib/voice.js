@@ -19,6 +19,7 @@ import { sendRtc, sendTyping } from './net.js';
 import { remotes } from './remotes.js';
 import { micFloor } from './voiceconsent.js';
 import { voiceSource, setGeneratorRebuildHook } from './voicesource.js';
+import { gateStream, driveGate, gateOpenness, release as releaseGate } from './micgate.js';
 import { audioContext } from './audioctx.js';
 import { myState } from './controller.js';
 import { flashHint } from './ui.js';
@@ -32,6 +33,10 @@ const RTC_CFG = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 const FULL_M = 3, SILENT_M = 20;   // full volume inside 3m, gone by 20m
 
 let micStream = null;
+// The pre-gate device stream. The analyser MUST measure this, not micStream:
+// measuring the gated output makes the gate self-latching (gain drops →
+// measured level drops → gate closes harder → never reopens).
+let _rawMic = null;
 let muted = false;
 const peers = new Map();           // id -> { pc, audio }
 let myId = null;
@@ -49,7 +54,11 @@ export const micOn = () => !!micStream && !muted;
  *  indicator, not for state. This is the affordance R asked for: "we have no
  *  affordance to say when audio is getting broadcasted." */
 export const micTransmitting = () =>
-  !!micStream && !muted && micStream.getAudioTracks().some((t) => t.enabled);
+  // Read the GAIN, not a boolean. With a smoothed gate there is no on/off flag
+  // to consult — the honest question is "how much of me is reaching the wire",
+  // and 0.05 is the point where a listener would call it audible rather than
+  // the tail of a fade.
+  !!micStream && !muted && gateOpenness() > 0.05;
 export const isMuted = () => muted;
 
 function humanIds() {
@@ -456,7 +465,13 @@ export async function toggleMic(name) {
       // synthesizer, and everything downstream is identical either way. See
       // voicesource.js — the alternative was a second WebRTC client holding
       // the same identity, which produced 543 takeovers on 2026-08-08.
-      micStream = await voiceSource();
+      const rawMic = await voiceSource();
+      // GATE THE STREAM BEFORE WEBRTC EVER SEES IT. micStream becomes the GATED
+      // stream, so every existing path (addTrack, replaceTrack, the senders)
+      // carries gated audio with no further changes. The raw stream is kept for
+      // measurement and for mute.
+      _rawMic = rawMic;
+      micStream = gateStream(rawMic, micAnalyserLevel);
     } catch (e) {
       report('microphone', e);
       flashHint('microphone unavailable — check browser permission');
@@ -592,11 +607,8 @@ function onsetTick() {
 // closes. Cost is 700ms of room tone after each utterance; the alternative is
 // being unintelligible.
 function gateAudio(now) {
-  if (!micStream || muted) return;        // mute is authoritative; never override it
-  const open = _above || now <= _openUntil;
-  for (const t of micStream.getAudioTracks()) {
-    if (t.enabled !== open) t.enabled = open;
-  }
+  if (!micStream || muted) { driveGate(false); return; }   // mute is authoritative
+  driveGate(_above || now <= _openUntil);
 }
 /** What the gate is actually doing right now — for the meter and for tuning.
  *  Exposed because "why did it not trigger" is unanswerable from the outside:
@@ -633,8 +645,12 @@ function stopOnsetWatch() {
 // lazily on first ask, rebuilt if the stream changed
 let _an = null, _anStream = null, _anBuf = null, _anCtx = null;
 export function micAnalyserLevel() {
+  // muted → 0 (nothing is being sent, and the gate must not learn a floor from
+  // a muted mic). But NOT gated → 0: the gate needs the true input level to
+  // decide when to reopen, which is the whole reason we measure the raw side.
   if (!micStream || muted) return 0;
-  if (!_an || _anStream !== micStream) {
+  const measured = _rawMic || micStream;
+  if (!_an || _anStream !== measured) {
     try {
       // ONE CONTEXT, REUSED. This made a NEW AudioContext every time the mic
       // stream changed and never closed the old one — and Chrome caps a page
@@ -644,10 +660,10 @@ export function micAnalyserLevel() {
       // to see. R toggled the mic repeatedly tonight while we hunted this
       // (2026-08-08).
       const ctx = audioContext();
-      const src = ctx.createMediaStreamSource(micStream);
+      const src = ctx.createMediaStreamSource(measured);
       _an = ctx.createAnalyser(); _an.fftSize = 512;
       src.connect(_an);
-      _anStream = micStream;
+      _anStream = measured;
       _anBuf = new Float32Array(_an.fftSize);
     } catch { return 0; }
   }
@@ -669,8 +685,13 @@ export function toggleMute() {
   // the next tick closed it again — a small leak, but exactly the one this gate
   // exists to prevent. Muting still forces false immediately: mute must be
   // instant and must never wait for a tick.
-  for (const t of micStream.getTracks()) t.enabled = false;
+  // Mute acts on the RAW device track, not the gated output: the gated stream's
+  // track is a graph destination, and disabling it would fight the gain node
+  // rather than replace it. Muting at the source is also the honest thing — the
+  // microphone genuinely stops contributing.
+  for (const t of (_rawMic || micStream).getTracks()) t.enabled = !muted;
   if (!muted) { _above = false; _openUntil = 0; }   // gate decides from here
+  driveGate(false);                                  // and close it immediately
   flashHint(muted ? '🔇 muted' : '🎙 unmuted');
   bus.emit('voice', { on: true, muted });
   return muted;
@@ -682,7 +703,15 @@ export function toggleMute() {
  *  renegotiation to undo, so it is a privacy action, not a "go quiet" action. */
 export function releaseMicrophone() {
   if (!micStream) return;
+  // 🔴 STOP THE RAW DEVICE TRACK, not just the gated output. micStream is now a
+  // GRAPH DESTINATION — stopping its tracks tears down our end of the graph and
+  // leaves the actual microphone open, so the OS recording indicator would stay
+  // lit while this function's whole promise is that it goes away. Stop both: the
+  // device first, then the graph.
+  for (const t of (_rawMic || micStream).getTracks()) t.stop();
   for (const t of micStream.getTracks()) t.stop();
+  releaseGate();
+  _rawMic = null;
   micStream = null;
   muted = false;
   stopOnsetWatch();
