@@ -1205,10 +1205,19 @@ startPrefetch().catch((e) => report('prefetch', e));
         vs.speakOwnSays(bus, () => me);
         // A body that registered a voice means to be heard: open the mic lane
         // so the sender exists before the first utterance, rather than after.
+        // Install the seam BEFORE anything that can hang. toggleMic() awaits a
+        // source, and a wedged source blocks every line after it — which made
+        // the wiring look "never reached" when it had in fact reached and
+        // stalled. Observability must not sit downstream of the risky call.
+        globalThis.__voiceProbe = () => ({ ...vs.mouthInfo(), track: vs.genTrackInfo() });
         const { toggleMic, micOn } = await import('./lib/voice.js');
         if (!micOn()) await toggleMic(me);
+        console.log('[voice] TTS wiring complete');
       })
-      .catch(() => {});
+      // 🔴 NEVER SWALLOW THIS. It was `.catch(() => {})`, so anything after the
+      // "voice ready" line could throw and vanish while the log still claimed
+      // success — the exact shape of a check that did not run (2026-08-08).
+      .catch((e) => console.error('[voice] TTS wiring failed:', e?.message || e));
   }
 }
 

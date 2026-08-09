@@ -21,10 +21,19 @@ const world = arg("world", "voicetest");
 const name = arg("name", "hesperus-probe");
 const tts = arg("tts", "8927");
 const origin = arg("origin", "http://localhost:8960");
-const CDP_PORT = 9333;
+// 🔴 A UNIQUE PORT PER RUN. With a fixed port, /json/list answers from
+// whichever old browser is still listening — and Bun's proc.kill() reaps only
+// the launcher, not Chrome's process tree. 154 orphans had accumulated by
+// 23:40 on 2026-08-08, so probes were attaching to pages running code up to an
+// hour stale and every reading was archaeology (2026-08-08).
+const CDP_PORT = 9300 + (process.pid % 600);
 
 const CHROME = "/mnt/c/Program Files/Google/Chrome/Application/chrome.exe";
-const url = `${origin}/?world=${world}&name=${name}&token=pure-2026&tts=${tts}`;
+// 🔴 CACHE-BUST EVERY RUN. A probe read `__ttsBranch: "never reached"` for a
+// marker that had already been DELETED from the source — the served file was
+// current, the browser's copy was not. Every conclusion drawn from a stale
+// bundle is a conclusion about code that no longer exists.
+const url = `${origin}/?world=${world}&name=${name}&token=pure-2026&tts=${tts}&cb=${process.pid}`;
 
 console.log(`  launching headless chrome → ${url}`);
 const proc = Bun.spawn([
@@ -33,6 +42,8 @@ const proc = Bun.spawn([
   "--remote-allow-origins=*",
   "--headless=new",
   "--no-first-run",
+  "--disable-application-cache",
+  "--disk-cache-size=1",
   "--autoplay-policy=no-user-gesture-required",
   "--use-fake-ui-for-media-stream",       // grant mic without a prompt
   "--use-fake-device-for-media-stream",   // a synthetic mic exists even headless
@@ -60,11 +71,28 @@ let id = 0;
 const send = (method: string, params: any = {}) => ws.send(JSON.stringify({ id: ++id, method, params }));
 
 const lines: string[] = [];
-ws.onopen = () => { send("Runtime.enable"); send("Log.enable"); send("Console.enable"); };
+ws.onopen = () => {
+  send("Network.enable");
+  send("Network.setCacheDisabled", { cacheDisabled: true });
+  send("Runtime.enable"); send("Log.enable"); send("Console.enable");
+};
 ws.onmessage = (ev) => {
   const m = JSON.parse(String(ev.data));
-  if (m.id && m.result?.result?.value) {
-    console.log(`    page: ${m.result.result.value}`);
+  // CDP returns a VALUE only with returnByValue; otherwise an objectId, and an
+  // exception arrives as exceptionDetails rather than a result. Reading only
+  // `.value` made a failing evaluate look identical to a silent page — which is
+  // how this probe spent three runs "proving" things about the app that were
+  // really facts about itself (2026-08-08).
+  if (m.id && m.result) {
+    const r = m.result;
+    if (r.exceptionDetails) {
+      console.log(`    page THREW: ${r.exceptionDetails.exception?.description
+        ?? r.exceptionDetails.text}`);
+    } else if (r.result?.value !== undefined) {
+      console.log(`    page: ${r.result.value}`);
+    } else if (r.result?.objectId) {
+      console.log(`    page: (object — add returnByValue) type=${r.result.type}`);
+    }
   }
   if (m.method === "Runtime.consoleAPICalled") {
     const text = (m.params.args || [])
@@ -72,7 +100,7 @@ ws.onmessage = (ev) => {
     if (!text) return;
     lines.push(text);
     // mirror only what we came for, plus anything that looks like a failure
-    if (/\[voice\]|voicesource|synth|mic|sender|tts/i.test(text)) console.log(`    ▸ ${text}`);
+    console.log(`    ▸ ${text}`);
   } else if (m.method === "Log.entryAdded" && m.params.entry.level === "error") {
     console.log(`    ✗ ${m.params.entry.text}`);
   }
@@ -94,7 +122,19 @@ send("Runtime.evaluate", {
     try {
       const vs = await import('./lib/voicesource.js');
       const ok = await vs.speak('Probe check. Can you hear this?');
-      return 'speak() returned ' + ok;
+      // Report the APP's state in the same breath — a separate evaluate was
+      // silently never dispatched, and its silence read as a finding.
+      const app = globalThis.__voiceProbe ? globalThis.__voiceProbe() : null;
+      await new Promise(r => setTimeout(r, 1000));
+      const app2 = globalThis.__voiceProbe ? globalThis.__voiceProbe() : null;
+      return JSON.stringify({
+        speakReturned: ok,
+        seam: !!globalThis.__voiceProbe,
+        branch: globalThis.__ttsBranch ?? 'never reached',
+        search: location.search,
+        mouth: app, mouthAfter1s: app2,
+        idleAdvance: app && app2 ? app2.playhead - app.playhead : null,
+      });
     } catch (e) { return 'import failed: ' + e.message; }
   })()`,
   awaitPromise: true,
@@ -103,34 +143,32 @@ send("Runtime.evaluate", {
 
 await sleep(6_000);
 
-// --- DRIVE THE REAL AUDIO PANEL -------------------------------------------
-// Dynamic import() of an app module fetches the SOURCE and builds a SECOND
-// module instance with its own state — so probing that way reads a copy the app
-// never used (it reported genTrack:null and no peers while the app was fine).
-// The DOM is shared, so drive the actual panel the way R does instead.
-console.log("  → driving the real audio panel");
+// --- IS THE MOUTH ACTUALLY OPEN? ------------------------------------------
+// A starved generator was the bug: frames only during speak(), nothing between,
+// so the track had no media to encode and the room heard silence while every
+// local check passed. The pacer must be running and the playhead advancing
+// EVEN WITH NOTHING QUEUED — that is what makes it behave like a microphone.
+console.log("  → checking the pacer between utterances");
 send("Runtime.evaluate", {
-  expression: `(() => {
-    // Rows are built lazily by makeSection's onOpen, so a closed panel has
-    // none — the probe's first run reported rows:0 and that meant "not opened",
-    // not "not built". Click the header the way a person does.
-    document.querySelector('#sec-audio .head, #sec-audio > *')?.click?.();
-    const rows = [...document.querySelectorAll('.sp-row')];
-    const row = rows.find(r => /TTS/i.test(r.textContent || ''));
-    if (!row) return JSON.stringify({ found: false, rows: rows.length,
-      hosts: [...document.querySelectorAll('[id],[class]')]
-        .filter(e => /audio|sound|panel/i.test(e.id + ' ' + e.className)).map(e => e.id || e.className).slice(0, 8) });
-    const box = row.querySelector('input[type=checkbox]');
-    const txt = row.querySelector('input[type=text]');
-    const note = row.querySelector('.sp-note');
-    return JSON.stringify({
-      found: true,
-      label: (row.querySelector('.sp-label')||{}).textContent,
-      boxDisabled: box?.disabled, boxChecked: box?.checked,
-      placeholder: txt?.placeholder ?? '(no text field — harness voice)',
-      value: txt?.value ?? '', note: note?.textContent ?? '',
+  expression: `(async () => {
+    // The page can be buried in avatar/VRM loading for many seconds (one VRM
+    // measured 2855ms), and the TTS wiring is queued behind it — a fixed sleep
+    // races that. Wait for the seam instead of declaring it missing.
+    for (let i = 0; i < 20 && !globalThis.__voiceProbe; i++) await new Promise(r => setTimeout(r, 500));
+    if (!globalThis.__voiceProbe) return JSON.stringify({
+      error: 'no seam', search: location.search,
+      hasTts: new URLSearchParams(location.search).has('tts'),
+      bundleHasStep1: (document.querySelector('script[src*=main]')||{}).src || 'inline',
     });
+    if (!globalThis.__voiceProbe) return JSON.stringify({ error: 'no probe seam after 30s' });
+    const a = globalThis.__voiceProbe();
+    await new Promise(r => setTimeout(r, 1200));
+    const b = globalThis.__voiceProbe();
+    return JSON.stringify({ first: a, afterIdle: b,
+      advancedWhileIdle: b.playhead > a.playhead,
+      framesPerSec: Math.round((b.playhead - a.playhead) / 1.2) });
   })()`,
+  awaitPromise: true,
   returnByValue: true,
 });
 
@@ -150,5 +188,12 @@ const refusal = lines.find((l) => /speak refused|NOT spoken|no pcm/i.test(l));
 if (refusal) console.log(`\n  ⟶ STOPPED HERE: ${refusal}`);
 else if (!checks[3][1]) console.log("\n  ⟶ no refusal logged — the chain never started");
 
+// Kill the TREE, not just the launcher: Chrome forks and the parent exits.
+try {
+  Bun.spawnSync(["powershell.exe", "-NoProfile", "-Command",
+    `Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" | ` +
+    `Where-Object { $_.CommandLine -match 'remote-debugging-port=${CDP_PORT}' } | ` +
+    `ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`]);
+} catch { /* best effort */ }
 proc.kill();
 process.exit(checks.every(([, ok]) => ok) ? 0 : 1);

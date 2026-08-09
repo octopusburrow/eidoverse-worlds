@@ -148,32 +148,96 @@ export async function speak(text) {
   } catch (e) { report('tts synthesize', e); return false; }
   if (!out?.pcm?.length) { console.warn('[voice] synthesizer returned no pcm'); return false; }
   console.log(`[voice] got ${out.pcm.length} samples @${out.sampleRate}Hz — feeding sender`);
-  const { pcm, sampleRate } = out;
-  try {
-    ensureGenerator();
-    const per = Math.max(1, Math.round((sampleRate * CHUNK_MS) / 1000));
-    // Wall-clock pacing: timestamps advance with real time, so the consumer
-    // pulls frames at the rate a microphone would produce them.
-    let t = performance.now() * 1000;
-    for (let i = 0; i < pcm.length; i += per) {
-      const slice = pcm.subarray(i, Math.min(i + per, pcm.length));
-      const frame = new AudioData({
-        format: 's16', sampleRate, numberOfFrames: slice.length,
-        numberOfChannels: 1, timestamp: t, data: slice.slice(),
-      });
-      await writer.ready;
-      await writer.write(frame);
-      t += (slice.length / sampleRate) * 1e6;
-    }
-    return true;
-  } catch (e) { report('tts write', e); return false; }
+  // QUEUE IT — DO NOT PUSH IT. The frames are handed to a wall-clock pacer that
+  // is already running; see the pacer below for why the track must never starve.
+  enqueue(out.pcm, out.sampleRate);
+  return true;
 }
+
+// ── the pacer: A MOUTH IS ALWAYS OPEN ──────────────────────────────────────
+// THE BUG THIS FIXES (2026-08-08): speak() used to write its frames in a tight
+// await loop and then stop. Between utterances the generator got NOTHING, so
+// the track was starved — and a starved MediaStreamTrackGenerator is not a
+// quiet microphone, it is a track with no media to encode. Every local check
+// passed (samples written, speak() returned true, sender bound, ICE connected)
+// and the room heard silence.
+//
+// The workbench rig got this right and I dropped it in the port: it runs a
+// 10ms pacer that writes exactly as many frames as wall time OWES, filling
+// them with speech when there is speech and with SILENCE when there is not, so
+// the track never starves. Speech is what fills the frames; the frames happen
+// regardless. That is what makes this behave like a microphone, which is the
+// entire point of the source design — a mic keeps producing silence when you
+// are not talking, and the mesh keeps carrying it.
+const RATE_HINT = 22050;
+const FRAME = Math.round(RATE_HINT / 50);   // 20ms
+let queue = [];            // pending {pcm, sampleRate}
+let qOff = 0;              // read offset into queue[0]
+let playhead = 0;          // samples emitted since the pacer started
+let t0 = 0;
+let pacer = null;
+
+function enqueue(pcm, sampleRate) {
+  queue.push({ pcm, sampleRate });
+  startPacer();
+}
+
+/** Drain the queue into one frame; zeros when there is nothing to say. */
+function fillSpeech(out) {
+  let i = 0;
+  while (i < out.length) {
+    const head = queue[0];
+    if (!head) break;                       // nothing queued → leave silence
+    const src = head.pcm;
+    const n = Math.min(out.length - i, src.length - qOff);
+    for (let k = 0; k < n; k++) out[i + k] = src[qOff + k] / 32768;
+    i += n; qOff += n;
+    if (qOff >= src.length) { queue.shift(); qOff = 0; }
+  }
+}
+
+function startPacer() {
+  if (pacer) return;
+  ensureGenerator();
+  t0 = performance.now();
+  playhead = 0;
+  pacer = setInterval(() => {
+    if (!writer) return;
+    const owed = Math.floor(((performance.now() - t0) / 1000) * RATE_HINT) - playhead;
+    for (let n = 0; n + FRAME <= owed; n += FRAME) {
+      const data = new Float32Array(FRAME);
+      fillSpeech(data);
+      try {
+        writer.write(new AudioData({
+          format: 'f32', sampleRate: RATE_HINT, numberOfFrames: FRAME,
+          numberOfChannels: 1, timestamp: Math.round((playhead / RATE_HINT) * 1e6), data,
+        }));
+      } catch (e) { report('tts write', e); }
+      playhead += FRAME;
+    }
+  }, 10);
+}
+
+/** Stop pacing (releases the interval). The track stays live. */
+export function stopPacer() {
+  if (pacer) { clearInterval(pacer); pacer = null; }
+  queue = []; qOff = 0;
+}
+
+/** Probe seam: is the mouth open, and how much is waiting to be said? */
+export const mouthInfo = () => ({ pacing: !!pacer, queued: queue.length, playhead });
 
 /** What voice.js calls instead of getUserMedia. Returns a MediaStream from
  *  whichever source this body uses. */
 export async function voiceSource() {
   if (isTtsEnabled() && canSynthesize()) {
-    return new MediaStream([ensureGenerator()]);
+    const track = ensureGenerator();
+    // Start pacing the MOMENT the source exists, not at the first utterance: a
+    // microphone is producing silence from the instant it opens, and the mesh
+    // negotiates against a track that is already flowing. Waiting until speak()
+    // means the first utterance is racing the encoder's cold start.
+    startPacer();
+    return new MediaStream([track]);
   }
   return navigator.mediaDevices.getUserMedia({
     audio: { echoCancellation: true, noiseSuppression: true },
