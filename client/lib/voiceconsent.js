@@ -27,11 +27,11 @@ const DEFAULTS = { recvVoice: false, volVoices: 1, volWorld: 0.6, volTts: 1, stt
   // ABOVE the measured room noise (see onsetTick). 0.06 is the lowest value that
   // took zero false triggers across 200 simulated room/noise combinations while
   // never missing speech, so the slider has honest room in both directions.
-  // 20% of the slider = -48 dBFS. R's call, and it matches the old default's
-  // position rather than its meaning — the number changed units three times
-  // today, the FEEL should not have to. Quiet enough to pass ordinary speech
-  // with room to spare; drag right if a neighbour's conversation gets through.
-  micFloor: 0.04 };
+  // 50% of the slider = -30 dBFS. A STARTING POINT, not a tuned value — R is
+  // testing to find the real one. -30 dB sits just above a conversation in
+  // another room (~-30.5 dB) and roughly 18 dB below ordinary speech (~-12 dB),
+  // so it should reject the neighbour with margin to spare on your own voice.
+  micFloor: 0.1 };
 
 let prefs = { ...DEFAULTS };
 try {
