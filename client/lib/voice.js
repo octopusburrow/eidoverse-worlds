@@ -17,7 +17,7 @@
 import { bus, report } from './core.js';
 import { sendRtc, sendTyping } from './net.js';
 import { remotes } from './remotes.js';
-import { micFloor, gateMultiplier } from './voiceconsent.js';
+import { micFloor, gateThreshold } from './voiceconsent.js';
 import { voiceSource, setGeneratorRebuildHook } from './voicesource.js';
 import { gateStream, attachSource, detachSource, driveGate, gateOpenness,
          setMonitor, monitoring, release as releaseGate } from './micgate.js';
@@ -615,9 +615,12 @@ function onsetTick() {
   // only form that behaves the same on a headset and a laptop array.
   //
   // The slider picks k over 1.6…5.0, with 2.5 (their default) mid-scale.
-  const k = gateMultiplier();
-  const on = _noise * k;
-  const off = _noise * (1 + (k - 1) * 0.6);   // hysteresis in the same units
+  // FIXED THRESHOLD, Discord-style. The noise floor is still measured (it drives
+  // nothing now but is kept for the meter and for diagnosing "why did it not
+  // open"), but the GATE compares against an absolute dB level the user set.
+  // That is what makes the marker stay put while the level moves past it.
+  const on = gateThreshold();
+  const off = on * 0.7;                    // ~3 dB of hysteresis
 
   const now = Date.now();
   if (level >= on) {
@@ -664,7 +667,7 @@ export const micGateInfo = () => ({
   // multiplicative — it still carried the old additive margin, so the panel and
   // the gate reported DIFFERENT thresholds. Derived from the same expression
   // now; if the gate changes, this cannot silently disagree.
-  on: _noise * gateMultiplier(),
+  on: gateThreshold(),
   speaking: _above,
 });
 function startOnsetWatch() {

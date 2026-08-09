@@ -145,19 +145,41 @@ function defaultAsk() {
  *  floor by more than 30x. The top of the range is now genuinely strict and the
  *  bottom still catches a whisper.
  */
-export const gateMultiplier = () => {
-  const t = Math.min(1, Math.max(0, prefs.micFloor / 0.2));
-  // 🔴 THE ENDS MEAN WHAT THE PERCENTAGE SAYS (R, 2026-08-09): "0% means it
-  // picks up everything, 100% means it technically picks up nothing, but maybe
-  // just caps at an arbitrarily high dB." So:
-  //   0%   → 1.0x, the floor itself: anything above the room noise opens it.
-  //   100% → 60x, which no voice reaches — effectively closed, without being a
-  //          special case in the gate. A cap rather than Infinity keeps it one
-  //          continuous curve with no branch to get wrong.
-  //
-  // EXPONENTIAL, not linear: the useful settings are all bunched at the low end
-  // (2x-8x covers every ordinary room), so a linear slider would spend most of
-  // its travel on values nobody wants and make the useful part impossible to
-  // land on — which is half of why the control felt unusable.
-  return 1.0 * Math.pow(60, t);
-};
+// THE THRESHOLD IS A dB POSITION, not a multiplier over the room.
+//
+// R, after three rounds of the marker and the colour disagreeing: "maybe it's
+// time to search online for how other people have programmed mic sensitivity
+// sliders". Discord's model, and it is better than what I built:
+//
+//   • one widget, two jobs — the live level bar and the draggable threshold
+//     share one track, on a dB scale (roughly -60..0 dBFS)
+//   • the marker DOES NOT MOVE. The level moves past it.
+//   • colour by GATE STATE, not by level: below the marker is muted, above is
+//     live
+//
+// My room-relative version (level >= noise x k) meant the threshold moved as the
+// room changed — so drawing the marker where the gate opens made it slide away
+// from the cursor, and drawing it where the cursor was made the colour flip
+// somewhere else. There is no way to draw two coordinate systems as one mark.
+// A fixed dB threshold removes the conflict at the root rather than papering it.
+//
+// dB also fixes the crushed scale: on a linear RMS meter a quiet room and speech
+// are both jammed into the left edge, which is why the useful part of the slider
+// kept feeling like a sliver. In dB they are 25 points apart.
+
+/** The gate threshold in dBFS. 0% = -60 dB (everything), 100% = 0 dB (nothing).
+ *  Linear in dB, which is already logarithmic in amplitude — the standard shape
+ *  for this control, and the reason Discord's slider feels even end to end. */
+export const gateThresholdDb = () => -60 + Math.min(1, Math.max(0, prefs.micFloor / 0.2)) * 60;
+
+/** Same threshold as a linear amplitude, for comparing against an RMS reading. */
+export const gateThreshold = () => Math.pow(10, gateThresholdDb() / 20);
+
+/** dBFS of a linear amplitude, floored so silence does not become -Infinity. */
+export const toDb = (amp) => 20 * Math.log10(Math.max(amp, 1e-6));
+
+/** Where a level sits on the meter, 0..1 across the same -60..0 dB span the
+ *  threshold uses. ONE function for both, so the bar and the marker cannot
+ *  land in different places — that mismatch is this control's whole history. */
+export const meterPos = (amp) => Math.max(0, Math.min(1, (toDb(amp) + 60) / 60));
+

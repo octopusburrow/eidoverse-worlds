@@ -15,7 +15,7 @@
 import { makeSection, flashHint } from './ui.js';
 import { audioPrefs, setVolume, receivingVoice, setReceiveVoice,
   sttConsented, setSttConsent, isHushed, setHush,
-  micFloor, setMicFloor, gateMultiplier } from './voiceconsent.js';
+  micFloor, setMicFloor, meterPos, gateThreshold } from './voiceconsent.js';
 import { ttsAvailable, ttsVoiceName, isTtsEnabled, setTtsEnabled, setTtsSource } from './voicesource.js';
 import { localVoiceSupported } from './localvoice.js';
 import { report, CONFIG } from './core.js';
@@ -834,6 +834,9 @@ function micFloorRow() {
     // to grow to stop the bar saturating. Coupling them would squeeze the whole
     // adjustable range into the left third of the bar. The pointer picks a
     // FRACTION of the control; what that fraction means is the gate's business.
+    // The pointer fraction IS the threshold's position on the meter, because
+    // the meter is linear in dB and so is the stored value. 1:1, no conversion,
+    // nothing to drift.
     setMicFloor(((ev.clientX - r.left) / r.width) * 0.2);
     paintThr();
   };
@@ -851,17 +854,13 @@ function micFloorRow() {
     // room gets louder — the adaptive half was previously invisible.
     const g = micGateInfo();
     const level = g.level;
-    lvl.style.width = `${Math.min(100, (level / FS) * 100)}%`;
-    // (no threshold mark: the bar going blue IS the feedback)
-    // Bright gold while the gate is OPEN, dark gold while it is shut — so the
-    // bar answers "am I being transmitted right now" rather than merely "is
-    // there sound", in the same colour the mic icon uses for the same fact.
-    lvl.style.background = g.speaking ? '#ffd66b' : '#6b5420';
-    // The handle moves with the ROOM now, not only with the drag — so it has to
-    // be repainted here rather than only in paintThr(). Same g, so the mark and
-    // the colour can never disagree about where the line is: they are computed
-    // from one value in one frame.
-    handle.style.left = `calc(${Math.min(100, (g.on / FS) * 100)}% - 1px)`;
+    // BOTH POSITIONS FROM ONE FUNCTION. meterPos() maps an amplitude to the
+    // same -60..0 dB span for the bar and the marker, so they are in one
+    // coordinate system by construction — the thing that was wrong every
+    // previous time. The marker no longer moves on its own; the level moves
+    // past it, which is what makes it draggable.
+    lvl.style.width = `${meterPos(level) * 100}%`;
+    handle.style.left = `calc(${meterPos(gateThreshold()) * 100}% - 1px)`;
     requestAnimationFrame(beat);
   };
   requestAnimationFrame(beat);
