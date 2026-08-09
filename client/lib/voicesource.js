@@ -140,7 +140,15 @@ export async function speak(text) {
   // sender was missing, or the synthesizer returned empty. A whole evening was
   // spent unable to tell those apart (2026-08-08).
   if (!isTtsEnabled()) { console.warn(`[voice] speak refused: tts off (enabled=${ttsEnabled} fn=${!!ttsFn})`); return false; }
-  if (!canSynthesize()) { console.warn('[voice] speak refused: no generator sink — is the mic lane open?'); return false; }
+  // NO SINK IS NOT NO REASON TO SPEAK. This used to refuse outright, which meant
+  // a human who picked a voice and typed heard nothing until they also opened
+  // their mic — an unrelated control, and not one anybody would guess at. With
+  // sidetone we can still play it locally; only TRANSMISSION needs the lane.
+  // Say which of the two happened rather than silently doing half.
+  if (!canSynthesize() && !sidetone()) {
+    console.warn('[voice] speak refused: no generator sink and sidetone off');
+    return false;
+  }
   console.log(`[voice] synthesizing ${text.length} chars…`);
   let out;
   try {
@@ -177,7 +185,63 @@ let playhead = 0;          // samples emitted since the pacer started
 let t0 = 0;
 let pacer = null;
 
+/** SIDETONE — hearing your own synthesized voice.
+ *
+ *  R, 2026-08-09: "I don't hear anything when I type into the chat box. Hearing
+ *  yourself as a human using TTS is half the fun."
+ *
+ *  She is right, and the omission was structural: speak() feeds the SENDER, so
+ *  the samples go to the room and never to your own speakers. Everyone else
+ *  hears you; you are the one person who cannot. (Telephony calls this
+ *  sidetone, and leaves it in deliberately — a line with none sounds dead.)
+ *
+ *  A separate AudioContext path, not a loopback of the peer connection: we own
+ *  the PCM before it is paced onto the track, so this stays exact and adds no
+ *  round trip. Off for renderers/spectators, which have no business making
+ *  noise.
+ */
+let monitorCtx = null;
+let monitorOn = (() => {
+  try { return localStorage.getItem('eido.ttsSidetone') !== 'off'; } catch { return true; }
+})();
+export const sidetone = (on) => {
+  if (on !== undefined) {
+    monitorOn = !!on;
+    try { localStorage.setItem('eido.ttsSidetone', on ? 'on' : 'off'); } catch { /* private mode */ }
+  }
+  return monitorOn;
+};
+
+function monitor(pcm, sampleRate) {
+  if (!monitorOn || !pcm?.length) return;
+  try {
+    monitorCtx ??= new (window.AudioContext || window.webkitAudioContext)();
+    // A context created before a user gesture starts suspended; a resume() that
+    // never lands must not throw away the sample.
+    if (monitorCtx.state === 'suspended') void monitorCtx.resume();
+    const buf = monitorCtx.createBuffer(1, pcm.length, sampleRate);
+    const ch = buf.getChannelData(0);
+    for (let i = 0; i < pcm.length; i++) ch[i] = pcm[i] / 32768;
+    const src = monitorCtx.createBufferSource();
+    const g = monitorCtx.createGain();
+    // Slightly under unity: your own voice should sit behind the room, the way
+    // sidetone always does, rather than competing with it.
+    g.gain.value = 0.8;
+    src.buffer = buf;
+    src.connect(g).connect(monitorCtx.destination);
+    src.start();
+  } catch (e) { console.warn('[voice] sidetone failed (still transmitting):', e?.message || e); }
+}
+
 function enqueue(pcm, sampleRate) {
+  monitor(pcm, sampleRate);          // hear yourself, then send
+  // Deliberately NOT gated on having a sender. Two traps I walked into here:
+  // canSynthesize() tests browser SUPPORT for MediaStreamTrackGenerator (not an
+  // open lane), and `genTrack` is CREATED by ensureGenerator() inside
+  // startPacer() — so gating on either would block the first utterance and stop
+  // the generator from ever being built. The pacer's own `if (!writer) return`
+  // already makes a senderless queue harmless; it drains once a lane exists.
+  if (!canSynthesize()) return;
   queue.push({ pcm, sampleRate });
   startPacer();
 }

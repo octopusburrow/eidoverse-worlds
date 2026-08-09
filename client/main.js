@@ -201,6 +201,28 @@ function start() {
   initConjure();   // the orrery panel — prompt → your pick of images → mesh → world
   initVoice(CONFIG.name);
   initAudioPanel();   // 🔊 categories: voices / world / TTS + consent rows
+  // HEARING YOURSELF IS THE POINT. This hook — your own says going through the
+  // selected voice — used to be installed ONLY inside the `?tts=PORT` block, so
+  // it existed exclusively for bodies launched with a URL parameter. A human who
+  // picked a voice in the panel loaded a 63 MB model, saw "ready", typed, and
+  // heard nothing, because nothing was listening for their says (R, 2026-08-09:
+  // "I don't hear anything when I type into the chat box. Hearing yourself as a
+  // human using TTS is half the fun").
+  //
+  // It belongs at boot, with everyone: it is a no-op until a voice exists and
+  // the checkbox is on, and speakOwnSays() already gates on both.
+  // `actor` on the speech event is the world-log ID STRING (world.js:331), so
+  // the identity here must be CONFIG.name — not `me`, which is the avatar
+  // OBJECT and would never compare equal, leaving the hook installed and
+  // permanently silent. Exactly the failure shape that has cost hours today:
+  // a check that runs, reports success, and can only ever be false.
+  import('./lib/voicesource.js')
+    // net.myId is what the SERVER settled on — it can differ from CONFIG.name
+    // when an authenticated identity renames you, or when the server suffixes a
+    // duplicate display name. Prefer it; fall back to the requested name before
+    // the join completes.
+    .then((vs) => vs.speakOwnSays(bus, () => net.myId || CONFIG.name))
+    .catch((e) => console.warn('[voice] own-say hook not installed:', e));
   initSceneGraph();   // 🌳 the world as a tree + 📜 the scripts that animate it
   setHint('<kbd>WASD</kbd> move · <kbd>Enter</kbd> chat · <kbd>B</kbd> build · <kbd>?</kbd> help');
 
@@ -1238,7 +1260,10 @@ startPrefetch().catch((e) => report('prefetch', e));
           } catch (e) { console.warn('[voice] browser-speech fallback failed:', e); return; }
         }
         const vs = await import('./lib/voicesource.js');
-        vs.speakOwnSays(bus, () => me);
+        // (own-say hook installed once at boot, line ~220, for every body —
+        // not here. Installing it again would speak each line twice, and this
+        // copy passed `me`, the avatar OBJECT, which never equals the actor
+        // string.)
         // A body that registered a voice means to be heard: open the mic lane
         // so the sender exists before the first utterance, rather than after.
         // Install the seam BEFORE anything that can hang. toggleMic() awaits a
