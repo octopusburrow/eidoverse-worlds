@@ -763,10 +763,9 @@ function micFloorRow() {
   // and R reasonably asked what the green one was. It also no longer says "pings
   // nearby agents": this gated only the 🎙 icon when that was written, and it
   // now decides what the room actually hears.
-  const hint = 'how much louder than your room a sound must be before it is sent. ' +
-    'Bar = your live mic level (blue while you are being heard, grey while gated). ' +
-    'Amber line = where the gate opens right now — it moves as the room changes. ' +
-    'White handle = your setting: 0% sends everything above the room noise, 100% sends nothing.';
+  const hint = 'how much louder than your room a sound must be before anyone hears it. '
+    + 'The bar is your live mic level and turns blue while you are actually being sent. '
+    + '0% sends everything above the room noise; 100% sends nothing.';
   // Full-scale = the right edge of the meter. 0.2 SATURATED on ordinary speech
   // (normal talking is ~0.2-0.4 RMS), so the bar pinned at 100% and the marker
   // could be pushed off the end — part of why R read the slider as doing
@@ -784,27 +783,25 @@ function micFloorRow() {
       // green bar mean now?"). A colour that appears for one frame and never
       // returns is worse than no colour.
       `<span data-lvl style="position:absolute;left:0;top:0;height:100%;width:0;background:#456"></span>` +
-    // TWO MARKS, because there are two different facts and I wrongly made them one
-    // element (R, 2026-08-09: "I can't grab where the bar actually is, and I have
-    // to move my cursor farther than the bar moves"). The HANDLE is where you set
-    // the control — it follows your pointer 1:1, always. The THRESHOLD is where
-    // the gate opens right now, which moves with the room and is not draggable.
-    // Drawing the setting at the live threshold's position meant dragging the full
-    // width moved the mark 27%.
-    // AMBER, not green. This line marks the LIMIT a sound has to clear, and green
-    // reads as "you're fine" — the opposite of what a threshold says. The BAR
-    // turning blue is the "you are being heard" signal; the line is only where
-    // that starts.
-    `<span data-thr style="position:absolute;top:0;height:100%;width:2px;background:#fa4;` +
-    `opacity:.55" title="where the gate opens right now — moves with the room"></span>` +
-    `<span data-handle style="position:absolute;top:-2px;height:18px;width:3px;background:#fff;` +
-    `border-radius:2px" title="drag to set sensitivity"></span>` +
-    `</span>` +
-    `<span data-out style="min-width:34px;text-align:right">${Math.round((micFloor() / 0.2) * 100)}%</span>`;
+      // ONE MARK. R: "why an amber and a white bar? Why not just one? VRChat only
+      // has one and no one seems to get confused about this." She is right, and
+      // checking BasisVR settled it — their threshold slider is buried under an
+      // ADVANCED group, behind a gate that is OFF by default and an "auto" mode
+      // that is ON when you do enable it. Neither shipping product shows a user
+      // the gate's internals.
+      //
+      // I was drawing a second mark because the live threshold moves with the
+      // room and I found that interesting. That is a fact about my
+      // implementation, not something anyone needs while setting a slider — and
+      // it cost a colour, a legend, and this conversation. The bar going blue
+      // already says "you are being heard", which is the only feedback the
+      // setting needs.
+      `<span data-handle style="position:absolute;top:0;height:100%;width:2px;background:#fff;` +
+      `opacity:.8" title="drag to set sensitivity"></span>` +
+      `<span data-out style="min-width:34px;text-align:right">${Math.round((micFloor() / 0.2) * 100)}%</span>`;
   const meter = row.querySelector('[data-meter]');
   const out = row.querySelector('[data-out]');
   const lvl = row.querySelector('[data-lvl]');
-  const thr = row.querySelector('[data-thr]');
   const handle = row.querySelector('[data-handle]');
   const paintThr = () => {
     // The HANDLE tracks the setting exactly — pointer to mark, 1:1, no scale in
@@ -845,7 +842,7 @@ function micFloorRow() {
     const g = micGateInfo();
     const level = g.level;
     lvl.style.width = `${Math.min(100, (level / FS) * 100)}%`;
-    thr.style.left = `calc(${Math.min(100, (g.on / FS) * 100)}% - 1px)`;
+    // (no threshold mark: the bar going blue IS the feedback)
     // Bright while the gate is OPEN, so the bar answers "am I being transmitted
     // right now" rather than merely "is there sound".
     lvl.style.background = g.speaking ? '#6cf' : '#456';
