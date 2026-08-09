@@ -125,11 +125,21 @@ send("Runtime.evaluate", {
       // module has its own generator that no sender is bound to, so it reports
       // success into a void. Everything below is the app's real mouth.
       if (!globalThis.__voiceSpeak) return JSON.stringify({ error: 'no speak seam' });
+      // World audio first: R cannot verify her output without something that
+      // is not my voice. A joiner replays history — if the comp event only
+      // fires live, an ambient attached hours ago never attaches for anyone
+      // arriving later, which is everyone. (No backticks in here: this whole
+      // expression IS a template literal and one would terminate it.)
+      const amb = globalThis.__ambientDebug ? globalThis.__ambientDebug() : 'no hook';
+      // Does the ENTITY exist? attach() runs on the comp event, but
+      // updateAmbient() detaches any source whose entity it cannot find — and
+      // on a joiner the comp can replay before the spawn has settled.
+      const ents = globalThis.EW ? [...globalThis.EW.entities.keys()] : [];
       const ok = await globalThis.__voiceSpeak('Hello Rabscuttle. This is my actual voice, coming out of the microphone lane.');
       const a = globalThis.__voiceProbe();
       await new Promise(r => setTimeout(r, 3000));
       const b = globalThis.__voiceProbe();
-      return JSON.stringify({ spoke: ok, before: a, after: b,
+      return JSON.stringify({ ambient: amb, entities: ents, spoke: ok, before: a, after: b,
         drained: a.queued > 0 && b.queued === 0,
         advanced: b.playhead - a.playhead });
     } catch (e) { return 'import failed: ' + e.message; }

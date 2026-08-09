@@ -31,7 +31,7 @@ import {
   hasGhost, hasSelection, toggleEditMode, isEditing,
 } from './lib/build.js';
 import { initConjure } from './lib/conjure.js';
-import './lib/ambient.js';   // `ambient` comp: world sound that belongs to a place
+import { updateAmbient, ambientDebug } from './lib/ambient.js';   // `ambient` comp: world sound that belongs to a place
 import { initVoice, micOn, isMuted, micAnalyserLevel, peerLevels,
          voiceDebug, voicePcs, voiceMouthBound, voicePendingReneg } from './lib/voice.js';
 import './lib/mictoggle.js'; // mic + headphone toggles beside the HUD, both off by default
@@ -1061,6 +1061,13 @@ function frame(now) {
   updateBuild();
   BC('debug');
   updateDebug(now);              // collider/ragdoll wireframes, when F3 is up
+  // 🔴 THIS HAD NO CALLERS. attach() deliberately starts an ambient source at
+  // gain 0 — "rises with proximity on the first tick" — and the tick never
+  // ran, so world sound has been playing at volume ZERO since it was attached
+  // (03:17 on 2026-08-08; R heard nothing all evening and reasonably concluded
+  // her audio was broken). Third instance tonight of a correct function that
+  // was never wired: toggleMute, sourceIsDead, this.
+  updateAmbient();
   BC('send-pose');
   sendPose(now);
 
@@ -1221,6 +1228,8 @@ startPrefetch().catch((e) => report('prefetch', e));
       .catch((e) => console.error('[voice] TTS wiring failed:', e?.message || e));
   }
 }
+
+globalThis.__ambientDebug = ambientDebug;
 
 globalThis.EW = {
   me: () => me, remotes, entities, myState, THREE, net, scene, camera, renderer, bus,

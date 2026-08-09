@@ -76,7 +76,13 @@ export function updateAmbient() {
   const wv = volumeFor('world');
   for (const [id, s] of sources) {
     const obj = entities.get(id);
-    if (!obj) { detach(id); continue; }
+    // DO NOT DETACH ON A MISSING ENTITY. On a joining client the comp replays
+    // before its spawn has settled, so a source attached at that moment would
+    // be torn down one frame later and never rebuilt — the component is in the
+    // log, the entity exists a moment later, and the world is silent forever.
+    // A source with no entity yet is simply inaudible until there is somewhere
+    // for it to be; entity removal already detaches via the 'entity' event.
+    if (!obj) { s.gain.gain.setTargetAtTime(0, audioCtx().currentTime, 0.08); continue; }
     const radius = s.data.radius ?? 18;
     const d = obj.position.distanceTo(myState.pos);
     const near = radius * 0.25;
