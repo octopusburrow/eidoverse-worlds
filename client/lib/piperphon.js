@@ -19,6 +19,8 @@
 // re-entrant in Bun this morning: first callMain 44ms, second 4ms.
 
 let _mod = null;
+// Where the current call wants stdout/stderr to go. See the print note below.
+let _sink = null, _errSink = null;
 let _building = null;
 
 /** Build (once) and return the phonemize module. */
@@ -52,11 +54,15 @@ async function phonModule(wasmPaths) {
       throw new Error(`piper: no createPiperPhonemize at ${chunkUrl} — did the package version change?`);
     }
     const m = await createPiperPhonemize({
-      // print/printErr are REBOUND per call in phonemize() below — emscripten
-      // reads them off the module object at call time, so one module can serve
-      // many calls with different result handlers.
-      print: () => {},
-      printErr: () => {},
+      // 🔴 EMSCRIPTEN CAPTURES print ONCE, AT CONSTRUCTION:
+      //     var out = Module["print"] || console.log.bind(console);   (line 292)
+      // I had assumed it was read per call and reassigned m.print in phonemize(),
+      // which did nothing — the ids went to console.log and we reported
+      // "phonemizer produced no ids" (R, 2026-08-09). So install a PERMANENT
+      // print here that forwards to a swappable sink, and let each call set the
+      // sink instead of the handler.
+      print: (data) => { _sink?.(data); },
+      printErr: (msg) => { _errSink?.(msg); },
       locateFile: (url) => {
         if (url.endsWith('.wasm')) return wasmPaths.piperWasm;
         if (url.endsWith('.data')) return wasmPaths.piperData;
@@ -76,10 +82,10 @@ export async function phonemize(text, voice, wasmPaths) {
   const m = await phonModule(wasmPaths);
   return new Promise((resolve, reject) => {
     let out = null;
-    m.print = (data) => {
+    _sink = (data) => {
       try { out = JSON.parse(data).phoneme_ids; } catch { /* not our line */ }
     };
-    m.printErr = (msg) => reject(new Error(String(msg)));
+    _errSink = (msg) => reject(new Error(String(msg)));
     try {
       m.callMain([
         '-l', voice,
@@ -92,6 +98,7 @@ export async function phonemize(text, voice, wasmPaths) {
       // failure — treating it as one would make every successful call an error.
       if (typeof e !== 'number' && e?.status === undefined) return reject(e);
     }
+    _sink = null; _errSink = null;
     if (out) resolve(out);
     else reject(new Error('phonemizer produced no ids'));
   });
