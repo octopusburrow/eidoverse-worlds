@@ -17,6 +17,8 @@ import { audioPrefs, setVolume, receivingVoice, setReceiveVoice,
   sttConsented, setSttConsent, isHushed, setHush,
   micFloor, setMicFloor } from './voiceconsent.js';
 import { ttsAvailable, ttsVoiceName, isTtsEnabled, setTtsEnabled, setTtsSource } from './voicesource.js';
+import { localVoiceSupported } from './localvoice.js';
+import { report } from './core.js';
 import { setEndpointVoice } from './browservoice.js';
 import { micAnalyserLevel } from './voice.js';
 import { bus } from './core.js';
@@ -105,15 +107,79 @@ function ttsRow() {
     `${agentVoice ? 'TTS voice' : 'TTS endpoint'}</span>` +
     (agentVoice
       ? `<span style="flex:1;opacity:.6">${ttsVoiceName()}</span>`
-      : `<input type="text" placeholder="ws://127.0.0.1:8927  (blank = microphone)" ` +
-        `style="flex:1;min-width:0;background:#222;color:inherit;border:1px solid #444;padding:1px 4px" ` +
-        `title="${hint}">`) +
+      // A DROPDOWN, NOT AN ADDRESS (R, 2026-08-09: "seeing a port is going to be
+      // pretty confusing for a user"). She was right — I shipped my own dev
+      // plumbing as the interface because I already had a synth on a port.
+      // Picking a voice downloads the model to YOUR browser once, from Hugging
+      // Face directly, and inference runs on YOUR machine; the server never
+      // touches a 60 MB file. The address box survives as the advanced option
+      // for a custom voice (ours is not in the public catalog) or a GPU synth.
+      : (localVoiceSupported()
+          ? `<select style="flex:1;min-width:0;background:#222;color:inherit;border:1px solid #444;padding:1px 4px">` +
+            `<option value="">microphone (no synthesized voice)</option>` +
+            `<option value="__loading">loading voices…</option>` +
+            `<option value="__custom">custom endpoint…</option></select>`
+          : `<input type="text" placeholder="ws://127.0.0.1:8927  (blank = microphone)" ` +
+            `style="flex:1;min-width:0;background:#222;color:inherit;border:1px solid #444;padding:1px 4px" ` +
+            `title="${hint}">`)) +
     `<span class="sp-note" style="opacity:.5;font-size:11px"></span>`;
 
   const box = row.querySelector('input[type=checkbox]');
   const note = row.querySelector('.sp-note');
   if (!ttsAvailable() && !agentVoice) note.textContent = 'needs an endpoint';
   box.onchange = (e) => { e.target.checked = setTtsEnabled(e.target.checked); };
+
+  // ── the voice dropdown ────────────────────────────────────────────────────
+  const sel = row.querySelector('select');
+  if (sel) {
+    const saved = localStorage.getItem('eido.localVoice') || '';
+    (async () => {
+      try {
+        const { suggestedVoices } = await import('./localvoice.js');
+        const list = await suggestedVoices();
+        sel.querySelector('option[value="__loading"]')?.remove();
+        const custom = sel.querySelector('option[value="__custom"]');
+        for (const v of list) {
+          const o = document.createElement('option');
+          o.value = v.key;
+          // SAY THE SIZE. A silent 63 MB download reads as a hang.
+          o.textContent = v.mb ? `${v.label} — ${v.mb} MB` : v.label;
+          sel.insertBefore(o, custom);
+        }
+        if (saved) sel.value = saved;
+      } catch (e) {
+        sel.querySelector('option[value="__loading"]')?.remove();
+        note.textContent = 'voice list unavailable';
+        report('voice catalog', e);
+      }
+    })();
+
+    sel.onchange = async () => {
+      const key = sel.value;
+      if (key === '__custom') { note.textContent = 'custom endpoint: use ?tts=PORT for now'; return; }
+      if (!key) {
+        setTtsSource(null); localStorage.removeItem('eido.localVoice');
+        box.checked = false; box.disabled = true; note.textContent = '';
+        return;
+      }
+      sel.disabled = true;
+      try {
+        const { useLocalVoice } = await import('./localvoice.js');
+        await useLocalVoice(key, (p) => {
+          note.textContent = p.phase === 'download'
+            ? `downloading${p.pct != null ? ` ${p.pct}%` : `… ${p.mb} MB`}`
+            : p.phase === 'runtime' ? 'loading runtime…' : '';
+        });
+        localStorage.setItem('eido.localVoice', key);
+        note.textContent = 'ready';
+        box.disabled = false;
+        box.checked = setTtsEnabled(true);   // choosing a voice means wanting it
+      } catch (e) {
+        note.textContent = 'failed — see console';
+        report('local voice', e);
+      } finally { sel.disabled = false; }
+    };
+  }
 
   const url = row.querySelector('input[type=text]');
   if (url) {

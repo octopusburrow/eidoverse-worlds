@@ -33,7 +33,13 @@ const CHROME = "/mnt/c/Program Files/Google/Chrome/Application/chrome.exe";
 // marker that had already been DELETED from the source — the served file was
 // current, the browser's copy was not. Every conclusion drawn from a stale
 // bundle is a conclusion about code that no longer exists.
-const url = `${origin}/?world=${world}&name=${name}&token=pure-2026&tts=${tts}&cb=${process.pid}`;
+// --no-tts omits the param entirely, which is the path a REAL USER takes: no
+// harness voice, so the panel must offer the dropdown rather than a label.
+// `--tts ""` could not express this — arg() returns its default for an empty
+// value, so the harness branch was the only one this probe could ever see.
+const noTts = args.includes("--no-tts");
+const url = `${origin}/?world=${world}&name=${name}&token=pure-2026` +
+  (noTts ? "" : `&tts=${tts}`) + `&cb=${process.pid}`;
 
 console.log(`  launching headless chrome → ${url}`);
 const proc = Bun.spawn([
@@ -124,7 +130,26 @@ send("Runtime.evaluate", {
       // Speak through the APP's instance, not a dynamic-import copy — a second
       // module has its own generator that no sender is bound to, so it reports
       // success into a void. Everything below is the app's real mouth.
-      if (!globalThis.__voiceSpeak) return JSON.stringify({ error: 'no speak seam' });
+      // The UI check must come BEFORE the speak-seam guard: with --no-tts there
+      // is no seam by design, and returning early meant the one configuration a
+      // real user actually sees was the one this probe could never inspect.
+      document.querySelector('#sec-audio .head, #sec-audio > *')?.click?.();
+      // WAIT FOR THE CATALOG, do not race it. The fetch is async and the page
+      // is often mid-VRM-jank (580ms frames measured) when the panel opens, so
+      // a fixed sleep reported an empty dropdown that was merely not-yet-full.
+      for (let i = 0; i < 40; i++) {
+        const r = [...document.querySelectorAll('.sp-row')].find(x => /TTS/i.test(x.textContent||''));
+        if (r?.querySelector('select option[value^="en_"]')) break;
+        await new Promise(r2 => setTimeout(r2, 500));
+      }
+      const uiRow = [...document.querySelectorAll('.sp-row')].find(r => /TTS/i.test(r.textContent||''));
+      const ttsUi = uiRow ? {
+        label: uiRow.querySelector('.sp-label')?.textContent,
+        control: uiRow.querySelector('select') ? 'dropdown'
+               : uiRow.querySelector('input[type=text]') ? 'address box' : 'label only',
+        options: [...uiRow.querySelectorAll('select option')].map(o => o.textContent).slice(0, 8),
+      } : 'no TTS row';
+      if (!globalThis.__voiceSpeak) return JSON.stringify({ ttsUi, note: 'no speak seam (expected with --no-tts)' });
       // World audio first: R cannot verify her output without something that
       // is not my voice. A joiner replays history — if the comp event only
       // fires live, an ambient attached hours ago never attaches for anyone
@@ -154,7 +179,7 @@ send("Runtime.evaluate", {
       const a = globalThis.__voiceProbe();
       await new Promise(r => setTimeout(r, 3000));
       const b = globalThis.__voiceProbe();
-      return JSON.stringify({ audioCtx: actx, storedPrefs: stored,
+      return JSON.stringify({ ttsUi, audioCtx: actx, storedPrefs: stored,
         ambient: amb, entities: ents, spoke: ok, before: a, after: b,
         drained: a.queued > 0 && b.queued === 0,
         advanced: b.playhead - a.playhead });
