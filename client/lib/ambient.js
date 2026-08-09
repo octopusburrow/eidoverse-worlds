@@ -61,16 +61,43 @@ function audioCtx() {
 }
 
 /** harness/debug: why is the world silent? */
-export const audioState = () => ({ ctx: ctx?.state ?? 'none', sources: sources.size, gestureArmed });
+export const audioState = () => ({
+  ctx: ctx?.state ?? 'none', sources: sources.size, gestureArmed,
+  // The GainNode value proves nothing about whether SOUND EXISTS: it is our
+  // own multiplier, and it reads 1 whether the element is playing, stalled,
+  // erroring, or was never decoded. currentTime advancing is the only proof
+  // that media is actually flowing (R: "why can I hear youtube then?" — the
+  // routing theory died there and this is what I should have exposed).
+  elements: [...sources].map(([id, s]) => ({
+    id,
+    src: s.el.currentSrc || s.el.src,
+    paused: s.el.paused,
+    currentTime: +s.el.currentTime.toFixed(2),
+    duration: Number.isFinite(s.el.duration) ? +s.el.duration.toFixed(1) : String(s.el.duration),
+    readyState: s.el.readyState,   // 0 = nothing, 4 = enough data
+    networkState: s.el.networkState, // 3 = NO_SOURCE
+    error: s.el.error ? `code ${s.el.error.code}: ${s.el.error.message}` : null,
+    muted: s.el.muted, volume: s.el.volume,
+    gainNode: +s.gain.gain.value.toFixed(3),
+  })),
+});
 
 function attach(id, data) {
   detach(id);
   if (!data) return;
   try {
     const c = audioCtx();
-    const el = new Audio(data.src ?? DEFAULT_SRC);
+    // Resolve against the DOCUMENT, not the current URL-with-query: a relative
+    // 'assets/x.ogg' next to '/?world=…&tts=…' is fine, but any future path
+    // segment would break it silently. new URL(...) makes it explicit.
+    const src = new URL(data.src ?? DEFAULT_SRC, location.origin + '/').href;
+    const el = new Audio(src);
     el.loop = data.loop !== false;
-    el.crossOrigin = 'anonymous';
+    // NO crossOrigin ON A SAME-ORIGIN ASSET. Setting it forces a CORS check,
+    // and this server sends no Access-Control-Allow-Origin — so the fetch is
+    // tainted and createMediaElementSource() yields SILENCE with no error.
+    // Only opt in when the asset really is cross-origin (2026-08-08).
+    if (new URL(src).origin !== location.origin) el.crossOrigin = 'anonymous';
     const node = c.createMediaElementSource(el);
     const gain = c.createGain();
     gain.gain.value = 0;            // rises with proximity on the first tick
