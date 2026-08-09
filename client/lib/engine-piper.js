@@ -63,8 +63,30 @@ registerEngine({
     let sr = null;
     try { sr = JSON.parse(await cfg.text())?.audio?.sample_rate ?? null; } catch { /* label only */ }
 
+    // predict() is the convenience wrapper and it does NOT forward wasmPaths —
+    // it always builds a session against hardcoded CDNs (cdnjs for ONNX Runtime,
+    // jsDelivr for piper_phonemize). That means a network round trip per load
+    // and no offline use at all, for a feature whose entire point is "the voice
+    // is already on your machine." So construct the session directly and point
+    // every asset at files we serve.
+    // TtsSession is a SINGLETON: `if (_TtsSession._instance) return _instance`,
+    // which silently ignores voiceId AND wasmPaths on every construction after
+    // the first. Loading a second voice would keep speaking in the first one —
+    // a bug that looks like "the picker did nothing." Drop the instance so each
+    // load actually builds its own session.
+    if (e.TtsSession._instance) e.TtsSession._instance = null;
+    const session = new e.TtsSession({
+      voiceId: base,
+      wasmPaths: {
+        onnxWasm: new URL('../node_modules/onnxruntime-web/dist/', import.meta.url).href,
+        piperData: new URL('../vendor/piper/piper_phonemize.data', import.meta.url).href,
+        piperWasm: new URL('../vendor/piper/piper_phonemize.wasm', import.meta.url).href,
+      },
+    });
+    await session.waitReady;
+
     const speak = async (text) => {
-      const wav = await e.predict({ text, voiceId: base });
+      const wav = await session.predict(text);
       return decodeWavToPcm(await wav.arrayBuffer());
     };
     const label = `Piper: ${base}${sr ? ` (${sr} Hz)` : ''}`;
