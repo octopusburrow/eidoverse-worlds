@@ -83,12 +83,12 @@ export function matchEngine(files) {
  *  Deliberately does NOT ask which engine — sniffing is the point, because a
  *  person with a voice model should not have to know which runtime consumes it.
  */
-export async function loadFromFiles(files) {
+export async function loadFromFiles(files, onProgress = () => {}) {
   const e = matchEngine(files);
   if (!e) {
     const names = files.map((f) => f.name).join(', ');
     const known = availableEngines().map((x) => `${x.label} (${x.accept.join(' + ')})`).join('; ');
     throw new Error(`no engine recognises ${names}. Known formats: ${known || 'none registered'}`);
   }
-  return { engine: e, ...(await e.load(files)) };
+  return { engine: e, ...(await e.load(files, onProgress)) };
 }

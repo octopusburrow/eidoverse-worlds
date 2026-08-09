@@ -103,7 +103,11 @@ function ttsRow() {
   const why = ttsAvailable() ? hint : 'no synthesizer yet — put its address in the box →';
   row.innerHTML =
     `<input type="checkbox" ${isTtsEnabled() ? 'checked' : ''} ${ttsAvailable() ? '' : 'disabled'} title="${why}">` +
-    `<span class="sp-label" title="${why}" style="${ttsAvailable() ? '' : 'opacity:.5'}">` +
+    // The label tracks whether the voice is LIVE, not merely whether one could
+    // exist: full white when the checkbox is on and a synthesizer is present,
+    // dimmed otherwise. R asked for exactly this — a row that is off should read
+    // as off at a glance, without parsing the checkbox (2026-08-09).
+    `<span class="sp-label" title="${why}" style="opacity:${ttsAvailable() && isTtsEnabled() ? '1' : '.45'}">` +
     `${agentVoice ? 'TTS voice' : 'TTS endpoint'}</span>` +
     (agentVoice
       ? `<span style="flex:1;opacity:.6">${ttsVoiceName()}</span>`
@@ -123,7 +127,15 @@ function ttsRow() {
           // control for it (R, 2026-08-09: "the dropdown says 'custom endpoint'
           // but I can't point it anywhere").
           ? `<select style="flex:1;min-width:0;background:#222;color:inherit;border:1px solid #444;padding:1px 4px">` +
-            `<option value="">microphone (no synthesized voice)</option>` +
+            // Name what you GET, not what is missing. "microphone (no
+            // synthesized voice)" described an absence, so the row read as
+            // broken-until-configured. This is a valid, working choice — your
+            // own voice — and saying so removes the pull to tick a box that has
+            // nothing behind it. (setTtsEnabled() already refuses to enable
+            // without a source, so the invalid state R worried about cannot be
+            // reached; this fixes the part that was actually reachable: the
+            // impression that no valid option was selected.)
+            `<option value="">your microphone (no synthesis)</option>` +
             `<option value="__loading">loading voices…</option>` +
             `<option value="__file">voice file on this computer…</option>` +
             `<option value="__custom">custom endpoint…</option></select>` +
@@ -139,7 +151,33 @@ function ttsRow() {
   const box = row.querySelector('input[type=checkbox]');
   const note = row.querySelector('.sp-note');
   if (!ttsAvailable() && !agentVoice) note.textContent = 'needs an endpoint';
-  box.onchange = (e) => { e.target.checked = setTtsEnabled(e.target.checked); };
+  // One place that decides how "live" looks, so the label can never disagree
+  // with the checkbox — every path that changes voice state calls this.
+  // A loaded file becomes a REAL option, selected — so the dropdown shows the
+  // voice you are using instead of sitting on the verb you used to get it
+  // ("voice file on this computer…", which reads as if nothing happened).
+  // R asked for this directly (2026-08-09). Reusing one slot rather than
+  // appending means picking a second file replaces the first, which matches
+  // what actually happened: there is only ever one loaded voice.
+  const adoptLoadedFile = (label) => {
+    const sel = row.querySelector('select');
+    if (!sel) return;
+    let opt = sel.querySelector('option[value="__loaded"]');
+    if (!opt) {
+      opt = document.createElement('option');
+      opt.value = '__loaded';
+      sel.insertBefore(opt, sel.firstChild);
+    }
+    opt.textContent = label;
+    opt.title = label;
+    sel.value = '__loaded';
+  };
+
+  const lab = row.querySelector('.sp-label');
+  const paintLive = () => {
+    if (lab) lab.style.opacity = (ttsAvailable() && isTtsEnabled()) ? '1' : '.45';
+  };
+  box.onchange = (e) => { e.target.checked = setTtsEnabled(e.target.checked); paintLive(); };
 
   // ── the voice dropdown ────────────────────────────────────────────────────
   const sel = row.querySelector('select');
@@ -168,6 +206,10 @@ function ttsRow() {
 
     sel.onchange = async () => {
       const key = sel.value;
+      // Re-selecting the voice already loaded is a no-op, not a reload: the
+      // model is in memory and re-running the 63 MB compile would look like a
+      // hang for no reason.
+      if (key === '__loaded') return;
       if (key === '__file') {
         // R, 2026-08-09: "it would be best if the endpoints are file names on a
         // person's own machine and the engine sets up all the endpoint stuff for
@@ -203,10 +245,14 @@ function ttsRow() {
                   .catch(() => null);
                 if (more?.length) picked = [...picked, ...await Promise.all(more.map((h) => h.getFile()))];
               }
-              const { label } = await loadFromFiles(picked);
+              const { label } = await loadFromFiles(picked, (p) => {
+                note.textContent = p.text || p.phase || 'loading…';
+              });
               note.textContent = 'ready';
               note.title = label;
               box.disabled = false; box.checked = setTtsEnabled(true);
+              adoptLoadedFile(label);
+              paintLive();
             } catch (e) {
               // loadFromFiles throws a message naming the known formats — show
               // it, since "failed" tells the user nothing actionable.
@@ -242,10 +288,14 @@ function ttsRow() {
             // The panel used to hardcode "onnx plus its json", which is true of
             // Piper and false of the next one. Now a bad selection comes back as
             // that engine's own message.
-            const { label } = await loadFromFiles(files);
+            const { label } = await loadFromFiles(files, (p) => {
+              note.textContent = p.text || p.phase || 'loading…';
+            });
             note.textContent = 'ready';
             note.title = label;
             box.disabled = false; box.checked = setTtsEnabled(true);
+            adoptLoadedFile(label);
+            paintLive();
           } catch (e) {
             // Same rule: a failure must leave the picker usable, not stranded on
             // an option that refuses to re-fire.

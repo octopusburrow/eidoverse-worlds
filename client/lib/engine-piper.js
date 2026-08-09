@@ -34,7 +34,7 @@ registerEngine({
     return files.some((f) => f.name.toLowerCase().endsWith('.json')) ? 2 : 1;
   },
 
-  async load(files) {
+  async load(files, onProgress = () => {}) {
     const onnx = files.find((f) => f.name.toLowerCase().endsWith('.onnx'));
     const cfg = files.find((f) => f.name.toLowerCase().endsWith('.json'));
     if (!onnx) throw new Error('Piper needs the .onnx model file');
@@ -42,6 +42,13 @@ registerEngine({
     // rate and the espeak language — none of it recoverable from the model.
     if (!cfg) throw new Error(`Piper also needs ${onnx.name}.json — it holds the phoneme map and sample rate`);
 
+    // PHASES, not percentages. The runtime's own progress callback only fires
+    // while DOWNLOADING, and these files are already on disk — so it would
+    // report nothing for the entire real wait. The long pole is
+    // InferenceSession.create() over a 63 MB graph, which is silent and can run
+    // tens of seconds on first load. Naming the phase is the honest signal; a
+    // fake percentage would be a progress bar that lies.
+    onProgress({ phase: 'runtime', text: 'loading runtime…' });
     const e = await runtime();
     const base = onnx.name.replace(/\.onnx$/i, '');
 
@@ -50,6 +57,7 @@ registerEngine({
     // OPFS cache FIRST, keyed by basename. So seed the cache under the names it
     // will look for and it never touches the network. Its own cache, used the
     // way it already works — no fork, no patch.
+    onProgress({ phase: 'copy', text: `copying ${Math.round(onnx.size / 1e6)} MB…` });
     const root = await navigator.storage.getDirectory();
     const dir = await root.getDirectoryHandle('piper', { create: true });
     for (const [name, file] of [[`${base}.onnx`, onnx], [`${base}.onnx.json`, cfg]]) {
@@ -75,6 +83,9 @@ registerEngine({
     // a bug that looks like "the picker did nothing." Drop the instance so each
     // load actually builds its own session.
     if (e.TtsSession._instance) e.TtsSession._instance = null;
+    // The silent stretch: compiling the ONNX graph. Say so, and say it may take
+    // a while, rather than leaving "loading…" to look like a hang.
+    onProgress({ phase: 'compile', text: 'preparing voice (first load is slow)…' });
     const session = new e.TtsSession({
       voiceId: base,
       wasmPaths: {
