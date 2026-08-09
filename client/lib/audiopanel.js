@@ -146,7 +146,22 @@ function ttsRow() {
             //
             // The list now holds only real voices. Off is the checkbox, and
             // only the checkbox.
-            `<option value="__default">browser speech (built in)</option>` +
+            // NO DOWNLOADED DEFAULT, deliberately (R, 2026-08-09: "I'm leery of
+            // download sizes... if we can't make it work I'd say just don't offer
+            // anything by default and rely on the user to BYOV"). The smallest
+            // English Piper voice is 63 MB — there is no small one to bundle, and
+            // a default is by definition what happens to someone who did not
+            // choose. Charging an unchosen 63 MB from a third party's CDN is the
+            // wrong cost in the wrong place, and a dependency we cannot promise.
+            //
+            // So browser speech stays the default and is labelled for what it
+            // IS: local-only, and the right tool for "read the text back to me"
+            // — a screen-reader need that wants zero download and does not care
+            // that peers cannot hear it. Naming it here stops it reading as a
+            // broken transmitter. Transmitting requires a source that returns
+            // samples; see the 🔴 note in voicesource.js for why the platform
+            // makes that impossible for speechSynthesis specifically.
+            `<option value="__default">browser speech (only you hear this)</option>` +
             `<option value="__loading">loading voices…</option>` +
             `<option value="__file">voice file on this computer…</option>` +
             `<option value="__custom">custom endpoint…</option></select>` +
