@@ -759,8 +759,14 @@ function ttsRow() {
 function micFloorRow() {
   const row = document.createElement('div');
   row.className = 'sp-row';
-  const hint = 'mic level below the marker is treated as room noise, not speech — ' +
-    'raise it if typing pings nearby agents; the bar shows your live mic level';
+  // The hint has to name all THREE marks, because they are three different facts
+  // and R reasonably asked what the green one was. It also no longer says "pings
+  // nearby agents": this gated only the 🎙 icon when that was written, and it
+  // now decides what the room actually hears.
+  const hint = 'how much louder than your room a sound must be before it is sent. ' +
+    'Bar = your live mic level (blue while you are being heard, grey while gated). ' +
+    'Amber line = where the gate opens right now — it moves as the room changes. ' +
+    'White handle = your setting: 0% sends everything above the room noise, 100% sends nothing.';
   // Full-scale = the right edge of the meter. 0.2 SATURATED on ordinary speech
   // (normal talking is ~0.2-0.4 RMS), so the bar pinned at 100% and the marker
   // could be pushed off the end — part of why R read the slider as doing
@@ -772,7 +778,12 @@ function micFloorRow() {
     `<span class="sp-label" title="${hint}">mic sensitivity</span>` +
     `<span data-meter title="${hint}" style="flex:1;min-width:60px;position:relative;height:14px;` +
     `background:#000;border-radius:2px;overflow:hidden;cursor:ew-resize">` +
-    `<span data-lvl style="position:absolute;left:0;top:0;height:100%;width:0;background:#3c5"></span>` +
+    // Born GREY, the same colour beat() paints when the gate is shut. It used to
+      // be green — a colour nothing ever repainted, so it existed only until the
+      // first animation frame and meant nothing (R, 2026-08-09: "what does the
+      // green bar mean now?"). A colour that appears for one frame and never
+      // returns is worse than no colour.
+      `<span data-lvl style="position:absolute;left:0;top:0;height:100%;width:0;background:#456"></span>` +
     // TWO MARKS, because there are two different facts and I wrongly made them one
     // element (R, 2026-08-09: "I can't grab where the bar actually is, and I have
     // to move my cursor farther than the bar moves"). The HANDLE is where you set
@@ -780,7 +791,11 @@ function micFloorRow() {
     // the gate opens right now, which moves with the room and is not draggable.
     // Drawing the setting at the live threshold's position meant dragging the full
     // width moved the mark 27%.
-    `<span data-thr style="position:absolute;top:0;height:100%;width:2px;background:#9f9;` +
+    // AMBER, not green. This line marks the LIMIT a sound has to clear, and green
+    // reads as "you're fine" — the opposite of what a threshold says. The BAR
+    // turning blue is the "you are being heard" signal; the line is only where
+    // that starts.
+    `<span data-thr style="position:absolute;top:0;height:100%;width:2px;background:#fa4;` +
     `opacity:.55" title="where the gate opens right now — moves with the room"></span>` +
     `<span data-handle style="position:absolute;top:-2px;height:18px;width:3px;background:#fff;` +
     `border-radius:2px" title="drag to set sensitivity"></span>` +
@@ -875,6 +890,11 @@ function paint(body) {
       try { await toggleMic(CONFIG.name); } catch (e) { report('mic toggle', e); }
       paint();
     }));
+    // Sensitivity belongs WITH the mic, not four rows below it (R, 2026-08-09).
+    // It is the microphone's one setting, and it is only meaningful while the
+    // mic is on — reading it next to the switch it modifies is the difference
+    // between a setting and a stray slider.
+  body_.append(micFloorRow());
 
   // 'hear voices' is what you HEAR — the same bit the 🎧 glyph toggles, so
   // the two controls can never disagree about the world you are in. (Field
@@ -892,7 +912,6 @@ function paint(body) {
     body_.append(slider(cat, label, hint,
       cat === 'world' ? p.volWorld : cat === 'tts' ? p.volTts : p.volVoices));
   }
-  body_.append(micFloorRow());
   body_.append(ttsRow());
   body_.append(checkRow('speech-to-text',
     'sends your mic audio to your browser vendor’s cloud to transcribe',
