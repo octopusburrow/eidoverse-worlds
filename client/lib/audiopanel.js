@@ -842,6 +842,7 @@ function micFloorRow() {
   };
   meter.onpointerdown = (ev) => { meter.setPointerCapture(ev.pointerId); setFromX(ev); };
   meter.onpointermove = (ev) => { if (meter.hasPointerCapture?.(ev.pointerId)) setFromX(ev); };
+  let _shown = 0;
   const beat = () => {
     if (!row.isConnected) return;
     // 🔴 DRAW THE THRESHOLD THE GATE ACTUALLY USES. The marker sat at
@@ -859,7 +860,18 @@ function micFloorRow() {
     // coordinate system by construction — the thing that was wrong every
     // previous time. The marker no longer moves on its own; the level moves
     // past it, which is what makes it draggable.
-    lvl.style.width = `${meterPos(level) * 100}%`;
+    // SMOOTHED FOR THE EYE ONLY. R: "average out the waveform bar a little so it's
+    // not jumping around so much." An RMS read every frame is genuinely that jumpy
+    // — speech is spiky at 60Hz. Classic meter ballistics: fast attack so a peak is
+    // not hidden, slow release so the bar settles instead of strobing.
+    //
+    // 🔴 The GATE still sees the raw level. Smoothing the input to a threshold
+    // comparison would round off exactly the transients the gate exists to catch,
+    // and would put the bar and the gate back in disagreement — this control's
+    // entire history. Display smoothing, nothing else.
+    const target = meterPos(level);
+    _shown += (target - _shown) * (target > _shown ? 0.5 : 0.12);
+    lvl.style.width = `${_shown * 100}%`;
     handle.style.left = `calc(${meterPos(gateThreshold()) * 100}% - 1px)`;
     // 🔴 COLOUR BY GATE STATE. My dB rewrite replaced the block this line lived in
     // and silently dropped it, so the bar sat dark gold forever — R: "right now

@@ -48,7 +48,14 @@ import { report } from './core.js';
 // tail, and the 700ms hang-time runs BEFORE the fade even starts, so a pause
 // mid-sentence never reaches it. Attack always faster than release: opening late
 // loses a consonant, closing early cuts a word in half.
-const ATTACK_TAU = 0.02;
+// 🔴 R: "lower the gate time to start capturing? The first syllable sounds a
+// little chopped off." Two things were eating the attack and only one was this
+// constant: the 40ms TICK is a floor on how fast the gate can react at all, so
+// the true worst case was tick + envelope. Tick is 20ms now (below the ~30ms
+// where a missing onset becomes audible) and tau is 0.008s — ~95% open in 24ms,
+// so worst case ~44ms instead of ~160ms. A plosive is ~20-40ms, so this is the
+// difference between "puh" and "uh".
+const ATTACK_TAU = 0.008;
 const RELEASE_TAU = 0.12;
 
 let _ctx = null, _src = null, _gain = null, _dest = null, _timer = null;

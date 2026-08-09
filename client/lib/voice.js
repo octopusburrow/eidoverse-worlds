@@ -541,6 +541,8 @@ export async function toggleMic(name) {
 // their own, so we supply it (Mica, #62 review).
 let _peerGen = 0;
 let _onsetTimer = null, _above = false, _lastOnset = 0, _openUntil = 0;
+// When this open began, and whether it has been announced — see onsetTick.
+let _openedAt = 0, _announced = false;
 // ADAPTIVE FLOOR. R, 2026-08-09 mid-call: "lol mic sensitivity still needs
 // work" — the 🎙 indicator fired on nothing and missed real speech.
 //
@@ -625,9 +627,19 @@ function onsetTick() {
   const now = Date.now();
   if (level >= on) {
     _openUntil = now + 700;               // hang-time: see gateAudio()
-    if (!_above) {
-      _above = true;
-      if (now - _lastOnset > 1500) { _lastOnset = now; sendTyping(null, 'mic'); }
+    if (!_above) { _above = true; _openedAt = now; _announced = false; }
+    // 🔴 THE PILL AND THE AUDIO MUST AGREE. R: "sometimes I can see the TTS voice
+    // threshold getting triggered (pill over the head) without hearing anything
+    // through hear-myself — these should have the exact same gate."
+    //
+    // They shared the threshold but not the OBSERVABLE. The pill fired the instant
+    // `_above` flipped; the audio rides an envelope, so a single-tick spike (a
+    // cough, a key) trips the flag and is nearly inaudible before the gate shuts.
+    // Announce only once the gate has been open long enough to have actually
+    // PASSED audio — one envelope's worth. The pill then means "the room heard
+    // something", which is what a pill over your head claims.
+    if (!_announced && now - _openedAt >= 60 && now - _lastOnset > 1500) {
+      _announced = true; _lastOnset = now; sendTyping(null, 'mic');
     }
   } else if (_above && level < off && now > _openUntil) _above = false;
   gateAudio(now);
@@ -692,7 +704,7 @@ function startOnsetWatch() {
   // syllable now that this gates audio. 120ms removes an audible chunk of a
   // word's attack; 40ms is under the threshold where a missing onset is
   // perceptible, and the work per tick is one FFT read.
-  _onsetTimer = setInterval(onsetTick, 40);
+  _onsetTimer = setInterval(onsetTick, 20);
 }
 function stopOnsetWatch() {
   if (_onsetTimer) { clearInterval(_onsetTimer); _onsetTimer = null; }
