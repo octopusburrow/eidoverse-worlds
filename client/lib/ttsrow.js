@@ -56,9 +56,13 @@ async function collectVoices() {
   if (_pending) {
     out.unshift({
       id: '__pending',
-      name: `${_pending.have} — needs its ${_pending.want}`,
+      // AN INSTRUCTION, NOT A DIAGNOSIS. R: "I would make the failure retry text
+      // say 'select the .onnx.json.' Make it very clear what the user needs to
+      // do." "needs its .onnx.json" describes a state; "select the .onnx.json"
+      // is the next action, which is the only thing a stuck person wants.
+      name: `select the ${_pending.want} for ${_pending.have}`,
       dim: true,
-      note: `click to pick the matching ${_pending.want} for ${_pending.have}`,
+      note: `you picked ${_pending.have}; a Piper voice also needs its ${_pending.want}. Click to choose it.`,
     });
   }
   return out;
@@ -168,7 +172,7 @@ export function ttsSection(host, onPaint = () => {}) {
       if (!matchEngine(files)) {
         // Still not a pair — keep the row rather than dropping back to nothing.
         _pending = { ..._pending, handles, files };
-        _busy = `still needs a ${want}`;
+        _busy = `that was not a ${want} — try again`;
         build();
         return;
       }
@@ -260,7 +264,11 @@ export function ttsSection(host, onPaint = () => {}) {
       `<input type="checkbox" ${isTtsEnabled() ? 'checked' : ''} ` +
       `title="speak with the voice marked below"${ttsAvailable() ? '' : ' disabled'}>` +
       `<span class="sp-note">` +
-      `${_busy ? _busy : live ? ttsVoiceName() : ttsAvailable() ? 'ready' : 'add a voice below'}</span>` +
+      // THE NOTE SAYS ONE THING: what is loading, or what is loaded. Not what to
+      // do next — the rows below ARE what to do next, and a note pointing at them
+      // was the second "add a voice below" R found. Empty when there is nothing to
+      // report: a row with nothing to say should be quiet.
+      `${_busy || (live ? ttsVoiceName() : ttsAvailable() ? 'ready' : '')}</span>` +
       `</span>`;
     head.querySelector('input').onchange = (e) => {
       setTtsEnabled(e.target.checked);

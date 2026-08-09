@@ -30,7 +30,6 @@ const ROW = `
    — it grows to about four rows and only then scrolls. */
 .vl-pane { display: flex; flex-direction: column; gap: 2px; max-height: 88px;
   overflow-y: auto; overscroll-behavior: contain; }
-.vl-empty { opacity: .45; font-style: italic; padding: 2px 4px; }
 .vl-row { display: flex; align-items: center; gap: 6px; padding: 2px 4px;
   border-radius: 3px; cursor: pointer; }
 .vl-row:hover { background: #2a2a2a; }
@@ -72,14 +71,11 @@ export function renderVoiceList(host, { items, selected, on, busy }) {
   pane.className = 'vl-pane';
   host.appendChild(pane);
 
-  if (!items.length) {
-    // An empty list should say what to do, in the list, where the voices will
-    // appear — not as a note somewhere else that the eye has to find.
-    const empty = document.createElement('div');
-    empty.className = 'vl-empty';
-    empty.textContent = 'add a voice below';
-    pane.appendChild(empty);
-  }
+  // NO EMPTY-STATE ROW. R: "you have 'add a voice below' twice now in a table
+  // with no options. Maybe just the add buttons are sufficient." Right — the two
+  // "+ add" rows below already say what to do, and a placeholder pointing AT
+  // them is a caption for a sign. An empty pane collapses to nothing and the
+  // verbs stand alone, which is the whole empty state.
 
   for (const it of items) {
     const row = document.createElement('div');
@@ -138,9 +134,15 @@ export function renderVoiceList(host, { items, selected, on, busy }) {
   // running service, and calling both "voice" is what made the old field ask for
   // a file and get an address (R, 2026-08-08: "it looks like some kind of ip
   // string instead of a file path...?").
-  add.textContent = busy ? `+ ${busy}` : '+ add a text-to-speech model…';
+  // 🔴 STATUS LIVES IN EXACTLY ONE PLACE — the header note. This row used to echo
+  // `busy` too, so "preparing voice…" appeared twice at once (R: "the 'preparing
+  // voice' message repeats twice, once in the add line and once in the checkmark
+  // bool line"). A verb row should always read as the verb; it goes quiet while
+  // busy rather than becoming a second status display.
+  add.textContent = '+ add a text-to-speech model…';
   add.title = 'a Piper .onnx model and its matching .onnx.json, from this computer';
-  if (!busy) {
+  if (busy) { add.style.opacity = '.3'; add.style.pointerEvents = 'none'; }
+  else {
     add.onclick = () => on.addFile?.();
     add.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); on.addFile?.(); } };
   }
