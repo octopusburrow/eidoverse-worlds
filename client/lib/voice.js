@@ -565,7 +565,14 @@ let _blocks = new Array(6).fill(Infinity), _blockIdx = 0, _blocksFilled = 0,
     _blockMin = Infinity, _blockStart = 0;
 function onsetTick() {
   const level = micAnalyserLevel();
-  if (level <= 0) return;                 // muted or no mic: do not learn silence
+  // 🔴 DRIVE THE GATE BEFORE ANY EARLY RETURN. Both of the bails below (muted /
+  // silent, and the settle window) used to skip gateAudio() entirely — so the
+  // gain simply KEPT ITS LAST VALUE. If the gate happened to be open when you
+  // stopped talking into silence, or during the first second after unmuting, it
+  // stayed open and the monitor played straight through: R, twice, "hear myself
+  // isn't obeying the mic sensitivity". A control loop that skips its output
+  // stage is not a control loop.
+  if (level <= 0) { gateAudio(Date.now()); return; }   // muted: close, do not learn
 
   // LEARN BEFORE JUDGING. The floor starts cold at 0.01, so in a loud room the
   // first second reads as "way above the floor" and fires the 🎙 at the room
@@ -574,7 +581,13 @@ function onsetTick() {
   // every remaining false trigger in this window. Spend the first ~1s measuring
   // only. Erring here is free: nobody speaks in the first tick after unmuting,
   // and a missed onset costs an icon, not audio (audio always flows).
-  if (_settle < 8) { _settle++; const a0 = level < _noise ? 0.3 : 0.5; _noise += (level - _noise) * a0; return; }
+  if (_settle < 8) {
+    _settle++;
+    const a0 = level < _noise ? 0.3 : 0.5;
+    _noise += (level - _noise) * a0;
+    gateAudio(Date.now());               // measuring, but still CLOSED — not frozen
+    return;
+  }
 
   // NOISE FLOOR: minimum-of-block-minima, ported from BasisVR
   // (BasisNoiseFloorTracker, MIT — R: "I'll bet money BasisVR already solved

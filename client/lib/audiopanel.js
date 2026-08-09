@@ -782,7 +782,7 @@ function micFloorRow() {
       // first animation frame and meant nothing (R, 2026-08-09: "what does the
       // green bar mean now?"). A colour that appears for one frame and never
       // returns is worse than no colour.
-      `<span data-lvl style="position:absolute;left:0;top:0;height:100%;width:0;background:#456"></span>` +
+      `<span data-lvl style="position:absolute;left:0;top:0;height:100%;width:0;background:#6b5420"></span>` +
       // ONE MARK. R: "why an amber and a white bar? Why not just one? VRChat only
       // has one and no one seems to get confused about this." She is right, and
       // checking BasisVR settled it — their threshold slider is buried under an
@@ -796,8 +796,18 @@ function micFloorRow() {
       // it cost a colour, a legend, and this conversation. The bar going blue
       // already says "you are being heard", which is the only feedback the
       // setting needs.
+      // 🔴 The handle needs a dark outline or it DISAPPEARS at the one moment it
+      // matters. White on bright gold is 1.4:1 contrast — and the bar goes
+      // bright exactly when it crosses the handle, so without this the marker
+      // vanishes precisely as you are watching whether you crossed it. The
+      // shadow costs nothing on the dark side (white on dark gold is 7.2:1).
       `<span data-handle style="position:absolute;top:0;height:100%;width:2px;background:#fff;` +
-      `opacity:.8" title="drag to set sensitivity"></span>` +
+      `box-shadow:0 0 0 1px rgba(0,0,0,.55)" title="drag to set sensitivity"></span>` +
+      // 🔴 CLOSE THE METER. I dropped this tag when removing the amber mark, so
+      // the readout became a child of the meter — inside a position:relative box
+      // it stopped sitting after the bar, which is why R asked why I had moved
+      // it. I had not; I had broken the markup.
+      `</span>` +
       `<span data-out style="min-width:34px;text-align:right">${Math.round((micFloor() / 0.2) * 100)}%</span>`;
   const meter = row.querySelector('[data-meter]');
   const out = row.querySelector('[data-out]');
@@ -843,9 +853,10 @@ function micFloorRow() {
     const level = g.level;
     lvl.style.width = `${Math.min(100, (level / FS) * 100)}%`;
     // (no threshold mark: the bar going blue IS the feedback)
-    // Bright while the gate is OPEN, so the bar answers "am I being transmitted
-    // right now" rather than merely "is there sound".
-    lvl.style.background = g.speaking ? '#6cf' : '#456';
+    // Bright gold while the gate is OPEN, dark gold while it is shut — so the
+    // bar answers "am I being transmitted right now" rather than merely "is
+    // there sound", in the same colour the mic icon uses for the same fact.
+    lvl.style.background = g.speaking ? '#ffd66b' : '#6b5420';
     requestAnimationFrame(beat);
   };
   requestAnimationFrame(beat);
