@@ -31,7 +31,7 @@ import {
   hasGhost, hasSelection, toggleEditMode, isEditing,
 } from './lib/build.js';
 import { initConjure } from './lib/conjure.js';
-import { updateAmbient, ambientDebug } from './lib/ambient.js';   // `ambient` comp: world sound that belongs to a place
+import { updateAmbient, ambientDebug, audioState } from './lib/ambient.js';   // `ambient` comp: world sound that belongs to a place
 import { initVoice, micOn, isMuted, micAnalyserLevel, peerLevels,
          voiceDebug, voicePcs, voiceMouthBound, voicePendingReneg } from './lib/voice.js';
 import './lib/mictoggle.js'; // mic + headphone toggles beside the HUD, both off by default
@@ -1230,6 +1230,15 @@ startPrefetch().catch((e) => report('prefetch', e));
 }
 
 globalThis.__ambientDebug = ambientDebug;
+// One command R can paste to answer "why is it silent?" from her own console:
+// context state, how many sources exist, whether the gesture hook is waiting.
+globalThis.__audioState = audioState;
+globalThis.whyIsItSilent = () => {
+  const s = audioState(), a = ambientDebug();
+  console.log('%c[audio] ' + JSON.stringify({ ...s, sources: a }, null, 1),
+    'font-size:14px;color:#6cf');
+  return { ...s, detail: a };
+};
 
 globalThis.EW = {
   me: () => me, remotes, entities, myState, THREE, net, scene, camera, renderer, bus,
