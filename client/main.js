@@ -31,7 +31,8 @@ import {
   hasGhost, hasSelection, toggleEditMode, isEditing,
 } from './lib/build.js';
 import { initConjure } from './lib/conjure.js';
-import { initVoice, micOn, isMuted, micAnalyserLevel, peerLevels } from './lib/voice.js';
+import { initVoice, micOn, isMuted, micAnalyserLevel, peerLevels,
+         voiceDebug, voicePcs, voiceMouthBound, voicePendingReneg } from './lib/voice.js';
 import './lib/mictoggle.js'; // mic + headphone toggles beside the HUD, both off by default
 import { initAudioPanel } from './lib/audiopanel.js';
 import { initSceneGraph, sceneAttach, sceneDetach } from './lib/scenegraph.js';
@@ -1193,6 +1194,11 @@ globalThis.EW = {
   lease: leaseApi,   // the entity-lease surface runtime plugins script against
   mods: modsApi,     // load/run/offer runtime client scripts (🧩)
   bodysim: { engine: bodyEngine, setEngine: setBodyEngine },  // swappable body physics
+  // Field diagnostics. These existed as module exports but were reachable from
+  // NOWHERE — every console recipe handed to a tester in the field was therefore
+  // a guess that could only ReferenceError (R hit this twice on 08-08).
+  voice: { debug: voiceDebug, pcs: voicePcs, mouthBound: voiceMouthBound,
+           pendingReneg: voicePendingReneg, micOn, isMuted },
 };
 
 } // end of the normal-boot branch (?mintthumbs takes the path above)
