@@ -23,6 +23,9 @@ import { report } from './core.js';
 // against it. Null when nothing is loaded — which is a real state, not an error.
 let _selected = null;
 let _busy = null;          // a phase string while loading, else null
+// A pick that is missing its other half — kept so it can be resumed rather than
+// discarded. See addFile().
+let _pending = null;
 
 /** Everything we know how to speak with: remembered files + this session's
  *  endpoints. Kept here rather than in the list so the list stays a renderer. */
@@ -48,6 +51,16 @@ async function collectVoices() {
   for (const ep of endpoints()) {
     out.push({ id: `ep:${ep}`, name: ep, note: `speech server at ${ep}` });
   }
+  // The half-finished pick, if there is one — first, because it is the thing
+  // asking for attention.
+  if (_pending) {
+    out.unshift({
+      id: '__pending',
+      name: `${_pending.have} — needs its ${_pending.want}`,
+      dim: true,
+      note: `click to pick the matching ${_pending.want} for ${_pending.have}`,
+    });
+  }
   return out;
 }
 
@@ -67,6 +80,9 @@ export function ttsSection(host, onPaint = () => {}) {
   const repaint = () => { build(); onPaint(); };
 
   async function pick(id) {
+    // Resuming a half-finished import: ask only for the part that is missing,
+    // keeping the file already chosen.
+    if (id === '__pending') return resumePending();
     if (id === _selected && ttsAvailable()) return;    // already live
     _busy = 'loading…'; build();
     try {
@@ -97,6 +113,7 @@ export function ttsSection(host, onPaint = () => {}) {
   }
 
   async function remove(id) {
+    if (id === '__pending') { _pending = null; repaint(); return; }
     if (id.startsWith('ep:')) {
       saveEndpoints(endpoints().filter((e) => e !== id.slice(3)));
     } else {
@@ -107,6 +124,59 @@ export function ttsSection(host, onPaint = () => {}) {
     // whose entry is gone would be state the UI cannot show.
     if (id === _selected) { setTtsSource(null); setTtsEnabled(false); _selected = null; }
     repaint();
+  }
+
+  /** Finish an import once both halves are in hand. Shared by addFile() and
+   *  resumePending() so a resumed import cannot behave differently from a
+   *  first-try one — two paths to the same outcome is how this panel has been
+   *  drifting all day. */
+  async function finishImport(handles, files) {
+    const { loadFromFiles } = await import('./voiceengines.js');
+    await import('./engines.js');
+    const shown = (files.find((f) => /\.onnx$/i.test(f.name)) || files[0])?.name || 'voice';
+    const name = shown.replace(/\.onnx$/i, '');
+    _busy = `loading ${name}…`; build();
+    await loadFromFiles(files, (p) => { _busy = p.text || p.phase || `loading ${name}…`; build(); });
+    const id = `file:${name}`;
+    try {
+      const { rememberVoice, canRemember } = await import('./voicestore.js');
+      if (canRemember()) await rememberVoice(id, name, handles);
+    } catch (e) { console.warn('[voice] not remembered:', e); }
+    _pending = null;
+    _selected = id;
+    setTtsEnabled(true);
+    _busy = null;
+    repaint();
+  }
+
+  /** Ask again for the missing half of a partial pick. */
+  async function resumePending() {
+    if (!_pending || !window.showOpenFilePicker) return;
+    const { have, want } = _pending;
+    try {
+      const more = await window.showOpenFilePicker({
+        multiple: true,
+        types: [{ description: `Matching ${want} for ${have}`,
+                  accept: want === '.onnx' ? { 'application/octet-stream': ['.onnx'] }
+                                           : { 'application/json': ['.json'] } }],
+      });
+      if (!more?.length) return;                       // dismissed again: row stays
+      const handles = [..._pending.handles, ...more];
+      const files = [..._pending.files, ...await Promise.all(more.map((h) => h.getFile()))];
+      const { matchEngine } = await import('./voiceengines.js');
+      await import('./engines.js');
+      if (!matchEngine(files)) {
+        // Still not a pair — keep the row rather than dropping back to nothing.
+        _pending = { ..._pending, handles, files };
+        _busy = `still needs a ${want}`;
+        build();
+        return;
+      }
+      await finishImport(handles, files);
+    } catch (e) {
+      if (e?.name === 'AbortError') return;            // dismissed: row stays, silently
+      report('resume voice import', e);
+    }
   }
 
   async function addFile() {
@@ -140,22 +210,25 @@ export function ttsSection(host, onPaint = () => {}) {
         if (more?.length) {
           handles = [...handles, ...more];
           files = [...files, ...await Promise.all(more.map((h) => h.getFile()))];
+        } else {
+          // 🔴 A HALF-FINISHED IMPORT BECOMES A ROW, NOT A DISAPPEARING MESSAGE.
+          // R: "I clicked close on the second panel to see what would happen and
+          // the error telling you what to do didn't last long before reverting."
+          // Right — the instruction was a toast on a timer, so dismissing the
+          // dialog left you with nothing to click and nothing to read. Worse,
+          // the .onnx you already chose was thrown away.
+          //
+          // Now the partial pick is kept and listed: click it to be asked for
+          // the missing half again. State that can be resumed should live in
+          // the list, where it is visible until you act on it, not in a message
+          // that expires.
+          _pending = { handles, files, have, want };
+          _busy = null;
+          repaint();
+          return;
         }
       }
-      const shown = (files.find((f) => /\.onnx$/i.test(f.name)) || files[0])?.name || 'voice';
-      const name = shown.replace(/\.onnx$/i, '');
-      _busy = `loading ${name}…`; build();
-      await loadFromFiles(files, (p) => { _busy = p.text || p.phase || `loading ${name}…`; build(); });
-
-      const id = `file:${name}`;
-      try {
-        const { rememberVoice, canRemember } = await import('./voicestore.js');
-        if (canRemember()) await rememberVoice(id, name, handles);
-      } catch (e) { console.warn('[voice] not remembered:', e); }
-      _selected = id;
-      setTtsEnabled(true);
-      _busy = null;
-      repaint();
+      await finishImport(handles, files);
     } catch (e) {
       // An aborted picker is a choice, not an error.
       if (e?.name === 'AbortError') { _busy = null; build(); return; }

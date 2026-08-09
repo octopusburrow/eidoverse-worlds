@@ -24,6 +24,13 @@
 
 const ROW = `
 .vl { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+/* The voices SCROLL, the add-rows do not (R, 2026-08-09: "should the model list
+   get its own little scrolling window pane, just in case people add a lot?").
+   max-height rather than a fixed one, so one voice does not sit in an empty box
+   — it grows to about four rows and only then scrolls. */
+.vl-pane { display: flex; flex-direction: column; gap: 2px; max-height: 88px;
+  overflow-y: auto; overscroll-behavior: contain; }
+.vl-empty { opacity: .45; font-style: italic; padding: 2px 4px; }
 .vl-row { display: flex; align-items: center; gap: 6px; padding: 2px 4px;
   border-radius: 3px; cursor: pointer; }
 .vl-row:hover { background: #2a2a2a; }
@@ -57,6 +64,22 @@ export function renderVoiceList(host, { items, selected, on, busy }) {
   ensureCss();
   host.className = 'vl';
   host.textContent = '';
+
+  // The scrolling part. Only the voices go in here; the "+ add" rows stay below
+  // it, so the thing you click to fix an empty list is never itself scrolled
+  // out of view.
+  const pane = document.createElement('div');
+  pane.className = 'vl-pane';
+  host.appendChild(pane);
+
+  if (!items.length) {
+    // An empty list should say what to do, in the list, where the voices will
+    // appear — not as a note somewhere else that the eye has to find.
+    const empty = document.createElement('div');
+    empty.className = 'vl-empty';
+    empty.textContent = 'add a voice below';
+    pane.appendChild(empty);
+  }
 
   for (const it of items) {
     const row = document.createElement('div');
@@ -98,7 +121,7 @@ export function renderVoiceList(host, { items, selected, on, busy }) {
       // else; without it the × is mouse-only in practice.
       if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); on.remove?.(it.id); }
     };
-    host.appendChild(row);
+    pane.appendChild(row);
   }
 
   // THE VERBS, visibly below the nouns. When the list is empty these are the
