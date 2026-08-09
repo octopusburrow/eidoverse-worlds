@@ -118,12 +118,19 @@ function ensureGenerator() {
 /** Speak text through the registered synthesizer. Silent no-op when TTS is off
  *  or unavailable — callers should not have to branch. */
 export async function speak(text) {
-  if (!isTtsEnabled() || !canSynthesize()) return false;
+  // EVERY REFUSAL SAYS WHY. This function had five silent `return false`
+  // paths, so "nothing came out" looked identical whether TTS was off, the
+  // sender was missing, or the synthesizer returned empty. A whole evening was
+  // spent unable to tell those apart (2026-08-08).
+  if (!isTtsEnabled()) { console.warn(`[voice] speak refused: tts off (enabled=${ttsEnabled} fn=${!!ttsFn})`); return false; }
+  if (!canSynthesize()) { console.warn('[voice] speak refused: no generator sink — is the mic lane open?'); return false; }
+  console.log(`[voice] synthesizing ${text.length} chars…`);
   let out;
   try {
     out = await ttsFn(text);
   } catch (e) { report('tts synthesize', e); return false; }
-  if (!out?.pcm?.length) return false;
+  if (!out?.pcm?.length) { console.warn('[voice] synthesizer returned no pcm'); return false; }
+  console.log(`[voice] got ${out.pcm.length} samples @${out.sampleRate}Hz — feeding sender`);
   const { pcm, sampleRate } = out;
   try {
     ensureGenerator();
@@ -173,7 +180,21 @@ export function sourceIsDead(stream) {
 // apply exactly as they do to a microphone.
 export function speakOwnSays(bus, myId) {
   bus.on('speech', ({ actor, text }) => {
-    if (actor !== myId() || !isTtsEnabled()) return;
+    const mine = actor === myId();
+    if (!mine) return;                       // someone else's say: not ours to voice
+    if (!isTtsEnabled()) { console.warn(`[voice] own say NOT spoken — tts disabled`); return; }
+    console.log(`[voice] own say → speaking: "${String(text).slice(0, 60)}"`);
     void speak(text);
   });
 }
+
+/** THE ONE QUESTION A SILENT VOICE CANNOT ANSWER FROM INSIDE: is the track we
+ *  are feeding the same object the peer connection is sending? speak() can
+ *  return true — synthesized, written, no errors — while the samples pour into
+ *  an orphan generator because the mic lane opened from a different source.
+ *  Every local check still passes and the room hears nothing. This exposes the
+ *  identity so a probe can compare it against the sender's track. */
+export const genTrackInfo = () => (genTrack
+  ? { id: genTrack.id, kind: genTrack.kind, readyState: genTrack.readyState, enabled: genTrack.enabled }
+  : null);
+

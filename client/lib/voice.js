@@ -669,3 +669,21 @@ export function peerLevels() {
   }
   return out;
 }
+
+/** Sender-side truth for probes: what track, if any, each peer is actually
+ *  sending — id, readyState and enabled. Pair it with genTrackInfo() to answer
+ *  "am I feeding the track I am sending?", which no local success check can. */
+export function senderTrackInfo() {
+  const out = [];
+  for (const [id, p] of peers) {
+    for (const s of p.pc.getSenders()) {
+      if (s.track?.kind && s.track.kind !== 'audio') continue;
+      out.push({ peer: id, track: s.track
+        ? { id: s.track.id, readyState: s.track.readyState, enabled: s.track.enabled } : null });
+    }
+  }
+  return { micOn: micOn(), hasStream: !!micStream,
+    localTracks: micStream ? micStream.getTracks().map((t) => ({ id: t.id, readyState: t.readyState, enabled: t.enabled })) : [],
+    senders: out };
+}
+

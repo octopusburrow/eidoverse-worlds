@@ -82,13 +82,27 @@ function ttsRow() {
   const row = document.createElement('div');
   row.className = 'sp-row';
   const agentVoice = ttsAvailable() && !ttsVoiceName().startsWith('endpoint:');
+  // THE FIELD WANTS AN ADDRESS, NOT A FILE (R, 2026-08-08: "it looks like some
+  // kind of ip string instead of a file path...?"). It is a running synthesizer
+  // to ASK for audio — a browser cannot load a .onnx voice model directly, so
+  // Piper runs as a service and we talk to it. The old label said "TTS voice",
+  // which next to a text box reads as "name your voice"; it now says what it
+  // takes. And the checkbox was `disabled` until a source existed, so ticking
+  // it before connecting did nothing with only a tooltip to explain — the
+  // second half of the same confusion.
   const hint = agentVoice
     ? `synthesized voice: ${ttsVoiceName()} — set by this body's harness`
-    : 'point at a synthesizer you run yourself (ws:// or http://). Nothing is ' +
-      'downloaded from this server and nothing is uploaded from your machine.';
+    : 'address of a synthesizer you run yourself (ws:// or http://) — not a file. ' +
+      'Nothing is downloaded from this server and nothing is uploaded from your machine.';
+  // A DISABLED CONTROL MUST OFFER A WAY FORWARD. Without a synthesizer the box
+  // is dead and the only explanation was a tooltip, so it reads as broken
+  // rather than as "not yet configured" (R, 2026-08-08: "the tick box doesn't
+  // work"). The note beside it now says what to do, in the field's own terms.
+  const why = ttsAvailable() ? hint : 'no synthesizer yet — put its address in the box →';
   row.innerHTML =
-    `<input type="checkbox" ${isTtsEnabled() ? 'checked' : ''} ${ttsAvailable() ? '' : 'disabled'} title="${hint}">` +
-    `<span class="sp-label" title="${hint}">TTS voice</span>` +
+    `<input type="checkbox" ${isTtsEnabled() ? 'checked' : ''} ${ttsAvailable() ? '' : 'disabled'} title="${why}">` +
+    `<span class="sp-label" title="${why}" style="${ttsAvailable() ? '' : 'opacity:.5'}">` +
+    `${agentVoice ? 'TTS voice' : 'TTS endpoint'}</span>` +
     (agentVoice
       ? `<span style="flex:1;opacity:.6">${ttsVoiceName()}</span>`
       : `<input type="text" placeholder="ws://127.0.0.1:8927  (blank = microphone)" ` +
@@ -98,6 +112,7 @@ function ttsRow() {
 
   const box = row.querySelector('input[type=checkbox]');
   const note = row.querySelector('.sp-note');
+  if (!ttsAvailable() && !agentVoice) note.textContent = 'needs an endpoint';
   box.onchange = (e) => { e.target.checked = setTtsEnabled(e.target.checked); };
 
   const url = row.querySelector('input[type=text]');
