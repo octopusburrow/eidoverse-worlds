@@ -77,8 +77,16 @@ export function renderVoiceList(host, { items, selected, on, busy }) {
     const x = document.createElement('button');
     x.className = 'vl-x';
     x.textContent = '×';
-    x.title = `forget ${it.name}`;
+    // "forget … (the file stays on your computer)" — without that clause, a ×
+    // next to a filename reads as "delete this file", which is the one thing it
+    // must never be mistaken for.
+    x.title = `forget ${it.name} — the file stays on your computer`;
     x.setAttribute('aria-label', `forget ${it.name}`);
+    // NO CONFIRM, NO UNDO, deliberately (R, 2026-08-09). Removing forgets an
+    // IndexedDB handle — your .onnx on disk is never touched — so the worst case
+    // is re-picking a file, with the "+" row sitting directly below. A dialog
+    // guarding a one-click mistake costs everyone friction to save one person a
+    // file-open; an undo row is machinery for the same non-loss.
     // stopPropagation, or clicking × also selects the row it is destroying.
     x.onclick = (e) => { e.stopPropagation(); on.remove?.(it.id); };
 
