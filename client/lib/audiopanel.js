@@ -814,9 +814,9 @@ function micFloorRow() {
   const lvl = row.querySelector('[data-lvl]');
   const handle = row.querySelector('[data-handle]');
   const paintThr = () => {
-    // The HANDLE tracks the setting exactly — pointer to mark, 1:1, no scale in
-    // between. The live threshold is a separate element painted by beat().
-    handle.style.left = `calc(${Math.min(100, (micFloor() / 0.2) * 100)}% - 1px)`;
+    // The handle is painted by beat() from the live threshold — see there. It
+    // must not be painted here too: two writers on one element is how the marker
+    // and the colour drifted apart before.
     // 🔴 PERCENT, not a multiplier. R: "I'm not sure I agree with changing it
     // away from a percentage. 0% means it picks up everything, 100% means it
     // technically picks up nothing." She is right — a percentage of the
@@ -857,6 +857,11 @@ function micFloorRow() {
     // bar answers "am I being transmitted right now" rather than merely "is
     // there sound", in the same colour the mic icon uses for the same fact.
     lvl.style.background = g.speaking ? '#ffd66b' : '#6b5420';
+    // The handle moves with the ROOM now, not only with the drag — so it has to
+    // be repainted here rather than only in paintThr(). Same g, so the mark and
+    // the colour can never disagree about where the line is: they are computed
+    // from one value in one frame.
+    handle.style.left = `calc(${Math.min(100, (g.on / FS) * 100)}% - 1px)`;
     requestAnimationFrame(beat);
   };
   requestAnimationFrame(beat);
