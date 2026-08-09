@@ -173,6 +173,37 @@ export const gateOpenness = () => (_gain ? _wanted : 0);
 export const gateGainNow = () => (_gain ? _gain.gain.value : 0);
 export const isGated = () => !!_gain;
 
+// ── MIX A SYNTHESIZED VOICE INTO THE SAME LANE ─────────────────────────────
+// 🔴 R, 2026-08-09: "sometimes I toggle the mic and it seems to be live and
+// sometimes not... fine if I toggle it first before touching TTS, and it breaks
+// forever if I touch TTS first."
+//
+// Exact diagnosis. voiceSource() was an EITHER/OR: `if (isTtsEnabled()) return
+// synth-track; else return microphone`. That is an agent-shaped assumption — a
+// synthesizer REPLACES the mic — and it is wrong for a human who has a voice AND
+// wants TTS. Enable TTS first and the mic toggle silently hands the mesh a
+// generator instead of a microphone, forever, with every check reporting healthy.
+//
+// A synth is not a replacement for a mouth; it is another thing that makes sound
+// in the same room. So it mixes in AFTER the gate: your room noise must clear a
+// threshold, but synthesized speech is already the signal and must never be
+// gated by it.
+let _synthSrc = null;
+export function mixSynthTrack(track) {
+  if (!_ctx || !_dest) return false;
+  unmixSynth();
+  if (!track) return false;
+  try {
+    _synthSrc = _ctx.createMediaStreamSource(new MediaStream([track]));
+    _synthSrc.connect(_dest);          // past the gate, deliberately
+    return true;
+  } catch (e) { report('mix synth', e); _synthSrc = null; return false; }
+}
+export function unmixSynth() {
+  try { _synthSrc?.disconnect(); } catch { /* already gone */ }
+  _synthSrc = null;
+}
+
 /** Detach the DEVICE from the lane, keeping the lane itself alive.
  *
  *  🔴 This is the one that matters for reconnect cost. The GainNode and the

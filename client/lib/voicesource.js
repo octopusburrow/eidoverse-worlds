@@ -86,7 +86,21 @@ export function setTtsSource(fn, name = 'TTS') {
 /** The audio panel's toggle. Humans leave this off and use a mic; an agent
  *  turns it on once its source is registered. */
 export function setTtsEnabled(on) {
+  const was = ttsEnabled;
   ttsEnabled = !!on && !!ttsFn;
+  // 🔴 EITHER ORDER MUST WORK. voiceSource() mixes the synth in when the mic
+  // opens — but enabling TTS AFTER the mic is already live used to just set a
+  // flag, so nothing was ever connected and speech went nowhere. That is the
+  // mirror of the bug this fixes, and shipping only one direction would be the
+  // asymmetric repair this codebase keeps producing. Wire (or unwire) it here
+  // too, so mic-then-TTS and TTS-then-mic reach the same place.
+  if (ttsEnabled !== was && typeof window !== 'undefined') {
+    import('./micgate.js').then((m) => {
+      if (!m.isGated?.()) return;              // no lane yet; voiceSource will do it
+      if (ttsEnabled && canSynthesize()) { startPacer(); m.mixSynthTrack(ensureGenerator()); }
+      else m.unmixSynth();
+    }).catch(() => {});
+  }
   return ttsEnabled;
 }
 
@@ -294,18 +308,41 @@ export const mouthInfo = () => ({ pacing: !!pacer, queued: queue.length, playhea
 /** What voice.js calls instead of getUserMedia. Returns a MediaStream from
  *  whichever source this body uses. */
 export async function voiceSource() {
-  if (isTtsEnabled() && canSynthesize()) {
-    const track = ensureGenerator();
-    // Start pacing the MOMENT the source exists, not at the first utterance: a
-    // microphone is producing silence from the instant it opens, and the mesh
-    // negotiates against a track that is already flowing. Waiting until speak()
-    // means the first utterance is racing the encoder's cold start.
-    startPacer();
-    return new MediaStream([track]);
+  // 🔴 NOT AN EITHER/OR ANY MORE. This used to return the synthesizer INSTEAD of
+  // the microphone whenever TTS was on — an agent-shaped assumption (a synth
+  // replaces a mouth) that silently broke every human who enabled TTS before
+  // opening their mic: the mesh got a generator, forever, and every check
+  // reported healthy (R, 2026-08-09).
+  //
+  // A body has ONE mic. If this machine has no microphone at all — an agent —
+  // the generator IS the source. Otherwise the mic is the source and synthesized
+  // speech is MIXED into the same lane past the gate (see micgate.mixSynthTrack),
+  // because a synth is not a replacement for a mouth; it is another thing making
+  // sound in the same room.
+  try {
+    const mic = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true },
+    });
+    if (isTtsEnabled() && canSynthesize()) {
+      // Pace from the moment the source exists, not the first utterance: a mic
+      // produces silence continuously, and the mesh negotiates against a track
+      // that is already flowing.
+      const track = ensureGenerator();
+      startPacer();
+      import('./micgate.js').then((m) => m.mixSynthTrack(track)).catch(() => {});
+    }
+    return mic;
+  } catch (e) {
+    // No microphone, or permission refused. If we can synthesize, that is the
+    // whole voice — this is the agent path, and the path a human takes when they
+    // have no mic but still want to be heard.
+    if (isTtsEnabled() && canSynthesize()) {
+      const track = ensureGenerator();
+      startPacer();
+      return new MediaStream([track]);
+    }
+    throw e;
   }
-  return navigator.mediaDevices.getUserMedia({
-    audio: { echoCancellation: true, noiseSuppression: true },
-  });
 }
 
 /** True when the current source's track has died and needs re-making. The
