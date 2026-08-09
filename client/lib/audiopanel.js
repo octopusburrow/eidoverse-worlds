@@ -100,9 +100,14 @@ function ttsRow() {
   // is dead and the only explanation was a tooltip, so it reads as broken
   // rather than as "not yet configured" (R, 2026-08-08: "the tick box doesn't
   // work"). The note beside it now says what to do, in the field's own terms.
-  const why = ttsAvailable() ? hint : 'no synthesizer yet — put its address in the box →';
+  const why = ttsAvailable() ? hint
+    : 'tick to speak with the voice shown — it loads on first use';
   row.innerHTML =
-    `<input type="checkbox" ${isTtsEnabled() ? 'checked' : ''} ${ttsAvailable() ? '' : 'disabled'} title="${why}">` +
+    // Never rendered disabled. The dropdown shows what WOULD go live; ticking
+    // this is how you make it live, and loads it if needed. A switch that is
+    // dead until you have already configured the thing it switches on is a
+    // switch you cannot use for its one purpose.
+    `<input type="checkbox" ${isTtsEnabled() ? 'checked' : ''} title="${why}">` +
     // The label tracks whether the voice is LIVE, not merely whether one could
     // exist: full white when the checkbox is on and a synthesizer is present,
     // dimmed otherwise. R asked for exactly this — a row that is off should read
@@ -127,15 +132,21 @@ function ttsRow() {
           // control for it (R, 2026-08-09: "the dropdown says 'custom endpoint'
           // but I can't point it anywhere").
           ? `<select style="flex:1;min-width:0;background:#222;color:inherit;border:1px solid #444;padding:1px 4px">` +
-            // Name what you GET, not what is missing. "microphone (no
-            // synthesized voice)" described an absence, so the row read as
-            // broken-until-configured. This is a valid, working choice — your
-            // own voice — and saying so removes the pull to tick a box that has
-            // nothing behind it. (setTtsEnabled() already refuses to enable
-            // without a source, so the invalid state R worried about cannot be
-            // reached; this fixes the part that was actually reachable: the
-            // impression that no valid option was selected.)
-            `<option value="">your microphone (no synthesis)</option>` +
+            // NO "microphone" entry. R, 2026-08-09: "I'm not thrilled with
+            // 'microphone' being an option in this list at all... just showing
+            // default/last selected and making the checkbox always check-able
+            // might be best of all — it's showing you what WOULD go live IF the
+            // checkbox were ticked."
+            //
+            // She is describing a cleaner division than the one I built: the
+            // DROPDOWN answers "which voice", the CHECKBOX answers "on or off".
+            // Putting "microphone (no synthesis)" in the list made the dropdown
+            // a second off-switch, so two controls fought over one job and the
+            // panel could show a selection that meant "no selection".
+            //
+            // The list now holds only real voices. Off is the checkbox, and
+            // only the checkbox.
+            `<option value="__default">browser speech (built in)</option>` +
             `<option value="__loading">loading voices…</option>` +
             `<option value="__file">voice file on this computer…</option>` +
             `<option value="__custom">custom endpoint…</option></select>` +
@@ -173,16 +184,60 @@ function ttsRow() {
     sel.value = '__loaded';
   };
 
+  // ONE place that turns a dropdown key into a live voice, so the checkbox and
+  // the <select> cannot drift into disagreeing about what "selected" means.
+  // Returns whether a voice is now installed.
+  async function activate(key) {
+    const note2 = row.querySelector('.sp-note');
+    if (key === '__loaded') return ttsAvailable();
+    if (key === '__default') {
+      const { speechSynthesis } = window;
+      if (!speechSynthesis) { if (note2) note2.textContent = 'no browser speech here'; return false; }
+      // Browser speech renders to the SPEAKERS and cannot be put on the mic
+      // lane, so peers will not hear it. Say so in the label rather than
+      // letting it look like a working transmitted voice.
+      setTtsSource(async (text) => {
+        try { speechSynthesis.speak(new SpeechSynthesisUtterance(text)); } catch { /* best effort */ }
+        return { pcm: new Int16Array(0), sampleRate: 22050, localOnly: true };
+      }, 'browser speech (local only — peers will not hear this)');
+      if (note2) note2.textContent = 'local only';
+      return true;
+    }
+    return false;   // catalog/file keys are handled by their own paths
+  }
+
   const lab = row.querySelector('.sp-label');
   const paintLive = () => {
     if (lab) lab.style.opacity = (ttsAvailable() && isTtsEnabled()) ? '1' : '.45';
   };
-  box.onchange = (e) => { e.target.checked = setTtsEnabled(e.target.checked); paintLive(); };
+  // ALWAYS TICKABLE. The dropdown shows what WOULD go live; the checkbox makes
+  // it live. Previously the box was disabled until a voice happened to be
+  // loaded, which meant the control that turns speech on was dead exactly when
+  // you wanted to turn speech on — you had to know to configure something else
+  // first. Now ticking it loads the selected voice if it is not loaded yet.
+  box.disabled = false;
+  box.onchange = async (e) => {
+    if (!e.target.checked) { setTtsEnabled(false); paintLive(); return; }
+    if (!ttsAvailable()) {
+      // Nothing loaded yet: ticking IS the request to load what is shown.
+      const sel = row.querySelector('select');
+      const ok = await activate(sel ? sel.value : '__default');
+      if (!ok) { e.target.checked = false; paintLive(); return; }
+    }
+    e.target.checked = setTtsEnabled(true);
+    paintLive();
+  };
 
   // ── the voice dropdown ────────────────────────────────────────────────────
   const sel = row.querySelector('select');
   if (sel) {
-    const saved = localStorage.getItem('eido.localVoice') || '';
+    // "default/last selected" — what the dropdown shows when you arrive. A
+    // catalog voice we downloaded before is still there; otherwise browser
+    // speech, which always exists. Never blank, because blank was the state
+    // that read as "nothing selected" (R, 2026-08-09).
+    const saved = localStorage.getItem('eido.localVoice')
+      || localStorage.getItem('eido.ttsChoice')
+      || '__default';
     (async () => {
       try {
         const { suggestedVoices } = await import('./localvoice.js');
@@ -314,9 +369,15 @@ function ttsRow() {
         else note.textContent = 'no address box in this build';
         return;
       }
-      if (!key) {
-        setTtsSource(null); localStorage.removeItem('eido.localVoice');
-        box.checked = false; box.disabled = true; note.textContent = '';
+      // Selecting a voice never turns speech OFF and never disables the box —
+      // that is the checkbox's job alone. Picking browser speech while the row
+      // is live swaps the voice under it; picking it while off just changes
+      // what WOULD go live.
+      if (!key || key === '__default') {
+        localStorage.setItem('eido.ttsChoice', '__default');
+        const ok = await activate('__default');
+        if (ok && isTtsEnabled()) box.checked = setTtsEnabled(true);
+        paintLive();
         return;
       }
       sel.disabled = true;
@@ -345,7 +406,9 @@ function ttsRow() {
       const v = url.value.trim();
       if (!v) {
         setTtsSource(null); localStorage.removeItem('eido.ttsEndpoint');
-        box.checked = false; box.disabled = true; note.textContent = '';
+        // Clearing the address turns the voice off but leaves the box usable —
+        // a control that turns speech on must never be dead when you want it.
+        setTtsSource(null); box.checked = setTtsEnabled(false); note.textContent = ''; paintLive();
         return;
       }
       url.disabled = true; note.textContent = 'connecting…';
@@ -353,7 +416,7 @@ function ttsRow() {
       url.disabled = false;
       // Say WHICH way it failed: an unreachable endpoint and a reachable one
       // that returns nothing are different problems with different fixes.
-      if (!ok) { note.textContent = 'unreachable'; box.disabled = true; box.checked = false; return; }
+      if (!ok) { note.textContent = 'unreachable'; box.checked = setTtsEnabled(false); paintLive(); return; }
       localStorage.setItem('eido.ttsEndpoint', v);
       note.textContent = '';
       box.disabled = false;
