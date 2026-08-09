@@ -1362,6 +1362,28 @@ function serveFrom(base: string, rel: string, cache = false, req?: Request, immu
   // (rig fixes, re-exports) and a 24h-stale avatar is a debugging nightmare
   // (2026-07-22: "sydney's arms are swapped" was three of us looking at three
   // different cached rigs). no-cache = revalidate each load, still cheap.
+  // 🔴 CROSS-ORIGIN ISOLATION, so onnxruntime-web can use its threads.
+  //
+  // Measured 2026-08-09: predict() took 24908ms to synthesize 0.37s of audio —
+  // RTF 67, against Piper's claimed ~0.03. Not a slow model; a broken one. The
+  // cause is that onnxruntime-web ships ONLY -threaded builds, every one of
+  // which needs SharedArrayBuffer, and SharedArrayBuffer requires the page to be
+  // cross-origin isolated. Without these headers ORT falls back to a path some
+  // 2000x slower.
+  //
+  // 🔴 credentialless, NOT require-corp. require-corp refuses every cross-origin
+  // subresource that does not send CORP headers — this client fetches from
+  // orrery.animalabs.ai, gstatic and (in one legacy path) huggingface, and all
+  // three would simply stop loading. credentialless buys isolation by sending
+  // such requests without credentials instead of blocking them, which is exactly
+  // the trade we want: we need no cookies from any of them.
+  //
+  // I raised this theory at 09:00 today and DROPPED it after measuring the
+  // phonemizer, which was fast — without ever measuring inference. The RTF line
+  // is what finally caught it. Measure the thing you suspect, not its neighbour.
+  headers["cross-origin-opener-policy"] = "same-origin";
+  headers["cross-origin-embedder-policy"] = "credentialless";
+
   const hard = cache && !path.endsWith(".vrm");
   headers["cache-control"] = immutable ? "public, max-age=31536000, immutable"
     : hard ? "public, max-age=86400" : cache ? "no-cache" : "no-store";
