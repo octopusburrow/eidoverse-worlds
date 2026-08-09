@@ -99,6 +99,38 @@ export function driveGate(open) {
   } catch { _gain.gain.value = next; }
 }
 
+// ── MONITOR: hear your own lane, exactly as the room hears it ───────────────
+// R, 2026-08-09: "can you feed my own audio lane back to me for this test so I
+// can hear myself?" — the only way to judge whether the gate clips a consonant
+// or trails too long is to hear the GATED signal, not the raw mic.
+//
+// 🔴 Tapped AFTER the gain node, so it carries the gate: when the gate closes,
+// the monitor goes quiet too. A monitor on the raw source would sound perfect
+// while the room heard nothing, which is precisely the confusion this is meant
+// to resolve.
+//
+// 🔴 FEEDBACK: on speakers this WILL howl — mic hears monitor hears mic. Ship it
+// at a low default, and say so in the UI rather than discovering it at volume.
+let _mon = null;
+export function setMonitor(on, level = 0.35) {
+  if (!_ctx || !_gain) return false;
+  if (!on) {
+    if (_mon) { try { _mon.disconnect(); } catch { /* gone */ } _mon = null; }
+    return false;
+  }
+  if (!_mon) {
+    _mon = _ctx.createGain();
+    _gain.connect(_mon);
+    _mon.connect(_ctx.destination);
+  }
+  // setTargetAtTime, not a bare assignment: a step change in a monitor path is
+  // an audible click straight into your ears.
+  try { _mon.gain.setTargetAtTime(level, _ctx.currentTime, 0.02); }
+  catch { _mon.gain.value = level; }
+  return true;
+}
+export const monitoring = () => !!_mon;
+
 /** Is any signal actually reaching the wire right now? The honest answer to
  *  "am I being broadcast", read from the gain itself rather than inferred. */
 export const gateOpenness = () => (_gain ? _gain.gain.value : 0);

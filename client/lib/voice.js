@@ -19,7 +19,8 @@ import { sendRtc, sendTyping } from './net.js';
 import { remotes } from './remotes.js';
 import { micFloor } from './voiceconsent.js';
 import { voiceSource, setGeneratorRebuildHook } from './voicesource.js';
-import { gateStream, driveGate, gateOpenness, release as releaseGate } from './micgate.js';
+import { gateStream, attachSource, detachSource, driveGate, gateOpenness,
+         setMonitor, monitoring, release as releaseGate } from './micgate.js';
 import { audioContext } from './audioctx.js';
 import { myState } from './controller.js';
 import { flashHint } from './ui.js';
@@ -1053,3 +1054,13 @@ export function voiceDiag() {
     wantDirection: wantDirection(), peers: out };
 }
 if (typeof window !== 'undefined') window.voiceDiag = voiceDiag;
+
+
+// Self-monitoring: hear your own GATED lane, exactly as the room hears it.
+// Exposed from voice.js so the panel has one import for everything voice-shaped,
+// and so a monitor can never outlive the mic it is monitoring.
+export function setSelfMonitor(on) {
+  if (on && !micStream) return false;     // nothing to monitor yet
+  return setMonitor(on);
+}
+export const selfMonitoring = () => monitoring();

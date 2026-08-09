@@ -12,15 +12,15 @@
 //   TTS    — synthetic speech specifically, for anyone who wants people but
 //            not narration (or the reverse).
 
-import { makeSection } from './ui.js';
+import { makeSection, flashHint } from './ui.js';
 import { audioPrefs, setVolume, receivingVoice, setReceiveVoice,
   sttConsented, setSttConsent, isHushed, setHush,
   micFloor, setMicFloor } from './voiceconsent.js';
 import { ttsAvailable, ttsVoiceName, isTtsEnabled, setTtsEnabled, setTtsSource } from './voicesource.js';
 import { localVoiceSupported } from './localvoice.js';
-import { report } from './core.js';
+import { report, CONFIG } from './core.js';
 import { setEndpointVoice } from './browservoice.js';
-import { micAnalyserLevel } from './voice.js';
+import { micAnalyserLevel, micOn, toggleMic, setSelfMonitor, selfMonitoring } from './voice.js';
 import { bus } from './core.js';
 
 // The panel's row layout, carried BY THE MODULE. Found live 2026-08-06 (R,
@@ -830,6 +830,39 @@ function paint(body) {
   // because "refuse inbound audio" reads as a second mute to anyone who has
   // not thought about the wire. (Field note: a reader asked what it affords
   // over muting — if the label has to be explained, the label is wrong.)
+  // THE MIC, as a checkbox — the same pairing 'connect to other people's audio'
+  // has with the 🎧 icon (R, 2026-08-09). One truth, two surfaces: the HUD icon
+  // and this row both call toggleMic(), and the 'voice' bus event repaints
+  // whichever one you did not touch.
+  body_.append(checkRow('microphone',
+    'on: your microphone is open and the noise gate decides when you are audible. '
+    + 'Off: the device is released and the recording indicator goes away. '
+    + 'Same control as the 🎙 button in the dock.',
+    micOn(), async () => {
+      // toggleMic owns BOTH directions and the permission prompt. The panel must
+      // not reimplement either, or the two surfaces drift — which is the bug
+      // class this whole panel keeps hitting.
+      try { await toggleMic(CONFIG.name); } catch (e) { report('mic toggle', e); }
+      paint();
+    }));
+
+  // SELF-MONITOR. R: "can you feed my own audio lane back to me for this test so
+  // I can hear myself?" Taps AFTER the gate, so it is exactly what the room
+  // receives — a monitor on the raw mic would sound perfect while everyone else
+  // heard silence, which is the confusion it exists to resolve. Off by default
+  // and deliberately not persisted: it howls on speakers.
+  body_.append(checkRow('hear myself (test)',
+    'plays your own gated microphone back to you, exactly as others receive it — '
+    + 'so you can tell whether the noise gate clips your first word or cuts you '
+    + 'off early. USE HEADPHONES: on speakers this will feed back.',
+    selfMonitoring(), (on) => {
+      // Refusing silently would read as a broken checkbox, and it can only fail
+      // for one reason: there is no mic to monitor.
+      if (on && !setSelfMonitor(true)) flashHint('turn the microphone on first');
+      else if (!on) setSelfMonitor(false);
+      paint();
+    }));
+
   body_.append(checkRow('connect to other people’s audio',
     'on: your machine holds a live connection to each speaker nearby. ' +
     'Off: nothing is sent to you at all — saves bandwidth and CPU in busy ' +
@@ -844,4 +877,6 @@ export function initAudioPanel() {
   // either control moving repaints the other's row — one truth, two surfaces
   bus.on('audio:hush', () => paint());
   bus.on('audio:receive', () => paint());
+  // mic button and mic checkbox are one truth on two surfaces
+  bus.on('voice', () => paint());
 }
