@@ -847,27 +847,12 @@ function paint(body) {
   const body_ = _body;
   body_.innerHTML = '';
   const p = audioPrefs();
-  // 'hear voices' is what you HEAR — the same bit the 🎧 glyph toggles, so
-  // the two controls can never disagree about the world you are in. (Field
-  // report 12:43: toggling the headphone left this row stale, which is two
-  // controls showing two different states while looking like one.) Ticking
-  // it from a fully-revoked state grants consent as well, exactly like the
-  // glyph, so the box is never a dead end.
-  body_.append(checkRow('hear voices',
-    'peers and agent speech — the 🎧 glyph is this same switch',
-    receivingVoice() && !isHushed(), (on) => {
-      if (on) { if (!receivingVoice()) setReceiveVoice(true); setHush(false); }
-      else setHush(true);
-    }));
-  for (const [cat, label, hint] of ROWS) {
-    body_.append(slider(cat, label, hint,
-      cat === 'world' ? p.volWorld : cat === 'tts' ? p.volTts : p.volVoices));
-  }
-  body_.append(micFloorRow());
-  body_.append(ttsRow());
-  body_.append(checkRow('speech-to-text',
-    'sends your mic audio to your browser vendor’s cloud to transcribe',
-    sttConsented(), (on) => setSttConsent(on)));
+  // MIC FIRST. It is the control people reach for most, and it was sitting
+  // below three volume sliders (R, 2026-08-09). Putting it beside 'hear
+  // voices' also pairs the two switches that decide whether you are in the
+  // conversation at all — one for each direction — before any question of
+  // how loud things are.
+
   // The structural act, deliberately last: hush is a gain, this is the
   // connection. Unticking negotiates no inbound media at all — the only row
   // here that is a guarantee rather than a preference. The wording leads with
@@ -890,6 +875,28 @@ function paint(body) {
       try { await toggleMic(CONFIG.name); } catch (e) { report('mic toggle', e); }
       paint();
     }));
+
+  // 'hear voices' is what you HEAR — the same bit the 🎧 glyph toggles, so
+  // the two controls can never disagree about the world you are in. (Field
+  // report 12:43: toggling the headphone left this row stale, which is two
+  // controls showing two different states while looking like one.) Ticking
+  // it from a fully-revoked state grants consent as well, exactly like the
+  // glyph, so the box is never a dead end.
+  body_.append(checkRow('hear voices',
+    'peers and agent speech — the 🎧 glyph is this same switch',
+    receivingVoice() && !isHushed(), (on) => {
+      if (on) { if (!receivingVoice()) setReceiveVoice(true); setHush(false); }
+      else setHush(true);
+    }));
+  for (const [cat, label, hint] of ROWS) {
+    body_.append(slider(cat, label, hint,
+      cat === 'world' ? p.volWorld : cat === 'tts' ? p.volTts : p.volVoices));
+  }
+  body_.append(micFloorRow());
+  body_.append(ttsRow());
+  body_.append(checkRow('speech-to-text',
+    'sends your mic audio to your browser vendor’s cloud to transcribe',
+    sttConsented(), (on) => setSttConsent(on)));
 
   // SELF-MONITOR. R: "can you feed my own audio lane back to me for this test so
   // I can hear myself?" Taps AFTER the gate, so it is exactly what the room
