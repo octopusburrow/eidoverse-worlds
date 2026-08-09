@@ -513,6 +513,9 @@ let _onsetTimer = null, _above = false, _lastOnset = 0, _openUntil = 0;
 // naming an absolute level nobody can reason about.
 let _noise = 0.01;
 let _settle = 0;
+// BasisVR's block tracker: 6 × 0.4s minima. See onsetTick.
+let _blocks = new Array(6).fill(Infinity), _blockIdx = 0, _blocksFilled = 0,
+    _blockMin = Infinity, _blockStart = 0;
 function onsetTick() {
   const level = micAnalyserLevel();
   if (level <= 0) return;                 // muted or no mic: do not learn silence
@@ -526,33 +529,35 @@ function onsetTick() {
   // and a missed onset costs an icon, not audio (audio always flows).
   if (_settle < 8) { _settle++; const a0 = level < _noise ? 0.3 : 0.5; _noise += (level - _noise) * a0; return; }
 
-  // One-sided follower, but the RISE RATE MUST STILL CONVERGE. My first pass
-  // used 0.02, which sounds appropriately cautious and is wrong: against a room
-  // at 0.15 the floor only reaches 0.09 in five seconds, so the gate sits below
-  // the actual noise, `_above` latches true, and NO new onset can ever fire. In
-  // simulation that missed speech in 80 of 200 rooms — and no amount of tuning
-  // the margin fixed it, because the floor, not the margin, was wrong.
-  //
-  // 0.08 up still takes ~2s to absorb a new steady noise (speech is far shorter,
-  // so it cannot drag the floor with it) while converging on any real room well
-  // inside the settle window. Down stays fast: a room going quiet should be
-  // believed immediately.
-  const a = level < _noise ? 0.3 : 0.08;
-  _noise += (level - _noise) * a;
+  // NOISE FLOOR: minimum-of-block-minima, ported from BasisVR
+  // (BasisNoiseFloorTracker, MIT — R: "I'll bet money BasisVR already solved
+  // this"; she was right, and their design is better than the follower I
+  // hand-tuned). 6 blocks × 0.4s: take the quietest RMS in each block, then the
+  // quietest block. The floor therefore tracks the quietest moment in the last
+  // ~2.4s, so SPEECH CAN NEVER RAISE IT — structurally, not by tuning. My
+  // exponential follower could be dragged up by a long utterance and gate the
+  // speaker out mid-sentence; this cannot, and needed no rate constant at all.
+  const nowT = Date.now();
+  if (level < _blockMin) _blockMin = level;
+  if (nowT - _blockStart >= 400) {
+    _blockStart = nowT;
+    _blocks[_blockIdx] = _blockMin;
+    _blockIdx = (_blockIdx + 1) % 6;
+    if (_blocksFilled < 6) _blocksFilled++;
+    _blockMin = Infinity;
+  }
+  _noise = Math.max(1e-5, Math.min(_blockMin, ...(_blocks.slice(0, _blocksFilled))));
 
-  // Margin above the measured floor. 🔴 The obvious mapping (micFloor() × 6)
-  // makes MOST OF THE SLIDER DEAD: the stored range is 0…0.2, speech sits only
-  // ~0.25 RMS above a room, so anything past 0.08 demands more headroom than
-  // speech has and the gate can never open. A control whose top half silently
-  // breaks it is worse than no control — caught by simulating five rooms
-  // (2026-08-09), not by reading.
+  // THRESHOLD IS MULTIPLICATIVE, not additive — also theirs (AutoGateOverNoise
+  // = 2.5). This is the same lesson as "a fixed 0.04 cannot work across mics",
+  // one level up: an ADDITIVE margin is still an absolute number, so it is
+  // wrong at a different gain. `floor × k` scales with the signal and is the
+  // only form that behaves the same on a headset and a laptop array.
   //
-  // So map the WHOLE range onto margins that are all reachable: 0.012 (twitchy,
-  // catches whispers) … 0.14 (firm, ignores a loud room). The old 0.04 default
-  // lands mid-scale, where it behaved well in testing.
-  const margin = 0.012 + Math.min(1, micFloor() / 0.2) * 0.128;
-  const on = _noise + margin;
-  const off = _noise + margin * 0.45;     // hysteresis, so a pause is not a stop
+  // The slider picks k over 1.6…5.0, with 2.5 (their default) mid-scale.
+  const k = 1.6 + Math.min(1, micFloor() / 0.2) * 3.4;
+  const on = _noise * k;
+  const off = _noise * (1 + (k - 1) * 0.6);   // hysteresis in the same units
 
   const now = Date.now();
   if (level >= on) {
@@ -610,7 +615,9 @@ function startOnsetWatch() {
   // erring quiet costs a few false 🎙 in the first second, erring loud costs
   // your first sentence.
   _noise = 0.01;
-  _settle = 0;                            // re-learn the room, then judge
+  _settle = 0;
+  _blocks = new Array(6).fill(Infinity); _blockIdx = 0; _blocksFilled = 0;
+  _blockMin = Infinity; _blockStart = Date.now();                            // re-learn the room, then judge
   // 40ms, not 120: the tick interval is the WORST-CASE CLIP on the first
   // syllable now that this gates audio. 120ms removes an audible chunk of a
   // word's attack; 40ms is under the threshold where a missing onset is
