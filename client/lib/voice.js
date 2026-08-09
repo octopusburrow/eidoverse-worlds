@@ -722,3 +722,45 @@ export function senderTrackInfo() {
     senders: out };
 }
 
+
+// ONE-WAY AUDIO IS A DIRECTION QUESTION, AND NOTHING ELSE COULD ANSWER IT.
+// R, 2026-08-09: Digi could hear her and she could not hear Digi; a full Chrome
+// restart FLIPPED which side was deaf. That flip is the whole diagnosis — a
+// symptom that swaps with join order lives in negotiation, not in the mic. But
+// every check we had (mic on? track live? peer connected?) reports fine on BOTH
+// sides of a one-way link, because each end is individually healthy.
+//
+// What is NOT observable without this: `direction` is the local preference and
+// `currentDirection` is what the WIRE actually agreed. They can disagree — that
+// is precisely what a direction set outside a renegotiation looks like — and
+// only currentDirection explains silence. Also dumps whether our sender has a
+// live track and whether the inbound track is enabled, since a track silenced by
+// a receive-toggle stays enabled=false forever and produces the same symptom.
+//
+// Paste voiceDiag() from both browsers; the asymmetry names the culprit.
+export function voiceDiag() {
+  const out = [];
+  for (const [id, p] of peers.entries()) {
+    const tx = [], rx = [];
+    for (const t of p.pc.getTransceivers?.() ?? []) {
+      const kind = t.receiver?.track?.kind || t.sender?.track?.kind;
+      if (kind && kind !== 'audio') continue;
+      tx.push(`want=${t.direction} wire=${t.currentDirection ?? '—'}`);
+      const st = t.sender?.track, rt = t.receiver?.track;
+      rx.push(`send:${st ? `${st.readyState}/${st.enabled ? 'on' : 'OFF'}` : 'none'}`
+        + ` recv:${rt ? `${rt.readyState}/${rt.enabled ? 'on' : 'OFF'}` : 'none'}`);
+    }
+    out.push({
+      peer: id,
+      signaling: p.pc.signalingState,
+      conn: p.pc.connectionState,
+      ice: p.pc.iceConnectionState,
+      everStable: !!p._everStable,
+      transceivers: tx,
+      tracks: rx,
+    });
+  }
+  return { me: myId, mic: micStream ? 'open' : 'CLOSED',
+    wantDirection: wantDirection(), peers: out };
+}
+if (typeof window !== 'undefined') window.voiceDiag = voiceDiag;
