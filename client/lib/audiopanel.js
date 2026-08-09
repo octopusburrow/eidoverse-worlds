@@ -125,7 +125,9 @@ function ttsRow() {
           ? `<select style="flex:1;min-width:0;background:#222;color:inherit;border:1px solid #444;padding:1px 4px">` +
             `<option value="">microphone (no synthesized voice)</option>` +
             `<option value="__loading">loading voices…</option>` +
+            `<option value="__file">voice file on this computer…</option>` +
             `<option value="__custom">custom endpoint…</option></select>` +
+            `<input type="file" accept=".onnx,.json" multiple style="display:none">` +
             `<input type="text" placeholder="ws://127.0.0.1:8927 or http://host/tts" ` +
             `style="display:none;flex:1;min-width:0;background:#222;color:inherit;border:1px solid #444;padding:1px 4px" ` +
             `title="${hint}">`
@@ -166,6 +168,38 @@ function ttsRow() {
 
     sel.onchange = async () => {
       const key = sel.value;
+      if (key === '__file') {
+        // R, 2026-08-09: "it would be best if the endpoints are file names on a
+        // person's own machine and the engine sets up all the endpoint stuff for
+        // them automatically." Right — a voice you already have on disk should
+        // not require standing up an HTTP server to reach it. Pick the .onnx
+        // (and its .onnx.json) and we register it in-process; nothing listens on
+        // a port, nothing leaves the machine.
+        const fp = row.querySelector('input[type=file]');
+        if (!fp) { note.textContent = 'no file picker in this build'; return; }
+        fp.onchange = async () => {
+          const files = [...(fp.files || [])];
+          const onnx = files.find((f) => f.name.endsWith('.onnx'));
+          const cfg = files.find((f) => f.name.endsWith('.json'));
+          if (!onnx) { note.textContent = 'pick a .onnx voice file'; return; }
+          // The config is not optional to Piper: it carries the sample rate and
+          // phoneme map. Say so plainly instead of failing deep inside the
+          // runtime with something unreadable.
+          if (!cfg) { note.textContent = `also pick ${onnx.name}.json (ctrl-click both)`; return; }
+          sel.disabled = true; note.textContent = 'loading…';
+          try {
+            const { useVoiceFiles } = await import('./localvoice.js');
+            await useVoiceFiles(onnx, cfg);
+            note.textContent = 'ready';
+            box.disabled = false; box.checked = setTtsEnabled(true);
+          } catch (e) {
+            note.textContent = 'failed — see console';
+            report('local voice file', e);
+          } finally { sel.disabled = false; }
+        };
+        fp.click();
+        return;
+      }
       if (key === '__custom') {
         // Reveal the address box and hand it the caret, rather than telling the
         // user to go relaunch with a URL parameter.

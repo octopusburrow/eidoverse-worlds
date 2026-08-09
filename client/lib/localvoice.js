@@ -75,6 +75,58 @@ async function runtime() {
   return engine;
 }
 
+/** Use a Piper voice ALREADY ON THIS COMPUTER — no server, no endpoint, no
+ *  download. R asked for exactly this (2026-08-09): "it would be best if the
+ *  endpoints are file names on a person's own machine and the engine sets up all
+ *  the endpoint stuff for them automatically."
+ *
+ *  The runtime has no public seam for local model bytes — TtsSession always
+ *  resolves a voiceId through PATH_MAP and fetches from HuggingFace. But its
+ *  getBlob() checks an OPFS cache FIRST and only fetches on a miss, keyed by the
+ *  URL's basename. So we seed the cache with the user's own files under the
+ *  names the runtime will look for, and it loads them without a single network
+ *  request. No library patch, no fork — we are using its own cache the way it
+ *  already works.
+ *
+ *  @param onnxFile  the .onnx model  @param cfgFile  its .onnx.json config
+ */
+export async function useVoiceFiles(onnxFile, cfgFile) {
+  if (!navigator.storage?.getDirectory) throw new Error('this browser has no OPFS — cannot load a local voice file');
+  const engine = await runtime();
+
+  // The runtime derives BOTH cache names from one voiceId, and the config name
+  // is always `${model}.json`. Honour that or the config lookup misses and it
+  // silently falls back to the network.
+  const base = onnxFile.name.replace(/\.onnx$/i, '');
+  const voiceId = base;
+  const root = await navigator.storage.getDirectory();
+  const dir = await root.getDirectoryHandle('piper', { create: true });
+  for (const [name, file] of [[`${base}.onnx`, onnxFile], [`${base}.onnx.json`, cfgFile]]) {
+    const h = await dir.getFileHandle(name, { create: true });
+    const w = await h.createWritable();
+    await w.write(await file.arrayBuffer());
+    await w.close();
+  }
+
+  // PATH_MAP is how voiceId becomes a URL. A voice we just invented is not in
+  // it, so add it — the basename is all the cache lookup ends up using.
+  if (engine.PATH_MAP && !engine.PATH_MAP[voiceId]) {
+    try { engine.PATH_MAP[voiceId] = `${base}.onnx`; }
+    catch { throw new Error('runtime PATH_MAP is not extensible in this version'); }
+  }
+
+  const sr = await (async () => {
+    try { return JSON.parse(await cfgFile.text())?.audio?.sample_rate ?? null; } catch { return null; }
+  })();
+
+  setTtsSource(async (text) => {
+    const wav = await engine.predict({ text, voiceId });
+    return decodeWavToPcm(await wav.arrayBuffer());
+  }, `file: ${base}${sr ? ` (${sr} Hz)` : ''}`);
+  loadedKey = voiceId;
+  return true;
+}
+
 /** Is a browser-side runtime even possible here? Needs WASM + (ideally) OPFS. */
 export const localVoiceSupported = () => (
   typeof WebAssembly === 'object' &&
