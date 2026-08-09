@@ -154,14 +154,23 @@ function ttsRow() {
             // choose. Charging an unchosen 63 MB from a third party's CDN is the
             // wrong cost in the wrong place, and a dependency we cannot promise.
             //
-            // So browser speech stays the default and is labelled for what it
-            // IS: local-only, and the right tool for "read the text back to me"
-            // — a screen-reader need that wants zero download and does not care
-            // that peers cannot hear it. Naming it here stops it reading as a
-            // broken transmitter. Transmitting requires a source that returns
-            // samples; see the 🔴 note in voicesource.js for why the platform
-            // makes that impossible for speechSynthesis specifically.
-            `<option value="__default">browser speech (only you hear this)</option>` +
+            // AND NO BROWSER SPEECH EITHER. I first kept it with an honest
+            // label ("only you hear this"); R killed that too, and she is right:
+            // "it would be very easy to logically infer with this set-up that if
+            // you can hear your own voice then other people can too." That is
+            // how sidetone works EVERYWHERE else — hearing yourself is the
+            // universal confirmation that you are transmitting. A warning label
+            // loses to a mechanism that contradicts it, and the failure is
+            // silent and social: you talk, nobody answers, and nothing tells you
+            // why. speechSynthesis cannot reach the mic lane (🔴 note in
+            // voicesource.js: OS-level synthesis, no samples in the page), so it
+            // can never be a voice for a shared world. It belongs to a different
+            // problem — "read the text back to me" — which wants a screen reader,
+            // not this row.
+            //
+            // The resting state is therefore an HONEST EMPTY: no voice until you
+            // choose one. Nothing to un-learn later.
+            `<option value="__none">no voice — pick one below</option>` +
             `<option value="__loading">loading voices…</option>` +
             `<option value="__file">voice file on this computer…</option>` +
             `<option value="__custom">custom endpoint…</option></select>` +
@@ -250,18 +259,14 @@ function ttsRow() {
   async function activate(key) {
     const note2 = row.querySelector('.sp-note');
     if (key === '__loaded') return ttsAvailable();
-    if (key === '__default') {
-      const { speechSynthesis } = window;
-      if (!speechSynthesis) { if (note2) note2.textContent = 'no browser speech here'; return false; }
-      // Browser speech renders to the SPEAKERS and cannot be put on the mic
-      // lane, so peers will not hear it. Say so in the label rather than
-      // letting it look like a working transmitted voice.
-      setTtsSource(async (text) => {
-        try { speechSynthesis.speak(new SpeechSynthesisUtterance(text)); } catch { /* best effort */ }
-        return { pcm: new Int16Array(0), sampleRate: 22050, localOnly: true };
-      }, 'browser speech (local only — peers will not hear this)');
-      if (note2) note2.textContent = 'local only';
-      return true;
+    // THE EMPTY STATE IS A REAL STATE. No voice installed, nothing pretending to
+    // be one. Clearing the source matters: switching from a loaded voice back to
+    // "none" must actually remove it, or the row would keep speaking in a voice
+    // the dropdown says is not selected.
+    if (key === '__none') {
+      setTtsSource(null);
+      if (note2) note2.textContent = 'pick a voice file or an endpoint';
+      return false;
     }
     // A REMEMBERED FILE VOICE. Reached only from the tick or a click — both
     // user gestures — which is what lets requestPermission() actually ask
@@ -330,7 +335,7 @@ function ttsRow() {
       back.onclick = () => {
         showEndpointBox(false);
         sel2.value = localStorage.getItem('eido.localVoice')
-          || localStorage.getItem('eido.ttsChoice') || '__default';
+          || localStorage.getItem('eido.ttsChoice') || '__none';
       };
       box2.after(back);
     }
@@ -377,8 +382,19 @@ function ttsRow() {
     if (!ttsAvailable()) {
       // Nothing loaded yet: ticking IS the request to load what is shown.
       const sel = row.querySelector('select');
-      const ok = await activate(sel ? sel.value : '__default');
-      if (!ok) { e.target.checked = false; paintLive(); return; }
+      const key = sel ? sel.value : '__none';
+      const ok = await activate(key);
+      if (!ok) {
+        // Un-ticking itself with no explanation is how a control reads as broken.
+        // With no voice chosen there is nothing to switch on, and the note has to
+        // say so rather than leaving a box that refuses to stay ticked for
+        // invisible reasons.
+        e.target.checked = false;
+        const note2 = row.querySelector('.sp-note');
+        if (note2 && key === '__none') note2.textContent = 'choose a voice first';
+        paintLive();
+        return;
+      }
     }
     e.target.checked = setTtsEnabled(true);
     paintLive();
@@ -388,12 +404,16 @@ function ttsRow() {
   const sel = row.querySelector('select');
   if (sel) {
     // "default/last selected" — what the dropdown shows when you arrive. A
-    // catalog voice we downloaded before is still there; otherwise browser
-    // speech, which always exists. Never blank, because blank was the state
-    // that read as "nothing selected" (R, 2026-08-09).
-    const saved = localStorage.getItem('eido.localVoice')
-      || localStorage.getItem('eido.ttsChoice')
-      || '__default';
+    // catalog voice we downloaded before is still there; otherwise the empty
+    // state, which always exists.
+    //
+    // MIGRATION: '__default' was browser speech, which no longer exists as an
+    // option. A stored value naming a removed option would restore to nothing
+    // and silently fall through to the <select>'s first entry — so map it to the
+    // empty state explicitly instead of letting the browser guess.
+    const rawSaved = localStorage.getItem('eido.localVoice')
+      || localStorage.getItem('eido.ttsChoice');
+    const saved = (!rawSaved || rawSaved === '__default') ? '__none' : rawSaved;
     (async () => {
       try {
         const { suggestedVoices } = await import('./localvoice.js');
@@ -445,7 +465,7 @@ function ttsRow() {
             }
           }
         } catch (e) { console.warn('[voice] could not list remembered voices:', e); }
-        if (saved) { sel.value = saved; if (!sel.value) sel.value = '__default'; }
+        if (saved) { sel.value = saved; if (!sel.value) sel.value = '__none'; }
       } catch (e) {
         sel.querySelector('option[value="__loading"]')?.remove();
         note.textContent = 'voice list unavailable';
@@ -486,8 +506,8 @@ function ttsRow() {
       opt.remove();
       // Fall back to the built-in rather than to whatever happens to be first:
       // a removal should land somewhere predictable and always-present.
-      sel.value = '__default';
-      localStorage.setItem('eido.ttsChoice', '__default');
+      sel.value = '__none';
+      localStorage.setItem('eido.ttsChoice', '__none');
       localStorage.removeItem('eido.localVoice');
       note.textContent = 'forgotten';
       refreshDel();
@@ -671,9 +691,9 @@ function ttsRow() {
       // that is the checkbox's job alone. Picking browser speech while the row
       // is live swaps the voice under it; picking it while off just changes
       // what WOULD go live.
-      if (!key || key === '__default') {
-        localStorage.setItem('eido.ttsChoice', '__default');
-        const ok = await activate('__default');
+      if (!key || key === '__none') {
+        localStorage.setItem('eido.ttsChoice', '__none');
+        const ok = await activate('__none');
         if (ok && isTtsEnabled()) box.checked = setTtsEnabled(true);
         paintLive();
         return;
