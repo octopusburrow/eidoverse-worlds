@@ -189,29 +189,28 @@ function ttsRow() {
               types: [{ description: 'Piper voice (.onnx + .onnx.json)',
                         accept: { 'application/octet-stream': ['.onnx'], 'application/json': ['.json'] } }],
             });
-            const picked = await Promise.all(handles.map((h) => h.getFile()));
-            const onnx = picked.find((f) => f.name.toLowerCase().endsWith('.onnx'));
-            let cfg = picked.find((f) => f.name.toLowerCase().endsWith('.json'));
-            if (!onnx) { note.textContent = 'pick the .onnx file'; sel.value = saved || ''; return; }
-            // Only one file chosen? Do not scold — the config almost always sits
-            // beside the model, so ask for it in a second dialog rather than
-            // making the user start over.
-            if (!cfg) {
-              note.textContent = `now pick ${onnx.name}.json`;
-              const more = await window.showOpenFilePicker({
-                types: [{ description: 'Piper voice config', accept: { 'application/json': ['.json'] } }],
-              }).catch(() => null);
-              if (more?.[0]) cfg = await more[0].getFile();
-            }
-            if (!cfg) { note.textContent = 'needs the .json too — try again'; sel.value = saved || ''; return; }
+            let picked = await Promise.all(handles.map((h) => h.getFile()));
             sel.disabled = true; note.textContent = 'loading…';
             try {
-              const { useVoiceFiles } = await import('./localvoice.js');
-              await useVoiceFiles(onnx, cfg);
+              const { loadFromFiles, matchEngine } = await import('./voiceengines.js');
+              await import('./engines.js');   // registers whatever is available
+              // A selection an engine ALMOST recognises (a lone .onnx) is the
+              // common near-miss: offer a second dialog for the rest instead of
+              // rejecting. Which files are missing is the engine's business, not
+              // the panel's — we just ask for more and re-match.
+              if (!matchEngine(picked) || picked.length === 1) {
+                const more = await window.showOpenFilePicker({ multiple: true })
+                  .catch(() => null);
+                if (more?.length) picked = [...picked, ...await Promise.all(more.map((h) => h.getFile()))];
+              }
+              const { label } = await loadFromFiles(picked);
               note.textContent = 'ready';
+              note.title = label;
               box.disabled = false; box.checked = setTtsEnabled(true);
             } catch (e) {
-              note.textContent = 'failed — see console. Try again.';
+              // loadFromFiles throws a message naming the known formats — show
+              // it, since "failed" tells the user nothing actionable.
+              note.textContent = String(e?.message || e).slice(0, 120);
               sel.value = saved || '';
               report('local voice file', e);
             } finally { sel.disabled = false; }
@@ -234,27 +233,23 @@ function ttsRow() {
         };
         fp.onchange = async () => {
           const files = [...(fp.files || [])];
-          const onnx = files.find((f) => f.name.toLowerCase().endsWith('.onnx'));
-          const cfg = files.find((f) => f.name.toLowerCase().endsWith('.json'));
-          if (!onnx) return rearm('pick the .onnx file (and its .json)');
-          // BOTH FILES ARE GENUINELY REQUIRED, and not as bookkeeping: the .onnx
-          // is just the network. Its .json carries the phoneme→id map (154
-          // entries), the sample rate, and the espeak language — none of which
-          // is recoverable from the model. Piper cannot turn text into input
-          // without it. Say that, rather than implying it is a formality.
-          if (!cfg) {
-            return rearm(`also pick ${onnx.name}.json — it holds the phoneme map. Try again.`);
-          }
+          if (!files.length) return rearm('');
           sel.disabled = true; note.textContent = 'loading…';
           try {
-            const { useVoiceFiles } = await import('./localvoice.js');
-            await useVoiceFiles(onnx, cfg);
+            const { loadFromFiles } = await import('./voiceengines.js');
+            await import('./engines.js');
+            // Which files an engine needs — and why — is the ENGINE's knowledge.
+            // The panel used to hardcode "onnx plus its json", which is true of
+            // Piper and false of the next one. Now a bad selection comes back as
+            // that engine's own message.
+            const { label } = await loadFromFiles(files);
             note.textContent = 'ready';
+            note.title = label;
             box.disabled = false; box.checked = setTtsEnabled(true);
           } catch (e) {
             // Same rule: a failure must leave the picker usable, not stranded on
             // an option that refuses to re-fire.
-            rearm('failed — see console. Try again.');
+            rearm(String(e?.message || e).slice(0, 120));
             report('local voice file', e);
           } finally { sel.disabled = false; }
         };
