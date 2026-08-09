@@ -44,6 +44,32 @@ export function setTtsSource(fn, name = 'TTS') {
   if (!fn) ttsEnabled = false;
 }
 
+// ── the human path to the SAME seam ─────────────────────────────────────────
+// A human picking a voice and an agent registering one MUST be the same call,
+// or the two drift and "how is that one speaking?" stops having one answer.
+// setTtsSource is that call for both; a UI is only ever a wrapper over it.
+//
+// 🔴 The browser's own speechSynthesis CANNOT be that source, and this is a
+// hard platform limit rather than something to work around. The Web Speech API
+// offers no route from speak() to an AudioNode, MediaStream or Blob — on Linux
+// synthesis does not even occur in the browser (speech-dispatcher over a
+// socket), so there is nothing to capture. The spec request to allow
+// SpeechSynthesis → MediaStreamTrack (WICG/speech-api#69) is still open and
+// unimplemented. A first draft here routed speak() through a
+// MediaStreamDestination + MediaRecorder; that records SILENCE, because
+// nothing is ever connected to the destination. It cannot be.
+//
+// So a human who wants a synthesized voice needs a source that RETURNS SAMPLES:
+//   • a local synthesizer over the same ws protocol piperbridge.js uses
+//   • an in-browser WASM TTS (Piper via onnxruntime-web, kokoro-js, sherpa-onnx)
+//   • a cloud TTS returning wav/mp3, decoded with decodeAudioData
+// All three are ordinary `(text) => {pcm, sampleRate}` functions and all three
+// go through setTtsSource unchanged. The seam is already symmetric; what a
+// human lacks is a bundled source, not a different API.
+//
+// Until one ships, the UI row is honest about it: the toggle is disabled and
+// the field reads "system default (microphone)". No pretend voice picker.
+
 /** The audio panel's toggle. Humans leave this off and use a mic; an agent
  *  turns it on once its source is registered. */
 export function setTtsEnabled(on) {
