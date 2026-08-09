@@ -185,6 +185,13 @@ setInterval(placeMic, 2000);          // safety net only; the observer does the 
 // disagree about what you are hearing
 bus.on('audio:hush', paint);
 bus.on('audio:receive', paint);
+// 🔴 AND 'voice'. The HUD listened for the two consent events but not for the
+// MIC's own state, so toggling the mic from the audio panel left this icon
+// showing the opposite of the truth (R, 2026-08-09: "microphone isn't connected
+// to the mic icon in the hud"). The panel already listened; only this end was
+// missing, which is the same one-sided-repair shape as the audio bugs below it.
+// Two surfaces, one truth: whichever you touch, both repaint.
+bus.on('voice', paint);
 setInterval(ensure, 1000);
 ensure();
 

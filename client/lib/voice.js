@@ -474,7 +474,14 @@ export async function toggleMic(name) {
   // takes; returning early here skipped peer creation entirely, which the
   // lifecycle suite caught at once (mic ON with no peer courted).
   if (micStream) {
-    for (const t of micStream.getTracks()) t.enabled = true;
+    // 🔴 THE SAME TRACK THE OFF-PATH TOUCHED. micStream is the GATED output now,
+    // so re-enabling its track does nothing for the RAW device track that mic-off
+    // disabled — the mic came back once and was silent forever after (R,
+    // 2026-08-09: "it enables correctly only the first time. Once toggled again,
+    // it never comes back"). Asymmetric repair, in the one file that has a whole
+    // memory note about asymmetric repair. Both paths name (_rawMic || micStream)
+    // so they cannot drift apart again.
+    for (const t of (_rawMic || micStream).getTracks()) t.enabled = true;
   } else {
     try {
       // WHERE THE VOICE COMES FROM is a property of this body, not a hardcoded
