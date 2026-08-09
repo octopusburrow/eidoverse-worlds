@@ -187,10 +187,26 @@ async function offerOn(p, id, label) {
  *  Idempotent — the flag is cleared before the offer, so a repeated call
  *  cannot stack duplicate offers. */
 function reconcilePending(p, id) {
+  // Bounded trace of every reconciliation decision. The cross-generation seam
+  // is invisible downstream — a leaked follow-up may still bail on signaling
+  // state, so an offer COUNT cannot see it — and this is what makes the
+  // refusal assertable. Capped so a long session cannot grow it without bound.
+  {
+    const L = (globalThis.__reconcileLog ??= []);
+    L.push(`id=${id} owed=${p?.pendingReneg} gen=${p?.gen} isCurrent=${peers.get(id) === p}`);
+    if (L.length > 200) L.splice(0, L.length - 200);
+  }
   if (!p || p.pendingReneg == null) return;
   const owed = p.pendingReneg;
   p.pendingReneg = null;                 // clear FIRST: no duplicate follow-ups
-  if (owed !== p.gen) return;            // raised against a peer that no longer exists
+  if (owed !== p.gen) return;            // debt belongs to this peer object
+  // ...and this peer object must still BE the peer for this id. The generation
+  // check above is self-referential: an old answer handler that was already
+  // mid-await when its peer was dropped and rebuilt compares the old object to
+  // its own gen, matches, and then renegotiate(id) resolves peers.get(id) —
+  // the REPLACEMENT. So the dead peer's debt gets paid by its successor, which
+  // is the exact leak the generation stamp was meant to prevent (Mica, #62).
+  if (peers.get(id) !== p) return;
   if (p.pc.signalingState !== 'stable') return;
   renegotiate(id);
 }
@@ -540,6 +556,10 @@ export const voiceDebug = () => Object.fromEntries([...peers].map(([id, p]) => [
 /** Which peers owe a follow-up offer, and at which generation. The fourth
  *  timing class is invisible from outside otherwise: a peer that owes a
  *  renegotiation looks exactly like one that does not. */
+/** TEST SEAM: clear a peer's pending debt so a regression can isolate work
+ *  that could only have come from a DIFFERENT peer generation. */
+export const voiceClearPending = (id) => { const p = peers.get(id); if (p) p.pendingReneg = null; };
+
 export const voicePendingReneg = () =>
   Object.fromEntries([...peers].map(([id, p]) => [id, p.pendingReneg ?? null]));
 
