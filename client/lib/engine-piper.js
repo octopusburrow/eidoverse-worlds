@@ -151,7 +151,11 @@ registerEngine({
     ort.env.wasm.wasmPaths = new URL('../node_modules/onnxruntime-web/dist/', import.meta.url).href;
     const ortSession = await ort.InferenceSession.create(await onnx.arrayBuffer());
 
-    const { phonemize, phonReady } = await import('./piperphon.js');
+    const { phonemize, phonReady, warmPhonemizer } = await import('./piperphon.js');
+    // BUILD THE PHONEMIZER NOW, not on the first word. It is ~27s and depends on
+    // nothing but the wasm paths, so it belongs inside the load the user is
+    // already watching rather than in front of their first utterance.
+    await warmPhonemizer(wasmPaths, onProgress);
 
     const speak = async (text) => {
       const t0 = performance.now();

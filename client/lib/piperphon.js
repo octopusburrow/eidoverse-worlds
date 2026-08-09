@@ -104,5 +104,25 @@ export async function phonemize(text, voice, wasmPaths) {
   });
 }
 
+/** Build the module NOW, before anyone speaks.
+ *
+ *  🔴 Measured 2026-08-09: the build is ~27s. Caching it fixed the per-word cost
+ *  (30s → 4ms) but left the whole 27s sitting in front of the FIRST utterance —
+ *  lazily, at the worst possible moment, with the user waiting on a word they
+ *  already typed. It depends on nothing but the wasm paths, so it can happen
+ *  during voice loading instead, under the progress the user is already
+ *  watching. Same total work, moved to where it is expected. */
+export async function warmPhonemizer(wasmPaths, onProgress = () => {}) {
+  if (_mod) return true;
+  const t0 = performance.now();
+  const tick = setInterval(() => {
+    onProgress({ phase: 'phonemizer',
+      text: `preparing speech — ${Math.round((performance.now() - t0) / 1000)}s` });
+  }, 1000);
+  try { await phonModule(wasmPaths); return true; }
+  catch (e) { console.warn('[voice] phonemizer warm-up failed:', e); return false; }
+  finally { clearInterval(tick); }
+}
+
 /** Whether a module is already built — for logging honestly about first-call cost. */
 export const phonReady = () => !!_mod;
