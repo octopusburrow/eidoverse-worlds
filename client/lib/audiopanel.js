@@ -29,9 +29,26 @@ import { bus } from './core.js';
 // defined them — the mic meter (an inline span with flex:1) collapsed to a
 // 2px vertical line, which is just its threshold marker with zero meter
 // behind it. A module's markup and its layout must travel together.
+// ONE GRID, not two shapes. R: "have we formatted the stuff in the audio panel
+// in a dumb way?" — yes, and the specific dumbness is that check-rows read
+// [box][label] while slider-rows read [label][control], so the two kinds shared
+// no vertical edge and the eye had nothing to track down the panel. Labels also
+// ran 11 to 32 characters against a 64px min-width that fit none of them.
+//
+// Now every row is the same two columns: a fixed label column, then the control.
+// A checkbox sits in the control column like any other control, so ticks, bars
+// and sliders all begin at the same x. Values right-align in a third column so
+// they form a readable stack instead of drifting with label length.
 const SP_CSS = `
-.sp-row { display: flex; align-items: center; gap: 8px; margin: 5px 0; }
-.sp-label { opacity: 0.75; min-width: 64px; flex-shrink: 0; }
+.sp-row { display: flex; align-items: center; gap: 10px; margin: 6px 0; min-height: 20px; }
+.sp-label { opacity: .75; width: 132px; flex: 0 0 132px; text-align: right;
+  line-height: 1.25; }
+.sp-ctl { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
+.sp-val { flex: 0 0 40px; text-align: right; opacity: .6; font-variant-numeric: tabular-nums; }
+.sp-note { opacity: .5; font-size: 11px; }
+/* A group heading, for the two places a row needs a parent rather than a peer. */
+.sp-head { opacity: .5; font-size: 11px; letter-spacing: .04em; text-transform: uppercase;
+  margin: 12px 0 2px 142px; }
 `;
 function ensureCss() {
   if (document.getElementById('sp-audio-css')) return;
@@ -52,8 +69,10 @@ function slider(cat, label, hint, value) {
   row.className = 'sp-row';
   row.innerHTML =
     `<span class="sp-label" title="${hint}">${label}</span>` +
+    `<span class="sp-ctl">` +
     `<input type="range" min="0" max="1" step="0.05" value="${value}" data-cat="${cat}" style="flex:1">` +
-    `<span class="sp-info" data-out="${cat}" style="min-width:34px;text-align:right">${Math.round(value * 100)}%</span>`;
+    `</span>` +
+    `<span class="sp-val" data-out="${cat}">${Math.round(value * 100)}%</span>`;
   const input = row.querySelector('input');
   const out = row.querySelector('[data-out]');
   input.oninput = () => {
@@ -66,10 +85,19 @@ function slider(cat, label, hint, value) {
 function checkRow(label, hint, checked, onChange) {
   const row = document.createElement('div');
   row.className = 'sp-row';
+  // LABEL FIRST, like every other row. The checkbox lives in the control column
+  // so it aligns with the sliders and the meter rather than starting its own
+  // margin. Whole row is a <label>, so the text is a click target too — a 12px
+  // box is a small thing to hit, and in VR it is a laser-pointer coin toss.
   row.innerHTML =
-    `<input type="checkbox" ${checked ? 'checked' : ''} title="${hint}">` +
-    `<span class="sp-label" title="${hint}">${label}</span>`;
+    `<label class="sp-label" title="${hint}">${label}</label>` +
+    `<span class="sp-ctl"><input type="checkbox" ${checked ? 'checked' : ''} title="${hint}"></span>`;
   row.querySelector('input').onchange = (e) => onChange(e.target.checked);
+  row.querySelector('label').onclick = () => {
+    const box = row.querySelector('input');
+    box.checked = !box.checked;
+    onChange(box.checked);
+  };
   return row;
 }
 
@@ -102,7 +130,7 @@ function micFloorRow() {
   const FS = 0.6;
   row.innerHTML =
     `<span class="sp-label" title="${hint}">mic sensitivity</span>` +
-    `<span data-meter title="${hint}" style="flex:1;min-width:60px;position:relative;height:14px;` +
+    `<span class="sp-ctl"><span data-meter title="${hint}" style="flex:1;min-width:60px;position:relative;height:14px;` +
     `background:#000;border-radius:2px;overflow:hidden;cursor:ew-resize">` +
     // Born GREY, the same colour beat() paints when the gate is shut. It used to
       // be green — a colour nothing ever repainted, so it existed only until the
@@ -134,8 +162,8 @@ function micFloorRow() {
       // the readout became a child of the meter — inside a position:relative box
       // it stopped sitting after the bar, which is why R asked why I had moved
       // it. I had not; I had broken the markup.
-      `</span>` +
-      `<span data-out style="min-width:34px;text-align:right">${Math.round((micFloor() / 0.2) * 100)}%</span>`;
+      `</span></span>` +
+      `<span class="sp-val" data-out>${Math.round((micFloor() / 0.2) * 100)}%</span>`;
   const meter = row.querySelector('[data-meter]');
   const out = row.querySelector('[data-out]');
   const lvl = row.querySelector('[data-lvl]');
@@ -285,7 +313,7 @@ function paint(body) {
   // receives — a monitor on the raw mic would sound perfect while everyone else
   // heard silence, which is the confusion it exists to resolve. Off by default
   // and deliberately not persisted: it howls on speakers.
-  body_.append(checkRow('hear myself (test)',
+  body_.append(checkRow('hear myself',
     'plays your own gated microphone back to you, exactly as others receive it — '
     + 'so you can tell whether the noise gate clips your first word or cuts you '
     + 'off early. USE HEADPHONES: on speakers this will feed back.',
@@ -297,7 +325,7 @@ function paint(body) {
       paint();
     }));
 
-  body_.append(checkRow('connect to other people’s audio',
+  body_.append(checkRow('connect to their audio',
     'on: your machine holds a live connection to each speaker nearby. ' +
     'Off: nothing is sent to you at all — saves bandwidth and CPU in busy ' +
     'rooms, and strangers cannot see your IP address. Muting only turns the ' +

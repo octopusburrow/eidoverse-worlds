@@ -178,12 +178,17 @@ export function ttsSection(host, onPaint = () => {}) {
     const head = document.createElement('div');
     head.className = 'sp-row';
     const live = ttsAvailable() && isTtsEnabled();
+    // Same two columns as every other row: label, then control. The status note
+    // rides in the control column beside the tick rather than starting a third
+    // ragged column of its own.
     head.innerHTML =
+      `<label class="sp-label" style="opacity:${live ? '1' : '.45'}">text-to-speech</label>` +
+      `<span class="sp-ctl">` +
       `<input type="checkbox" ${isTtsEnabled() ? 'checked' : ''} ` +
       `title="speak with the voice marked below"${ttsAvailable() ? '' : ' disabled'}>` +
-      `<span class="sp-label" style="opacity:${live ? '1' : '.45'}">text-to-speech</span>` +
-      `<span class="sp-note" style="opacity:.5;font-size:11px;flex:1">` +
-      `${_busy ? _busy : live ? ttsVoiceName() : ttsAvailable() ? 'ready' : 'add a voice below'}</span>`;
+      `<span class="sp-note">` +
+      `${_busy ? _busy : live ? ttsVoiceName() : ttsAvailable() ? 'ready' : 'add a voice below'}</span>` +
+      `</span>`;
     head.querySelector('input').onchange = (e) => {
       setTtsEnabled(e.target.checked);
       repaint();
@@ -191,7 +196,9 @@ export function ttsSection(host, onPaint = () => {}) {
     host.appendChild(head);
 
     const listHost = document.createElement('div');
-    listHost.style.cssText = 'margin:2px 0 6px 22px';
+    // Indent to the CONTROL column (label 104px + 10px gap), so the voices hang
+    // under the checkbox that switches them on rather than floating mid-panel.
+    listHost.style.cssText = 'margin:2px 0 8px 142px';
     host.appendChild(listHost);
     collectVoices().then((items) => {
       renderVoiceList(listHost, {
