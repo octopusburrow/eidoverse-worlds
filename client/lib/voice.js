@@ -22,6 +22,10 @@ import { myState } from './controller.js';
 import { flashHint } from './ui.js';
 import { receivingVoice, volumeFor, isHushed } from './voiceconsent.js';
 
+// How long an unanswered local offer stays 'live' for glare purposes. Past
+// this, an incoming offer is treated as a rejoin rather than a rival — a real
+// glare rival answers within a round trip.
+const GLARE_GRACE_MS = 4000;
 const RTC_CFG = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 const FULL_M = 3, SILENT_M = 20;   // full volume inside 3m, gone by 20m
 
@@ -177,6 +181,7 @@ async function offerOn(p, id, label) {
     applyDirection(p);
     const offer = await p.pc.createOffer();
     await p.pc.setLocalDescription(offer);
+    p._offeredAt = Date.now();     // for the rejoin-vs-glare distinction
     sendRtc(id, { sdp: p.pc.localDescription });
   } catch (e) { report(label, e); } finally { p._offering = false; }
 }
@@ -293,7 +298,27 @@ async function processSignal(p, from, payload) {
       // glare: both sides offered at once — the LOWER id's offer stands, the
       // higher id rolls back and answers (deterministic, no extra messages)
       if (p.pc.signalingState === 'have-local-offer') {
-        if ((myId ?? '') < from) return;               // mine stands; ignore theirs
+        // GLARE vs REJOIN. Glare's premise is that BOTH offers are live, so
+        // the loser's offer will be answered by the winner. A peer that
+        // RELOADED breaks that premise: their old session is gone, nobody is
+        // left to answer the offer we are protecting, and returning here
+        // discards the only live offer in the exchange — both sides strand,
+        // silently, forever. Field receipt 2026-08-08: "she could hear me
+        // until she hard reloaded."
+        //
+        // The tell is that our offer has been outstanding with no answer. A
+        // true glare rival answers within a round trip; a reloaded peer never
+        // will, because the session that owed us that answer no longer exists.
+        // So yield to an offer that arrives after our own has gone unanswered
+        // past a round trip, and keep the id rule only for the genuine
+        // simultaneous case.
+        // The tell is not TIME — a slow link can exceed any grace legitimately —
+        // it is whether this peer has ever answered anything of ours. A true
+        // glare rival is mid-exchange on a live connection; a reloaded peer is
+        // brand new to us and has never completed a negotiation. `_everStable`
+        // is set the first time we reach a settled state with them, so an
+        // offer from a peer we have never settled with is a JOIN, not a rival.
+        if (p._everStable && (myId ?? '') < from) return;   // real glare: mine stands
         await p.pc.setLocalDescription({ type: 'rollback' });
       }
       await p.pc.setRemoteDescription(payload.sdp);
@@ -304,6 +329,7 @@ async function processSignal(p, from, payload) {
       applyDirection(p);            // our answer states OUR consent, not theirs
       const answer = await p.pc.createAnswer();
       await p.pc.setLocalDescription(answer);
+      p._everStable = true;      // we answered them: a real exchange happened
       sendRtc(from, { sdp: p.pc.localDescription });
       // NOT reconciled here. Answering lands us in stable, but applyDirection
       // above already put the current track set into the answer we just sent —
@@ -315,6 +341,8 @@ async function processSignal(p, from, payload) {
 
     } else if (payload.sdp?.type === 'answer') {
       if (p.pc.signalingState === 'have-local-offer') {
+        p._offeredAt = null;       // answered: no longer an outstanding offer
+        p._everStable = true;      // we have completed a negotiation with them
         await p.pc.setRemoteDescription(payload.sdp);
         for (const c of p.pendingIce ?? []) {
           await p.pc.addIceCandidate(c).catch((err) => (window.__iceLog ??= []).push(`flushIce-FAIL ${err.name}`));

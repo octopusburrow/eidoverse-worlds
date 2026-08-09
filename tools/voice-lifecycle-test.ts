@@ -1039,6 +1039,37 @@ check("unhush rejoins the SAME peer at full volume",
   consent.setReceiveVoice(false);
 }
 
+// ---- REJOIN: a peer who reloads is a NEW session, not a glare rival --------
+// Field, 2026-08-08 (R + Digi): "she could hear me until she hard reloaded."
+// A reload sends a fresh offer. If our side still holds a stale peer parked in
+// have-local-offer from their dead session, the glare rule fires — and glare's
+// premise is that BOTH offers are live, so the loser's offer will be answered.
+// A reload breaks that premise: the peer we are protecting no longer exists on
+// their end, so returning here discards the only live offer in the exchange and
+// strands both sides. Deterministic; no timing needed.
+{
+  consent.setReceiveVoice(true);
+  if (!voice.micOn()) await voice.toggleMic("me");
+  await settle();
+  created.length = 0;
+  stubs.remotes.set("zzz-rejoin", { agent: false });   // id sorts ABOVE "me" — WE win glare
+  bus.emit("roster");
+  await settle();
+  const pcR = created.at(-1)!;
+  check("rejoin: our side is parked in have-local-offer (their answer never came)",
+    pcR.signalingState === "have-local-offer", pcR.signalingState);
+
+  const answersBefore = pcR.answersCreated ?? 0;
+  // they reload and offer fresh
+  bus.emit("rtc", { from: "zzz-rejoin", payload: { sdp: { type: "offer", sdp: "after-reload" } } });
+  await settle(); await settle();
+
+  check("rejoin: a reloaded peer's offer is ANSWERED, not discarded as glare",
+    (pcR.answersCreated ?? 0) > answersBefore,
+    `answersCreated stayed at ${pcR.answersCreated} — their fresh offer was dropped`);
+  consent.setReceiveVoice(false);
+}
+
 // T5 (relay half) lives in tools/voice-matrix.mjs: RTC_MODE=relay-noturn must
 // stay at 0 inbound pkts; RTC_MODE=relay-turn must exceed 0. External harness
 // by design — fake RTC cannot prove media.
