@@ -1,0 +1,73 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>audio graph probe</title>
+<body style="font:14px/1.5 monospace;background:#111;color:#ddd;padding:2rem">
+<h3>Which layer is silent?</h3>
+<p>Three sources, same file, three routes. Whichever ones you HEAR narrows it to one layer.</p>
+<button id="go" style="font:inherit;padding:.6rem 1rem">click to start (this is the user gesture)</button>
+<pre id="out"></pre>
+
+<script type="module">
+// AN ISOLATION TEST, not another all-green dashboard. Every instrument I built
+// tonight could only return good news — a GainNode multiplier reads 1 whether
+// the element is playing, stalled, or never decoded. So this plays the SAME
+// file three ways and lets the ear do the discriminating:
+//
+//   A. <audio> straight to the speakers   — no WebAudio at all
+//   B. <audio> → createMediaElementSource → gain → destination  (what ambient.js does)
+//   C. OscillatorNode → gain → destination — pure WebAudio, no media element
+//
+//   hear A only      → WebAudio output is dead (context routed elsewhere/muted)
+//   hear A and C     → createMediaElementSource is the break (the classic taint)
+//   hear C only      → the media file/decode is the break
+//   hear none        → output device or tab mute, below the page entirely
+//   hear all three   → the page is fine and the bug is in ambient.js's wiring
+const out = document.getElementById('out');
+const log = (s) => { out.textContent += s + '\n'; };
+const SRC = '/assets/audio_test_beacon.ogg';
+
+document.getElementById('go').onclick = async () => {
+  out.textContent = '';
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  await ctx.resume();
+  log(`context: ${ctx.state}  sampleRate ${ctx.sampleRate}  sinkId ${ctx.sinkId ?? '(unsupported)'}`);
+
+  // ---- A: plain element, no WebAudio -------------------------------------
+  const a = new Audio(SRC);
+  a.loop = true;
+  try { await a.play(); log(`A plain <audio>      : playing=${!a.paused} t=${a.currentTime.toFixed(2)} rs=${a.readyState}`); }
+  catch (e) { log(`A plain <audio>      : FAILED ${e.name}: ${e.message}`); }
+
+  // ---- B: element through the graph, exactly like ambient.js -------------
+  const b = new Audio(SRC);
+  b.loop = true;
+  try {
+    const node = ctx.createMediaElementSource(b);
+    const g = ctx.createGain(); g.gain.value = 1;
+    node.connect(g).connect(ctx.destination);
+    await b.play();
+    log(`B element→WebAudio   : playing=${!b.paused} t=${b.currentTime.toFixed(2)} rs=${b.readyState}`);
+  } catch (e) { log(`B element→WebAudio   : FAILED ${e.name}: ${e.message}`); }
+
+  // ---- C: synthesized, no file at all ------------------------------------
+  try {
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain(); g.gain.value = 0.15;
+    osc.frequency.value = 440;
+    osc.connect(g).connect(ctx.destination);
+    osc.start();
+    log('C oscillator 440Hz   : started (continuous tone)');
+  } catch (e) { log(`C oscillator         : FAILED ${e.message}`); }
+
+  // advance report — currentTime moving is the only proof media flows
+  setTimeout(() => {
+    log('');
+    log(`after 3s — A t=${a.currentTime.toFixed(2)}  B t=${b.currentTime.toFixed(2)}`);
+    log(`A error: ${a.error ? a.error.code : 'none'}   B error: ${b.error ? b.error.code : 'none'}`);
+    log('');
+    log('WHICH DID YOU HEAR?  A only → WebAudio output dead.');
+    log('  A+C → createMediaElementSource is the break.  C only → decode/file.');
+    log('  none → below the page (device/tab mute).  all → page is fine.');
+  }, 3000);
+};
+</script>
