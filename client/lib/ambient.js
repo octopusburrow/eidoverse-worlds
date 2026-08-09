@@ -25,6 +25,7 @@ import { entities } from './world.js';
 import { myState } from './controller.js';
 import { volumeFor } from './voiceconsent.js';
 import { report } from './core.js';
+import { audioContext } from './audioctx.js';
 
 const DEFAULT_SRC = 'assets/porch_ambient.ogg';
 const sources = new Map();          // entityId -> { el, node, gain, data }
@@ -55,7 +56,7 @@ function armGestureResume() {
 }
 
 function audioCtx() {
-  if (!ctx) ctx = new (window.AudioContext ?? window.webkitAudioContext)();
+  ctx = audioContext();
   if (ctx.state === 'suspended') { ctx.resume().catch(() => {}); armGestureResume(); }
   return ctx;
 }

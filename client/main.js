@@ -1241,8 +1241,11 @@ globalThis.__audioState = audioState;
 // context, which console interaction does not provide — so it reports the
 // context state rather than pretending.
 globalThis.testAudioLayers = async () => {
-  const C = window.AudioContext || window.webkitAudioContext;
-  const ctx = new C();
+  // Use the SHARED context. This used to make its own, which on a page already
+  // holding five was the sixth — i.e. the diagnostic itself could exhaust the
+  // budget and then report silence it had caused.
+  const { audioContext } = await import('./lib/audioctx.js');
+  const ctx = audioContext();
   await ctx.resume().catch(() => {});
   const SRC = '/assets/audio_test_beacon.ogg';
   const r = { ctx: ctx.state };
