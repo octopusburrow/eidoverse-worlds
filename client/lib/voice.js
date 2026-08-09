@@ -647,7 +647,11 @@ function gateAudio(now) {
  *  the same RMS means different things in different rooms. */
 export const micGateInfo = () => ({
   level: micAnalyserLevel(), noise: _noise,
-  on: _noise + 0.012 + Math.min(1, micFloor() / 0.2) * 0.128,
+  // 🔴 ONE formula, not a copy. This drifted the moment the gate went
+  // multiplicative — it still carried the old additive margin, so the panel and
+  // the gate reported DIFFERENT thresholds. Derived from the same expression
+  // now; if the gate changes, this cannot silently disagree.
+  on: _noise * (1.6 + Math.min(1, micFloor() / 0.2) * 3.4),
   speaking: _above,
 });
 function startOnsetWatch() {

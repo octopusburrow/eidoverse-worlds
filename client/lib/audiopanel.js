@@ -20,7 +20,8 @@ import { ttsAvailable, ttsVoiceName, isTtsEnabled, setTtsEnabled, setTtsSource }
 import { localVoiceSupported } from './localvoice.js';
 import { report, CONFIG } from './core.js';
 import { setEndpointVoice } from './browservoice.js';
-import { micAnalyserLevel, micOn, toggleMic, setSelfMonitor, selfMonitoring } from './voice.js';
+import { micAnalyserLevel, micOn, toggleMic, setSelfMonitor, selfMonitoring,
+         micGateInfo } from './voice.js';
 import { bus } from './core.js';
 
 // The panel's row layout, carried BY THE MODULE. Found live 2026-08-06 (R,
@@ -768,14 +769,14 @@ function micFloorRow() {
     `<span data-lvl style="position:absolute;left:0;top:0;height:100%;width:0;background:#3c5"></span>` +
     `<span data-thr style="position:absolute;top:0;height:100%;width:2px;background:#9f9;opacity:.9"></span>` +
     `</span>` +
-    `<span data-out style="min-width:34px;text-align:right">${Math.round(micFloor() * 500)}%</span>`;
+    `<span data-out style="min-width:34px;text-align:right">${(1.6 + Math.min(1, micFloor() / 0.2) * 3.4).toFixed(1)}×</span>`;
   const meter = row.querySelector('[data-meter]');
   const out = row.querySelector('[data-out]');
   const lvl = row.querySelector('[data-lvl]');
   const thr = row.querySelector('[data-thr]');
   const paintThr = () => {
     thr.style.left = `calc(${Math.min(100, (micFloor() / FS) * 100)}% - 1px)`;
-    out.textContent = `${Math.round(micFloor() * 500)}%`;
+    out.textContent = `${(1.6 + Math.min(1, micFloor() / 0.2) * 3.4).toFixed(1)}×`;
   };
   paintThr();
   const setFromX = (ev) => {
@@ -787,8 +788,21 @@ function micFloorRow() {
   meter.onpointermove = (ev) => { if (meter.hasPointerCapture?.(ev.pointerId)) setFromX(ev); };
   const beat = () => {
     if (!row.isConnected) return;
-    const level = micAnalyserLevel();
+    // 🔴 DRAW THE THRESHOLD THE GATE ACTUALLY USES. The marker sat at
+    // micFloor/FS — a FIXED position — while the gate had moved to noise × k, so
+    // the line and the truth coincided only by accident. R, 2026-08-09:
+    // "adjusting the mic sensitivity isn't working? Seems like it's always cut
+    // off at the 20% default." The slider WAS working; the picture was lying
+    // about where the line was. micGateInfo() evaluates the same expression the
+    // gate does, so the marker now moves when you drag the slider AND when the
+    // room gets louder — the adaptive half was previously invisible.
+    const g = micGateInfo();
+    const level = g.level;
     lvl.style.width = `${Math.min(100, (level / FS) * 100)}%`;
+    thr.style.left = `calc(${Math.min(100, (g.on / FS) * 100)}% - 1px)`;
+    // Bright while the gate is OPEN, so the bar answers "am I being transmitted
+    // right now" rather than merely "is there sound".
+    lvl.style.background = g.speaking ? '#6cf' : '#456';
     requestAnimationFrame(beat);
   };
   requestAnimationFrame(beat);
