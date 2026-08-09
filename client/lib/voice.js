@@ -37,6 +37,9 @@ let micStream = null;
 // measuring the gated output makes the gate self-latching (gain drops →
 // measured level drops → gate closes harder → never reopens).
 let _rawMic = null;
+// True when the DEVICE is gone but the LANE is still standing — the state that
+// makes coming back cheap.
+let _micReleased = false;
 let muted = false;
 const peers = new Map();           // id -> { pc, audio }
 let myId = null;
@@ -471,7 +474,14 @@ export async function toggleMic(name) {
       // carries gated audio with no further changes. The raw stream is kept for
       // measurement and for mute.
       _rawMic = rawMic;
-      micStream = gateStream(rawMic, micAnalyserLevel);
+      // Reuse the EXISTING lane if one is standing: attachSource returns the
+      // same gated stream the senders already hold, so coming back from a
+      // release costs ZERO renegotiation. Only build a new graph when there is
+      // none — that rebuild is the "unmute lag while it sets it all up again"
+      // R described.
+      const reused = _micReleased ? attachSource(rawMic) : null;
+      micStream = reused || gateStream(rawMic, micAnalyserLevel);
+      _micReleased = false;
     } catch (e) {
       report('microphone', e);
       flashHint('microphone unavailable — check browser permission');
@@ -703,16 +713,35 @@ export function toggleMute() {
  *  renegotiation to undo, so it is a privacy action, not a "go quiet" action. */
 export function releaseMicrophone() {
   if (!micStream) return;
-  // 🔴 STOP THE RAW DEVICE TRACK, not just the gated output. micStream is now a
-  // GRAPH DESTINATION — stopping its tracks tears down our end of the graph and
-  // leaves the actual microphone open, so the OS recording indicator would stay
-  // lit while this function's whole promise is that it goes away. Stop both: the
-  // device first, then the graph.
+  // 🔴 STOP THE DEVICE, NEVER THE GRAPH OUTPUT. Two separate rules meet here:
+  //
+  // (1) The raw device track MUST stop, or the OS recording indicator stays lit
+  //     while this function's whole promise is that it goes away. micStream is
+  //     now a graph destination, so stopping only that would leave the actual
+  //     microphone recording.
+  //
+  // (2) The GATED track must NOT stop. stop() is a one-way door (see the note in
+  //     ontrack above — the same mistake cost us a permanently-deaf peer), and a
+  //     MediaStreamDestination track cannot be restarted, so re-enabling the mic
+  //     would need a whole new graph and a renegotiation to hand the new track
+  //     to every peer. R, 2026-08-09: "we don't want to tear down audio tracks
+  //     at all unless someone leaves or unchecks the connect-to-audio box —
+  //     that's how we ran into people not hearing each other and unmute lag
+  //     while it sets it all up again. Now we just mute the lane."
+  //
+  // So: kill the device, leave the lane in place at zero gain. The senders keep
+  // a live track, no renegotiation is needed, and reacquiring the mic reconnects
+  // a new source into the SAME graph.
   for (const t of (_rawMic || micStream).getTracks()) t.stop();
-  for (const t of micStream.getTracks()) t.stop();
-  releaseGate();
+  driveGate(false);              // lane stays up, gain to zero
+  detachSource();                // lane (GainNode + destination) SURVIVES
   _rawMic = null;
-  micStream = null;
+  // micStream KEEPS naming the gated stream. Its track is still live and still
+  // held by every sender, so the mesh needs no renegotiation when the mic comes
+  // back — that rebuild is exactly the "unmute lag while it sets it all up
+  // again" R described. Audibility is decided by `muted` and the gate; this
+  // variable only means "a lane exists".
+  _micReleased = true;
   muted = false;
   stopOnsetWatch();
   for (const [id, p] of [...peers]) {

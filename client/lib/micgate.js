@@ -104,13 +104,44 @@ export function driveGate(open) {
 export const gateOpenness = () => (_gain ? _gain.gain.value : 0);
 export const isGated = () => !!_gain;
 
+/** Detach the DEVICE from the lane, keeping the lane itself alive.
+ *
+ *  🔴 This is the one that matters for reconnect cost. The GainNode and the
+ *  MediaStreamDestination stay — so the track every peer's sender holds is still
+ *  live, and no renegotiation is needed when the mic comes back. Only the
+ *  source-side connection goes away, because its device track just stopped.
+ *
+ *  R, 2026-08-09: "we don't want to tear down audio tracks at all unless someone
+ *  leaves or unchecks the connect-to-audio box — that's how we ran into people
+ *  not hearing each other and unmute lag while it sets it all up again." */
+export function detachSource() {
+  try { _src?.disconnect(); } catch { /* already gone */ }
+  _src = null;
+  _rawStream = null;
+  if (_gain) _gain.gain.value = 0;        // lane open, silent
+}
+
+/** Reconnect a new device stream into the EXISTING lane. Returns the same gated
+ *  stream the senders already hold, so nothing downstream changes. */
+export function attachSource(stream) {
+  if (!_ctx || !_gain || !_dest) return null;
+  try { _src?.disconnect(); } catch { /* fine */ }
+  _src = _ctx.createMediaStreamSource(stream);
+  _src.connect(_gain);
+  _rawStream = stream;
+  return _gatedStream;
+}
+
+/** Full teardown — the lane included. ONLY for leaving the world or revoking
+ *  consent, never for going quiet: this is the path that costs a renegotiation
+ *  to undo. */
 export function release() {
   if (_timer) { clearInterval(_timer); _timer = null; }
   try { _src?.disconnect(); } catch { /* already gone */ }
   try { _gain?.disconnect(); } catch { /* already gone */ }
-  // The destination's tracks belong to the stream we handed WebRTC; stopping
-  // them here would kill a sender that may still be mid-teardown. Let the
-  // caller's own track cleanup own that.
+  // Deliberately does NOT stop the destination's tracks: they belong to the
+  // stream WebRTC holds, and stop() is a one-way door. The caller's own sender
+  // cleanup owns that.
   _src = _gain = _dest = null;
   _gatedStream = null;
   _rawStream = null;
