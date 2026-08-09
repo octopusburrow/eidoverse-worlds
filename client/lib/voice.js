@@ -558,7 +558,17 @@ export function releaseMicrophone() {
     try {
       for (const sender of p.pc.getSenders()) if (sender.track) p.pc.removeTrack(sender);
     } catch (e) { report('voice untrack', e); }
-    if (!receivingVoice()) dropPeer(id); else renegotiate(id);
+    // 🔴 DO NOT DESTROY THE PEER. This used to dropPeer() when receive was off —
+    // the same mistake as tearing down on 'disconnected', with a different
+    // trigger: we close the connection, the FAR END keeps a live pc to a peer
+    // that no longer exists, and neither side can recover. Ours cannot rebuild
+    // (both rebuild paths need a mic we just released); theirs will not, because
+    // they still hold us in `peers` so their reconciler skips us.
+    //
+    // Wanting neither to send nor receive is a DIRECTION ('inactive'), not a
+    // reason to hang up. renegotiate() carries that, the mesh stays warm, and
+    // consenting again is a renegotiation instead of a rebuild.
+    renegotiate(id);
   }
   flashHint('🎙 released');
   bus.emit('voice', { on: false });
@@ -619,6 +629,58 @@ export function initVoice(name) {
       // human voice you had stopped attending to. (Field report from a live
       // desk test: a teardown-on-toggle cut the utterance mid-word.)
       p.wantVolume = isHushed() ? 0 : roll * volumeFor('voices');
+    }
+
+    // ── RECONCILE: the roster is the truth, the peer map is a cache ──────────
+    // 🔴 A REPAIR ONLY ONE ROLE CAN TRIGGER IS NOT A REPAIR. Both rebuild sites
+    // (mic-on, and the recvReady flip) require micStream — so a listener who
+    // joined MUTED, which is the default, could never rebuild a peer that
+    // vanished. That is the same asymmetry class as the disconnected/dropPeer
+    // bug: the two ends permanently disagree about whether a connection exists,
+    // and only one of them is able to do anything about it.
+    //
+    // This runs for everyone, mic or no mic. Someone in the roster with no peer
+    // is a hole; offerTo() builds a recvonly connection when we have no mic,
+    // which is exactly what a listener wants.
+    //
+    // Cheap by construction: it is a set difference over a handful of ids on a
+    // loop that already walks the peers, and offerTo() is a no-op once the peer
+    // exists. Deliberately NOT dropping peers absent from the roster — a peer
+    // missing from a momentarily-stale roster must not be torn down, which is
+    // the mistake this whole file is recovering from.
+    for (const id of humanIds()) {
+      if (peers.has(id)) continue;
+      // Only offer to ids that outrank us, or we and a peer who is ALSO
+      // reconciling both offer at once and manufacture glare every 300ms.
+      // The lower id offers; the higher waits to be offered to.
+      if ((myId ?? '') < id) offerTo(id);
+    }
+
+    // ── THE TIMEOUT THAT WAS NOT THERE ───────────────────────────────────────
+    // 🔴 `_offeredAt` was WRITTEN twice and READ nowhere; GLARE_GRACE_MS was
+    // declared and never used. Both are fossils of a stale-offer timeout that
+    // got removed when the glare test moved to `_everStable` — and nothing
+    // replaced the recovery it provided.
+    //
+    // So an offer that is simply never answered wedges FOREVER. Every existing
+    // heal path is reactive: they notice have-local-offer when something else
+    // arrives. If their tab was backgrounded, the sequencer dropped the
+    // point-to-point message, or they reloaded mid-exchange, nothing arrives —
+    // renegotiate() bails on non-stable, and the reconciler above skips us
+    // because peers.has(id) is true. The peer exists and is permanently deaf.
+    //
+    // A generous timeout: a real answer comes back in well under a second, so
+    // 12s is far past any legitimate round trip and only catches the dead.
+    for (const [id, p] of peers) {
+      if (p.pc.signalingState !== 'have-local-offer' || !p._offeredAt) continue;
+      if (Date.now() - p._offeredAt < 12000) continue;
+      p._offeredAt = null;
+      // Roll back to stable and re-offer rather than dropping the peer: the far
+      // end may be perfectly healthy and merely never have received our SDP.
+      // Tearing down here would be the disconnected/dropPeer mistake again.
+      p.pc.setLocalDescription({ type: 'rollback' })
+        .then(() => offerTo(id))
+        .catch((e) => report('voice stale offer', e));
     }
   }, 300);
   // LINEAR, not exponential. An exponential approach spends most of its life
