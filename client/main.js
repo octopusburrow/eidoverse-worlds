@@ -1210,6 +1210,7 @@ startPrefetch().catch((e) => report('prefetch', e));
         // the wiring look "never reached" when it had in fact reached and
         // stalled. Observability must not sit downstream of the risky call.
         globalThis.__voiceProbe = () => ({ ...vs.mouthInfo(), track: vs.genTrackInfo() });
+        globalThis.__voiceSpeak = (t) => vs.speak(t);   // the APP's mouth, for probes
         const { toggleMic, micOn } = await import('./lib/voice.js');
         if (!micOn()) await toggleMic(me);
         console.log('[voice] TTS wiring complete');

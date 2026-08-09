@@ -121,20 +121,17 @@ send("Runtime.evaluate", {
   expression: `(async () => {
     try {
       const vs = await import('./lib/voicesource.js');
-      const ok = await vs.speak('Probe check. Can you hear this?');
-      // Report the APP's state in the same breath — a separate evaluate was
-      // silently never dispatched, and its silence read as a finding.
-      const app = globalThis.__voiceProbe ? globalThis.__voiceProbe() : null;
-      await new Promise(r => setTimeout(r, 1000));
-      const app2 = globalThis.__voiceProbe ? globalThis.__voiceProbe() : null;
-      return JSON.stringify({
-        speakReturned: ok,
-        seam: !!globalThis.__voiceProbe,
-        branch: globalThis.__ttsBranch ?? 'never reached',
-        search: location.search,
-        mouth: app, mouthAfter1s: app2,
-        idleAdvance: app && app2 ? app2.playhead - app.playhead : null,
-      });
+      // Speak through the APP's instance, not a dynamic-import copy — a second
+      // module has its own generator that no sender is bound to, so it reports
+      // success into a void. Everything below is the app's real mouth.
+      if (!globalThis.__voiceSpeak) return JSON.stringify({ error: 'no speak seam' });
+      const ok = await globalThis.__voiceSpeak('Hello Rabscuttle. This is my actual voice, coming out of the microphone lane.');
+      const a = globalThis.__voiceProbe();
+      await new Promise(r => setTimeout(r, 3000));
+      const b = globalThis.__voiceProbe();
+      return JSON.stringify({ spoke: ok, before: a, after: b,
+        drained: a.queued > 0 && b.queued === 0,
+        advanced: b.playhead - a.playhead });
     } catch (e) { return 'import failed: ' + e.message; }
   })()`,
   awaitPromise: true,
