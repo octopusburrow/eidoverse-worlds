@@ -1222,42 +1222,47 @@ startPrefetch().catch((e) => report('prefetch', e));
 
 // ---------------------------------------------------------------- debug
 
-// ?voice=<name> — POINT AT A MODEL ON DISK, exactly the way a human does.
+// setVoice(name) — POINT AT A MODEL ON DISK, at any time, same function a human's
+// picker uses.
 //
-// R: "we specifically made it easy for you to aim a file pointer at the model on
-// your own drive. Why not do that?" And when I claimed agents could not: "why
-// can't agents just use the exact same function a human uses?" They can. I had
-// assumed the file PICKER was the path, so no-picker meant no-path — but the
-// picker only produces File objects, and a File is constructible from any bytes.
-// The loader never cared where they came from.
+// R: "why does it need to be restarted? I don't have to restart my client to use
+// a voice, that's a weird asymmetry." She is right and I built the asymmetry: a
+// URL param is a BOOT-TIME decision, so a human got a live control and an agent
+// got a restart. Restarting a body is also the single most expensive thing in
+// this system — it drops the door, and I have broken her world doing it twice
+// today.
 //
-// So this fetches the two files the picker would have handed over and calls the
-// SAME loadFromFiles(). One code path for humans and agents: inference runs in
-// this browser, no synth server in the lane, nothing extra to keep alive.
-{
-  const q0 = new URLSearchParams(location.search);
-  const want = q0.get('voice');
-  if (want) {
-    (async () => {
-      try {
-        const base = new URL(`voices/${want}`, location.href).href;
-        const [onnx, cfg] = await Promise.all([
-          fetch(`${base}.onnx`).then((r) => { if (!r.ok) throw new Error(`${want}.onnx: ${r.status}`); return r.blob(); }),
-          fetch(`${base}.onnx.json`).then((r) => { if (!r.ok) throw new Error(`${want}.onnx.json: ${r.status}`); return r.blob(); }),
-        ]);
-        const files = [new File([onnx], `${want}.onnx`), new File([cfg], `${want}.onnx.json`)];
-        const { loadFromFiles } = await import('./lib/voiceengines.js');
-        await import('./lib/engines.js');
-        const { label } = await loadFromFiles(files, (p) =>
-          console.log(`[voice] ${p.text || p.phase || 'loading'}`));
-        const { setTtsEnabled } = await import('./lib/voicesource.js');
-        setTtsEnabled(true);
-        console.log(`[voice] speaking with ${label} — loaded from disk, no server`);
-      } catch (e) {
-        console.warn('[voice] ?voice failed:', e);
-      }
-    })();
+// So this is a function, callable whenever, and ?voice= merely calls it once at
+// boot. The picker only produces File objects and a File is constructible from
+// any bytes, so an agent fetches the two files a human would have chosen and
+// hands them to the SAME loadFromFiles(). Inference runs in this browser; no
+// synth process in the lane, nothing to keep alive, nothing to restart.
+async function setVoice(name) {
+  if (!name) {                       // setVoice(null) — go quiet, keep the lane
+    const { setTtsSource, setTtsEnabled } = await import('./lib/voicesource.js');
+    setTtsSource(null); setTtsEnabled(false);
+    return { ok: true, voice: null };
   }
+  const base = new URL(`voices/${name}`, location.href).href;
+  const [onnx, cfg] = await Promise.all([
+    fetch(`${base}.onnx`).then((r) => { if (!r.ok) throw new Error(`${name}.onnx: ${r.status}`); return r.blob(); }),
+    fetch(`${base}.onnx.json`).then((r) => { if (!r.ok) throw new Error(`${name}.onnx.json: ${r.status}`); return r.blob(); }),
+  ]);
+  const files = [new File([onnx], `${name}.onnx`), new File([cfg], `${name}.onnx.json`)];
+  const { loadFromFiles } = await import('./lib/voiceengines.js');
+  await import('./lib/engines.js');
+  const { label } = await loadFromFiles(files, (p) =>
+    console.log(`[voice] ${p.text || p.phase || 'loading'}`));
+  const { setTtsEnabled } = await import('./lib/voicesource.js');
+  setTtsEnabled(true);
+  console.log(`[voice] speaking with ${label} — loaded from disk, no server`);
+  return { ok: true, voice: label };
+}
+// Callable from a console, from a harness, or by an agent mid-session.
+if (typeof window !== 'undefined') window.setVoice = setVoice;
+{
+  const want = new URLSearchParams(location.search).get('voice');
+  if (want) setVoice(want).catch((e) => console.warn('[voice] ?voice failed:', e));
 }
 
 // Opt-in synthesized voice: ?tts or ?tts=<port>. Absent — the overwhelmingly
