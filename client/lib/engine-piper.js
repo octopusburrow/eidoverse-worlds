@@ -207,7 +207,19 @@ registerEngine({
       // So make it switchable and MEASURE, rather than assuming the GPU wins:
       //   localStorage.eidoTtsBackend = 'wasm' | 'webgpu' | 'auto' (default)
       const pref = (() => { try { return localStorage.getItem('eidoTtsBackend'); } catch { return null; } })();
-      if (hasGpu && pref !== 'wasm') {
+      // 🔴 WEBGPU IS OPT-IN, NOT DEFAULT (2026-08-09, after it broke R's voice
+      // with "Failed to run JSEP kernel" on GatherND). Three reasons, in order:
+      //   1. ORT's WebGPU EP does not implement every op a VITS graph uses, and
+      //      the failure lands at INFERENCE time, not at session creation — so a
+      //      user gets a voice that loads fine and then throws.
+      //   2. The research says WASM SIMD+threads often BEATS WebGPU for SHORT
+      //      utterances anyway, because per-call GPU setup dominates. Short
+      //      utterances are the case we care about.
+      //   3. An experiment that costs someone their working voice is not a
+      //      default. It is a flag.
+      // Turn it on with localStorage.eidoTtsBackend = 'webgpu' and measure with
+      // ttsBench(); the run() fallback below still catches a kernel failure.
+      if (hasGpu && pref === 'webgpu') {
         try {
           const t = performance.now();
           ortSession = await ort.InferenceSession.create(buf, { ...opts, executionProviders: ['webgpu'] });
@@ -255,7 +267,29 @@ registerEngine({
           inf.noise_scale ?? 0.667, inf.length_scale ?? 1.0, inf.noise_w ?? 0.8,
         ])),
       };
-      const res = await ortSession.run(feeds);
+        // 🔴 THE WEBGPU FALLBACK MUST COVER run(), NOT JUST create().
+        //
+        // R, 2026-08-09: "Non-zero status code returned while running GatherND
+        // node … Failed to run JSEP kernel". JSEP is the WebGPU backend, and
+        // this is precisely the risk I named when I added it: session creation
+        // SUCCEEDS and then an operator fails at INFERENCE time. ORT's WebGPU EP
+        // does not implement every op a VITS graph uses — GatherND here — and my
+        // fallback only wrapped create(), so the failure landed on the user as a
+        // dead voice instead of a slower one.
+        //
+        // Rebuild once on WASM and retry. A voice that speaks slowly beats a
+        // voice that throws, and the rebuild is paid once per session, not per
+        // utterance.
+        let res;
+        try {
+          res = await ortSession.run(feeds);
+        } catch (e) {
+          if (usedEP !== 'webgpu') throw e;
+          console.warn('[voice] webgpu kernel failed, rebuilding on wasm:', e?.message || e);
+          ortSession = await ort.InferenceSession.create(buf, { ...opts, executionProviders: ['wasm'] });
+          usedEP = 'wasm';
+          res = await ortSession.run(feeds);
+        }
       const t2 = performance.now();
       const raw = res[ortSession.outputNames[0]].data;      // Float32Array, -1..1
       const pcmData = new Int16Array(raw.length);
