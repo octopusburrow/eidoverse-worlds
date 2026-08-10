@@ -77,6 +77,9 @@ function applyDirection(p) {
   return dir;
 }
 
+// Survives dropPeer so a rebuilt peer never reuses a generation number.
+const peerGen = new Map();
+
 function peerFor(id) {
   let p = peers.get(id);
   if (p) return p;
@@ -110,6 +113,11 @@ function peerFor(id) {
 function dropPeer(id) {
   const p = peers.get(id);
   if (!p) return;
+  // Deferred work dies with the peer that owed it. settlePending()'s generation
+  // check already refuses stale work; clearing here means a dropped peer is
+  // never even a candidate — belt and braces on the exact path that produced
+  // the contamination class.
+  p.pendingOffer = null;
   peers.delete(id);
   try { p.pc.close(); } catch (e) { report('voice close', e); }
   p.audio.srcObject = null;
@@ -136,10 +144,45 @@ async function offerOn(p, id, label) {
   } catch (e) { report(label, e); } finally { p._offering = false; }
 }
 
-async function renegotiate(id) {
+async function renegotiate(id, { defer = false } = {}) {
   const p = peers.get(id);
-  if (!p || p.pc.signalingState !== 'stable') return;
+  if (!p) return;
+  // 🔴 A BAIL IS NOT A DECISION — it is deferred work (Mica's review of #62).
+  // The old shape returned here and lost the intent: a mic opening while we sit
+  // in `have-local-offer` attaches the track locally, finds signaling unstable,
+  // and nothing ever re-offers. The remote answer completes the OLD, mic-less
+  // offer and the peer settles into `stable` advertising a direction that no
+  // longer matches the sender. Silent, permanent, one-way muteness.
+  //
+  // So record that this generation still owes an offer, and settle it when the
+  // peer returns to stable. Generation-bound: if this pc is torn down and
+  // rebuilt, the flag dies with it rather than firing against its successor.
+  // 🔴 DEFERRAL IS OPT-IN, because two callers want OPPOSITE things here and I
+  // broke the other one by making it unconditional (73/73 -> 71/73):
+  //
+  //   recvReady heal  — WANTS the bail. It has already dropped and rebuilt the
+  //                     wedged peer itself; a deferred offer landing afterwards
+  //                     is a SECOND pc (the test says `closed=true, pcs=2`).
+  //   mic opens       — WANTS deferral. This is Mica's #62 case: the peer is in
+  //                     have-local-offer, the old offer was built mic-less, and
+  //                     if nobody re-offers when the answer lands the peer
+  //                     settles advertising a direction that is already false.
+  //
+  // Same function, same state, different correct answer — so the CALLER says.
+  if (p.pc.signalingState !== 'stable') { if (defer) p.pendingOffer = p.gen; return; }
   await offerOn(p, id, 'voice renegotiate');
+}
+
+/** Settle deferred negotiation after a peer returns to `stable`.
+ *
+ *  Exactly one follow-up offer per owed generation: the flag is cleared BEFORE
+ *  awaiting, so a second answer arriving in the same tick cannot double-offer,
+ *  and a stale generation is dropped rather than applied to a rebuilt peer. */
+async function settlePending(p, id) {
+  if (p.pendingOffer !== p.gen) { p.pendingOffer = null; return; }
+  p.pendingOffer = null;
+  if (p.pc.signalingState !== 'stable') return;
+  await offerOn(p, id, 'voice pending-offer');
 }
 
 async function offerTo(id) {
@@ -220,7 +263,14 @@ async function processSignal(p, from, payload) {
       sendRtc(from, { sdp: p.pc.localDescription });
     } else if (payload.sdp?.type === 'answer') {
       if (p.pc.signalingState === 'have-local-offer') {
+        const gen = p.gen;                // capture BEFORE any await
         await p.pc.setRemoteDescription(payload.sdp);
+        // This answer just returned us to `stable` — the ONLY moment a
+        // renegotiation deferred mid-flight can be honoured. Skipped when the
+        // peer was replaced across the await: that pendingOffer belonged to a
+        // pc that no longer exists, and firing it would contaminate its
+        // successor (Mica's contamination rule, 08-07).
+        if (p.gen === gen && peers.get(from) === p) await settlePending(p, from);
       for (const c of p.pendingIce ?? []) {
         await p.pc.addIceCandidate(c).catch((err) => (window.__iceLog ??= []).push(`flushIce-FAIL ${err.name}`));
       }
@@ -279,7 +329,11 @@ export async function toggleMic(name) {
   // skip it. Attaching is safe in any signaling state; replaceTrack on an
   // existing sender needs no renegotiation at all.
   for (const p of peers.values()) applyDirection(p);
-  for (const id of [...peers.keys()]) renegotiate(id);
+  // defer: THIS is the call site Mica's #62 review is about. A peer in
+  // have-local-offer when the mic opens has an offer in flight that was built
+  // mic-less; without deferral nothing ever re-offers and it settles stable,
+  // advertising a send direction that is already false.
+  for (const id of [...peers.keys()]) renegotiate(id, { defer: true });
   // Only reach for peers we do NOT already hold. A peer mid-negotiation has
   // an answer in flight that will carry the track we just attached — offering
   // into it forces glare against ourselves and leaves the peer parked in
