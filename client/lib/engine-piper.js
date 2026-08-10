@@ -139,7 +139,18 @@ registerEngine({
     //
     // Inference is cheap once phonemization is not being rebuilt: the same ORT
     // session, run directly.
-    const ort = await import('onnxruntime-web');
+    // 🔴 THE WEBGPU EP IS IN A DIFFERENT BUNDLE. The bare 'onnxruntime-web'
+    // entry point does not carry it, so requesting executionProviders:['webgpu']
+    // against it always throws and falls back to wasm — the feature would look
+    // implemented and never once run. Import the webgpu bundle when the browser
+    // has a GPU, the default otherwise.
+    const hasGpu = typeof navigator !== 'undefined' && 'gpu' in navigator;
+    const ort = hasGpu
+      ? await import('onnxruntime-web/webgpu').catch(async (e) => {
+          console.warn('[voice] webgpu bundle failed to load, using wasm build:', e?.message || e);
+          return import('onnxruntime-web');
+        })
+      : await import('onnxruntime-web');
     const cfgJson = JSON.parse(await cfg.text());
     const espeakVoice = cfgJson?.espeak?.voice || 'en-us';
     const inf = cfgJson?.inference || {};
@@ -147,9 +158,62 @@ registerEngine({
       piperData: new URL('../vendor/piper/piper_phonemize.data', import.meta.url).href,
       piperWasm: new URL('../vendor/piper/piper_phonemize.wasm', import.meta.url).href,
     };
-    ort.env.wasm.numThreads = navigator.hardwareConcurrency || 4;
-    ort.env.wasm.wasmPaths = new URL('../node_modules/onnxruntime-web/dist/', import.meta.url).href;
-    const ortSession = await ort.InferenceSession.create(await onnx.arrayBuffer());
+      // 🔴 REPORT WHAT WE ACTUALLY GOT, NOT WHAT WE ASKED FOR.
+      //
+      // onnxruntime-web ships ONLY -threaded builds, every one of which needs
+      // SharedArrayBuffer, which needs the page to be cross-origin isolated.
+      // Without it ORT silently falls back to single-threaded — numThreads still
+      // READS as 8 while one core does the work. That is the displayed-state-vs-
+      // real-state trap, and it is exactly the kind of thing I have spent today
+      // failing to catch by reading config instead of measuring.
+      //
+      // Default is min(hardwareConcurrency/2, 4) — capped at 4 even on a big
+      // machine — so ask for more explicitly, then print what the runtime says.
+      const cores = navigator.hardwareConcurrency || 4;
+      const isolated = typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated;
+      const sab = typeof SharedArrayBuffer !== 'undefined';
+      ort.env.wasm.numThreads = isolated && sab ? Math.min(cores, 8) : 1;
+      ort.env.wasm.simd = true;
+      ort.env.wasm.wasmPaths = new URL('../node_modules/onnxruntime-web/dist/', import.meta.url).href;
+      console.log(`[voice] ORT: ${cores} cores · crossOriginIsolated=${isolated} · `
+        + `SharedArrayBuffer=${sab} · numThreads=${ort.env.wasm.numThreads}`
+        + (isolated && sab ? '' : '  ⚠️ SINGLE-THREADED — isolation headers missing'));
+
+      // Session options were never set at all: no optimization level, no
+      // execution mode. 'all' lets ORT fuse and constant-fold the graph, which is
+      // free at run time and paid once at load.
+      // 🔴 TRY WEBGPU FIRST, FALL BACK TO WASM.
+      //
+      // 553ms for 0.53s of audio is RTF ~1.07 on a MEDIUM (60 MB) model. The
+      // ~65ms figure in the Piper README is NATIVE, and typically a low/x_low
+      // model — never the same comparison. WASM SIMD cannot reach hardware AVX
+      // or NEON, so the gap is structural, not a bug.
+      //
+      // But the jsep (WebGPU) binary already ships in onnxruntime-web, so the GPU
+      // path costs no new dependency. A VITS decoder is mostly convolutions and
+      // matmuls, which is exactly what a GPU is for. Falls back silently when
+      // WebGPU is absent or the model has an op the EP does not implement — the
+      // fallback is REQUIRED, not optional, because 'webgpu' throws rather than
+      // degrading on unsupported operators.
+      const buf = await onnx.arrayBuffer();
+      const opts = { graphOptimizationLevel: 'all', executionMode: 'parallel' };
+      let ortSession = null, usedEP = 'wasm';
+      if (hasGpu) {
+        try {
+          const t = performance.now();
+          ortSession = await ort.InferenceSession.create(buf, { ...opts, executionProviders: ['webgpu'] });
+          usedEP = 'webgpu';
+          console.log(`[voice] ORT session on WEBGPU in ${Math.round(performance.now() - t)}ms`);
+        } catch (e) {
+          console.warn('[voice] webgpu unavailable, falling back to wasm:', e?.message || e);
+        }
+      }
+      if (!ortSession) {
+        const t = performance.now();
+        ortSession = await ort.InferenceSession.create(buf, { ...opts, executionProviders: ['wasm'] });
+        console.log(`[voice] ORT session on WASM in ${Math.round(performance.now() - t)}ms`);
+      }
+      console.log(`[voice] inference backend: ${usedEP}`);
 
     const { phonemize, phonReady, warmPhonemizer } = await import('./piperphon.js');
     // BUILD THE PHONEMIZER NOW, not on the first word. It is ~27s and depends on
@@ -194,7 +258,7 @@ registerEngine({
       const secs = pcmData.length / rate;
       console.log(`[voice] phonemize ${Math.round(t1 - t0)}ms${warm ? '' : ' (first, builds the module)'}`
         + ` · infer ${Math.round(t2 - t1)}ms · ${secs.toFixed(2)}s audio`
-        + ` · RTF ${((t2 - t0) / 1000 / Math.max(secs, 1e-6)).toFixed(3)}`);
+        + ` · RTF ${((t2 - t0) / 1000 / Math.max(secs, 1e-6)).toFixed(3)}` + ` · ${usedEP}`);
       return { pcm: pcmData, sampleRate: rate };
     };
     const label = `Piper: ${base}${sr ? ` (${sr} Hz)` : ''}`;
