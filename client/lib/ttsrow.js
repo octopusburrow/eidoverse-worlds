@@ -35,6 +35,10 @@ let _needVoice = false;
  *  mic goes off — nothing to re-tick, which is the whole advantage over the
  *  symmetric version I built first. */
 let _busy = null;          // a phase string while loading, else null
+/** A voice being imported RIGHT NOW: shown in the list as a ghost row with a
+ *  running timer, so a slow prepare (the phonemizer build is ~27s on first use)
+ *  reads as work rather than as nothing happening. */
+let _loadingId = null, _loadingName = null, _loadingSince = 0;
 // A pick that is missing its other half — kept so it can be resumed rather than
 // discarded. See addFile().
 let _pending = null;
@@ -154,17 +158,37 @@ export function ttsSection(host, onPaint = () => {}) {
     await import('./engines.js');
     const shown = (files.find((f) => /\.onnx$/i.test(f.name)) || files[0])?.name || 'voice';
     const name = shown.replace(/\.onnx$/i, '');
-    _busy = `loading ${name}…`; build();
-    await loadFromFiles(files, (p) => { _busy = p.text || p.phase || `loading ${name}…`; build(); });
-    const id = `file:${name}`;
-    try {
-      const { rememberVoice, canRemember } = await import('./voicestore.js');
-      if (canRemember()) await rememberVoice(id, name, handles);
-    } catch (e) { console.warn('[voice] not remembered:', e); }
-    _pending = null;
-    _selected = id;
-    setTtsEnabled(true);
-    _busy = null;
+      // 🔴 _busy MUST BE CLEARED ON EVERY EXIT. The add button greys itself while
+      // busy (voicelist.js), so a throw in here left it grey FOREVER — R,
+      // 2026-08-09: "the add a text-to-speech model button goes gray after one is
+      // added, so you can't add more". try/finally, not a trailing assignment.
+      _busy = `loading ${name}…`;
+      // Show the model in the list IMMEDIATELY, loading, so a slow prepare reads
+      // as work-in-progress rather than nothing happening. The phonemizer build
+      // is ~27s on first use; without this the panel looks inert for half a
+      // minute and a silent failure is indistinguishable from a slow success.
+      _loadingId = `file:${name}`; _loadingName = name; _loadingSince = Date.now();
+      build();
+      try {
+        await loadFromFiles(files, (p) => { _busy = p.text || p.phase || `loading ${name}…`; build(); });
+        const id = `file:${name}`;
+        try {
+          const { rememberVoice, canRemember } = await import('./voicestore.js');
+          if (canRemember()) await rememberVoice(id, name, handles);
+        } catch (e) { console.warn('[voice] not remembered:', e); }
+        _pending = null;
+        _selected = id;
+        setTtsEnabled(true);
+      } catch (e) {
+        report('tts voice', e);
+        _busy = String(e?.message || e).slice(0, 80);
+        build();
+        setTimeout(() => { _busy = null; _loadingId = null; repaint(); }, 3000);
+        return;
+      } finally {
+        _loadingId = null;
+      }
+      _busy = null;
     repaint();
   }
 
@@ -334,6 +358,8 @@ export function ttsSection(host, onPaint = () => {}) {
     collectVoices().then((items) => {
       renderVoiceList(listHost, {
         items, selected: _selected, busy: _busy,
+        // The in-flight import, shown as a ghost row with a running clock.
+        loading: _loadingId ? { id: _loadingId, name: _loadingName, since: _loadingSince } : null,
         on: { select: pick, remove, addFile, addEndpoint },
       });
     });

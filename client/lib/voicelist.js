@@ -41,6 +41,8 @@ const ROW = `
 .vl-row:hover .vl-x, .vl-row .vl-x:focus { opacity: .75; }
 .vl-row .vl-x:hover { opacity: 1; color: #f88; }
 .vl-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vl-note { margin-left: auto; font-size: 11px; font-variant-numeric: tabular-nums; }
+.vl-loading { opacity: .85; }
 .vl-add { opacity: .6; }
 .vl-add:hover { opacity: 1; }
 .vl-dim { opacity: .45; font-style: italic; }
@@ -59,7 +61,7 @@ function ensureCss() {
  *  selected: id | null
  *  on:       {select(id), remove(id), addFile(), addEndpoint()}
  */
-export function renderVoiceList(host, { items, selected, on, busy }) {
+export function renderVoiceList(host, { items, selected, on, busy, loading }) {
   ensureCss();
   host.className = 'vl';
   host.textContent = '';
@@ -76,6 +78,40 @@ export function renderVoiceList(host, { items, selected, on, busy }) {
   // "+ add" rows below already say what to do, and a placeholder pointing AT
   // them is a caption for a sign. An empty pane collapses to nothing and the
   // verbs stand alone, which is the whole empty state.
+
+  // 🔴 A VOICE BEING IMPORTED APPEARS IMMEDIATELY, WITH A RUNNING CLOCK.
+  // R, 2026-08-09: "add the model to the list while it's loading and have a
+  // second-ticker or animating dots so people know it didn't fail silently while
+  // preparing the model". The first import pays the ~27s phonemizer build, and
+  // without this the panel looks inert for half a minute — during which a real
+  // failure and a slow success look exactly the same.
+  //
+  // A COUNTER, not a spinner: a spinner says "something is happening", a clock
+  // says HOW LONG, which is the number that tells you whether to keep waiting.
+  if (loading) {
+    const row = document.createElement('div');
+    row.className = 'vl-row vl-loading';
+    row.title = 'preparing this voice — the first one also builds the speech engine';
+    const mark = document.createElement('span');
+    mark.textContent = '◌';
+    mark.style.opacity = '.6';
+    const name = document.createElement('span');
+    name.className = 'vl-name';
+    name.textContent = loading.name;
+    name.style.opacity = '.7';
+    const clock = document.createElement('span');
+    clock.className = 'vl-note';
+    clock.style.opacity = '.7';
+    const t0 = loading.since || Date.now();
+    const tick = () => {
+      if (!clock.isConnected) return clearInterval(timer);
+      clock.textContent = `preparing… ${Math.round((Date.now() - t0) / 1000)}s`;
+    };
+    const timer = setInterval(tick, 1000);
+    tick();
+    row.append(mark, name, clock);
+    host.appendChild(row);
+  }
 
   for (const it of items) {
     const row = document.createElement('div');
