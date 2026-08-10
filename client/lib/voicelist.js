@@ -97,7 +97,13 @@ export function renderVoiceList(host, { items, selected, on, busy, loading }) {
   //
   // A COUNTER, not a spinner: a spinner says "something is happening", a clock
   // says HOW LONG, which is the number that tells you whether to keep waiting.
-  if (loading) {
+  // 🔴 ONLY A GHOST IF THERE IS NO REAL ROW (R, 2026-08-09: "I'm seeing
+  // en_US-glados-high listed twice when I try to load it"). A voice already in
+  // the library HAS a row — adding a second one for its loading state shows the
+  // same voice twice and the ghost reads as an error. Show the status ON the
+  // existing row instead; the ghost is only for a voice being imported for the
+  // first time, which genuinely is not in the list yet.
+  if (loading && !items.some((it) => it.id === loading.id)) {
     const row = document.createElement('div');
     row.className = 'vl-row vl-loading';
     row.title = 'preparing this voice — the first one also builds the speech engine';
@@ -169,7 +175,28 @@ export function renderVoiceList(host, { items, selected, on, busy, loading }) {
     // file-open; an undo row is machinery for the same non-loss.
     // stopPropagation, or clicking × also selects the row it is destroying.
     x.onclick = (e) => { e.stopPropagation(); on.remove?.(it.id); };
-    row.append(mark, name, x);
+      // A voice ALREADY in the list that is loading shows its status on its own
+      // row — with the same clock the ghost row runs — rather than getting a
+      // second entry. Without this, clicking a listed voice looked like nothing
+      // happened at all.
+      if (loading && loading.id === it.id) {
+        row.classList.add('vl-loading');
+        const st = document.createElement('span');
+        st.className = 'vl-note';
+        const t0 = loading.since || Date.now();
+        const tickRow = () => {
+          if (!st.isConnected) return clearInterval(rowTimer);
+          const s = Math.round((Date.now() - t0) / 1000);
+          st.textContent = loading.status
+            ? (/\d+s/.test(loading.status) ? loading.status : `${loading.status} — ${s}s`)
+            : `starting — ${s}s`;
+        };
+        const rowTimer = setInterval(tickRow, 1000);
+        tickRow();
+        row.append(mark, name, st, x);
+      } else {
+        row.append(mark, name, x);
+      }
     row.onclick = () => on.select?.(it.id);
     row.onkeydown = (e) => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); on.select?.(it.id); }
