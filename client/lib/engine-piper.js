@@ -219,7 +219,21 @@ registerEngine({
       //      default. It is a flag.
       // Turn it on with localStorage.eidoTtsBackend = 'webgpu' and measure with
       // ttsBench(); the run() fallback below still catches a kernel failure.
+      // 🔴 GatherND IS SUPPORTED — checked the authoritative op table rather
+      // than assuming from the error text (webgpu-operators.md lists it at
+      // ai.onnx 11,12,13+). So "Failed to run JSEP kernel" on GatherND_2927 is a
+      // kernel that EXISTS and FAILED, not a missing one — a different problem
+      // with a different fix, and the error message does not distinguish them.
+      //
+      // Note also RandomNormalLike is ABSENT from that table, and VITS samples
+      // noise. If the graph contains it, a partition boundary lands right in the
+      // hot path — which would explain both a failure and a slowdown.
+      //
+      // env.debug + verbose logging makes ORT print which ops run on GPU and
+      // which fall back, so the next attempt has data instead of a guess.
       if (hasGpu && pref === 'webgpu') {
+        ort.env.debug = true;
+        ort.env.logLevel = 'verbose';
         try {
           const t = performance.now();
           ortSession = await ort.InferenceSession.create(buf, { ...opts, executionProviders: ['webgpu'] });
