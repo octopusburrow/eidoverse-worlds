@@ -463,3 +463,34 @@ export const genTrackInfo = () => (genTrack
   ? { id: genTrack.id, kind: genTrack.kind, readyState: genTrack.readyState, enabled: genTrack.enabled }
   : null);
 
+
+
+/** Benchmark the current voice: N runs of the same text, reporting the spread.
+ *
+ *  Exists because every latency claim today has been settled by measurement and
+ *  none by argument. Run it, switch backend, run it again:
+ *
+ *      await ttsBench('hello')                     // current backend
+ *      localStorage.eidoTtsBackend = 'wasm'        // then reload and re-run
+ *
+ *  Reports P50 and best rather than a mean: a mean over 5 runs hides the one
+ *  slow first call that the user actually feels.
+ */
+export async function ttsBench(text = 'hello', runs = 5) {
+  if (!isTtsEnabled() || !ttsFn) { console.warn('[bench] no voice loaded'); return null; }
+  const ms = [];
+  let secs = 0;
+  for (let i = 0; i < runs; i++) {
+    const t = performance.now();
+    const out = await ttsFn(text);
+    ms.push(performance.now() - t);
+    secs = (out?.pcm?.length || 0) / (out?.sampleRate || 22050);
+  }
+  ms.sort((a, b) => a - b);
+  const p50 = ms[Math.floor(ms.length / 2)];
+  console.log(`[bench] ${JSON.stringify(text)} ×${runs}: `
+    + `best ${Math.round(ms[0])}ms · P50 ${Math.round(p50)}ms · worst ${Math.round(ms.at(-1))}ms `
+    + `→ ${secs.toFixed(2)}s audio · RTF ${(p50 / 1000 / Math.max(secs, 1e-6)).toFixed(3)}`);
+  return { best: ms[0], p50, worst: ms.at(-1), secs };
+}
+if (typeof window !== 'undefined') window.ttsBench = ttsBench;

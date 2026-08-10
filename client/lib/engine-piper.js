@@ -198,7 +198,14 @@ registerEngine({
       const buf = await onnx.arrayBuffer();
       const opts = { graphOptimizationLevel: 'all', executionMode: 'parallel' };
       let ortSession = null, usedEP = 'wasm';
-      if (hasGpu) {
+      // 🔴 WEBGPU IS NOT OBVIOUSLY THE WIN FOR SHORT SPEECH. piper-plus and the
+      // ORT docs both note that for SHORT utterances WASM SIMD+threads often
+      // beats WebGPU, because per-call GPU setup dominates when there is little
+      // work to do — and short utterances are exactly R's case ("hello").
+      // So make it switchable and MEASURE, rather than assuming the GPU wins:
+      //   localStorage.eidoTtsBackend = 'wasm' | 'webgpu' | 'auto' (default)
+      const pref = (() => { try { return localStorage.getItem('eidoTtsBackend'); } catch { return null; } })();
+      if (hasGpu && pref !== 'wasm') {
         try {
           const t = performance.now();
           ortSession = await ort.InferenceSession.create(buf, { ...opts, executionProviders: ['webgpu'] });
