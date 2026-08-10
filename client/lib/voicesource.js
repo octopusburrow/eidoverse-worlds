@@ -179,7 +179,27 @@ export async function speak(text) {
     out = await ttsFn(text);
   } catch (e) { report('tts synthesize', e); return false; }
   if (!out?.pcm?.length) { console.warn('[voice] synthesizer returned no pcm'); return false; }
-  console.log(`[voice] got ${out.pcm.length} samples @${out.sampleRate}Hz — feeding sender`);
+    // 🔴 IS THE PCM ITSELF CLEAN? R, 2026-08-09: short utterances sound "badly
+    // compressed or staticy", long ones are perfect. That is NOT a prosody
+    // complaint — static means the SAMPLES are wrong, so measure them before the
+    // pacer can be blamed. Clipping and DC offset both sound like distortion and
+    // both show up in one pass; if these are clean, the fault is downstream.
+    {
+      const pcm = out.pcm;
+      let peak = 0, sum = 0, clipped = 0;
+      for (let i = 0; i < pcm.length; i++) {
+        const v = pcm[i]; const a = v < 0 ? -v : v;
+        if (a > peak) peak = a;
+        if (a >= 32767) clipped++;
+        sum += v;
+      }
+      const dc = sum / pcm.length;
+      console.log(`[voice] pcm: ${pcm.length} samples @${out.sampleRate}Hz `
+        + `peak ${(peak / 32768).toFixed(3)} (${(20 * Math.log10(peak / 32768 || 1e-9)).toFixed(1)} dBFS) `
+        + `dc ${(dc / 32768).toFixed(4)} clipped ${clipped}`
+        + (clipped > pcm.length * 0.001 ? '  ⚠️ CLIPPING' : '')
+        + (Math.abs(dc / 32768) > 0.01 ? '  ⚠️ DC OFFSET' : ''));
+    }
   // QUEUE IT — DO NOT PUSH IT. The frames are handed to a wall-clock pacer that
   // is already running; see the pacer below for why the track must never starve.
   enqueue(out.pcm, out.sampleRate);
