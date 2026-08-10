@@ -476,6 +476,34 @@ export const genTrackInfo = () => (genTrack
  *  Reports P50 and best rather than a mean: a mean over 5 runs hides the one
  *  slow first call that the user actually feels.
  */
+export async function ttsTTFS(text = 'hello there, this is a test', runs = 3) {
+  // 🔴 TIME TO FIRST SOUND — the number a LISTENER experiences, which is not the
+  // same as `infer`. R, 2026-08-09: "as long as you can load your own models from
+  // your end you ought to be able to poll time to first sound, since TTS is wired
+  // to be able to hear yourself." Exactly: self-monitoring makes an agent its own
+  // measurement instrument, no human in the loop.
+  //
+  // TTFS = phonemize + infer + everything between the call and audio existing.
+  // Optimising `infer` alone can move that number not at all, which is precisely
+  // the mistake this whole evening kept making at a different layer.
+  if (!isTtsEnabled() || !ttsFn) { console.warn('[ttfs] no voice loaded'); return null; }
+  const out = [];
+  for (let i = 0; i < runs; i++) {
+    const t0 = performance.now();
+    const r = await ttsFn(text);
+    const ttfs = performance.now() - t0;
+    const secs = (r?.pcm?.length || 0) / (r?.sampleRate || 22050);
+    out.push({ ttfs, secs });
+  }
+  out.sort((a, b) => a.ttfs - b.ttfs);
+  const p50 = out[Math.floor(out.length / 2)];
+  console.log(`[ttfs] ${JSON.stringify(text)} ×${runs}: `
+    + `best ${Math.round(out[0].ttfs)}ms · P50 ${Math.round(p50.ttfs)}ms `
+    + `→ ${p50.secs.toFixed(2)}s audio · RTF ${(p50.ttfs / 1000 / Math.max(p50.secs, 1e-6)).toFixed(3)}`);
+  return { best: out[0].ttfs, p50: p50.ttfs, secs: p50.secs };
+}
+if (typeof window !== 'undefined') window.ttsTTFS = ttsTTFS;
+
 export async function ttsBench(text = 'hello', runs = 5) {
   if (!isTtsEnabled() || !ttsFn) { console.warn('[bench] no voice loaded'); return null; }
   const ms = [];
