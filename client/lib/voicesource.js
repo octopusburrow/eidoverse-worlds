@@ -106,7 +106,19 @@ export function setTtsEnabled(on) {
         // above warns about.
         const micLive = (await import('./voice.js')).micOn?.();
         if (ttsEnabled && canSynthesize() && !micLive) {
-          startPacer(); m.mixSynthTrack(ensureGenerator());
+          // 🔴 THE GENERATOR GOES ON THE SENDER, not through the WebAudio mix.
+          // mixSynthTrack routes samples through micgate's destination node —
+          // which produces NOTHING when the page's AudioContext clock is
+          // stalled, and in a headless body it always is: field-measured
+          // (2026-08-10) ctx.state 'running' with currentTime advancing 0.000s
+          // over 2 real seconds, sender at 17 packets / 206 bytes EVER. The
+          // context lies about running; the destination is a mouth sewn shut.
+          // The generator is frames-as-data on a wall clock — the design that
+          // exists precisely because headless WebAudio stalls — so when TTS is
+          // the active producer it must BE the sender's track, for humans and
+          // agents alike. With the mic live this branch never runs (mic beats
+          // TTS), so the WebAudio mix path is not needed here at all.
+          startPacer(); m.unmixSynth(); __fireRebuild(ensureGenerator());
         } else m.unmixSynth();
     }).catch(() => {});
   }
