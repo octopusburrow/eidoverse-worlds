@@ -331,7 +331,23 @@ registerEngine({
           // buys natural rhythm variation and costs consistency, and at 0.8 an
           // unlucky draw is audibly worse than a lucky one. Overridable per voice
           // via the config so this is a dial, not my taste hardcoded.
-          inf.noise_scale ?? 0.667, inf.length_scale ?? 1.0, inf.noise_w ?? 0.8,
+          // 🔴 LENGTH IS LATENCY. Measured 2026-08-09: infer cost tracks OUTPUT
+          // duration almost exactly — R's two runs of "Hello" were 698ms/0.63s
+          // and 531ms/0.46s, RTF 1.12 vs 1.16. Inference is not erratic; it is
+          // being asked for different amounts of audio.
+          //
+          // And the amounts are LONG. "Hello." at defaults:
+          //     en_US-amy-medium     0.87s      ← a human says it in ~0.35s
+          //     hesperus-clockwork   0.49s      ← 1.25 speed baked into its corpus
+          // So a voice's own training speed dominates, and length_scale is the
+          // per-voice dial for the rest. Lowering it cuts audio duration AND
+          // inference time together, which is the cheapest latency win available
+          // — but it is a VOICE decision (pace, character), not a perf knob to
+          // set behind someone's back. Overridable in the .onnx.json, and
+          // localStorage.eidoTtsLengthScale overrides that for A/B.
+          inf.noise_scale ?? 0.667,
+          (() => { try { const v = parseFloat(localStorage.getItem('eidoTtsLengthScale')); return Number.isFinite(v) ? v : (inf.length_scale ?? 1.0); } catch { return inf.length_scale ?? 1.0; } })(),
+          inf.noise_w ?? 0.8,
         ])),
       };
         // 🔴 THE WEBGPU FALLBACK MUST COVER run(), NOT JUST create().
