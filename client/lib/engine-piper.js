@@ -112,11 +112,21 @@ registerEngine({
     // estimate. "still working, 12s" answers the only question a frozen label
     // cannot — is this alive?
     const t0 = performance.now();
-    const ticker = setInterval(() => {
-      const s = Math.round((performance.now() - t0) / 1000);
-      onProgress({ phase: 'compile', elapsed: s, text: `preparing voice — ${s}s (first load is slow)` });
-    }, 1000);
-    onProgress({ phase: 'compile', elapsed: 0, text: 'preparing voice (first load is slow)' });
+      // 🔴 SAY WHAT IS ACTUALLY HAPPENING (R, 2026-08-09: "idk the difference
+      // between these — can there be more accurate descriptions, like loading
+      // phonemizer or whatever?"). "preparing voice" and "preparing speech" were
+      // two vague phrases for two genuinely different jobs, and neither said
+      // which. Named for the work now:
+      //   loading speech runtime  — fetching onnxruntime-web
+      //   compiling voice model   — InferenceSession.create(): parse protobuf,
+      //                             plan memory, fuse ops, JIT kernels. THE 30s.
+      //   building pronunciation  — the espeak phonemizer (text → phonemes),
+      //                             ~27s first time, in a worker
+      const ticker = setInterval(() => {
+        const s = Math.round((performance.now() - t0) / 1000);
+        onProgress({ phase: 'compile', elapsed: s, text: `compiling voice model — ${s}s` });
+      }, 1000);
+      onProgress({ phase: 'compile', elapsed: 0, text: 'compiling voice model…' });
     // The library's own TtsSession is no longer built: we construct the ORT
     // session ourselves below, and building both would compile the 63 MB graph
     // TWICE per load. The OPFS seeding above still matters — it is how the model

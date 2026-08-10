@@ -45,6 +45,16 @@ const ROW = `
 .vl-loading { opacity: .85; }
 .vl-add { opacity: .6; }
 .vl-add:hover { opacity: 1; }
+/* 🔴 VOICES ARE NOUNS, ADD-ROWS ARE VERBS — do not sit them at one indent
+   (R, 2026-08-09: "can you indent or un-indent the model selections vs the add
+   buttons to distinguish them more?"). The voice rows carry a ●/○ marker and the
+   add rows do not, so they were ALREADY ragged by a glyph width — this makes
+   that deliberate instead of accidental. Voices hang under the marker column;
+   the verbs sit flush left, below the list they act on, with a hairline to close
+   the group. */
+.vl-add { margin-top: 4px; padding-left: 0; }
+.vl-row:not(.vl-add) { padding-left: 2px; }
+.vl-verbs-start { border-top: 1px solid currentColor; border-top-color: color-mix(in srgb, currentColor 15%, transparent); padding-top: 6px; }
 .vl-dim { opacity: .45; font-style: italic; }
 `;
 
@@ -111,8 +121,14 @@ export function renderVoiceList(host, { items, selected, on, busy, loading }) {
     const t0 = loading.since || Date.now();
     const tick = () => {
       if (!clock.isConnected) return clearInterval(timer);
+      // The engine's own text already carries elapsed seconds ("compiling voice
+      // model — 12s"). Use it when present. When it is NOT — the gap before the
+      // first progress event, which is exactly where R saw a frozen label — run
+      // our own clock so the row is never static. Never two clocks at once.
+      const s = Math.round((Date.now() - t0) / 1000);
       clock.textContent = loading.status
-        || `preparing… ${Math.round((Date.now() - t0) / 1000)}s`;
+        ? (/\d+s/.test(loading.status) ? loading.status : `${loading.status} — ${s}s`)
+        : `starting — ${s}s`;
     };
     const timer = setInterval(tick, 1000);
     tick();
@@ -167,7 +183,7 @@ export function renderVoiceList(host, { items, selected, on, busy, loading }) {
   // whole UI, which is the correct empty state: the only thing you can do is
   // add one, so that is the only thing showing.
   const add = document.createElement('div');
-  add.className = 'vl-row vl-add';
+  add.className = 'vl-row vl-add vl-verbs-start';
   add.tabIndex = 0;
   // SAY WHAT THE CONTROL WANTS, in the words of the thing it wants (R,
   // 2026-08-09: "I might label it text-to-speech model or something like that

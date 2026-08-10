@@ -27,7 +27,7 @@ let _selected = null;
  *  NOT the permanent 'add a voice below' note R rejected twice — that pointed
  *  at rows already visible. This appears in response to a specific attempt and
  *  answers why the tick did not take. */
-let _needVoice = false;
+let _needVoice = false, _needVoiceTimer = 0;
 
 /** Ticking TTS no longer touches the mic (R, 2026-08-09). MIC BEATS TTS is a
  *  PRIORITY, not a toggle: both settings stand and the live mic simply wins
@@ -311,11 +311,11 @@ export function ttsSection(host, onPaint = () => {}) {
      *  once a second for 30+ seconds is the thrash R saw, and it resets anything
      *  mid-interaction. */
     function liveStatus(text) {
-      const note = host.querySelector('.sp-note');
+      // Only the loading ROW carries progress now; the header note is about
+      // which voice is live, and echoing progress there was the double message.
       const row = host.querySelector('.vl-loading .vl-note');
-      if (!note && !row) return false;
-      if (note) note.textContent = text || '';
-      if (row) row.textContent = text || '';
+      if (!row) return false;
+      row.textContent = text || '';
       return true;
     }
 
@@ -359,6 +359,12 @@ export function ttsSection(host, onPaint = () => {}) {
       if (!items.length) {
         e.target.checked = false;          // the tick did not take; do not lie about it
         _needVoice = true;
+        // Clear itself after 5s (R, 2026-08-09). It answers ONE click; leaving it
+        // up turns an answer into nagging, and it would still be there long after
+        // the user moved on. clearTimeout first so repeated clicks restart the
+        // window instead of stacking timers that fire mid-message.
+        clearTimeout(_needVoiceTimer);
+        _needVoiceTimer = setTimeout(() => { _needVoice = false; build(); }, 5000);
         // build() only — NOT repaint(). Showing "you need a voice" changes
         // nothing outside this row, and repaint() calls the panel's paint(),
         // which rebuilds every row (the jostle R caught on the mic toggle).
@@ -375,6 +381,12 @@ export function ttsSection(host, onPaint = () => {}) {
         } catch (err) {
           e.target.checked = false;
           _needVoice = true;
+        // Clear itself after 5s (R, 2026-08-09). It answers ONE click; leaving it
+        // up turns an answer into nagging, and it would still be there long after
+        // the user moved on. clearTimeout first so repeated clicks restart the
+        // window instead of stacking timers that fire mid-message.
+        clearTimeout(_needVoiceTimer);
+        _needVoiceTimer = setTimeout(() => { _needVoice = false; build(); }, 5000);
           console.warn('[voice] could not load the saved voice:', err);
         }
         repaint();

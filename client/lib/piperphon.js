@@ -97,7 +97,7 @@ export async function warmPhonemizer(wasmPaths, onProgress = () => {}) {
   const t0 = performance.now();
   const tick = setInterval(() => {
     onProgress({ phase: 'phonemizer',
-      text: `preparing speech — ${Math.round((performance.now() - t0) / 1000)}s` });
+      text: `building pronunciation — ${Math.round((performance.now() - t0) / 1000)}s` });
   }, 1000);
   try {
     await ask('warm', { wasmPaths: wasmBundle(wasmPaths) });
