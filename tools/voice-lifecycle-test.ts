@@ -1138,10 +1138,6 @@ check("unhush rejoins the SAME peer at full volume",
       peer.getSenders().map((s) => s.track?.id).join(","));
   }
 }
-<<<<<<< HEAD
-||||||| parent of 4c892e8 (review pass: turning the mic on is an UNMUTE, a fresh lane is CLOSED, one context)
-
-=======
 
 // ── mute × mic-button: the wedge (review of #90) ─────────────────────────────
 // A muted user pressing the mic button used to re-enter the ON path forever:
@@ -1179,6 +1175,5 @@ check("unhush rejoins the SAME peer at full volume",
         `openness=${gateOpenness()} (old lane open=${wasOpen})`);
 }
 
->>>>>>> 4c892e8 (review pass: turning the mic on is an UNMUTE, a fresh lane is CLOSED, one context)
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);
