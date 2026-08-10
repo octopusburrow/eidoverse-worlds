@@ -522,3 +522,29 @@ export async function ttsBench(text = 'hello', runs = 5) {
   return { best: ms[0], p50, worst: ms.at(-1), secs };
 }
 if (typeof window !== 'undefined') window.ttsBench = ttsBench;
+
+
+/** Speak the same text N times so you can hear the SPREAD, not one sample.
+ *
+ *  R, 2026-08-09, found the need for this with a one-character test: two strings
+ *  that phonemize identically sounded different, because VITS samples noise on
+ *  every call. Judging a voice from one utterance is judging one draw.
+ */
+export async function ttsSpread(text = 'hello there', runs = 5) {
+  if (!isTtsEnabled() || !ttsFn) { console.warn('[spread] no voice loaded'); return null; }
+  const rows = [];
+  for (let i = 0; i < runs; i++) {
+    const r = await ttsFn(text);
+    const pcm = r?.pcm || [];
+    let peak = 0, sum = 0;
+    for (let k = 0; k < pcm.length; k++) { const a = Math.abs(pcm[k]); if (a > peak) peak = a; sum += a * a; }
+    rows.push({ n: pcm.length, peak: peak / 32768, rms: Math.sqrt(sum / (pcm.length || 1)) / 32768 });
+  }
+  const lens = rows.map((r) => r.n);
+  const spread = (Math.max(...lens) - Math.min(...lens)) / Math.max(...lens) * 100;
+  console.log(`[spread] ${JSON.stringify(text)} ×${runs}: `
+    + `${Math.min(...lens)}-${Math.max(...lens)} samples (${spread.toFixed(1)}% length spread)`);
+  rows.forEach((r, i) => console.log(`  run ${i + 1}: ${r.n} samples  peak ${r.peak.toFixed(3)}  rms ${r.rms.toFixed(4)}`));
+  return { spread, rows };
+}
+if (typeof window !== 'undefined') window.ttsSpread = ttsSpread;

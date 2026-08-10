@@ -316,6 +316,21 @@ registerEngine({
         input: new ort.Tensor('int64', BigInt64Array.from(ids.map(BigInt)), [1, ids.length]),
         input_lengths: new ort.Tensor('int64', BigInt64Array.from([BigInt(ids.length)])),
         scales: new ort.Tensor('float32', Float32Array.from([
+          // 🔴 THE SAME TEXT DOES NOT PRODUCE THE SAME AUDIO. R found this with a
+          // one-character test — "abcdefghijklmn sounds good, remove just the n
+          // and the whole run sounds really bad" — and the two strings phonemize
+          // to BYTE-IDENTICAL token sequences. She was comparing two samples from
+          // a random distribution, not two texts.
+          //
+          // Measured, same ids, 6 runs each:
+          //     noise_w 0.8 (default)  25344-26880 samples   5.7% length spread
+          //     noise_w 0.4             25344-25600          1.0%
+          //     noise_w 0.0             24576 every time     0.0%
+          //
+          // noise_w is DURATION noise — the stochastic duration predictor. It
+          // buys natural rhythm variation and costs consistency, and at 0.8 an
+          // unlucky draw is audibly worse than a lucky one. Overridable per voice
+          // via the config so this is a dial, not my taste hardcoded.
           inf.noise_scale ?? 0.667, inf.length_scale ?? 1.0, inf.noise_w ?? 0.8,
         ])),
       };
