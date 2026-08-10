@@ -221,8 +221,24 @@ export async function speak(text) {
 // regardless. That is what makes this behave like a microphone, which is the
 // entire point of the source design — a mic keeps producing silence when you
 // are not talking, and the mesh keeps carrying it.
-const RATE_HINT = 22050;
-const FRAME = Math.round(RATE_HINT / 50);   // 20ms
+// 🔴 RESAMPLE TO 48k OURSELVES, ONCE, WITH A REAL FILTER.
+//
+// R, 2026-08-09: short utterances sound "badly compressed or staticy"; long ones
+// are fine. The pcm arriving from the model is CLEAN (measured: peak -3.4 dBFS,
+// dc -0.0009, 0 clipped), so the distortion is downstream — and the one lossy
+// step downstream is rate conversion. Piper emits 22050 Hz; WebRTC/Opus encodes
+// at 48000. 48000/22050 = 2.1768…, not an integer ratio, so a cheap linear
+// resampler aliases — worst on short bursts, where there is no steady signal for
+// it to settle into. Exactly the reported symptom.
+//
+// The monitor path does NOT have this problem because WebAudio resamples with a
+// proper filter. Same samples, two routes, one sounds right: that is the tell.
+//
+// So we hand WebRTC audio already at its native rate and skip its converter.
+const OUT_RATE = 48000;
+// (RATE_HINT is gone: the pacer now speaks ONE rate, OUT_RATE. Keeping a second
+// rate around was how 22050-sized frames got declared as 48k in my first pass.)
+const FRAME = Math.round(OUT_RATE / 50);   // 20ms at the OUTPUT rate
 let queue = [];            // pending {pcm, sampleRate}
 let qOff = 0;              // read offset into queue[0]
 let playhead = 0;          // samples emitted since the pacer started
@@ -277,6 +293,38 @@ function monitor(pcm, sampleRate) {
   } catch (e) { console.warn('[voice] sidetone failed (still transmitting):', e?.message || e); }
 }
 
+/** Resample to OUT_RATE with WebAudio's own (good) resampler, so the browser's
+ *  WebRTC path never has to do it with a cheap one.
+ *
+ *  OfflineAudioContext resamples on render — the same filter the monitor path
+ *  gets for free, which is why the monitor sounds right and the sent audio does
+ *  not. Async, so callers queue the RESULT rather than the raw pcm. */
+async function toOutRate(pcm, inRate) {
+  if (inRate === OUT_RATE) {
+    const f = new Float32Array(pcm.length);
+    for (let i = 0; i < pcm.length; i++) f[i] = pcm[i] / 32768;
+    return f;
+  }
+  const Ctx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  if (!Ctx) {                                  // no offline context: send as-is
+    const f = new Float32Array(pcm.length);
+    for (let i = 0; i < pcm.length; i++) f[i] = pcm[i] / 32768;
+    return f;
+  }
+  const outLen = Math.ceil((pcm.length * OUT_RATE) / inRate);
+  const ctx = new Ctx(1, outLen, OUT_RATE);
+  const buf = ctx.createBuffer(1, pcm.length, inRate);
+  const ch = buf.getChannelData(0);
+  for (let i = 0; i < pcm.length; i++) ch[i] = pcm[i] / 32768;
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.connect(ctx.destination);
+  src.start();
+  const rendered = await ctx.startRendering();
+  return rendered.getChannelData(0);
+}
+
+
 function enqueue(pcm, sampleRate) {
   monitor(pcm, sampleRate);          // hear yourself, then send
   // Deliberately NOT gated on having a sender. Two traps I walked into here:
@@ -286,6 +334,10 @@ function enqueue(pcm, sampleRate) {
   // the generator from ever being built. The pacer's own `if (!writer) return`
   // already makes a senderless queue harmless; it drains once a lane exists.
   if (!canSynthesize()) return;
+  // Resample BEFORE queueing so the pacer only ever handles OUT_RATE floats and
+  // the frame math has exactly one rate in it.
+  void toOutRate(pcm, sampleRate).then((f) => { queue.push(f); }).catch((e) => report('resample', e));
+  return;
   queue.push({ pcm, sampleRate });
   startPacer();
 }
@@ -296,9 +348,9 @@ function fillSpeech(out) {
   while (i < out.length) {
     const head = queue[0];
     if (!head) break;                       // nothing queued → leave silence
-    const src = head.pcm;
+    const src = head;                       // already Float32 at OUT_RATE
     const n = Math.min(out.length - i, src.length - qOff);
-    for (let k = 0; k < n; k++) out[i + k] = src[qOff + k] / 32768;
+    for (let k = 0; k < n; k++) out[i + k] = src[qOff + k];
     i += n; qOff += n;
     if (qOff >= src.length) { queue.shift(); qOff = 0; }
   }
@@ -311,14 +363,14 @@ export function startPacer() {
   playhead = 0;
   pacer = setInterval(() => {
     if (!writer) return;
-    const owed = Math.floor(((performance.now() - t0) / 1000) * RATE_HINT) - playhead;
+    const owed = Math.floor(((performance.now() - t0) / 1000) * OUT_RATE) - playhead;
     for (let n = 0; n + FRAME <= owed; n += FRAME) {
       const data = new Float32Array(FRAME);
       fillSpeech(data);
       try {
         writer.write(new AudioData({
-          format: 'f32', sampleRate: RATE_HINT, numberOfFrames: FRAME,
-          numberOfChannels: 1, timestamp: Math.round((playhead / RATE_HINT) * 1e6), data,
+          format: 'f32', sampleRate: OUT_RATE, numberOfFrames: FRAME,
+          numberOfChannels: 1, timestamp: Math.round((playhead / OUT_RATE) * 1e6), data,
         }));
       } catch (e) { report('tts write', e); }
       playhead += FRAME;
