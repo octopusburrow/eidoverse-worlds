@@ -1,6 +1,15 @@
 /** Piper as a voice-engine plugin — the first user of the slot, and the proof
  *  it fits an engine that was NOT designed for it.
  *
+ *  🔴 IF YOU ARE HERE ABOUT LATENCY, READ `docs/VOICE-LATENCY-PLAN.md` FIRST.
+ *  Measured 2026-08-09: 133ms native vs ~550ms in WASM, and the 4x gap is the
+ *  HiFi-GAN vocoder (stacked transposed convolutions — what WASM does worst).
+ *  Already measured and ruled out, do not re-derive: INT8 quantization is 4.6x
+ *  SLOWER here; WebGPU is structurally blocked (RandomNormalLike is absent from
+ *  ORT's op table and VITS samples noise, so it partitions in the hot path);
+ *  Kokoro is the 8.4 s/sentence TEACHER we distilled away from in July, not an
+ *  alternative. The open plan is an MB-iSTFT re-distill on the workstation GPU.
+ *
  *  Everything piper-specific lives here: the two-file shape, the OPFS
  *  cache-seeding trick, PATH_MAP. voiceengines.js knows none of it, and neither
  *  does the panel.
