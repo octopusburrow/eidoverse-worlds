@@ -84,6 +84,12 @@ function slider(cat, label, hint, value) {
 
 function checkRow(label, hint, checked, onChange) {
   const row = document.createElement('div');
+  // Every checkbox row is addressable by its label, so state changes can tick
+  // the box in place instead of rebuilding the panel (see syncToggles). Tagging
+  // here rather than at each call site means a new row cannot forget to do it —
+  // and a row that forgot would go silently STALE, which is worse than the
+  // rebuild flicker this replaced.
+  row.dataset.row = label;
   row.className = 'sp-row';
   // LABEL FIRST, like every other row. The checkbox lives in the control column
   // so it aligns with the sliders and the meter rather than starting its own
@@ -325,20 +331,45 @@ function paint(body) {
       paint();
     }));
 
-  body_.append(checkRow('connect to their audio',
+    body_.append(checkRow('connect to their audio',
     'on: your machine holds a live connection to each speaker nearby. ' +
     'Off: nothing is sent to you at all — saves bandwidth and CPU in busy ' +
     'rooms, and strangers cannot see your IP address. Muting only turns the ' +
     'volume down; this unplugs the wire.',
-    receivingVoice(), (on) => { setReceiveVoice(on); if (on) setHush(false); }));
+      receivingVoice(), (on) => { setReceiveVoice(on); if (on) setHush(false); }));
 }
 
 export function initAudioPanel() {
   ensureCss();
   makeSection('🔊 audio', (body) => paint(body), { id: 'audio' });
   // either control moving repaints the other's row — one truth, two surfaces
-  bus.on('audio:hush', () => paint());
-  bus.on('audio:receive', () => paint());
-  // mic button and mic checkbox are one truth on two surfaces
-  bus.on('voice', () => paint());
+  // 🔴 SYNCING A CHECKBOX DOES NOT NEED THE PANEL REBUILT.
+  //
+  // These three events used to call paint(), which does `body.innerHTML = ''`
+  // and remakes EVERY row. R, 2026-08-09: toggling the mic "jostles everything
+  // in the panel for a tick and the scroll bar and some options disappear" —
+  // same for hear-voices. They did: the scrollbar, the voice list, and anything
+  // mid-interaction were destroyed and rebuilt on every toggle.
+  //
+  // Tick the boxes in place instead. Each row is synced from its OWN source of
+  // truth rather than from the event payload, because 'hear voices' is a DERIVED
+  // state (receiving && !hushed) that either event can change — patching only
+  // the row whose event fired would be the asymmetric repair this codebase keeps
+  // producing.
+  const syncToggles = () => {
+    if (!_body) return false;
+    let found = 0;
+    const set = (row, val) => {
+      const box = _body.querySelector(`[data-row="${row}"] input[type="checkbox"]`);
+      if (box) { box.checked = val; found++; }
+    };
+    set('microphone', micOn());
+    set('hear voices', receivingVoice() && !isHushed());
+    set('connect to their audio', receivingVoice());
+    return found > 0;          // false = rows not built yet; caller falls back
+  };
+  const sync = () => { if (!syncToggles()) paint(); };
+  bus.on('voice', sync);
+  bus.on('audio:hush', sync);
+  bus.on('audio:receive', sync);
 }
