@@ -115,6 +115,30 @@ await ttsBench('hello')     // then swap models and repeat
 on the vocoder being the bottleneck; if the number does not move, that
 hypothesis was wrong and no amount of retraining fixes it.
 
+## 🔴 PROFILED 2026-08-09 — the vocoder thesis is CONFIRMED, with numbers
+
+ORT's own per-node profiler, `en_US-amy-medium`, short utterance, native CPU:
+
+    total node time            367.1 ms   across 51 op types
+      Conv                      90.5 ms   24%
+      ConvTranspose             57.8 ms   15%      ← 40% in conv-family alone
+      Add                       52.0 ms   14%
+      Mul                       20.5 ms    5%
+
+Split at the decoder boundary (the first ConvTranspose is node 2689 of 2755):
+
+    acoustic model (nodes 0-2688)   138.2 ms   55%
+    VOCODER        (nodes 2689+)    110.6 ms   44%      ← 66 nodes
+
+**44% of inference time is the last 3% of the graph**, and it is conv-family
+work — exactly what WASM SIMD does worst. The vocoder is also cleanly separable:
+it has ONE named input tensor, `/dec/LeakyRelu_output_0`.
+
+So the ceiling on a vocoder swap is a ~1.8x speedup if the replacement were free,
+and MB-iSTFT's measured 2.21x on the vocoder alone lands in that range. This is
+the first hard evidence for the whole thesis rather than an inference from
+architecture.
+
 ## The other thread: why is there no fast web vocoder?
 
 R, 2026-08-09: *"maybe just no one has thought to write a fast one yet."*
