@@ -232,8 +232,7 @@ registerEngine({
       const t0 = performance.now();
       const warm = phonReady();
       // 🔴 SHORT UTTERANCES NEED TERMINAL PUNCTUATION — a KNOWN Piper issue, not
-      const spoken = /[.!?…,;:]\s*$/.test(text.trim()) ? text : `${text.trim()}.`;
-      const ids = await phonemize(spoken, espeakVoice, wasmPaths);
+      // ours (rhasspy/piper#252, "Single/short-word intonation and
       // pronunciation"). VITS is trained on full sentences, so a bare "hello"
       // with no sentence boundary falls outside the training distribution: the
       // duration predictor and the flow decoder both extrapolate, and the result
@@ -241,11 +240,10 @@ registerEngine({
       // perfect if I say Hello I'm speaking in Glados voice").
       //
       // Giving espeak a sentence terminator puts the model back in distribution.
-      // It costs one character and no latency. This is the documented workaround,
-      // found by SEARCHING — after I had spent an hour on three wrong theories
-      // (sample rate, frame remainder, resampling), each of which I measured and
-      // disproved but only after building for it.
-      const ids = await phonemize(text, espeakVoice, wasmPaths);
+      // It costs one character and no latency — the documented workaround, found
+      // by SEARCHING after three wrong theories I measured and disproved.
+      const spoken = /[.!?…,;:]\s*$/.test(text.trim()) ? text : `${text.trim()}.`;
+      const ids = await phonemize(spoken, espeakVoice, wasmPaths);
       const t1 = performance.now();
       const feeds = {
         input: new ort.Tensor('int64', BigInt64Array.from(ids.map(BigInt)), [1, ids.length]),
