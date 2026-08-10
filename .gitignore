@@ -27,3 +27,8 @@ assets/opt/thumbs/
 
 # local claude/mcp config
 .mcp.json
+
+# Piper voice models: ~60MB each, fetched by the client at runtime
+# (user's disk or HuggingFace+OPFS) and never served by us. The .onnx.json
+# IS committed — it is 5KB and it is what says what the model is.
+client/voices/*.onnx
