@@ -173,6 +173,7 @@ export class WorldAgent {
   heldPoseAuthored = false;
   draggedBy: string | null = null;   // whose takeover sim drives this body (bodydrag)
   dragAt = 0;                        // last drag sample, for the silence timeout
+  spectate = false;
   pins = new Map<string, number[]>(); // persistent bodydrag nails: joint -> [x,y,z]
   pushable = true;                   // rough-and-tumble consent — accepted by default, like being posed
   body: HeadlessBody | null | undefined = undefined; // the REAL ragdoll (undefined = not tried yet)
@@ -273,10 +274,17 @@ export class WorldAgent {
   private pendingDebug = new Map<string, (m: any) => void>();
   private histId = 0;
 
-  constructor(opts: { url?: string; name?: string; world?: string; avatar?: string; agentToken?: string } = {}) {
+  constructor(opts: { url?: string; name?: string; world?: string; avatar?: string; spectate?: boolean; agentToken?: string } = {}) {
     this.url = opts.url ?? process.env.WORLD_URL ?? "ws://127.0.0.1:8940/ws";
     this.name = opts.name ?? process.env.AGENT_NAME ?? "claude";
     this.world = opts.world ?? process.env.WORLD_NAME ?? "commons";
+    // Spectator leg: EARS WITHOUT A BODY. The server has always supported it
+    // ("receive everything, appear as nothing") — this makes it reachable from
+    // the door, so an agent whose BODY is a browser page can keep its MCPL
+    // pushes and perception without becoming two people in the roster. Born
+    // from the 2026-08-10 voice demo: the agent went deaf during its own
+    // demonstration because seat and mouth could not coexist.
+    this.spectate = opts.spectate ?? (process.env.MCPL_SPECTATE === "1");
     this.avatar = opts.avatar ?? process.env.AGENT_AVATAR ?? "eidoverse/assets/vrms/claude.vrm";
     // The agent's own bearer (the one that opened the MCPL door). Forwarded at
     // join so the sequencer can verify the name — agent names are reserved.
@@ -411,7 +419,7 @@ export class WorldAgent {
       // body may do. It exists so the world can SAY who it is talking to.
       // Knowing whether the thing across the table thinks in tokens or neurons
       // matters here in a way it doesn't in a chat app.
-      ws.onopen = () => ws.send(JSON.stringify({ type: "join", world: this.world, id: this.name, avatar: this.avatar,
+      ws.onopen = () => ws.send(JSON.stringify({ type: "join", world: this.world, id: this.name, spectate: this.spectate || undefined, avatar: this.avatar,
         agent: true, token: process.env.WORLD_TOKEN ?? "", agentToken: this.agentToken }));
       ws.onclose = (ev) => {
         this.joined = false;
