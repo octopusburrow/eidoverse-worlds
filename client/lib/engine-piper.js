@@ -111,27 +111,6 @@ registerEngine({
     // So: count UP. Elapsed seconds is true, visibly moving, and needs no
     // estimate. "still working, 12s" answers the only question a frozen label
     // cannot — is this alive?
-    const t0 = performance.now();
-      // 🔴 SAY WHAT IS ACTUALLY HAPPENING (R, 2026-08-09: "idk the difference
-      // between these — can there be more accurate descriptions, like loading
-      // phonemizer or whatever?"). "preparing voice" and "preparing speech" were
-      // two vague phrases for two genuinely different jobs, and neither said
-      // which. Named for the work now:
-      //   loading speech runtime  — fetching onnxruntime-web
-      //   compiling voice model   — InferenceSession.create(): parse protobuf,
-      //                             plan memory, fuse ops, JIT kernels. THE 30s.
-      //   building pronunciation  — the espeak phonemizer (text → phonemes),
-      //                             ~27s first time, in a worker
-      const ticker = setInterval(() => {
-        const s = Math.round((performance.now() - t0) / 1000);
-        onProgress({ phase: 'compile', elapsed: s, text: `compiling voice model — ${s}s` });
-      }, 1000);
-      onProgress({ phase: 'compile', elapsed: 0, text: 'compiling voice model…' });
-    // The library's own TtsSession is no longer built: we construct the ORT
-    // session ourselves below, and building both would compile the 63 MB graph
-    // TWICE per load. The OPFS seeding above still matters — it is how the model
-    // bytes get somewhere the runtime can reach without touching the network.
-    clearInterval(ticker);
 
     // MEASURE, DO NOT THEORIZE. R: "why is it so slow? Piper is supposed to be
     // stupid fast" — and she was right to push. I had two confident causes
@@ -206,6 +185,19 @@ registerEngine({
       // fallback is REQUIRED, not optional, because 'webgpu' throws rather than
       // degrading on unsupported operators.
       const buf = await onnx.arrayBuffer();
+      // 🔴 THE TICKER MUST WRAP THE WORK, NOT SIT NEAR IT. R, three times:
+      // "compiling voice model still doesn't have a timer... *dying*". She was
+      // right every time. The ticker was started and clearInterval'd in the SAME
+      // synchronous block, ninety lines above the InferenceSession.create() it
+      // was meant to describe — so it never ticked once, and every fix I shipped
+      // was to code that could not run. Start it here, clear it in a finally.
+      const compileT0 = performance.now();
+      const ticker = setInterval(() => {
+        const s = Math.round((performance.now() - compileT0) / 1000);
+        onProgress({ phase: 'compile', elapsed: s, text: `compiling voice model — ${s}s` });
+      }, 1000);
+      onProgress({ phase: 'compile', elapsed: 0, text: 'compiling voice model…' });
+      try {
       const opts = { graphOptimizationLevel: 'all', executionMode: 'parallel' };
       let ortSession = null, usedEP = 'wasm';
       // 🔴 WEBGPU IS NOT OBVIOUSLY THE WIN FOR SHORT SPEECH. piper-plus and the
@@ -231,6 +223,7 @@ registerEngine({
         console.log(`[voice] ORT session on WASM in ${Math.round(performance.now() - t)}ms`);
       }
       console.log(`[voice] inference backend: ${usedEP}`);
+      } finally { clearInterval(ticker); }
 
     const { phonemize, phonReady, warmPhonemizer } = await import('./piperphon.js');
     // BUILD THE PHONEMIZER NOW, not on the first word. It is ~27s and depends on
