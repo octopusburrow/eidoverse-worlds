@@ -277,7 +277,13 @@ export function ttsSection(host, onPaint = () => {}) {
       `<label class="sp-label" style="opacity:${live ? '1' : '.45'}">text-to-speech</label>` +
       `<span class="sp-ctl">` +
       `<input type="checkbox" ${isTtsEnabled() ? 'checked' : ''} ` +
-      `title="speak with the voice marked below"${ttsAvailable() ? '' : ' disabled'}>` +
+        // 🔴 NOT `disabled` WHEN THERE IS NO VOICE (R, 2026-08-09: "there's no
+        // warning to load a model if you try to checkbox text-to-speech, it just
+        // fails silently"). A disabled checkbox fires NO change event, so the
+        // handler that explains why could never run — the control was mute about
+        // its own precondition. It must be clickable precisely so the click can
+        // be answered: the handler unticks it and names what is missing.
+      `title="speak with the voice marked below">` +
       `<span class="sp-note">` +
       // THE NOTE SAYS ONE THING: what is loading, or what is loaded. Not what to
       // do next — the rows below ARE what to do next, and a note pointing at them
@@ -297,13 +303,26 @@ export function ttsSection(host, onPaint = () => {}) {
       const items = await collectVoices();
       if (!items.length) {
         e.target.checked = false;          // the tick did not take; do not lie about it
-        _needVoice = true; repaint(); return;
+        _needVoice = true;
+        // build() only — NOT repaint(). Showing "you need a voice" changes
+        // nothing outside this row, and repaint() calls the panel's paint(),
+        // which rebuilds every row (the jostle R caught on the mic toggle).
+        build();
+        return;
       }
       _needVoice = false;
       const last = (() => { try { return localStorage.getItem('eido.tts.lastVoice'); } catch { return null; } })();
       const pickId = (last && items.some((i) => i.id === last)) ? last : items[0].id;
-      await pick(pickId);                   // loads, sets the source, enables
-      repaint();
+        // If loading fails the box must not stay ticked over a voice that never
+        // arrived — that is the same silent failure by a different route.
+        try {
+          await pick(pickId);                 // loads, sets the source, enables
+        } catch (err) {
+          e.target.checked = false;
+          _needVoice = true;
+          console.warn('[voice] could not load the saved voice:', err);
+        }
+        repaint();
     };
     host.appendChild(head);
 
