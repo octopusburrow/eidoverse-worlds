@@ -465,6 +465,21 @@ export async function toggleMic(name) {
     driveGate(false);                // close the lane; never tear it down
     flashHint('🎙 off');
     bus.emit('voice', { on: false });
+      // 🔴 MIC OFF = TTS TAKES OVER, if it was left enabled (R, 2026-08-09).
+      // MIC BEATS TTS is a priority, not a toggle: the TTS setting stands while
+      // the mic wins, so the moment the mic drops the synth must actually be
+      // wired in — otherwise "drops back to TTS without touching anything" is
+      // just silence, and the user has no way to tell an armed voice from a
+      // broken one. Fixing only the mic-on direction would be exactly the
+      // asymmetric repair voicesource.js warns about two lines up from its own
+      // mix site.
+      import('./voicesource.js').then(async (vs) => {
+        if (!vs.isTtsEnabled?.() || !vs.canSynthesize?.()) return;
+        const m = await import('./micgate.js');
+        if (!m.isGated?.()) return;              // no lane; voiceSource handles it
+        vs.startPacer?.();
+        m.mixSynthTrack(vs.ensureGenerator());
+      }).catch(() => {});
     return false;
   }
   // Coming back. If we still hold the stream (the normal case now — mic-off
@@ -1121,6 +1136,27 @@ export function voiceDiag() {
  *  track has a deviceId and a label from the OS; a MediaStreamTrackGenerator has
  *  neither. Nothing else distinguishes them — same kind, same readyState, same
  *  enabled. */
+/** Is there a microphone at all?
+ *
+ *  R, 2026-08-09: "maybe if there isn't a live mic detected, it can't be turned
+ *  on?" — which dissolves the objection I had to mic-beats-TTS. My worry was an
+ *  agent silently muted by a mic it never asked for; an agent has no capture
+ *  device, so with this guard the mic cannot be on and the case stops existing.
+ *
+ *  enumerateDevices() works BEFORE permission is granted: labels come back empty
+ *  until the user consents, but the entries are there, so presence can be
+ *  checked without prompting. Deliberately fails OPEN — if enumeration throws or
+ *  the API is missing we return true and let getUserMedia be the real gate,
+ *  because refusing a mic that exists is worse than offering one that does not.
+ */
+export async function hasMicDevice() {
+  try {
+    const devs = await navigator.mediaDevices?.enumerateDevices?.();
+    if (!devs) return true;
+    return devs.some((d) => d.kind === 'audioinput');
+  } catch { return true; }
+}
+
 export function micDiag() {
   const raw = _rawMic?.getAudioTracks?.()[0] || null;
   const sent = micStream?.getAudioTracks?.()[0] || null;

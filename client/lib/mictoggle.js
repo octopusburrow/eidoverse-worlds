@@ -9,7 +9,7 @@
 // A small headphone glyph beside it mutes INCOMING voice separately.
 // V toggles the mic from the keyboard, exactly like the porch.
 
-import { toggleMic, micOn } from './voice.js';
+import { toggleMic, micOn, hasMicDevice } from './voice.js';
 import { setSTT, sttAvailable } from './stt.js';
 import { CONFIG } from './core.js';
 import { receivingVoice, setReceiveVoice, ensureSttConsent, sttConsented,
@@ -69,10 +69,16 @@ function paint() {
   if (!micBtn) return;
   const deaf = micOn() && !receivingVoice();
   micBtn.innerHTML = MIC_SVG(micOn(), micOn() && micHot);
-  micBtn.style.opacity = deaf ? '0.55' : '1';
-  micBtn.title = !micOn() ? 'mic off (V to talk)'
-    : deaf ? 'mic LIVE — but you are not hearing the room (Shift+V to listen)'
-    : 'mic LIVE — the world hears you (V)';
+    // No capture device = the control is genuinely unavailable, and it must SAY
+    // so. A guard that silently does nothing looks identical to a broken button
+    // — the displayed-state-vs-real-state trap this codebase has hit before.
+    const noDevice = _hasMic === false;
+    micBtn.style.opacity = noDevice ? '0.3' : deaf ? '0.55' : '1';
+    micBtn.style.cursor = noDevice ? 'not-allowed' : 'pointer';
+    micBtn.title = noDevice ? 'no microphone detected'
+      : !micOn() ? 'mic off (V to talk)'
+      : deaf ? 'mic LIVE — but you are not hearing the room (Shift+V to listen)'
+      : 'mic LIVE — the world hears you (V)';
   if (earBtn) {
     const consented = receivingVoice();
     const on = consented && !isHushed();
@@ -105,23 +111,32 @@ setInterval(() => {
   if (hot !== micHot) { micHot = hot; paint(); }
 }, 60);
 
+// 🔴 NO DEVICE, NO MIC (R, 2026-08-09). Resolved once and cached: enumeration
+// is cheap but not free, and the answer does not change mid-session in practice.
+// null = not yet checked. This is what makes mic-beats-TTS safe for agents —
+// they have no capture device, so they can never be in the losing state.
+let _hasMic = null;
+hasMicDevice().then((v) => { _hasMic = v; paint(); }).catch(() => { _hasMic = true; });
+
 async function flipMic() {
+  if (_hasMic === false) return;      // nothing to turn on
   const on = await toggleMic(CONFIG.name);
-  // MIC AND TTS ARE MUTUALLY EXCLUSIVE (R, 2026-08-09: "enabling mic or TTS with
-  // the other enabled should DISABLE the other"). Nobody wants both lanes live —
-  // a human with a working mic just talks, and an agent has no mic.
+  // MIC BEATS TTS — as a PRIORITY, not a toggle (R, 2026-08-09).
   //
-  // Deliberately SYMMETRIC and last-action-wins rather than mic-always-priority.
-  // In practice that gives R what she asked for: she reaches for the mic, TTS
-  // steps aside. But a fixed "mic beats TTS" rule mutes any agent whose mic
-  // happens to be on, and TTS is the only voice an agent has. Whichever control
-  // you touched most recently is the one you meant.
-  if (on) {
-    try {
-      const { isTtsEnabled, setTtsEnabled } = await import('./voicesource.js');
-      if (isTtsEnabled()) { setTtsEnabled(false); window.dispatchEvent(new Event('eido:tts-changed')); }
-    } catch { /* TTS not present in this build */ }
-  }
+  // I first built this as symmetric mutual exclusion, which was worse: turning
+  // the mic on DESTROYED the TTS setting, so she would have to re-tick it every
+  // time. Her version leaves both states set and lets the mic win while it is
+  // on — so turning the mic off drops straight back to TTS with nothing to
+  // touch. Strictly better, and it does not cost agents anything.
+  //
+  // My objection had been that a hardcoded mic-wins mutes an agent whose mic is
+  // somehow on, TTS being the only voice an agent has. Her guard dissolves it at
+  // the source: no capture device, no mic (see hasMicDevice). An agent cannot
+  // be in this state.
+  //
+  // Nothing to do here but repaint — voiceSource() reads micOn() and prefers the
+  // real microphone whenever it is live, so the ducking is already implicit in
+  // which source it picks. Keeping TTS *enabled* underneath is the whole point.
   // Speech-to-text is a SEPARATE consent from speaking: it ships microphone
   // audio to the browser vendor's cloud service. Turning a mic on in a world
   // is not agreement to that, so we ask once, plainly, and remember either

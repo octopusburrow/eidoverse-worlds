@@ -29,14 +29,11 @@ let _selected = null;
  *  answers why the tick did not take. */
 let _needVoice = false;
 
-/** The other half of the mic/TTS exclusion (see mictoggle.js). Turning TTS on
- *  turns the mic off, symmetrically — last action wins. */
-async function muteMicForTts() {
-  try {
-    const { micOn, toggleMic } = await import('./voice.js');
-    if (micOn()) await toggleMic();
-  } catch { /* no mic in this build */ }
-}
+/** Ticking TTS no longer touches the mic (R, 2026-08-09). MIC BEATS TTS is a
+ *  PRIORITY, not a toggle: both settings stand and the live mic simply wins
+ *  while it is on. Turning TTS on with the mic live arms it for the moment the
+ *  mic goes off — nothing to re-tick, which is the whole advantage over the
+ *  symmetric version I built first. */
 let _busy = null;          // a phase string while loading, else null
 // A pick that is missing its other half — kept so it can be resumed rather than
 // discarded. See addFile().
@@ -296,7 +293,6 @@ export function ttsSection(host, onPaint = () => {}) {
       //   no voices  → refuse, and SAY why (transient, clears when they add one)
       //   one voice  → use it; asking which of one is busywork
       //   several    → last used, else the first
-      await muteMicForTts();
       if (ttsAvailable()) { _needVoice = false; setTtsEnabled(true); repaint(); return; }
       const items = await collectVoices();
       if (!items.length) {

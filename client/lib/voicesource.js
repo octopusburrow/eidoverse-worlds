@@ -95,10 +95,18 @@ export function setTtsEnabled(on) {
   // asymmetric repair this codebase keeps producing. Wire (or unwire) it here
   // too, so mic-then-TTS and TTS-then-mic reach the same place.
   if (ttsEnabled !== was && typeof window !== 'undefined') {
-    import('./micgate.js').then((m) => {
+    import('./micgate.js').then(async (m) => {
       if (!m.isGated?.()) return;              // no lane yet; voiceSource will do it
-      if (ttsEnabled && canSynthesize()) { startPacer(); m.mixSynthTrack(ensureGenerator()); }
-      else m.unmixSynth();
+        // MIC BEATS TTS: while a real microphone is live, synthesized speech does
+        // not join the lane at all (R, 2026-08-09). Ticking TTS with the mic on
+        // therefore arms it for LATER — the moment the mic goes off, voiceSource
+        // falls back to the generator with nothing to re-enable. Both directions
+        // handled here; fixing only one is the asymmetric repair the comment
+        // above warns about.
+        const micLive = (await import('./voice.js')).micOn?.();
+        if (ttsEnabled && canSynthesize() && !micLive) {
+          startPacer(); m.mixSynthTrack(ensureGenerator());
+        } else m.unmixSynth();
     }).catch(() => {});
   }
   return ttsEnabled;
@@ -129,7 +137,9 @@ export const setGeneratorRebuildHook = (fn) => { onRebuild = fn; };
  *  (MediaStreamTrackGenerator does not exist under happy-dom). */
 export const __fireRebuild = (track) => onRebuild?.(track);
 
-function ensureGenerator() {
+// Exported so the mic-off handover can wire the synth in (voice.js). Internal
+// to the module otherwise — nothing else should be minting generators.
+export function ensureGenerator() {
   if (genTrack && genTrack.readyState === 'live') return genTrack;
   const replacing = !!genTrack;
   // An ENDED generator is not a dead end: make a new one and hand it back. The
@@ -274,7 +284,7 @@ function fillSpeech(out) {
   }
 }
 
-function startPacer() {
+export function startPacer() {
   if (pacer) return;
   ensureGenerator();
   t0 = performance.now();
@@ -323,14 +333,15 @@ export async function voiceSource() {
     const mic = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true },
     });
-    if (isTtsEnabled() && canSynthesize()) {
-      // Pace from the moment the source exists, not the first utterance: a mic
-      // produces silence continuously, and the mesh negotiates against a track
-      // that is already flowing.
-      const track = ensureGenerator();
-      startPacer();
-      import('./micgate.js').then((m) => m.mixSynthTrack(track)).catch(() => {});
-    }
+      // 🔴 A LIVE MIC WINS OUTRIGHT — it does not share the lane (R, 2026-08-09).
+      // This used to MIX synthesized speech into the mic's lane, on the theory
+      // that a synth is "another thing making sound in the same room". But
+      // nobody wants both: a human with a working mic just talks. Mic on means
+      // your own voice, full stop; mic off drops straight back to TTS with
+      // nothing to re-enable, because the TTS setting is left STANDING rather
+      // than cleared — that is what makes this a priority, not a toggle.
+      // The generator is deliberately not started: an idle pacer feeding a lane
+      // that will not carry it is pure cost.
     return mic;
   } catch (e) {
     // No microphone, or permission refused. If we can synthesize, that is the
