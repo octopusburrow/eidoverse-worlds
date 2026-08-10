@@ -488,7 +488,20 @@ export async function toggleMic(name) {
   // fall THROUGH to the same attach/renegotiate/court-peers path a fresh mic
   // takes; returning early here skipped peer creation entirely, which the
   // lifecycle suite caught at once (mic ON with no peer courted).
-  if (micStream) {
+  // 🔴 `micStream` DOES NOT MEAN "A DEVICE IS CAPTURING". After
+  // releaseMicrophone() it deliberately SURVIVES — the lane stays up so the mesh
+  // needs no renegotiation on the way back (R: "we just mute the lane", and
+  // recovering a torn-down audio path costs seconds). But its tracks are STOPPED
+  // and a stopped track cannot be revived. Branching on micStream alone sent the
+  // return-from-release path into the re-enable branch below, where it flipped
+  // `enabled` on dead tracks: getUserMedia was never called, no device was ever
+  // reacquired, and the mic silently never came back after any release.
+  //
+  // `_micReleased` is the variable that answers "is there a device behind this
+  // lane" — and it is ALREADY the discriminator twelve lines down, where
+  // attachSource decides whether to reuse the standing graph. Same question,
+  // same answer, both places.
+  if (micStream && !_micReleased) {
     // 🔴 THE SAME TRACK THE OFF-PATH TOUCHED. micStream is the GATED output now,
     // so re-enabling its track does nothing for the RAW device track that mic-off
     // disabled — the mic came back once and was silent forever after (R,
@@ -816,6 +829,19 @@ export function releaseMicrophone() {
   // back — that rebuild is exactly the "unmute lag while it sets it all up
   // again" R described. Audibility is decided by `muted` and the gate; this
   // variable only means "a lane exists".
+  // 🔴 THE DEVICE IS GONE, SO SAY SO. micOn() is `micStream && _micLive &&
+  // !muted`, and micStream deliberately SURVIVES here (the lane stays up so the
+  // mesh needs no renegotiation). That makes _micLive the only variable left
+  // that can express "no device is capturing" — and without this line it stayed
+  // true, so micOn() reported an open mic after a release. toggleMic() then took
+  // its already-on branch and muted a lane with nothing behind it instead of
+  // reacquiring the device: the mic button silently stopped working after any
+  // release, and getUserMedia was never called again.
+  //
+  // This is a STATE correction, not a teardown. Nothing is stopped here that
+  // wasn't already stopped four lines up; the graph, the senders and the track
+  // all stay exactly where they are.
+  _micLive = false;
   _micReleased = true;
   muted = false;
   stopOnsetWatch();
