@@ -300,6 +300,21 @@ function monitor(pcm, sampleRate) {
  *  gets for free, which is why the monitor sounds right and the sent audio does
  *  not. Async, so callers queue the RESULT rather than the raw pcm. */
 async function toOutRate(pcm, inRate) {
+  // 🔴 SWITCHABLE, because I added this stage on a theory that later turned out
+  // to be the WRONG explanation for the symptom it was meant to fix (the real
+  // cause of bad short utterances was missing terminal punctuation —
+  // rhasspy/piper#252). Resampling myself may be a genuine improvement, a no-op,
+  // or a SECOND resample on top of the browser's own — I never verified which,
+  // which is exactly the mistake this file keeps recording.
+  //   localStorage.eidoTtsResample = 'off'   → hand WebRTC the native rate
+  // A/B it by ear; the probe below prints what each path produces.
+  try {
+    if (localStorage.getItem('eidoTtsResample') === 'off') {
+      const f = new Float32Array(pcm.length);
+      for (let i = 0; i < pcm.length; i++) f[i] = pcm[i] / 32768;
+      return f;
+    }
+  } catch { /* private mode */ }
   if (inRate === OUT_RATE) {
     const f = new Float32Array(pcm.length);
     for (let i = 0; i < pcm.length; i++) f[i] = pcm[i] / 32768;
@@ -321,7 +336,18 @@ async function toOutRate(pcm, inRate) {
   src.connect(ctx.destination);
   src.start();
   const rendered = await ctx.startRendering();
-  return rendered.getChannelData(0);
+  const outCh = rendered.getChannelData(0);
+  // Same measurement the pcm probe makes, one stage later. Clean in + dirty out
+  // here would be conclusive; matching stats mean the resampler is exonerated
+  // and the fault is further down (pacer, generator, or Opus).
+  {
+    let peak = 0, sum = 0;
+    for (let i = 0; i < outCh.length; i++) { const a = Math.abs(outCh[i]); if (a > peak) peak = a; sum += a * a; }
+    console.log(`[voice] resampled ${pcm.length}@${inRate} → ${outCh.length}@${OUT_RATE} `
+      + `peak ${peak.toFixed(3)} rms ${Math.sqrt(sum / (outCh.length || 1)).toFixed(4)}`
+      + (peak > 0.999 ? '  ⚠️ CLIPPING INTRODUCED' : ''));
+  }
+  return outCh;
 }
 
 
