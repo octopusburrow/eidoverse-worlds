@@ -223,7 +223,19 @@ registerEngine({
       // ran: "ReferenceError: usedEP is not defined" (R, 2026-08-09). A block is
       // a scope; wrapping code in try/finally silently moves every declaration
       // inside it.
-      const opts = { graphOptimizationLevel: 'all', executionMode: 'parallel' };
+      // 🔴 executionMode 'parallel' MEASURED SLOWER — do not put it back.
+      // I set it blind on the assumption that "parallel" means faster. Measured
+      // natively on this machine, 45-token sequence:
+      //     sequential (ORT default)  P50 192ms
+      //     parallel   (what I set)   P50 232ms      ← 21% WORSE
+      // Parallel mode runs independent subgraphs on separate threads; a VITS
+      // graph is mostly one long dependency chain, so it buys nothing and pays
+      // the coordination. In WASM, where thread handoff is dearer, worse still.
+      //
+      // graphOptimizationLevel 'all' IS worth it, measured the same way:
+      //     all    P50 179ms
+      //     basic  P50 248ms
+      const opts = { graphOptimizationLevel: 'all' };
       let ortSession = null, usedEP = 'wasm';
       try {
       // 🔴 WEBGPU IS NOT OBVIOUSLY THE WIN FOR SHORT SPEECH. piper-plus and the
