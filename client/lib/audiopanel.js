@@ -279,7 +279,11 @@ function paint(body) {
       // not reimplement either, or the two surfaces drift — which is the bug
       // class this whole panel keeps hitting.
       try { await toggleMic(CONFIG.name); } catch (e) { report('mic toggle', e); }
-      paint();
+        // NO paint() HERE. toggleMic emits 'voice', and the subscription below
+        // ticks this box in place. Calling paint() as well was why the mic still
+        // tore the panel down while 'hear voices' — which only sets state and
+        // lets the event do the syncing — behaved correctly (R, 2026-08-09).
+        // Two surfaces, ONE mechanism: state change → event → sync.
     }));
     // Sensitivity belongs WITH the mic, not four rows below it (R, 2026-08-09).
     // It is the microphone's one setting, and it is only meaningful while the
@@ -328,7 +332,11 @@ function paint(body) {
       // for one reason: there is no mic to monitor.
       if (on && !setSelfMonitor(true)) flashHint('turn the microphone on first');
       else if (!on) setSelfMonitor(false);
-      paint();
+        // This row CAN refuse (no mic to monitor), so the box must go back —
+        // but revert the box, do not rebuild the panel. Same mechanism as every
+        // other toggle; only the trigger differs.
+        const box = _body?.querySelector('[data-row="hear myself"] input[type="checkbox"]');
+        if (box) box.checked = selfMonitoring();
     }));
 
     body_.append(checkRow('connect to their audio',
