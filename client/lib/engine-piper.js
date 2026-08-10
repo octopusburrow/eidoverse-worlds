@@ -218,9 +218,14 @@ registerEngine({
         onProgress({ phase: 'compile', elapsed: s, text: `compiling voice model — ${s}s` });
       }, 1000);
       onProgress({ phase: 'compile', elapsed: 0, text: 'compiling voice model…' });
-      try {
+      // 🔴 DECLARED OUTSIDE THE try — speak() closes over these. `let` inside the
+      // try block scoped them to it, so `usedEP` was dead by the time speak()
+      // ran: "ReferenceError: usedEP is not defined" (R, 2026-08-09). A block is
+      // a scope; wrapping code in try/finally silently moves every declaration
+      // inside it.
       const opts = { graphOptimizationLevel: 'all', executionMode: 'parallel' };
       let ortSession = null, usedEP = 'wasm';
+      try {
       // 🔴 WEBGPU IS NOT OBVIOUSLY THE WIN FOR SHORT SPEECH. piper-plus and the
       // ORT docs both note that for SHORT utterances WASM SIMD+threads often
       // beats WebGPU, because per-call GPU setup dominates when there is little
