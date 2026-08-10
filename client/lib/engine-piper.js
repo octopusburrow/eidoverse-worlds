@@ -137,18 +137,30 @@ registerEngine({
     //
     // Inference is cheap once phonemization is not being rebuilt: the same ORT
     // session, run directly.
-    // 🔴 THE WEBGPU EP IS IN A DIFFERENT BUNDLE. The bare 'onnxruntime-web'
-    // entry point does not carry it, so requesting executionProviders:['webgpu']
-    // against it always throws and falls back to wasm — the feature would look
-    // implemented and never once run. Import the webgpu bundle when the browser
-    // has a GPU, the default otherwise.
     const hasGpu = typeof navigator !== 'undefined' && 'gpu' in navigator;
-    const ort = hasGpu
-      ? await import('onnxruntime-web/webgpu').catch(async (e) => {
-          console.warn('[voice] webgpu bundle failed to load, using wasm build:', e?.message || e);
-          return import('onnxruntime-web');
-        })
-      : await import('onnxruntime-web');
+    // 🔴 BARE SPECIFIERS NEED AN IMPORTMAP ENTRY, AND THERE IS ONLY ONE.
+    // index.html maps "onnxruntime-web" → ort.bundle.min.mjs and nothing else, so
+    // `import('onnxruntime-web/webgpu')` throws "Failed to resolve module
+    // specifier" in the browser — before `ort` is ever assigned, taking the whole
+    // load with it. That is what broke the model tonight (R: "the current
+    // engine-piper.js was erroring out and the model wasn't working at all").
+    //
+    // Resolve the webgpu bundle by PATH instead, the same way piperphon.js
+    // resolves the piper chunk — node_modules is served, so this works without
+    // touching the importmap. Falls back to the mapped default on any failure,
+    // and the fallback is a specifier that is KNOWN to resolve.
+    const ort = await (async () => {
+      if (hasGpu) {
+        try {
+          const url = new URL('../node_modules/onnxruntime-web/dist/ort.webgpu.bundle.min.mjs',
+                              import.meta.url).href;
+          return await import(/* @vite-ignore */ url);
+        } catch (e) {
+          console.warn('[voice] webgpu bundle unavailable, using the default build:', e?.message || e);
+        }
+      }
+      return import('onnxruntime-web');
+    })();
     const cfgJson = JSON.parse(await cfg.text());
     const espeakVoice = cfgJson?.espeak?.voice || 'en-us';
     const inf = cfgJson?.inference || {};
