@@ -247,6 +247,20 @@ function micFloorRow() {
 }
 
 let _body = null;
+
+function syncToggles() {
+  if (!_body) return false;
+  let found = 0;
+  const set = (row, val) => {
+    const box = _body.querySelector(`[data-row="${row}"] input[type="checkbox"]`);
+    if (box) { box.checked = val; found++; }
+  };
+  set('microphone', micOn());
+  set('hear voices', receivingVoice() && !isHushed());
+  set('connect to their audio', receivingVoice());
+  return found > 0;          // false = rows not built yet; caller falls back
+}
+
 function paint(body) {
   _body = body ?? _body;
   if (!_body) return;
@@ -312,7 +326,13 @@ function paint(body) {
   {
     const host = document.createElement('div');
     body_.appendChild(host);
-    ttsSection(host, () => paint());
+    // 🔴 THE TTS SECTION MUST NOT REBUILD THE PANEL (R, 2026-08-09: "the
+    // checkbox also makes the panel tear down and rebuild"). It used to pass
+    // paint(), which does body.innerHTML = '' — so every TTS state change wiped
+    // the sliders, the scrollbar and the mic rows. Nothing outside this section
+    // depends on which voice is selected; the only cross-row effect is the mic
+    // toggle, which has its own event. Sync the toggles in place instead.
+    ttsSection(host, () => { if (!syncToggles()) paint(); });
   }
   body_.append(checkRow('speech-to-text',
     'sends your mic audio to your browser vendor’s cloud to transcribe',
@@ -364,18 +384,6 @@ export function initAudioPanel() {
   // state (receiving && !hushed) that either event can change — patching only
   // the row whose event fired would be the asymmetric repair this codebase keeps
   // producing.
-  const syncToggles = () => {
-    if (!_body) return false;
-    let found = 0;
-    const set = (row, val) => {
-      const box = _body.querySelector(`[data-row="${row}"] input[type="checkbox"]`);
-      if (box) { box.checked = val; found++; }
-    };
-    set('microphone', micOn());
-    set('hear voices', receivingVoice() && !isHushed());
-    set('connect to their audio', receivingVoice());
-    return found > 0;          // false = rows not built yet; caller falls back
-  };
   const sync = () => { if (!syncToggles()) paint(); };
   bus.on('voice', sync);
   bus.on('audio:hush', sync);

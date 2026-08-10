@@ -13,12 +13,10 @@
 // What remains is BYOV: a model file from your disk, or a speech server you run.
 // Both transmit; nothing here is local-only, because a voice that only you can
 // hear is indistinguishable from a working one until nobody answers.
-
 import { renderVoiceList } from './voicelist.js';
 import { ttsAvailable, ttsVoiceName, isTtsEnabled, setTtsEnabled, setTtsSource } from './voicesource.js';
 import { setEndpointVoice } from './browservoice.js';
 import { report } from './core.js';
-
 // The id of whatever is currently installed, so the list can show a filled dot
 // against it. Null when nothing is loaded — which is a real state, not an error.
 let _selected = null;
@@ -28,7 +26,6 @@ let _selected = null;
  *  at rows already visible. This appears in response to a specific attempt and
  *  answers why the tick did not take. */
 let _needVoice = false, _needVoiceTimer = 0;
-
 /** Ticking TTS no longer touches the mic (R, 2026-08-09). MIC BEATS TTS is a
  *  PRIORITY, not a toggle: both settings stand and the live mic simply wins
  *  while it is on. Turning TTS on with the mic live arms it for the moment the
@@ -48,7 +45,6 @@ let _inFlight = null;
 // A pick that is missing its other half — kept so it can be resumed rather than
 // discarded. See addFile().
 let _pending = null;
-
 /** Everything we know how to speak with: remembered files + this session's
  *  endpoints. Kept here rather than in the list so the list stays a renderer. */
 async function collectVoices() {
@@ -89,7 +85,6 @@ async function collectVoices() {
   }
   return out;
 }
-
 // Endpoints live in localStorage as a list, not a single value: "the one
 // endpoint" was a field you had to retype every time you wanted the other one.
 const EP_KEY = 'eido.ttsEndpoints';
@@ -99,18 +94,39 @@ const endpoints = () => {
 const saveEndpoints = (list) => {
   try { localStorage.setItem(EP_KEY, JSON.stringify(list.slice(0, 12))); } catch { /* private mode */ }
 };
-
 /** Build (and rebuild) the section. `host` is the row container; `onPaint` lets
  *  the panel repaint sibling rows whose state we just changed. */
 export function ttsSection(host, onPaint = () => {}) {
   const repaint = () => { build(); onPaint(); };
-
-  async function pick(id) {
-    // Resuming a half-finished import: ask only for the part that is missing,
-    // keeping the file already chosen.
-    if (id === '__pending') return resumePending();
-    if (id === _selected && ttsAvailable()) return;    // already live
-    _busy = 'loading…'; build();
+    /** 🔴 EVERY LOAD GOES THROUGH HERE, so the guard and the loading row belong
+     *  HERE — not in finishImport, where I put them and where the CHECKBOX path
+     *  never reaches. That is why R saw "no timer" twice after I twice reported
+     *  it fixed: clicking the tick calls pick(), which set no _loadingId, so no
+     *  row and no clock were ever built. Same reason re-clicking still thrashed.
+     *  One entry point, one guard, one row. */
+    async function pick(id) {
+      if (id === '__pending') return resumePending();
+      if (id === _selected && ttsAvailable()) return;    // already live
+      if (_inFlight) {
+        // A second click during a 30s compile used to start a SECOND compile
+        // racing the first — two 63 MB graphs fighting for the same cores.
+        console.log(`[voice] already loading ${_inFlight}; ignoring ${id}`);
+        return;
+      }
+      _inFlight = id;
+      // The loading row + clock, for EVERY path into a load.
+      _loadingId = id;
+      _loadingName = id.replace(/^file:/, '').replace(/^ep:/, '');
+      _loadingSince = Date.now();
+      build();
+      try {
+        return await pickInner(id);
+      } finally {
+        _inFlight = null; _loadingId = null; _busy = null;
+        repaint();
+      }
+    }
+    async function pickInner(id) {
     try {
       if (id.startsWith('ep:')) {
         await setEndpointVoice(id.slice(3));
@@ -143,7 +159,6 @@ export function ttsSection(host, onPaint = () => {}) {
     _busy = null;
     repaint();
   }
-
   async function remove(id) {
     if (id === '__pending') { _pending = null; repaint(); return; }
     if (id.startsWith('ep:')) {
@@ -157,7 +172,6 @@ export function ttsSection(host, onPaint = () => {}) {
     if (id === _selected) { setTtsSource(null); setTtsEnabled(false); _selected = null; }
     repaint();
   }
-
   /** Finish an import once both halves are in hand. Shared by addFile() and
    *  resumePending() so a resumed import cannot behave differently from a
    *  first-try one — two paths to the same outcome is how this panel has been
@@ -207,7 +221,6 @@ export function ttsSection(host, onPaint = () => {}) {
       _busy = null;
     repaint();
   }
-
   /** Ask again for the missing half of a partial pick. */
   async function resumePending() {
     if (!_pending || !window.showOpenFilePicker) return;
@@ -237,7 +250,6 @@ export function ttsSection(host, onPaint = () => {}) {
       report('resume voice import', e);
     }
   }
-
   async function addFile() {
     try {
       const { loadFromFiles, matchEngine } = await import('./voiceengines.js');
@@ -296,7 +308,6 @@ export function ttsSection(host, onPaint = () => {}) {
       build(); setTimeout(() => { _busy = null; repaint(); }, 3000);
     }
   }
-
   function addEndpoint() {
     const addr = prompt('Address of a speech server you are running:\n(ws://… or http://…)', 'ws://127.0.0.1:8927');
     if (!addr) return;
@@ -304,7 +315,6 @@ export function ttsSection(host, onPaint = () => {}) {
     if (!list.includes(addr)) { list.unshift(addr); saveEndpoints(list); }
     pick(`ep:${addr}`);
   }
-
     /** Write the current status into nodes that already exist, returning false if
      *  they are not built yet so the caller can fall back to a full build.
      *  Exists because build() does host.textContent = '' — rebuilding every row
@@ -318,8 +328,6 @@ export function ttsSection(host, onPaint = () => {}) {
       row.textContent = text || '';
       return true;
     }
-
-
   function build() {
     host.textContent = '';
     const head = document.createElement('div');
@@ -392,7 +400,6 @@ export function ttsSection(host, onPaint = () => {}) {
         repaint();
     };
     host.appendChild(head);
-
     const listHost = document.createElement('div');
     // Indent to the CONTROL column (label 104px + 10px gap), so the voices hang
     // under the checkbox that switches them on rather than floating mid-panel.
@@ -407,7 +414,6 @@ export function ttsSection(host, onPaint = () => {}) {
       });
     });
   }
-
   build();
   return host;
 }

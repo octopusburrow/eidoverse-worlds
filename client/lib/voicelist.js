@@ -21,7 +21,6 @@
 // with VERBS ("voice file on this computer…") and STATUS ("loading voices…") in
 // one list of supposed choices. Verbs are rows here too, but visibly separate
 // and at the bottom, where an "add" affordance belongs.
-
 const ROW = `
 .vl { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
 /* The voices SCROLL, the add-rows do not (R, 2026-08-09: "should the model list
@@ -52,12 +51,16 @@ const ROW = `
    that deliberate instead of accidental. Voices hang under the marker column;
    the verbs sit flush left, below the list they act on, with a hairline to close
    the group. */
+.vl-radio { width: 12px; height: 12px; border-radius: 50%; flex: 0 0 12px;
+  border: 1.5px solid currentColor; opacity: .45; box-sizing: border-box;
+  transition: opacity .12s, box-shadow .12s; }
+.vl-radio.on { opacity: 1; box-shadow: inset 0 0 0 2.5px currentColor; }
+.vl-row:hover .vl-radio { opacity: .85; }
 .vl-add { margin-top: 4px; padding-left: 0; }
 .vl-row:not(.vl-add) { padding-left: 2px; }
 .vl-verbs-start { border-top: 1px solid currentColor; border-top-color: color-mix(in srgb, currentColor 15%, transparent); padding-top: 6px; }
 .vl-dim { opacity: .45; font-style: italic; }
 `;
-
 function ensureCss() {
   if (document.getElementById('vl-css')) return;
   const st = document.createElement('style');
@@ -65,7 +68,6 @@ function ensureCss() {
   st.textContent = ROW;
   document.head.appendChild(st);
 }
-
 /** Build the list.
  *  items:    [{id, name, note}]   — the voices this person has
  *  selected: id | null
@@ -75,20 +77,17 @@ export function renderVoiceList(host, { items, selected, on, busy, loading }) {
   ensureCss();
   host.className = 'vl';
   host.textContent = '';
-
   // The scrolling part. Only the voices go in here; the "+ add" rows stay below
   // it, so the thing you click to fix an empty list is never itself scrolled
   // out of view.
   const pane = document.createElement('div');
   pane.className = 'vl-pane';
   host.appendChild(pane);
-
   // NO EMPTY-STATE ROW. R: "you have 'add a voice below' twice now in a table
   // with no options. Maybe just the add buttons are sufficient." Right — the two
   // "+ add" rows below already say what to do, and a placeholder pointing AT
   // them is a caption for a sign. An empty pane collapses to nothing and the
   // verbs stand alone, which is the whole empty state.
-
   // 🔴 A VOICE BEING IMPORTED APPEARS IMMEDIATELY, WITH A RUNNING CLOCK.
   // R, 2026-08-09: "add the model to the list while it's loading and have a
   // second-ticker or animating dots so people know it didn't fail silently while
@@ -135,23 +134,26 @@ export function renderVoiceList(host, { items, selected, on, busy, loading }) {
     row.append(mark, name, clock);
     host.appendChild(row);
   }
-
   for (const it of items) {
     const row = document.createElement('div');
     row.className = 'vl-row';
     row.tabIndex = 0;
     row.title = it.note || it.name;
-
     const mark = document.createElement('span');
     // ● / ○ rather than a checkmark: it reads as "this one is live" at a glance
     // and needs no colour, which matters on a panel that must survive VR.
-    mark.textContent = it.id === selected ? '●' : '○';
-    mark.style.opacity = it.id === selected ? '1' : '.4';
-
+    // 🔴 A REAL RADIO, NOT A BULLET (R, 2026-08-09: "make the radio button more of
+    // a radio button and not a bare dot, because it looks more like a list bullet
+    // and not something that can be clicked"). ● and ○ are TYPOGRAPHY — they read
+    // as list marks because that is what they are used for. A drawn ring with a
+    // filled centre reads as a control: it has a border, it has a hit area, and
+    // it changes on hover, which a glyph never does.
+    mark.className = 'vl-radio' + (it.id === selected ? ' on' : '');
+    mark.setAttribute('role', 'radio');
+    mark.setAttribute('aria-checked', it.id === selected ? 'true' : 'false');
     const name = document.createElement('span');
     name.className = 'vl-name' + (it.dim ? ' vl-dim' : '');
     name.textContent = it.name;
-
     const x = document.createElement('button');
     x.className = 'vl-x';
     x.textContent = '×';
@@ -167,7 +169,6 @@ export function renderVoiceList(host, { items, selected, on, busy, loading }) {
     // file-open; an undo row is machinery for the same non-loss.
     // stopPropagation, or clicking × also selects the row it is destroying.
     x.onclick = (e) => { e.stopPropagation(); on.remove?.(it.id); };
-
     row.append(mark, name, x);
     row.onclick = () => on.select?.(it.id);
     row.onkeydown = (e) => {
@@ -178,7 +179,6 @@ export function renderVoiceList(host, { items, selected, on, busy, loading }) {
     };
     pane.appendChild(row);
   }
-
   // THE VERBS, visibly below the nouns. When the list is empty these are the
   // whole UI, which is the correct empty state: the only thing you can do is
   // add one, so that is the only thing showing.
@@ -206,7 +206,6 @@ export function renderVoiceList(host, { items, selected, on, busy, loading }) {
     add.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); on.addFile?.(); } };
   }
   host.appendChild(add);
-
   const ep = document.createElement('div');
   ep.className = 'vl-row vl-add';
   ep.tabIndex = 0;
@@ -215,6 +214,5 @@ export function renderVoiceList(host, { items, selected, on, busy, loading }) {
   ep.onclick = () => on.addEndpoint?.();
   ep.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); on.addEndpoint?.(); } };
   host.appendChild(ep);
-
   return host;
 }
