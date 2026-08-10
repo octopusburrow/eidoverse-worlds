@@ -39,6 +39,12 @@ let _busy = null;          // a phase string while loading, else null
  *  running timer, so a slow prepare (the phonemizer build is ~27s on first use)
  *  reads as work rather than as nothing happening. */
 let _loadingId = null, _loadingName = null, _loadingSince = 0;
+/** 🔴 ONE LOAD AT A TIME (R, 2026-08-09: "re-clicking the box appears to make it
+ *  thrash and start over"). Compiling the graph takes 30s+, and nothing stopped
+ *  a second click from starting a SECOND compile racing the first — two 63 MB
+ *  compiles competing for the same cores, each making the other slower, and
+ *  whichever finished last won. A click during a load is now a no-op. */
+let _inFlight = null;
 // A pick that is missing its other half — kept so it can be resumed rather than
 // discarded. See addFile().
 let _pending = null;
@@ -117,7 +123,10 @@ export function ttsSection(host, onPaint = () => {}) {
         const files = await openVoice(entry, { allowPrompt: true });
         const { loadFromFiles } = await import('./voiceengines.js');
         await import('./engines.js');
-        await loadFromFiles(files, (p) => { _busy = p.text || p.phase || 'loading…'; build(); });
+        await loadFromFiles(files, (p) => {
+        _busy = p.text || p.phase || 'loading…';
+        if (!liveStatus(_busy)) build();
+      });
       }
       _selected = id;
     // Remember it so ticking the box later picks what they used last.
@@ -170,7 +179,14 @@ export function ttsSection(host, onPaint = () => {}) {
       _loadingId = `file:${name}`; _loadingName = name; _loadingSince = Date.now();
       build();
       try {
-        await loadFromFiles(files, (p) => { _busy = p.text || p.phase || `loading ${name}…`; build(); });
+        await loadFromFiles(files, (p) => {
+        _busy = p.text || p.phase || `loading ${name}…`;
+        // 🔴 UPDATE TEXT, DO NOT REBUILD. build() does host.textContent = '' and
+        // remakes every row — once a second, for 30+ seconds. That is the thrash
+        // R saw, and it also resets anything mid-interaction. Write into the
+        // existing nodes; fall back to a rebuild only if they are not there yet.
+        if (!liveStatus(_busy)) build();
+      });
         const id = `file:${name}`;
         try {
           const { rememberVoice, canRemember } = await import('./voicestore.js');
@@ -289,6 +305,21 @@ export function ttsSection(host, onPaint = () => {}) {
     pick(`ep:${addr}`);
   }
 
+    /** Write the current status into nodes that already exist, returning false if
+     *  they are not built yet so the caller can fall back to a full build.
+     *  Exists because build() does host.textContent = '' — rebuilding every row
+     *  once a second for 30+ seconds is the thrash R saw, and it resets anything
+     *  mid-interaction. */
+    function liveStatus(text) {
+      const note = host.querySelector('.sp-note');
+      const row = host.querySelector('.vl-loading .vl-note');
+      if (!note && !row) return false;
+      if (note) note.textContent = text || '';
+      if (row) row.textContent = text || '';
+      return true;
+    }
+
+
   function build() {
     host.textContent = '';
     const head = document.createElement('div');
@@ -359,7 +390,7 @@ export function ttsSection(host, onPaint = () => {}) {
       renderVoiceList(listHost, {
         items, selected: _selected, busy: _busy,
         // The in-flight import, shown as a ghost row with a running clock.
-        loading: _loadingId ? { id: _loadingId, name: _loadingName, since: _loadingSince } : null,
+        loading: _loadingId ? { id: _loadingId, name: _loadingName, since: _loadingSince, status: _busy } : null,
         on: { select: pick, remove, addFile, addEndpoint },
       });
     });

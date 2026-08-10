@@ -102,10 +102,17 @@ export function renderVoiceList(host, { items, selected, on, busy, loading }) {
     const clock = document.createElement('span');
     clock.className = 'vl-note';
     clock.style.opacity = '.7';
+    // 🔴 ONE COUNTER, NOT TWO. The engine already tickers its own elapsed seconds
+    // through onProgress ("preparing voice — 12s"), and this row was drawing a
+    // SECOND clock beside it. Prefer the engine's text when it has any: it knows
+    // which phase it is in, and two counters disagreeing by a second reads as
+    // broken. Fall back to our own clock only when nothing was reported yet —
+    // which is exactly the window R saw hang.
     const t0 = loading.since || Date.now();
     const tick = () => {
       if (!clock.isConnected) return clearInterval(timer);
-      clock.textContent = `preparing… ${Math.round((Date.now() - t0) / 1000)}s`;
+      clock.textContent = loading.status
+        || `preparing… ${Math.round((Date.now() - t0) / 1000)}s`;
     };
     const timer = setInterval(tick, 1000);
     tick();

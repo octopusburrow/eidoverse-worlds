@@ -160,6 +160,20 @@ registerEngine({
     const speak = async (text) => {
       const t0 = performance.now();
       const warm = phonReady();
+      // 🔴 SHORT UTTERANCES NEED TERMINAL PUNCTUATION — a KNOWN Piper issue, not
+      const spoken = /[.!?…,;:]\s*$/.test(text.trim()) ? text : `${text.trim()}.`;
+      const ids = await phonemize(spoken, espeakVoice, wasmPaths);
+      // pronunciation"). VITS is trained on full sentences, so a bare "hello"
+      // with no sentence boundary falls outside the training distribution: the
+      // duration predictor and the flow decoder both extrapolate, and the result
+      // is the mangled output R heard ("sounds terrible if I just say hello but
+      // perfect if I say Hello I'm speaking in Glados voice").
+      //
+      // Giving espeak a sentence terminator puts the model back in distribution.
+      // It costs one character and no latency. This is the documented workaround,
+      // found by SEARCHING — after I had spent an hour on three wrong theories
+      // (sample rate, frame remainder, resampling), each of which I measured and
+      // disproved but only after building for it.
       const ids = await phonemize(text, espeakVoice, wasmPaths);
       const t1 = performance.now();
       const feeds = {
