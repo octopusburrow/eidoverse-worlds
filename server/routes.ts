@@ -677,9 +677,45 @@ const ROUTES: Route[] = [
  *  unsplit fetch() had. The catch-all last row means every request gets a
  *  Response… except a successful /ws upgrade, which (as before) returns none
  *  and lets Bun own the socket. */
+// 🔴 CROSS-ORIGIN ISOLATION — why local speech synthesis runs single-threaded.
+//
+// engine-piper.js reads `crossOriginIsolated && SharedArrayBuffer` and pins
+// ort.env.wasm.numThreads to 1 when either is missing. This server sent no COOP
+// or COEP headers, so both were false and ONNX inference ran single-threaded on
+// every machine that loaded the page, however many cores it has. The client's
+// own console said so on every load ("SINGLE-THREADED — isolation headers
+// missing"); the diagnostic was already printing the answer.
+//
+// COEP is `credentialless` rather than `require-corp`: require-corp blocks any
+// cross-origin subresource that does not opt in with CORP headers, which would
+// break third-party assets the moment someone adds one. credentialless buys the
+// same isolation by stripping credentials instead of refusing the request.
+// (Verified first: this client currently loads nothing cross-origin, so neither
+// variant breaks anything today — credentialless is the one that stays safe as
+// that changes.)
+//
+// The headers must ride on EVERY response, not just the document: a worker
+// script served without them is not isolated and the whole context degrades.
+function isolate(res: Response): Response {
+  // 🔴 A SUCCESSFUL /ws UPGRADE RETURNS NOTHING — the ws route hands back
+  // `undefined as unknown as Response` and lets Bun own the socket. Touching it
+  // here would throw on every websocket connection, i.e. this header change
+  // would break the world rather than speed it up. Checked before shipping.
+  if (!res) return res;
+  // A 101 upgrade owns its own handshake — do not touch it.
+  if (res.status === 101) return res;
+  res.headers.set("cross-origin-opener-policy", "same-origin");
+  res.headers.set("cross-origin-embedder-policy", "credentialless");
+  return res;
+}
+
 export function route(req: Request, srv: Srv): Response | Promise<Response> {
   const url = new URL(req.url);
-  for (const r of ROUTES) if (r.match(url, req)) return r.handler({ req, url, srv });
+  for (const r of ROUTES) {
+    if (!r.match(url, req)) continue;
+    const out = r.handler({ req, url, srv });
+    return out instanceof Promise ? out.then(isolate) : isolate(out);
+  }
   // unreachable — the catch-all matches everything — but a table must not be
   // able to strand a request even if a future edit breaks that property.
   return new Response("not found", { status: 404 });
