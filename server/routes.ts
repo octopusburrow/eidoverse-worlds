@@ -690,9 +690,22 @@ const ROUTES: Route[] = [
 // cross-origin subresource that does not opt in with CORP headers, which would
 // break third-party assets the moment someone adds one. credentialless buys the
 // same isolation by stripping credentials instead of refusing the request.
-// (Verified first: this client currently loads nothing cross-origin, so neither
-// variant breaks anything today — credentialless is the one that stays safe as
-// that changes.)
+// 🔴 THE CLIENT DOES LOAD CROSS-ORIGIN THINGS. This comment used to claim it
+// "loads nothing cross-origin" — false, asserted without checking, and it was
+// the justification for the whole choice. What it loads, and how each fares:
+//
+//   • DRACO decoder wasm from gstatic (assets.js) — fine either way; gstatic
+//     sends `cross-origin-resource-policy: cross-origin`.
+//   • Orrery API via fetch(credentials:'include') (conjure.js) — UNAFFECTED.
+//     COEP governs no-cors SUBRESOURCES; a cors-mode fetch is not one
+//     ("requests made in cors mode won't be blocked by COEP" — MDN).
+//   • Orrery thumbnails via <img> — WAS affected: a bare <img> is no-cors, so
+//     credentialless would strip the session cookie. Fixed at the call site
+//     with crossorigin="use-credentials", moving it to cors mode.
+//
+// And COOP `same-origin` severs window.opener, which broke Orrery's OAuth
+// popup — it could not postMessage back and sign-in hung silently. conjure.js
+// now polls /api/auth/me as the primary signal, needing no opener at all.
 //
 // The headers must ride on EVERY response, not just the document: a worker
 // script served without them is not isolated and the whole context degrades.
