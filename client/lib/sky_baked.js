@@ -344,6 +344,62 @@ export function requestBake() {
   }
 }
 
+// ── XR: bakes move OFF the presented frame ──────────────────────────────
+// A secondary renderer.render() inside an XR animation frame corrupts
+// r185's in-flight per-eye render list ("Cannot destructure 'object' of
+// renderList[i]" @ _renderObjects, per frame = the world strobing in the
+// headset). But BETWEEN XR frames the renderer is not mid-flight — so while
+// a session presents, band renders and env blits run from a macrotask pump
+// instead of the frame callback. setTimeout (not rAF, which Chrome parks
+// during immersive sessions; not the warm conductor, which yields on rAF)
+// paced to one band per XR_BAKE_SPACING_MS so the session's frame budget is
+// never contended two ticks in a row. Fades stay per-frame — they are pure
+// uniform math. If the quarantined crash signature ever appears from the
+// pump path, baking re-freezes for the rest of the session and says so once
+// — the old frozen-sky behavior as fallback, never as default.
+const XR_BAKE_SPACING_MS = 40;
+let xrPumpId = 0;
+let xrBakeBroken = false;
+
+function xrPumpDue() {
+  return state === 'baking'
+    || (state === 'idle' && (pendingForce || performance.now() >= nextAt));
+}
+
+function scheduleXrPump() {
+  if (xrPumpId || xrBakeBroken || !xrPumpDue()) return;
+  xrPumpId = setTimeout(xrPumpTick, XR_BAKE_SPACING_MS);
+}
+
+function xrPumpTick() {
+  xrPumpId = 0;
+  if (!dome || xrBakeBroken) return;
+  if (!renderer.xr?.isPresenting) return;   // session ended: frame path resumes
+  const now = performance.now();
+  try {
+    if (state === 'idle' && (pendingForce || now >= nextAt)) {
+      if (!maybeRefreshGraph()) {
+        cycleForced = pendingForce;
+        pendingForce = false;
+        cycleStart = now;
+        nextAt = now + cfg.intervalMs;
+        bandIdx = 0;
+        state = 'baking';
+      }
+    } else if (state === 'baking') {
+      renderBand(bandIdx);                  // one band per tick, off-frame
+      bandIdx += 1;
+      if (bandIdx >= bandMeshes.length) finishBake(now);
+    }
+  } catch (e) {
+    xrBakeBroken = true;
+    console.error('[sky] XR off-frame bake failed — sky frozen for this '
+      + 'session (please report):', e?.message ?? e);
+    return;
+  }
+  scheduleXrPump();
+}
+
 /** Per frame from updateSky(): follow the camera, advance the bake/fade
  *  cycle. The camera-follow matches the live domes (x/z only — sky_system
  *  keeps dome centres at ground level). */
@@ -351,7 +407,10 @@ export function updateBakedDome(now = performance.now()) {
   if (!dome) return;
   dome.position.set(camera.position.x, 0, camera.position.z);
 
+  const presenting = Boolean(renderer.xr?.isPresenting);
+  if (presenting) scheduleXrPump();        // renders happen between XR frames
   if (state === 'baking') {
+    if (presenting) return;                // the pump owns this state in XR
     renderBand(bandIdx);
     bandIdx += 1;
     if (bandIdx >= bandMeshes.length) finishBake(now);
@@ -369,6 +428,7 @@ export function updateBakedDome(now = performance.now()) {
     return;
   }
   if (state !== 'idle') return;        // 'refreshing': a graph rebuild is in flight
+  if (presenting) return;              // cycle starts belong to the pump in XR
   if (pendingForce || now >= nextAt) {
     if (maybeRefreshGraph()) return;   // clear↔cloudy flip: rebuild first
     cycleForced = pendingForce;
@@ -514,6 +574,8 @@ export function detachBakedDome() {
     targets[1].dispose();                    // A is the engine's _envTarget — leave it
     targets = null;
   }
+  if (xrPumpId) { clearTimeout(xrPumpId); xrPumpId = 0; }
+  xrBakeBroken = false;
   sys = null;
   blendU = null;
   fade = null;
