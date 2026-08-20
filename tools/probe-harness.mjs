@@ -72,7 +72,13 @@ export async function ownedWorld({ live = null, key = process.env.JOIN_KEY || 'd
   for (let i = 0; i < 60 && !ours; i++) {
     if (srv.exitCode !== null) { reason = `exited ${srv.exitCode}`; break; }
     try {
-      const v = await (await fetch(`${origin}/version`)).json();
+      // 🔴 TIMEOUT THE PROBE. On mirrored-mode WSL a closed port HANGS the
+      // connect instead of refusing (documented in watchdog-claude.sh), so a
+      // child that died at spawn turned this bounded loop into an hours-long
+      // silent hang — three runs on 2026-08-20 froze at exactly this fetch
+      // while the exitCode guard waited its turn. With the timeout, a dead
+      // child is reported as `exited N` within seconds instead.
+      const v = await (await fetch(`${origin}/version`, { signal: AbortSignal.timeout(1500) })).json();
       if (v.nonce === undefined) { reason = 'responder has no nonce field (stale pre-nonce listener)'; break; }
       ours = v.nonce === NONCE;
       if (!ours) { reason = 'wrong nonce (not our child)'; break; }
