@@ -323,6 +323,12 @@ function xrPumpTick() {
   if (!dome || xrBakeBroken) return;
   if (!renderer.xr?.isPresenting) return;   // session ended: frame path resumes
   const now = performance.now();
+  // Between frames the renderer must not route through XR state (which only
+  // exists inside a session rAF) — three keys internals off the live frame's
+  // views and a between-frames render lands "Invalid value used as weak map
+  // key". Classic secondary-view discipline: xr.enabled off around the bake.
+  const xrWas = renderer.xr.enabled;
+  renderer.xr.enabled = false;
   try {
     if (state === 'idle' && (pendingForce || now >= nextAt)) {
       if (!maybeRefreshGraph()) {
@@ -343,6 +349,8 @@ function xrPumpTick() {
     console.error('[sky] XR off-frame bake failed — sky frozen for this '
       + 'session (please report):', e?.message ?? e);
     return;
+  } finally {
+    renderer.xr.enabled = xrWas;
   }
   scheduleXrPump();
 }
