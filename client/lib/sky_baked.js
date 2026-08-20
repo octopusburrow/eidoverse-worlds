@@ -347,7 +347,8 @@ function xrPumpTick() {
   } catch (e) {
     xrBakeBroken = true;
     console.error('[sky] XR off-frame bake failed — sky frozen for this '
-      + 'session (please report):', e?.message ?? e);
+      + 'session (please report):', e?.message ?? e,
+      '\nSTACK:', String(e?.stack ?? '').slice(0, 600));
     return;
   } finally {
     renderer.xr.enabled = xrWas;
