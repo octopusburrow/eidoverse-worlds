@@ -338,9 +338,13 @@ function xrPumpTick() {
   // null the pointers for the off-frame render; the next XR frame rebinds
   // everything from its own beginRender. The catch's freeze-latch remains the
   // backstop if a future three moves these fields.
+  // Deliberately NOT saved/restored: between frames, null IS the truthful
+  // state — restoring the stale pointer after our render re-poisons the NEXT
+  // XR frame (beginRender captures it as previousContext → finishRender
+  // restores a dead framebuffer → the same WeakMap throw, now per-frame; run
+  // 13's 167 errors were exactly this). Each XR frame's beginRender sets its
+  // own context; it never needs the old one back.
   const bk = renderer.backend;
-  const prevBkCtx = bk ? bk._currentContext : null;
-  const prevRCtx = renderer._currentRenderContext;
   if (bk) bk._currentContext = null;
   renderer._currentRenderContext = null;
   try {
@@ -366,8 +370,6 @@ function xrPumpTick() {
     return;
   } finally {
     renderer.xr.enabled = xrWas;
-    if (bk) bk._currentContext = prevBkCtx;
-    renderer._currentRenderContext = prevRCtx;
   }
   scheduleXrPump();
 }
