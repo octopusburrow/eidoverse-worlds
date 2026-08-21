@@ -265,6 +265,17 @@ async function enterVR() {
       camera.fov = 60; camera.aspect = innerWidth / innerHeight; camera.zoom = 1;
       camera.updateProjectionMatrix();
     });
+    // Controller census: log each input source's claimed profiles + layout
+    // once. Devices with no registry entry (Steam Frame, 2026) still speak
+    // xr-standard; this line is how we learn what they actually expose.
+    session.addEventListener('inputsourceschange', (ev) => {
+      for (const src of ev.added ?? []) {
+        const g = src.gamepad;
+        console.log('[xr] input:', src.handedness,
+          'profiles=' + JSON.stringify(src.profiles),
+          g ? `axes=${g.axes.length} buttons=${g.buttons.length} haptics=${g.hapticActuators?.length ?? 0}` : 'no-gamepad');
+      }
+    });
   } catch (e) {
     report('enter VR', e);
     flashHint('VR session failed — see console');
