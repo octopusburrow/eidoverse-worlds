@@ -329,6 +329,20 @@ function xrPumpTick() {
   // key". Classic secondary-view discipline: xr.enabled off around the bake.
   const xrWas = renderer.xr.enabled;
   renderer.xr.enabled = false;
+  // r185 PINNED-VERSION SURGERY (revisit at every three bump): between XR
+  // frames the backend's _currentContext still points at the LAST XR frame's
+  // context. Our render captures it as previousContext and finishRender then
+  // restores a framebuffer that does not exist outside the session frame —
+  // WebGLState.drawBuffers WeakMap.set(undefined) (stack captured 2026-08-20).
+  // finishRender's own `if (previousContext !== null)` skips the restore, so
+  // null the pointers for the off-frame render; the next XR frame rebinds
+  // everything from its own beginRender. The catch's freeze-latch remains the
+  // backstop if a future three moves these fields.
+  const bk = renderer.backend;
+  const prevBkCtx = bk ? bk._currentContext : null;
+  const prevRCtx = renderer._currentRenderContext;
+  if (bk) bk._currentContext = null;
+  renderer._currentRenderContext = null;
   try {
     if (state === 'idle' && (pendingForce || now >= nextAt)) {
       if (!maybeRefreshGraph()) {
@@ -352,6 +366,8 @@ function xrPumpTick() {
     return;
   } finally {
     renderer.xr.enabled = xrWas;
+    if (bk) bk._currentContext = prevBkCtx;
+    renderer._currentRenderContext = prevRCtx;
   }
   scheduleXrPump();
 }
