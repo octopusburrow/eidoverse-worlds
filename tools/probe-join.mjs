@@ -19,12 +19,18 @@
 
 import { chromium } from 'playwright';
 
-// TEST STATUS (2026-08-22, honest): the `token=` guard and joinUrl() are verified —
-// the guard throws before a browser launches. The join-timeout diagnosis path has NOT
-// been fired against a live server yet (no renderer was serving :8940 at authoring
-// time). Fire it deliberately the first time a world IS up: point it at a wrong `key`
-// and confirm it throws the rejected-at-the-door diagnosis rather than returning a
-// page. A guard that has never failed has not been tested.
+// TEST STATUS (2026-08-22, all three paths now fired):
+//   ✅ joinUrl() emits `key=`, never `token=`.
+//   ✅ the `token=` guard throws before a browser launches.
+//   ✅ join-timeout FIRED against a live world (:8960, deliberately wrong key): threw the
+//      rejected-at-the-door diagnosis instead of returning a page, and additionally caught
+//      the open door dialog.
+// ⚠️ ONE CAVEAT from that run: the console-scraping branch (doorErrors, the
+//    /bad or missing join token/ regex) did NOT fire — the server does not appear to log
+//    that string to the browser console on this path. The rejection was caught by
+//    entityMeta=0 + the open door, i.e. the structural check carried it while the
+//    string-match contributed nothing. Do not trust doorErrors as the mechanism; it is a
+//    nice-to-have. If you ever make it load-bearing, verify it prints first.
 
 const DEFAULTS = {
   base: 'http://127.0.0.1:8940',
