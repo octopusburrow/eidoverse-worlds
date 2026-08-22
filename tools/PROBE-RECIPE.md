@@ -1,5 +1,12 @@
 # Headless probe recipe (read before writing another one)
 
+> **2026-08-22 — you probably don't need to read this.** `tools/probe-join.mjs` now
+> enforces everything below at runtime: it builds the URL with `key`, throws if you pass
+> `token`, and refuses to return a page whose join it cannot prove. Use
+> `openWorld({world:'workbench'})` and the traps cannot silently fire.
+> This file is the explanation; the helper is the guard. A recipe only helps when you
+> think to open it, and not thinking of it is the entire failure mode.
+
 **The join parameter is `key`, not `token`.**
 
 ```
