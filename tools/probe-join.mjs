@@ -19,7 +19,18 @@
 
 import { chromium } from 'playwright';
 
-// TEST STATUS (2026-08-22, all three paths now fired):
+// TEST STATUS (2026-08-23 — BOTH directions now fired, which is the point):
+//   ✅ HEALTHY join RETURNS a page (staging :8960, valid key): joined=true, entityMeta=0,
+//      no throw. 🔴 This is the test that did not exist on 08-22 and it would have FAILED:
+//      the proof read `window.entityMeta`, which is UNDEFINED (world.js exports it as a
+//      MODULE binding, never mirrored to window). Every healthy join measured 0 and would
+//      have thrown "REJECTED CONNECTION". Verified undefined by grep AND against a live world.
+//   ✅ REJECTED join THROWS (same world, deliberately wrong key): net.joined=false.
+//   ✅ requireContent throws its own distinct message on a joined-but-empty world.
+//   LESSON: a guard tested only against failure is not tested. Ask what it prints when
+//   things are FINE, not only when they are broken — both answers have to be right.
+//
+// TEST STATUS (2026-08-22, the original three paths):
 //   ✅ joinUrl() emits `key=`, never `token=`.
 //   ✅ the `token=` guard throws before a browser launches.
 //   ✅ join-timeout FIRED against a live world (:8960, deliberately wrong key): threw the
@@ -41,6 +52,7 @@ const DEFAULTS = {
   headless: true,
   args: ['--no-sandbox'],
   expectMarkers: [],   // strings that MUST appear in the served page/bundles
+  requireContent: false, // also demand entityMeta>0 (an EMPTY world is a valid join)
 };
 
 /** Build the join URL with the correct parameter name. `key`, never `token`. */
@@ -94,29 +106,53 @@ export async function openWorld(o = {}) {
 
   // The join proof: entityMeta populated. Polled, because warm-up is slow and
   // "not yet" is indistinguishable from "never" without a deadline.
+  // 🔴 2026-08-23: the join proof MUST read the MODULES, not window.
+  // `entityMeta`/`entities` are module exports of /lib/world.js and are NOT
+  // mirrored onto window (verified by grep AND against a live world). The first
+  // version of this file polled `window.entityMeta` and therefore measured
+  // UNDEFINED on every healthy join — it would have thrown "REJECTED CONNECTION"
+  // on a world that was working fine. It was only ever tested against a REJECTED
+  // join, where throwing looked correct. A guard that has only been run against
+  // failure has not been tested; ask what it prints when things are FINE too.
+  //
+  // Also: joined-ness and content are DIFFERENT facts. An empty world is a
+  // legitimate state (staging routinely has entityMeta=0). Gate on net.joined —
+  // the socket handshake — and report content separately.
   const deadline = Date.now() + c.waitMs;
-  let meta = { entityMeta: 0, entities: 0 };
+  let meta = { joined: false, entityMeta: 0, entities: 0, doorOpen: false };
   while (Date.now() < deadline) {
-    meta = await page.evaluate(() => {
-      const w = window;
+    meta = await page.evaluate(async () => {
+      const [w, n] = await Promise.all([
+        import('/lib/world.js').catch(() => null),
+        import('/lib/net.js').catch(() => null),
+      ]);
       return {
-        entityMeta: w.entityMeta ? w.entityMeta.size : (w.world?.entityMeta?.size ?? 0),
-        entities: w.entities ? w.entities.size : (w.world?.entities?.size ?? 0),
+        joined: !!n?.net?.joined,
+        entityMeta: w?.entityMeta?.size ?? 0,
+        entities: w?.entities?.size ?? 0,
         doorOpen: !!document.querySelector('#door.scrim.open'),
       };
     }).catch(() => meta);
-    if (meta.entityMeta > 0) break;
+    if (meta.joined && (meta.entityMeta > 0 || !c.requireContent)) break;
     await page.waitForTimeout(400);
   }
 
-  if (!meta.entityMeta) {
+  if (c.requireContent && meta.joined && !meta.entityMeta) {
+    await browser.close();
+    throw new Error(
+      `probe-join: joined the door but the world is EMPTY (entityMeta=0) after ${c.waitMs}ms, ` +
+      `and requireContent was set. This is a real join — the world simply has no entities. ` +
+      `If that is expected (staging often is), drop requireContent.\n  url: ${url}`);
+  }
+
+  if (!meta.joined) {
     const diag = [
-      `probe-join: joined nothing after ${c.waitMs}ms (entityMeta=0, entities=${meta.entities}).`,
+      `probe-join: never joined after ${c.waitMs}ms (net.joined=false, entityMeta=${meta.entityMeta}).`,
       doorErrors.length ? `door said: ${doorErrors[0]}` : 'no door error seen on console.',
       meta.doorOpen ? 'the door dialog is OPEN — it swallows all keyboard input.' : '',
       pageErrors.length ? `page errors: ${pageErrors.slice(0, 2).join(' | ')}` : 'no page errors.',
       `url: ${url}`,
-      'entityMeta=0 after a long wait is a REJECTED CONNECTION, not an empty world.',
+      'net.joined=false after a long wait is a REJECTED CONNECTION at the door.',
     ].filter(Boolean).join('\n  ');
     await browser.close();
     throw new Error(diag);
