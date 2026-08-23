@@ -83,6 +83,11 @@ export async function openWorld(o = {}) {
   const pageErrors = [];
   const doorErrors = [];
   page.on('pageerror', (e) => pageErrors.push(String(e).slice(0, 200)));
+  // NOTE (2026-08-23): this console scrape is a BONUS, never the mechanism. The server
+  // sends {type:"error", error:"bad or missing join token"} over the WEBSOCKET
+  // (server.ts:1914) and closes with a code — it does not print that string to the
+  // browser console, so this regex reliably matches nothing. The real signal is
+  // net.status, read below. Kept only because a stray log line is still worth showing.
   page.on('console', (m) => {
     const t = m.text();
     if (/bad or missing join token|join token|rejected/i.test(t)) doorErrors.push(t.slice(0, 200));
@@ -118,8 +123,9 @@ export async function openWorld(o = {}) {
   // Also: joined-ness and content are DIFFERENT facts. An empty world is a
   // legitimate state (staging routinely has entityMeta=0). Gate on net.joined —
   // the socket handshake — and report content separately.
-  const deadline = Date.now() + c.waitMs;
-  let meta = { joined: false, entityMeta: 0, entities: 0, doorOpen: false };
+  const started = Date.now();
+  const deadline = started + c.waitMs;
+  let meta = { joined: false, status: 'unknown', entityMeta: 0, entities: 0, doorOpen: false };
   while (Date.now() < deadline) {
     meta = await page.evaluate(async () => {
       const [w, n] = await Promise.all([
@@ -128,11 +134,16 @@ export async function openWorld(o = {}) {
       ]);
       return {
         joined: !!n?.net?.joined,
+        status: n?.net?.status ?? 'unknown',
         entityMeta: w?.entityMeta?.size ?? 0,
         entities: w?.entities?.size ?? 0,
         doorOpen: !!document.querySelector('#door.scrim.open'),
       };
     }).catch(() => meta);
+    // 'rejected' is TERMINAL — the client sets it on close codes 4002/4003/4005/4006
+    // and deliberately does not retry. Waiting out the full deadline would just be
+    // slow; the answer is already final.
+    if (meta.status === 'rejected') break;
     if (meta.joined && (meta.entityMeta > 0 || !c.requireContent)) break;
     await page.waitForTimeout(400);
   }
@@ -147,7 +158,12 @@ export async function openWorld(o = {}) {
 
   if (!meta.joined) {
     const diag = [
-      `probe-join: never joined after ${c.waitMs}ms (net.joined=false, entityMeta=${meta.entityMeta}).`,
+      `probe-join: never joined after ${Date.now() - started}ms (net.joined=false, net.status=${meta.status}).`,
+      meta.status === 'rejected'
+        ? 'net.status is REJECTED — the client saw a terminal close code (4003 bad/missing key, '
+          + '4002 taken over in another tab, 4005 malformed world name, 4006 removed by moderation). '
+          + 'This is a refused door, not a slow one. Check the key first.'
+        : '',
       doorErrors.length ? `door said: ${doorErrors[0]}` : 'no door error seen on console.',
       meta.doorOpen ? 'the door dialog is OPEN — it swallows all keyboard input.' : '',
       pageErrors.length ? `page errors: ${pageErrors.slice(0, 2).join(' | ')}` : 'no page errors.',
