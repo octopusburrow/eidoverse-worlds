@@ -26,6 +26,16 @@ const _CORNER = 15;            // the corner is the hardest 2D target on the
                                // frame and USED to be the intersection of two
                                // 2px bands — invisible in practice. It gets
                                // its own square, sized like the old SE grip.
+/** Would the edge-resize hit-tester claim this point? (for ui.js's
+ *  arrange-exit guard — the grab band extends _REACH px OUTSIDE frames) */
+export function resizeZoneAt(x, y) {
+  const fake = { clientX: x, clientY: y };
+  for (const f of _resizables) {
+    if (f.root.style.display === 'none' || !f.active()) continue;
+    if (_zoneFor(f, fake)) return true;
+  }
+  return false;
+}
 const _CURSORS = { n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize',
   ne: 'nesw-resize', sw: 'nesw-resize', nw: 'nwse-resize', se: 'nwse-resize' };
 function _zoneFor(f, e) {

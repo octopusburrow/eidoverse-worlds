@@ -3,7 +3,9 @@
 // and the two overlays (help, front door).
 
 import { bus, CONFIG, setName, setToken, setErrorSink, report, colorFor } from './core.js';
-import { fsvg, hasFill } from './icons.js';
+import { resizeZoneAt } from './frames.js';
+import { flipMic, flipEar, micLive, earOn, pairPinned, setPairPinned } from './mictoggle.js';
+import { svg, fsvg, hasFill } from './icons.js';
 
 // section-head emoji → Phosphor fill glyph (menu chrome never rides emoji —
 // the canvas-emoji trap generalizes: platform glyph gaps are silent)
@@ -247,14 +249,14 @@ export function initDock(entries) {
     const r = el.dock.getBoundingClientRect();
     const ox = e.clientX - r.left, oy = e.clientY - r.top;
     const move = (ev) => {
-      const x = Math.max(4, Math.min(innerWidth - r.width - 4, ev.clientX - ox));
-      const y = Math.max(4, Math.min(innerHeight - r.height - 4, ev.clientY - oy));
-      el.dock.style.right = el.dock.style.bottom = '';
-      el.dock.style.left = `${x}px`; el.dock.style.top = `${y}px`;
+      // LIVE snap (R, 15:12): the rail rides its nearest edge THROUGHOUT the
+      // drag — no free-floating ghost, no repaint surprise at release
+      applyDockEdge(edgeFromPointer(ev));
+      dispatchEvent(new CustomEvent('dockmoved'));
     };
     const up = (ev) => {
       removeEventListener('pointermove', move); removeEventListener('pointerup', up);
-      snapDock(ev);             // the rail LIVES on an edge — release = snap flat
+      snapDock(ev);             // persists the final {edge, along}
     };
     addEventListener('pointermove', move); addEventListener('pointerup', up);
   });
@@ -291,6 +293,16 @@ function applyDockEdge({ edge, along }) {
   // NO resize dispatch here — the window-resize listener calls this function,
   // so announcing via 'resize' recurses (the alt-drag lesson, same shape).
   // mic/ear re-anchor via mictoggle's own observer + safety interval.
+}
+function edgeFromPointer(ev) {
+  const d = [
+    { edge: 'left', dist: ev.clientX },
+    { edge: 'right', dist: innerWidth - ev.clientX },
+    { edge: 'top', dist: ev.clientY },
+    { edge: 'bottom', dist: innerHeight - ev.clientY },
+  ].sort((a, b) => a.dist - b.dist)[0].edge;
+  const vert = d === 'left' || d === 'right';
+  return { edge: d, along: Math.round((vert ? ev.clientY : ev.clientX) - 21) };
 }
 function snapDock(ev) {
   const r = el.dock.getBoundingClientRect();
@@ -343,8 +355,9 @@ function initEMenu() {
     if (m.hidden) return;
     const t = e.target;
     if (el.hud.contains(t)) return;                       // ∃ itself toggles via click
-    const inChrome = t instanceof Element &&
-      (m.contains(t) || t.closest('.frame, #dock, .panel, .hud-pop'));
+    const inChrome = (t instanceof Element &&
+      (m.contains(t) || t.closest('.frame, #dock, .panel, .hud-pop'))) ||
+      resizeZoneAt(e.clientX, e.clientY);   // the grab band hangs 6px outside frames
     if (!inChrome) toggleEMenu(false);
   }, true);
   // the menu is a panel like any other: drag it by its empty parts, kept
@@ -398,32 +411,40 @@ export function toggleEMenu(force) {
     paintEMenu();
   }
 }
+function fsvgOrStroke(name, size) {
+  if (hasFill(name)) return fsvg(name, size);
+  try { return svg(name, size); } catch { return ''; }
+}
 function paintEMenu() {
   const m = emenuEl();
   if (!m || m.hidden) return;
-  m.innerHTML = '<div class="menu-head">menu</div>';
+  m.innerHTML = '<div class="menu-head"><span class="mh-name">menu</span><button class="mh-x" title="close">\u00d7</button></div>';
+  m.querySelector('.mh-x').onclick = () => toggleEMenu(false);
   for (const entry of dockEntries) {
     const { id, icon, action, gate, active } = entry;
     if (action) {
       if (gate && !gate()) continue;
       const row = document.createElement('button');
       row.className = 'mrow' + (active?.() ? ' open' : '');
-      row.innerHTML = `${fsvg(icon, 15)}<span class="mname">${id}</span><span class="mdot">${active?.() ? fsvg('eye', 13) : ''}</span>`;
-      row.onclick = () => { action(); paintDock(); };
+      row.className = 'mrow' + (active?.() ? ' open' : '');
+      row.innerHTML = `${fsvg(icon, 15)}<span class="mname">${id}</span>`;
+      row.onclick = () => { action(); paintDock(); paintEMenu(); };
       m.appendChild(row);
       continue;
     }
     const row = document.createElement('button');
     const isOpen = getFrame(id)?.visible;
     row.className = 'mrow' + (isOpen ? ' open' : '');
-    row.innerHTML = `${fsvg(icon, 15)}<span class="mname">${id}</span><span class="mdot">${isOpen ? fsvg('eye', 13) : ''}</span>`;
+    row.innerHTML = `${fsvg(icon, 15)}<span class="mname">${id}</span>`;
     // selecting a row OPENS the window into the viewport (arranging follows);
     // already open = flash it so the eye finds it. Closing is the frame's ✕.
+    // click = toggle; the row's brightness IS the open state (R, 15:12 —
+    // one less glyph to reason about; the eye experiment is retired)
     row.onclick = () => {
       const f = getFrame(id); if (!f) return;
-      if (!f.visible) f.show(); else { f.raise(); f.el.classList.remove('flash'); void f.el.offsetWidth; f.el.classList.add('flash'); }
-      if (id === 'who') paintRoster();
-      paintDock();
+      f.toggle();
+      if (id === 'who' && f.visible) paintRoster();
+      paintDock(); paintEMenu();
     };
     const pin = document.createElement('button');
     pin.className = 'mpin' + (pins.has(id) ? ' on' : '');
@@ -432,8 +453,23 @@ function paintEMenu() {
     pin.onclick = (e) => {
       e.stopPropagation();
       pins.has(id) ? pins.delete(id) : pins.add(id);
-      savePins(); paintDock();
+      savePins(); paintDock(); paintEMenu();
     };
+    row.appendChild(pin);
+    m.appendChild(row);
+  }
+  // mic + ears: same grammar — click toggles the thing, pin keeps the pair
+  // hanging off the ∃ (they have no window, so no open-flash, just brightness)
+  for (const [nm, ic, isOn, flip] of [['mic', 'speaker-high', micLive, flipMic], ['ears', 'ear', earOn, flipEar]]) {
+    const row = document.createElement('button');
+    row.className = 'mrow' + (isOn() ? ' open' : '');
+    row.innerHTML = `${fsvgOrStroke(ic, 15)}<span class="mname">${nm}</span>`;
+    row.onclick = async () => { await flip(); paintEMenu(); };
+    const pin = document.createElement('button');
+    pin.className = 'mpin' + (pairPinned() ? ' on' : '');
+    pin.title = pairPinned() ? 'detach from the rail' : 'attach to the rail';
+    pin.innerHTML = fsvg('push-pin', 13);
+    pin.onclick = (e) => { e.stopPropagation(); setPairPinned(!pairPinned()); paintEMenu(); };
     row.appendChild(pin);
     m.appendChild(row);
   }

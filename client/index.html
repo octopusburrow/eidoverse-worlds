@@ -144,7 +144,7 @@ select {
    a bar affordance gives an unambiguous DONE (R's note, 08-30) */
 #splash .sp-bar { width: 148px; height: 2px; border-radius: 1px; background: rgb(143 232 200 / .12); }
 #splash .sp-bar-fill { height: 100%; border-radius: 1px; background: rgb(143 232 200 / .65); transition: width .3s ease; }
-.sp-sub { color: var(--dim); font-size: var(--fs-sm); margin-top: -14px; text-align: center; }
+.sp-sub { color: var(--dim); font-size: 15px; margin-top: -14px; text-align: center; }
 .sp-sub b { color: var(--fg); font-weight: 600; }
 .sp-bar {
   width: min(430px, 84vw); height: 3px; border-radius: 2px;
@@ -159,7 +159,7 @@ select {
    line, not furniture at opposite walls (R's note, 08-30 14:27) */
 .sp-status {
   display: flex; justify-content: center; align-items: baseline; gap: 10px;
-  font-size: var(--fs-sm); margin-top: -12px;
+  font-size: 14px; margin-top: -12px;
 }
 .sp-phase { color: #8fe8c8; }
 .sp-phase::after { content: '…'; }
@@ -470,14 +470,23 @@ body.arranging #dock #hud.emark {
 #emenu .mrow:hover { background: rgb(255 255 255 / .06); }
 #emenu .mrow svg:first-child { flex: none; opacity: .8; }
 #emenu .mrow .mname { flex: 1; }
-#emenu .mrow .mdot { display: grid; place-items: center; width: 16px; opacity: 0; flex: none; color: var(--dim); }
-#emenu .mrow.open .mdot { opacity: .85; }
+#emenu .mrow { color: var(--dim); }
+#emenu .mrow.open { color: #cfeee4; }
+#emenu .mrow.open svg:first-child { opacity: 1; }
 #emenu .menu-head {
-  display: flex; align-items: center; gap: 6px; padding: 3px 6px 6px; margin: -2px -2px 2px;
-  font-size: var(--fs-sm); color: var(--dim); letter-spacing: .06em; cursor: grab;
+  /* same chrome grammar as the frames' corner tabs: name chip, ✕, grabbable */
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 4px 6px 4px 10px; margin: -6px -6px 4px;
+  font-size: var(--fs-sm); color: var(--fg); letter-spacing: .06em; cursor: grab;
+  background: rgb(0 0 0 / .35); border-radius: var(--r) var(--r) 0 0;
   border-bottom: 1px solid var(--edge); user-select: none;
 }
 #emenu .menu-head:active { cursor: grabbing; }
+#emenu .menu-head .mh-x {
+  border: none; background: none; color: var(--dim); font-size: 15px; line-height: 1;
+  width: 20px; height: 20px; border-radius: 5px; cursor: pointer; padding: 0;
+}
+#emenu .menu-head .mh-x:hover { color: var(--fg); background: rgb(255 255 255 / .08); }
 #emenu .mpin {
   flex: none; display: grid; place-items: center; width: 22px; height: 22px; padding: 0; line-height: 0;
   background: none; border: none; border-radius: 5px; color: var(--dim); opacity: .35;
@@ -762,7 +771,7 @@ body.touch #touch { display: block; }
 </head>
 <body>
 <!-- Static so it paints before any module loads. boot.js only fills it in. -->
-<div id="splash" data-build="b22">
+<div id="splash" data-build="b23">
   <div class="sp-ver"></div>
   <svg class="sp-logo" viewBox="-70 -40 1372 1372" aria-hidden="true" fill="currentColor">
     <path class="pc-top" d="M 92 82 Q 616 140 1072 78 Q 1024 290 1012 511 L 852 511 L 852 228 Q 440 218 68 232 Q 88 155 92 82 Z"/>

@@ -141,6 +141,26 @@ setInterval(() => {
   if (hot !== micHot) { micHot = hot; paint(); }
 }, 125);
 
+// ---- pair API for the ∃ menu (R, 15:12): rows toggle these; the pin
+// controls whether the pair hangs off the ∃ at all
+const PAIRPIN_LS = 'ew-micear-pinned';
+let _pairPinned = true;
+try { _pairPinned = localStorage.getItem(PAIRPIN_LS) !== '0'; } catch {}
+export const pairPinned = () => _pairPinned;
+export function setPairPinned(v) {
+  _pairPinned = !!v;
+  try { localStorage.setItem(PAIRPIN_LS, v ? '1' : '0'); } catch {}
+  applyPairVisibility(); placeMic();
+}
+function applyPairVisibility() {
+  const disp = _pairPinned ? 'inline-block' : 'none';
+  if (micBtn) micBtn.style.display = disp;
+  if (earBtn) earBtn.style.display = disp;
+}
+export const micLive = () => { try { return micIsOn(); } catch { return false; } };
+export const earOn = () => { try { return receivingVoice() && !isHushed(); } catch { return false; } };
+export { flipMic, flipEar };
+
 async function flipMic() {
   const on = await toggleMic(CONFIG.name);
   // Speech-to-text is a SEPARATE consent from speaking: it ships microphone
@@ -210,17 +230,19 @@ function placeMic() {
   const pos = (b, x, y) => { b.style.left = x + 'px'; b.style.top = y + 'px'; b.style.right = b.style.bottom = ''; };
   const vert = edge === 'left' || edge === 'right';
   const room = vert ? r.top : r.left;              // space before the ∃ along the rail
+  // mic is ALWAYS the top/left of the pair (R, 15:12)
   if (room >= 74) {
     // along the edge, stacked before the ∃
-    if (vert) { pos(micBtn, cx, Math.round(r.top) - 34); earBtn && pos(earBtn, cx, Math.round(r.top) - 66); }
-    else      { pos(micBtn, Math.round(r.left) - 34, cy); earBtn && pos(earBtn, Math.round(r.left) - 66, cy); }
+    if (vert) { pos(micBtn, cx, Math.round(r.top) - 66); earBtn && pos(earBtn, cx, Math.round(r.top) - 34); }
+    else      { pos(micBtn, Math.round(r.left) - 66, cy); earBtn && pos(earBtn, Math.round(r.left) - 34, cy); }
   } else {
     // corner: fold around it, perpendicular into the canvas
     if (edge === 'left')       { pos(micBtn, Math.round(r.right) + 6, cy); earBtn && pos(earBtn, Math.round(r.right) + 38, cy); }
-    else if (edge === 'right') { pos(micBtn, Math.round(r.left) - 32, cy); earBtn && pos(earBtn, Math.round(r.left) - 64, cy); }
+    else if (edge === 'right') { pos(micBtn, Math.round(r.left) - 64, cy); earBtn && pos(earBtn, Math.round(r.left) - 32, cy); }
     else if (edge === 'top')   { pos(micBtn, cx, Math.round(r.bottom) + 6); earBtn && pos(earBtn, cx, Math.round(r.bottom) + 38); }
-    else                       { pos(micBtn, cx, Math.round(r.top) - 32); earBtn && pos(earBtn, cx, Math.round(r.top) - 64); }
+    else                       { pos(micBtn, cx, Math.round(r.top) - 64); earBtn && pos(earBtn, cx, Math.round(r.top) - 32); }
   }
+  applyPairVisibility();
   // (re)bind the observer if the hud element itself was replaced
   if (hud !== _hudSeen) {
     _hudSeen = hud;
@@ -230,6 +252,7 @@ function placeMic() {
   }
 }
 addEventListener('resize', placeMic);
+addEventListener('dockmoved', placeMic);   // live re-anchor while the rail is dragged
 setInterval(placeMic, 2000);          // safety net only; the observer does the work
 // the glyph REFLECTS state, it does not own it: any surface that changes
 // hush/consent repaints it, so a panel tick and a HUD click can never
