@@ -14,7 +14,7 @@
      glass legibility collapses over bright scenes, so the floor is one
      user-ownable number away. /panels <0.3-1> sets it, persisted. */
   --panel-a:   0.58;
-  --panel:     rgb(15 32 36 / var(--panel-a));   /* deep seafoam green-blue (R, 08-30) — the Sky trick:
+  --panel:     rgb(18 26 27 / var(--panel-a));   /* charcoal-seafoam midpoint (R, 08-30: split the difference) — the Sky trick:
                                                     the hint of warmth lives in the
                                                     SURFACE, the ink stays neutral */
   --edge:      rgb(255 255 255 / 0.10);
@@ -108,8 +108,15 @@ select {
   font: var(--fs)/1.6 var(--font); color: var(--fg);
 }
 #splash.gone { opacity: 0; visibility: hidden; pointer-events: none; }
-.sp-logo { width: 118px; height: 124px; color: #8fe8c8; overflow: visible; }
-.sp-logo path { transition: transform .45s cubic-bezier(.22,.9,.3,1.04); }
+.sp-logo {
+  /* rendered 2x and scaled down: Chrome re-rasters animated svg children from
+     the layer cache, which pixelates at 1x — the classic fix, plus will-change */
+  width: 236px; height: 248px; transform: scale(.5); transform-origin: center;
+  margin: -62px 0; color: #8fe8c8; overflow: visible;
+}
+.sp-logo path { transition: transform .45s cubic-bezier(.22,.9,.3,1.04); will-change: transform; }
+#splash.gone .sp-logo { filter: drop-shadow(0 0 26px rgb(143 232 200 / .55)); transition: filter .3s ease-out; }
+#splash.gone .sp-mark { color: #d9fff1; }
 /* assembly driven by --spp (0..1): pieces drift apart when nothing has
    arrived, settle into register as the world loads; the arm slides through
    the parted spine last. The mark assembling IS the progress display. */
@@ -120,7 +127,10 @@ select {
   font-size: 17px; letter-spacing: .34em; color: #8fe8c8; opacity: .85;
   text-transform: lowercase; font-weight: 500; margin-left: .34em; /* recenter over tracking */
 }
-#splash .sp-bar { display: none; }  /* the closing gap is the bar */
+/* hairline: the assembly carries the feel, the line carries the certainty —
+   a bar affordance gives an unambiguous DONE (R's note, 08-30) */
+#splash .sp-bar { width: 148px; height: 2px; border-radius: 1px; background: rgb(143 232 200 / .12); }
+#splash .sp-bar-fill { height: 100%; border-radius: 1px; background: rgb(143 232 200 / .65); transition: width .3s ease; }
 .sp-sub { color: var(--dim); font-size: var(--fs-sm); margin-top: -14px; text-align: center; }
 .sp-sub b { color: var(--fg); font-weight: 600; }
 .sp-bar {
@@ -729,9 +739,9 @@ body.touch #touch { display: block; }
 <!-- Static so it paints before any module loads. boot.js only fills it in. -->
 <div id="splash">
   <svg class="sp-logo" viewBox="-70 -40 1372 1372" aria-hidden="true" fill="currentColor">
-    <path class="pc-top" d="M 86 52 Q 616 118 1083 48 Q 1022 280 1008 511 L 820 511 L 820 255 Q 430 242 45 258 Q 78 150 86 52 Z"/>
-    <path class="pc-arm" d="M 400 492 C 480 545 560 566 700 570 L 1140 568 Q 1170 564 1180 556 Q 1188 552 1187 562 Q 1182 653 1187 744 Q 1188 754 1180 750 Q 1170 742 1140 738 L 700 736 C 560 740 480 761 400 814 Q 420 653 400 492 Z"/>
-    <path class="pc-bot" d="M 115 1240 Q 616 1174 1091 1244 Q 1022 1012 1008 796 L 820 796 L 820 1037 Q 430 1050 40 1034 Q 78 1142 115 1240 Z"/>
+    <path class="pc-top" d="M 92 82 Q 616 140 1072 78 Q 1024 290 1012 511 L 852 511 L 852 228 Q 440 218 68 232 Q 88 155 92 82 Z"/>
+    <path class="pc-arm" d="M 420 522 C 490 562 565 585 700 588 L 1140 586 Q 1168 583 1178 576 Q 1186 572 1185 582 Q 1180 653 1185 724 Q 1186 734 1178 730 Q 1168 723 1140 720 L 700 718 C 565 721 490 744 420 784 Q 436 653 420 522 Z"/>
+    <path class="pc-bot" d="M 120 1212 Q 616 1152 1080 1216 Q 1024 1002 1012 796 L 852 796 L 852 1064 Q 440 1074 62 1062 Q 88 1137 120 1212 Z"/>
   </svg>
   <div class="sp-mark">eidoverse</div>
   <div class="sp-sub">stepping into <b class="sp-world">a world</b> as <b class="sp-name">…</b></div>
