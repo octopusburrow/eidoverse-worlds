@@ -3,6 +3,14 @@
 // and the two overlays (help, front door).
 
 import { bus, CONFIG, setName, setToken, setErrorSink, report, colorFor } from './core.js';
+import { fsvg, hasFill } from './icons.js';
+
+// section-head emoji → Phosphor fill glyph (menu chrome never rides emoji —
+// the canvas-emoji trap generalizes: platform glyph gaps are silent)
+const EMOJI_ICON = {
+  '🧱': 'hammer', '🧍': 'person-arms-spread', '🌿': 'plant', '☀': 'sun',
+  '✨': 'sparkle', '🌳': 'tree', '📜': 'scroll', '🧩': 'puzzle-piece', '🔊': 'speaker-high',
+};
 import { loadingItems } from './assets.js';
 import { makeFrame, getFrame, isLocked, setLocked, resetLayout } from './frames.js';
 
@@ -115,7 +123,10 @@ export function makeSection(title, onOpen, { id = '' } = {}) {
   if (id) box.id = `sec-${id}`;
   const head = document.createElement('button');
   head.className = 'head';
-  head.textContent = title;
+  const m = title.match(/^(\S+)\s+(.*)$/);
+  const glyph = m && EMOJI_ICON[m[1].replace(/️/g, '')];
+  if (glyph && hasFill(glyph)) head.innerHTML = `${fsvg(glyph, 15)}<span>${m[2]}</span>`;
+  else head.textContent = title;
   head.setAttribute('aria-expanded', 'false');
   const body = document.createElement('div');
   body.className = 'body';
@@ -179,9 +190,10 @@ const escapeHtml = (v) => String(v).replace(/[&<>"]/g, (c) => (
 
 export function initDock(entries) {
   el.dock.innerHTML = '';
-  for (const { id, label } of entries) {
+  for (const { id, label, icon } of entries) {
     const b = document.createElement('button');
-    b.textContent = label;
+    if (icon && hasFill(icon)) b.innerHTML = fsvg(icon, 17);
+    else b.textContent = label;
     b.title = `toggle ${id}`;
     b.onclick = () => {
       const f = getFrame(id);
@@ -207,7 +219,7 @@ function paintDock(entries) {
   }
   const lock = el.dock.querySelector('button[data-lock]');
   if (lock) {
-    lock.textContent = isLocked() ? '🔒' : '🔓';
+    lock.innerHTML = fsvg(isLocked() ? 'lock-simple' : 'lock-simple-open', 17);
     lock.classList.toggle('on', isLocked());
   }
 }

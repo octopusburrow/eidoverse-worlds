@@ -26,7 +26,7 @@ const saveExtras = () => { try { localStorage.setItem(HUD_LS, JSON.stringify(ext
 export function paintHud() {
   const n = remotes.size;
   setHud(
-    `${statusDot[net.status] ?? ''} <b>${CONFIG.name}</b> @ ${CONFIG.world}<span style="opacity:.4"> · b8</span>` +
+    `${statusDot[net.status] ?? ''} <b>${CONFIG.name}</b> @ ${CONFIG.world}<span style="opacity:.4"> · b9</span>` +
     (extras.fps ? `   ${perf.fps}fps` : '') +
     (extras.others
       ? `   <button class="hud-others" title="who's here (opens the list)">${n} other${n === 1 ? '' : 's'}</button>`

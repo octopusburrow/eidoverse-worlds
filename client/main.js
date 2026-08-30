@@ -130,11 +130,11 @@ initChat({
 initRoster(people);
 initEmoteBar();
 initDock([
-  { id: 'chat', label: '💬' },
-  { id: 'world', label: '🧱' },
-  { id: 'who', label: '👥' },
-  { id: 'emotes', label: '👋' },
-  { id: 'debug', label: '🐞' },
+  { id: 'chat', label: '💬', icon: 'chat-circle' },
+  { id: 'world', label: '🧱', icon: 'planet' },
+  { id: 'who', label: '👥', icon: 'users' },
+  { id: 'emotes', label: '👋', icon: 'hand-waving' },
+  { id: 'debug', label: '🐞', icon: 'bug' },
 ]);
 initDebug({
   // the body in your HAND wins over your own — that is the one being worked on
