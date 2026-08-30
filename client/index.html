@@ -137,7 +137,7 @@ select {
 .sp-mark-sub {
   /* small, beneath, no fanfare: Technically Distinct while everyone gets
      used to the idea (R, 08-30 — the rebrand argument, softly) */
-  font-size: 12px; letter-spacing: .58em; margin: -21px 0 0 .58em;
+  font-size: 12px; letter-spacing: .58em; margin: -30px 0 0 .58em;
   color: rgb(143 232 200 / .45); font-weight: 400; text-transform: lowercase;
 }
 /* hairline: the assembly carries the feel, the line carries the certainty —
@@ -463,7 +463,7 @@ body.arranging #dock #hud.emark {
 #emenu .mrow, #emenu .mpin { cursor: pointer; }
 #emenu[hidden] { display: none; }
 /* the menu wears the frames' own arrange chrome — one grammar to maintain */
-#emenu { overflow: visible; border-top-left-radius: 0; border-top-right-radius: 0; }
+#emenu { overflow: visible; }
 #emenu .fr-head {
   display: flex; position: absolute; bottom: 100%; left: 0; right: 0;
   justify-content: space-between; align-items: flex-end; pointer-events: none;
@@ -473,7 +473,8 @@ body.arranging #dock #hud.emark {
 #emenu .fr-head .fr-title, #emenu .fr-head .fr-btns {
   pointer-events: auto;
   background: rgb(0 0 0 / .62); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-  border-radius: 7px 7px 0 0; padding: 3px 10px; font-size: var(--fs-sm); color: var(--fg);
+  border-radius: 7px 7px 0 0; padding: 3px 10px calc(3px + var(--r)); font-size: var(--fs-sm); color: var(--fg);
+  margin-bottom: calc(-1 * var(--r));
 }
 #emenu .fr-head .fr-title { cursor: grab; }
 #emenu .fr-head .fr-btns { padding: 3px 5px; }
@@ -500,10 +501,6 @@ body.arranging #dock #hud.emark {
    menu never shifts a single window's geometry. */
 .frame .fr-head { display: none; }
 body.arranging .frame { overflow: visible; outline: 1px dashed rgb(255 255 255 / .25); outline-offset: -1px; }
-/* the tab CONTINUES into the panel: the curved corner beneath a tab squares
-   off while arranging, so chip and panel read as one piece (R, 15:35) */
-body.arranging .frame:not(.label-below) { border-top-left-radius: 0; border-top-right-radius: 0; }
-body.arranging .frame.label-below { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 body.arranging .frame > .fr-body { overflow: hidden; }
 /* the arrange chrome reads as TABS: name docked to the frame's top-left,
    close/collapse docked top-right — corners, where hands expect them */
@@ -517,12 +514,19 @@ body.arranging .frame .fr-head .fr-btns {
   pointer-events: auto;
   background: rgb(0 0 0 / .62); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
   border-radius: 7px 7px 0 0; padding: 3px 10px;
+  /* the chip DESCENDS var(--r) into the panel — it truly connects, instead of
+     the corner pretending to be square (R, 15:49: "bit cheating ;)") */
+  margin-bottom: calc(-1 * var(--r)); padding-bottom: calc(3px + var(--r));
 }
 body.arranging .frame .fr-head .fr-title { flex: 0 1 auto; cursor: grab; }
-body.arranging .frame .fr-head .fr-btns { padding: 3px 5px; }
+body.arranging .frame .fr-head .fr-btns { padding: 3px 5px calc(3px + var(--r)); }
 body.arranging .frame.label-below .fr-head { bottom: auto; top: 100%; align-items: flex-start; }
 body.arranging .frame.label-below .fr-head .fr-title,
-body.arranging .frame.label-below .fr-head .fr-btns { border-radius: 0 0 7px 7px; }
+body.arranging .frame.label-below .fr-head .fr-btns {
+  border-radius: 0 0 7px 7px;
+  margin-bottom: 0; padding-bottom: 3px;
+  margin-top: calc(-1 * var(--r)); padding-top: calc(3px + var(--r));
+}
 /* sticky-edge glow: this frame is riding that edge and will follow it */
 body.arranging .frame.st-l { box-shadow: inset 2px 0 0 rgb(143 232 200 / .6), inset 0 1px 0 rgb(255 255 255 / .09), 0 1px 5px rgb(0 0 0 / .28); }
 body.arranging .frame.st-r { box-shadow: inset -2px 0 0 rgb(143 232 200 / .6), inset 0 1px 0 rgb(255 255 255 / .09), 0 1px 5px rgb(0 0 0 / .28); }
@@ -776,7 +780,7 @@ body.touch #touch { display: block; }
 </head>
 <body>
 <!-- Static so it paints before any module loads. boot.js only fills it in. -->
-<div id="splash" data-build="b24.1">
+<div id="splash" data-build="b25">
   <div class="sp-ver"></div>
   <svg class="sp-logo" viewBox="-70 -40 1372 1372" aria-hidden="true" fill="currentColor">
     <path class="pc-top" d="M 92 82 Q 616 140 1072 78 Q 1024 290 1012 511 L 852 511 L 852 228 Q 440 218 68 232 Q 88 155 92 82 Z"/>
