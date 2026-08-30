@@ -9,16 +9,16 @@
    Design tokens. One place to change the client's whole look.
    =========================================================================== */
 :root {
-  --bg:        #100d0b;
+  --bg:        #0c0c0d;
   /* --panel-a is the opacity fallback dial (visionOS "Tinted" lesson):
      glass legibility collapses over bright scenes, so the floor is one
      user-ownable number away. /panels <0.3-1> sets it, persisted. */
   --panel-a:   0.58;
-  --panel:     rgb(26 20 15 / var(--panel-a));
-  --edge:      rgb(205 195 180 / 0.14);
-  --edge-hi:   rgb(220 210 195 / 0.42);
-  --fg:        #f3ede2;
-  --dim:       #b0a28c;
+  --panel:     rgb(18 18 20 / var(--panel-a));
+  --edge:      rgb(255 255 255 / 0.10);
+  --edge-hi:   rgb(255 255 255 / 0.32);
+  --fg:        #ebebe9;
+  --dim:       #97979b;
   --accent:    #e5a15a;
   --accent-dk: #382a1a;
   --warn:      #e8c96a;
@@ -154,7 +154,7 @@ select {
   display: flex; align-items: center; gap: 6px;
   padding: 5px 6px 5px 10px; cursor: grab;
   border-bottom: 1px solid var(--edge);
-  background: rgb(20 15 11 / 0.45); flex: none;
+  background: rgb(0 0 0 / 0.30); flex: none;
   user-select: none; -webkit-user-select: none;
 }
 .fr-head:active { cursor: grabbing; }
