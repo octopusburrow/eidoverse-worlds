@@ -465,7 +465,7 @@ body.arranging #dock #hud.emark {
 /* the menu wears the frames' own arrange chrome — one grammar to maintain */
 #emenu { overflow: visible; }
 #emenu .fr-head {
-  display: flex; position: absolute; bottom: 100%; left: 0; right: 0;
+  display: flex; position: absolute; bottom: 100%; left: calc(var(--r) + 2px); right: calc(var(--r) + 2px);
   justify-content: space-between; align-items: flex-end; pointer-events: none;
   padding: 0; background: none; border: none;   /* the base .fr-head strip bleeds in otherwise */
 }
@@ -473,8 +473,8 @@ body.arranging #dock #hud.emark {
 #emenu .fr-head .fr-title, #emenu .fr-head .fr-btns {
   pointer-events: auto;
   background: rgb(0 0 0 / .62); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-  border-radius: 7px 7px 0 0; padding: 3px 10px; font-size: var(--fs-sm); color: var(--fg);
-  position: relative;
+  border-radius: 7px 7px 0 0; padding: 3px 10px; font-size: var(--fs-sm); color: var(--dim);
+  margin-bottom: -1px;
 }
 #emenu .fr-head .fr-title { cursor: grab; }
 #emenu .fr-head .fr-btns { padding: 3px 5px; }
@@ -505,7 +505,10 @@ body.arranging .frame > .fr-body { overflow: hidden; }
 /* the arrange chrome reads as TABS: name docked to the frame's top-left,
    close/collapse docked top-right — corners, where hands expect them */
 body.arranging .frame .fr-head {
-  display: flex; position: absolute; bottom: 100%; left: 0; right: 0;
+  /* tabs start AFTER the corner radius (browser-tab convention): the curve
+     stays pristine, the rim-light unbroken, and no corner needs filling.
+     Fourth iteration; the simple one wins (R, 16:32). */
+  display: flex; position: absolute; bottom: 100%; left: calc(var(--r) + 2px); right: calc(var(--r) + 2px);
   justify-content: space-between; align-items: flex-end;
   padding: 0; background: none; border: none; pointer-events: none;
 }
@@ -514,41 +517,7 @@ body.arranging .frame .fr-head .fr-btns {
   pointer-events: auto;
   background: rgb(0 0 0 / .62); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
   border-radius: 7px 7px 0 0; padding: 3px 10px;
-  position: relative;
-}
-/* the CORNER FILLER (third try, the honest geometry): a var(--r) square at
-   the chip's outer bottom corner, masked to the COMPLEMENT of the panel's
-   quarter-circle — it fills exactly the notch between chip and curve, never
-   overlaps the panel (no double-dark), never hides behind it (no smudge
-   through the glass). */
-body.arranging .frame .fr-head .fr-title::after,
-body.arranging .frame .fr-head .fr-btns::after,
-#emenu .fr-head .fr-title::after,
-#emenu .fr-head .fr-btns::after {
-  content: ''; position: absolute; top: 100%; width: var(--r); height: var(--r);
-  background: rgb(0 0 0 / .62); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-}
-body.arranging .frame .fr-head .fr-title::after, #emenu .fr-head .fr-title::after {
-  left: 0;
-  -webkit-mask: radial-gradient(circle at 100% 100%, transparent calc(var(--r) - 0.5px), #000 calc(var(--r) - 0.5px));
-  mask: radial-gradient(circle at 100% 100%, transparent calc(var(--r) - 0.5px), #000 calc(var(--r) - 0.5px));
-}
-body.arranging .frame .fr-head .fr-btns::after, #emenu .fr-head .fr-btns::after {
-  right: 0;
-  -webkit-mask: radial-gradient(circle at 0% 100%, transparent calc(var(--r) - 0.5px), #000 calc(var(--r) - 0.5px));
-  mask: radial-gradient(circle at 0% 100%, transparent calc(var(--r) - 0.5px), #000 calc(var(--r) - 0.5px));
-}
-body.arranging .frame.label-below .fr-head .fr-title::after,
-body.arranging .frame.label-below .fr-head .fr-btns::after {
-  top: auto; bottom: 100%;
-}
-body.arranging .frame.label-below .fr-head .fr-title::after {
-  -webkit-mask: radial-gradient(circle at 100% 0%, transparent calc(var(--r) - 0.5px), #000 calc(var(--r) - 0.5px));
-  mask: radial-gradient(circle at 100% 0%, transparent calc(var(--r) - 0.5px), #000 calc(var(--r) - 0.5px));
-}
-body.arranging .frame.label-below .fr-head .fr-btns::after {
-  -webkit-mask: radial-gradient(circle at 0% 0%, transparent calc(var(--r) - 0.5px), #000 calc(var(--r) - 0.5px));
-  mask: radial-gradient(circle at 0% 0%, transparent calc(var(--r) - 0.5px), #000 calc(var(--r) - 0.5px));
+  margin-bottom: -1px;   /* seat onto the rim-light so the tab reads attached */
 }
 body.arranging .frame .fr-head .fr-title { flex: 0 1 auto; cursor: grab; }
 body.arranging .frame .fr-head .fr-btns { padding: 3px 5px; }
@@ -556,6 +525,7 @@ body.arranging .frame.label-below .fr-head { bottom: auto; top: 100%; align-item
 body.arranging .frame.label-below .fr-head .fr-title,
 body.arranging .frame.label-below .fr-head .fr-btns {
   border-radius: 0 0 7px 7px;
+  margin-bottom: 0; margin-top: -1px;
 }
 /* sticky-edge glow: this frame is riding that edge and will follow it */
 body.arranging .frame.st-l { box-shadow: inset 2px 0 0 rgb(143 232 200 / .6), inset 0 1px 0 rgb(255 255 255 / .09), 0 1px 5px rgb(0 0 0 / .28); }
@@ -810,7 +780,7 @@ body.touch #touch { display: block; }
 </head>
 <body>
 <!-- Static so it paints before any module loads. boot.js only fills it in. -->
-<div id="splash" data-build="b29">
+<div id="splash" data-build="b30">
   <div class="sp-ver"></div>
   <svg class="sp-logo" viewBox="-70 -40 1372 1372" aria-hidden="true" fill="currentColor">
     <path class="pc-top" d="M 92 82 Q 616 140 1072 78 Q 1024 290 1012 511 L 852 511 L 852 228 Q 440 218 68 232 Q 88 155 92 82 Z"/>
