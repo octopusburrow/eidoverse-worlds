@@ -289,6 +289,7 @@ export function makeFrame(id, opts = {}) {
     if (locked || e.target.closest('.fr-btn')) return;
     e.preventDefault();
     raise();
+    root.classList.add('lifting');   // depth returns only while held
     const ox = e.clientX - state.x, oy = e.clientY - state.y;
     // capture can throw for a pointer id the browser doesn't know (synthetic
     // events, some touch stacks) — losing capture is survivable, aborting the
@@ -303,6 +304,7 @@ export function makeFrame(id, opts = {}) {
     const up = () => {
       head.removeEventListener('pointermove', move);
       head.removeEventListener('pointerup', up);
+      root.classList.remove('lifting');
       save();
     };
     head.addEventListener('pointermove', move);

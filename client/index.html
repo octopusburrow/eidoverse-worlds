@@ -52,10 +52,15 @@ canvas { display: block; touch-action: none; }
   border-radius: var(--r);
   /* rim-light: glass catching light on its top edge — surfaces separate by
      elevation + gleam, never by outline (border study C, R-approved-ish) */
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / .09), 0 10px 30px rgba(0, 0, 0, .5);
+  /* shadow is a STATE, not decoration (R, 08-30): near-flat at rest — games
+     separate surfaces by fill + gleam, not by OS paper-stack shadows — and
+     the .lifting rule below restores real depth only while a frame is HELD */
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .09), 0 1px 5px rgb(0 0 0 / .28);
+  transition: box-shadow .25s ease;
   backdrop-filter: blur(16px) saturate(1.15);
   -webkit-backdrop-filter: blur(16px) saturate(1.15);
 }
+.frame.lifting { box-shadow: inset 0 1px 0 rgb(255 255 255 / .09), 0 12px 32px rgb(0 0 0 / .5); }
 /* code stays mono; prose is prose */
 textarea, code, pre { font-family: var(--font-code); }
 
@@ -505,10 +510,10 @@ body.arranging .frame.label-below .fr-head { bottom: auto; top: 100%; align-item
 body.arranging .frame.label-below .fr-head .fr-title,
 body.arranging .frame.label-below .fr-head .fr-btns { border-radius: 0 0 7px 7px; }
 /* sticky-edge glow: this frame is riding that edge and will follow it */
-body.arranging .frame.st-l { box-shadow: inset 2px 0 0 rgb(143 232 200 / .6), inset 0 1px 0 rgb(255 255 255 / .09), 0 10px 30px rgba(0,0,0,.5); }
-body.arranging .frame.st-r { box-shadow: inset -2px 0 0 rgb(143 232 200 / .6), inset 0 1px 0 rgb(255 255 255 / .09), 0 10px 30px rgba(0,0,0,.5); }
-body.arranging .frame.st-t { box-shadow: inset 0 2px 0 rgb(143 232 200 / .6), 0 10px 30px rgba(0,0,0,.5); }
-body.arranging .frame.st-b { box-shadow: inset 0 -2px 0 rgb(143 232 200 / .6), inset 0 1px 0 rgb(255 255 255 / .09), 0 10px 30px rgba(0,0,0,.5); }
+body.arranging .frame.st-l { box-shadow: inset 2px 0 0 rgb(143 232 200 / .6), inset 0 1px 0 rgb(255 255 255 / .09), 0 1px 5px rgb(0 0 0 / .28); }
+body.arranging .frame.st-r { box-shadow: inset -2px 0 0 rgb(143 232 200 / .6), inset 0 1px 0 rgb(255 255 255 / .09), 0 1px 5px rgb(0 0 0 / .28); }
+body.arranging .frame.st-t { box-shadow: inset 0 2px 0 rgb(143 232 200 / .6), 0 1px 5px rgb(0 0 0 / .28); }
+body.arranging .frame.st-b { box-shadow: inset 0 -2px 0 rgb(143 232 200 / .6), inset 0 1px 0 rgb(255 255 255 / .09), 0 1px 5px rgb(0 0 0 / .28); }
 #hud .ok  { color: var(--accent); }
 #hud .bad { color: var(--err); }
 #hud .edit { color: var(--warn); }
@@ -757,7 +762,7 @@ body.touch #touch { display: block; }
 </head>
 <body>
 <!-- Static so it paints before any module loads. boot.js only fills it in. -->
-<div id="splash" data-build="b20">
+<div id="splash" data-build="b21">
   <div class="sp-ver"></div>
   <svg class="sp-logo" viewBox="-70 -40 1372 1372" aria-hidden="true" fill="currentColor">
     <path class="pc-top" d="M 92 82 Q 616 140 1072 78 Q 1024 290 1012 511 L 852 511 L 852 228 Q 440 218 68 232 Q 88 155 92 82 Z"/>
