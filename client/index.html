@@ -111,8 +111,8 @@ select {
 .sp-logo {
   /* rendered 2x and scaled down: Chrome re-rasters animated svg children from
      the layer cache, which pixelates at 1x — the classic fix, plus will-change */
-  width: 236px; height: 248px; transform: scale(.5); transform-origin: center;
-  margin: -62px 0; color: #8fe8c8; overflow: visible;
+  width: 200px; height: 210px; transform: scale(.5); transform-origin: center;
+  margin: -52px 0; color: #8fe8c8; overflow: visible;
 }
 .sp-logo path { transition: transform .45s cubic-bezier(.22,.9,.3,1.04); will-change: transform; }
 #splash.gone .sp-logo { filter: drop-shadow(0 0 26px rgb(143 232 200 / .55)); transition: filter .3s ease-out; }
@@ -127,6 +127,7 @@ select {
   font-size: 17px; letter-spacing: .34em; color: #8fe8c8; opacity: .85;
   text-transform: lowercase; font-weight: 500; margin-left: .34em; /* recenter over tracking */
 }
+.sp-mark-sub { color: rgb(143 232 200 / .5); font-weight: 400; }  /* the house, not the street */
 /* hairline: the assembly carries the feel, the line carries the certainty —
    a bar affordance gives an unambiguous DONE (R's note, 08-30) */
 #splash .sp-bar { width: 148px; height: 2px; border-radius: 1px; background: rgb(143 232 200 / .12); }
@@ -746,7 +747,7 @@ body.touch #touch { display: block; }
     <path class="pc-arm" d="M 420 522 C 490 562 565 585 700 588 L 1140 586 Q 1168 583 1178 576 Q 1186 572 1185 582 Q 1180 653 1185 724 Q 1186 734 1178 730 Q 1168 723 1140 720 L 700 718 C 565 721 490 744 420 784 Q 436 653 420 522 Z"/>
     <path class="pc-bot" d="M 120 1212 Q 616 1152 1080 1216 Q 1024 1002 1012 796 L 852 796 L 852 1064 Q 440 1074 62 1062 Q 88 1137 120 1212 Z"/>
   </svg>
-  <div class="sp-mark">eidoverse</div>
+  <div class="sp-mark">eidoverse <span class="sp-mark-sub">· worlds</span></div>
   <div class="sp-sub">stepping into <b class="sp-world">a world</b> as <b class="sp-name">…</b></div>
   <div class="sp-bar"><div class="sp-bar-fill"></div></div>
   <div class="sp-status"><span class="sp-phase">waking the engine</span><span class="sp-detail"></span></div>
