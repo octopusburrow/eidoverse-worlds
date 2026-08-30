@@ -14,13 +14,14 @@
      glass legibility collapses over bright scenes, so the floor is one
      user-ownable number away. /panels <0.3-1> sets it, persisted. */
   --panel-a:   0.58;
-  --panel:     rgb(21 20 18 / var(--panel-a));   /* warm charcoal — the Sky trick:
+  --panel:     rgb(15 32 36 / var(--panel-a));   /* deep seafoam green-blue (R, 08-30) — the Sky trick:
                                                     the hint of warmth lives in the
                                                     SURFACE, the ink stays neutral */
   --edge:      rgb(255 255 255 / 0.10);
   --edge-hi:   rgb(255 255 255 / 0.32);
   --fg:        #ebebe9;
   --dim:       #97979b;
+  --icon:      #a3bfba;   /* Sky-CotL move: icons carry a whisper of the world's hue */
   --accent:    #e5a15a;
   --accent-dk: #382a1a;
   --control:   #8fe8c8;   /* sliders/checkboxes keep the brand seafoam (R, 22:01) */
@@ -102,15 +103,24 @@ select {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 22px; padding: 28px; box-sizing: border-box;
   background:
-    radial-gradient(1100px 620px at 50% 34%, #16303a 0%, #0c1720 46%, var(--bg) 100%);
+    linear-gradient(to top, rgb(22 48 58 / .38), transparent 42%), var(--bg);
   transition: opacity .6s ease, visibility .6s;
   font: var(--fs)/1.6 var(--font); color: var(--fg);
 }
 #splash.gone { opacity: 0; visibility: hidden; pointer-events: none; }
+.sp-logo { width: 118px; height: 124px; color: #8fe8c8; overflow: visible; }
+.sp-logo path { transition: transform .45s cubic-bezier(.22,.9,.3,1.04); }
+/* assembly driven by --spp (0..1): pieces drift apart when nothing has
+   arrived, settle into register as the world loads; the arm slides through
+   the parted spine last. The mark assembling IS the progress display. */
+.sp-logo .pc-top { transform: translate(calc((1 - var(--spp,0)) *  4%), calc((1 - var(--spp,0)) * -7%)); }
+.sp-logo .pc-arm { transform: translateX(calc((1 - var(--spp,0)) * -16%)); }
+.sp-logo .pc-bot { transform: translate(calc((1 - var(--spp,0)) *  4%), calc((1 - var(--spp,0)) *  7%)); }
 .sp-mark {
-  font-size: 26px; letter-spacing: .18em; color: #8fe8c8;
-  text-transform: lowercase; font-weight: 600;
+  font-size: 17px; letter-spacing: .34em; color: #8fe8c8; opacity: .85;
+  text-transform: lowercase; font-weight: 500; margin-left: .34em; /* recenter over tracking */
 }
+#splash .sp-bar { display: none; }  /* the closing gap is the bar */
 .sp-sub { color: var(--dim); font-size: var(--fs-sm); margin-top: -14px; text-align: center; }
 .sp-sub b { color: var(--fg); font-weight: 600; }
 .sp-bar {
@@ -406,8 +416,10 @@ select {
   display: grid; place-items: center;
   color: #8fe8c8; border: none; cursor: pointer; background: none; box-shadow: none;
 }
-#hud.emark:hover { color: #b5f2dd; }
-#hud.emark.net-down { color: var(--dim); animation: netpulse 1.6s ease-in-out infinite; }
+#dock #hud.emark { color: var(--dim); }                             /* local only */
+#dock #hud.emark.net-live { color: #7fc9b6; }                        /* connected — subtle green-blue */
+#dock #hud.emark.net-live:hover { color: #b5f2dd; }
+#dock #hud.emark.net-wait { color: var(--dim); animation: netpulse 2.6s ease-in-out infinite; }  /* trying */
 #hud.emark.editing::after {
   content: ''; position: absolute; right: 5px; top: 5px; width: 7px; height: 7px;
   border-radius: 50%; background: var(--warn);
@@ -524,7 +536,7 @@ body.arranging #dock .dock-grip { display: grid; }
 #dock .dock-grip:active { cursor: grabbing; }
 #dock button:not(.dock-grip) {
   display: grid; place-items: center; width: 34px; height: 34px; padding: 0;
-  color: var(--dim); background: none; border: none; box-shadow: none; border-radius: 7px;
+  color: var(--icon); background: none; border: none; box-shadow: none; border-radius: 7px;
 }
 #dock button:not(.dock-grip):hover { color: var(--fg); background: rgb(255 255 255 / .06); }
 #dock button.on {
@@ -533,6 +545,11 @@ body.arranging #dock .dock-grip { display: grid; }
   box-shadow: inset 0 1px 3px rgb(0 0 0 / .6);   /* pressed-in, not lit-up */
 }
 #dock button[hidden] { display: none; }
+/* the rail WELDS to its edge — it is part of the window frame, not a floating card */
+#dock[data-edge="left"]   { border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: none; }
+#dock[data-edge="right"]  { border-top-right-radius: 0; border-bottom-right-radius: 0; border-right: none; }
+#dock[data-edge="top"]    { border-top-left-radius: 0; border-top-right-radius: 0; border-top: none; }
+#dock[data-edge="bottom"] { border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom: none; }
 #dock.horizontal { flex-direction: row; }
 #dock.horizontal .dock-grip { width: 14px; height: 100%; }
 /* ------------------------------------------------------------- profile */
@@ -711,6 +728,11 @@ body.touch #touch { display: block; }
 <body>
 <!-- Static so it paints before any module loads. boot.js only fills it in. -->
 <div id="splash">
+  <svg class="sp-logo" viewBox="-70 -40 1372 1372" aria-hidden="true" fill="currentColor">
+    <path class="pc-top" d="M 86 52 Q 616 118 1083 48 Q 1022 280 1008 511 L 820 511 L 820 255 Q 430 242 45 258 Q 78 150 86 52 Z"/>
+    <path class="pc-arm" d="M 400 492 C 480 545 560 566 700 570 L 1140 568 Q 1170 564 1180 556 Q 1188 552 1187 562 Q 1182 653 1187 744 Q 1188 754 1180 750 Q 1170 742 1140 738 L 700 736 C 560 740 480 761 400 814 Q 420 653 400 492 Z"/>
+    <path class="pc-bot" d="M 115 1240 Q 616 1174 1091 1244 Q 1022 1012 1008 796 L 820 796 L 820 1037 Q 430 1050 40 1034 Q 78 1142 115 1240 Z"/>
+  </svg>
   <div class="sp-mark">eidoverse</div>
   <div class="sp-sub">stepping into <b class="sp-world">a world</b> as <b class="sp-name">…</b></div>
   <div class="sp-bar"><div class="sp-bar-fill"></div></div>

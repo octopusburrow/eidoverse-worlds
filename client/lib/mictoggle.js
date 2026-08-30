@@ -202,10 +202,16 @@ function placeMic() {
   const hud = document.querySelector('#hud');
   if (!hud || !micBtn) return;
   const r = hud.getBoundingClientRect();
-  const top = Math.round(r.top + (r.height - 26) / 2);
-  micBtn.style.left = Math.round(r.right + 6) + 'px';
-  micBtn.style.top = top + 'px';
-  if (earBtn) { earBtn.style.left = Math.round(r.right + 38) + 'px'; earBtn.style.top = top + 'px'; }
+  // hang off the ∃ perpendicular to the rail, into the canvas — the side the
+  // menu icons DON'T occupy, so the pair is visible on any edge (R, 08-30)
+  const edge = document.getElementById('dock')?.dataset.edge || 'left';
+  const cx = Math.round(r.left + (r.width - 26) / 2);
+  const cy = Math.round(r.top + (r.height - 26) / 2);
+  const pos = (b, x, y) => { b.style.left = x + 'px'; b.style.top = y + 'px'; b.style.right = b.style.bottom = ''; };
+  if (edge === 'left')       { pos(micBtn, Math.round(r.right) + 6, cy); earBtn && pos(earBtn, Math.round(r.right) + 38, cy); }
+  else if (edge === 'right') { pos(micBtn, Math.round(r.left) - 32, cy); earBtn && pos(earBtn, Math.round(r.left) - 64, cy); }
+  else if (edge === 'top')   { pos(micBtn, cx, Math.round(r.bottom) + 6); earBtn && pos(earBtn, cx, Math.round(r.bottom) + 38); }
+  else                       { pos(micBtn, cx, Math.round(r.top) - 32); earBtn && pos(earBtn, cx, Math.round(r.top) - 64); }
   // (re)bind the observer if the hud element itself was replaced
   if (hud !== _hudSeen) {
     _hudSeen = hud;

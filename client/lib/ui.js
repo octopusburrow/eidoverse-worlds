@@ -224,7 +224,7 @@ export function initDock(entries) {
   for (const entry of entries) {
     const { id, label, icon, action } = entry;
     const b = document.createElement('button');
-    if (icon && hasFill(icon)) b.innerHTML = fsvg(icon, 17);
+    if (icon && hasFill(icon)) b.innerHTML = fsvg(icon, 21);   // +25% glyph, same 34px button
     else b.textContent = label;
     b.title = action ? id : `toggle ${id}`;
     b.onclick = () => {
@@ -274,17 +274,20 @@ function loadDockEdge() {
   return { edge: 'left', along: 10 };
 }
 function applyDockEdge({ edge, along }) {
+  el.dock.dataset.edge = edge;   // CSS welds the rail to this side; mic/ear read it too
   const d = el.dock;
   const horiz = edge === 'top' || edge === 'bottom';
   d.classList.toggle('horizontal', horiz);
-  d.style.left = d.style.right = d.style.top = d.style.bottom = '';
+  // 'auto', not '' — the stylesheet's top:10px/left:10px come back from the
+  // dead on '' and pair with the new side into a full-length stretch
+  d.style.left = d.style.right = d.style.top = d.style.bottom = 'auto';
   const r = d.getBoundingClientRect();
   const max = horiz ? innerWidth - r.width - 4 : innerHeight - r.height - 4;
   const a = Math.max(4, Math.min(max, along));
-  if (edge === 'left') { d.style.left = '4px'; d.style.top = `${a}px`; }
-  if (edge === 'right') { d.style.right = '4px'; d.style.top = `${a}px`; }
-  if (edge === 'top') { d.style.top = '4px'; d.style.left = `${a}px`; }
-  if (edge === 'bottom') { d.style.bottom = '4px'; d.style.left = `${a}px`; }
+  if (edge === 'left') { d.style.left = '0'; d.style.top = `${a}px`; }
+  if (edge === 'right') { d.style.right = '0'; d.style.top = `${a}px`; }
+  if (edge === 'top') { d.style.top = '0'; d.style.left = `${a}px`; }
+  if (edge === 'bottom') { d.style.bottom = '0'; d.style.left = `${a}px`; }
   // NO resize dispatch here — the window-resize listener calls this function,
   // so announcing via 'resize' recurses (the alt-drag lesson, same shape).
   // mic/ear re-anchor via mictoggle's own observer + safety interval.
