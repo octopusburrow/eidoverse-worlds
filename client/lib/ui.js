@@ -350,7 +350,7 @@ function initEMenu() {
   // the menu is a panel like any other: drag it by its empty parts, kept
   const m = emenuEl();
   m.addEventListener('pointerdown', (e) => {
-    if (e.target !== m && e.target.className !== 'msep') return;
+    if (e.target !== m && e.target.className !== 'msep' && !e.target.closest?.('.menu-head')) return;
     e.preventDefault();
     const r = m.getBoundingClientRect();
     const ox = e.clientX - r.left, oy = e.clientY - r.top;
@@ -382,7 +382,13 @@ export function toggleEMenu(force) {
       // pop out beside the rail, toward the roomier side of the mark
       const r = el.dock.getBoundingClientRect();
       const right = r.left > innerWidth / 2;
-      m.style.left = right ? '' : `${Math.round(r.right + 8)}px`;
+      // folded mic/ear ride beside the ∃ — the menu must clear them too
+      let clearRight = r.right;
+      for (const id of ['micbtn', 'earbtn']) {
+        const g = document.getElementById(id)?.getBoundingClientRect();
+        if (g && g.left < r.right + 80 && g.top < r.bottom && g.bottom > r.top) clearRight = Math.max(clearRight, g.right);
+      }
+      m.style.left = right ? '' : `${Math.round(clearRight + 8)}px`;
       m.style.right = right ? `${Math.round(innerWidth - r.left + 8)}px` : '';
       const h = el.hud.getBoundingClientRect();
       const below = h.top < innerHeight / 2;
@@ -395,21 +401,22 @@ export function toggleEMenu(force) {
 function paintEMenu() {
   const m = emenuEl();
   if (!m || m.hidden) return;
-  m.innerHTML = '';
+  m.innerHTML = '<div class="menu-head">menu</div>';
   for (const entry of dockEntries) {
     const { id, icon, action, gate, active } = entry;
     if (action) {
       if (gate && !gate()) continue;
       const row = document.createElement('button');
       row.className = 'mrow' + (active?.() ? ' open' : '');
-      row.innerHTML = `${fsvg(icon, 15)}<span class="mname">${id}</span><span class="mdot"></span>`;
+      row.innerHTML = `${fsvg(icon, 15)}<span class="mname">${id}</span><span class="mdot">${active?.() ? fsvg('eye', 13) : ''}</span>`;
       row.onclick = () => { action(); paintDock(); };
       m.appendChild(row);
       continue;
     }
     const row = document.createElement('button');
-    row.className = 'mrow' + (getFrame(id)?.visible ? ' open' : '');
-    row.innerHTML = `${fsvg(icon, 15)}<span class="mname">${id}</span><span class="mdot"></span>`;
+    const isOpen = getFrame(id)?.visible;
+    row.className = 'mrow' + (isOpen ? ' open' : '');
+    row.innerHTML = `${fsvg(icon, 15)}<span class="mname">${id}</span><span class="mdot">${isOpen ? fsvg('eye', 13) : ''}</span>`;
     // selecting a row OPENS the window into the viewport (arranging follows);
     // already open = flash it so the eye finds it. Closing is the frame's ✕.
     row.onclick = () => {

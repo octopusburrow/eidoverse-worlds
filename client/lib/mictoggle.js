@@ -178,12 +178,12 @@ function ensure() {
   // as a sibling-styled inline element inside the same visual bar.
   micBtn = document.createElement('span');
   micBtn.id = 'mictoggle';
-  micBtn.style.cssText = 'cursor:pointer;display:inline-block;line-height:0;position:fixed;z-index:45;';
+  micBtn.id = 'micbtn'; micBtn.style.cssText = 'cursor:pointer;display:inline-block;line-height:0;position:fixed;z-index:45;';
   micBtn.onclick = flipMic;
   document.body.appendChild(micBtn);
   earBtn = document.createElement('span');
   earBtn.id = 'eartoggle';
-  earBtn.style.cssText = 'cursor:pointer;display:inline-block;line-height:0;position:fixed;z-index:45;';
+  earBtn.id = 'earbtn'; earBtn.style.cssText = 'cursor:pointer;display:inline-block;line-height:0;position:fixed;z-index:45;';
   earBtn.onclick = flipEar;
   document.body.appendChild(earBtn);
   paint();
@@ -202,16 +202,25 @@ function placeMic() {
   const hud = document.querySelector('#hud');
   if (!hud || !micBtn) return;
   const r = hud.getBoundingClientRect();
-  // hang off the ∃ perpendicular to the rail, into the canvas — the side the
-  // menu icons DON'T occupy, so the pair is visible on any edge (R, 08-30)
+  // hang off the ∃ ALONG its own edge (the rail's line continues through
+  // them); fold perpendicular only when a corner leaves no room (R, 14:49)
   const edge = document.getElementById('dock')?.dataset.edge || 'left';
   const cx = Math.round(r.left + (r.width - 26) / 2);
   const cy = Math.round(r.top + (r.height - 26) / 2);
   const pos = (b, x, y) => { b.style.left = x + 'px'; b.style.top = y + 'px'; b.style.right = b.style.bottom = ''; };
-  if (edge === 'left')       { pos(micBtn, Math.round(r.right) + 6, cy); earBtn && pos(earBtn, Math.round(r.right) + 38, cy); }
-  else if (edge === 'right') { pos(micBtn, Math.round(r.left) - 32, cy); earBtn && pos(earBtn, Math.round(r.left) - 64, cy); }
-  else if (edge === 'top')   { pos(micBtn, cx, Math.round(r.bottom) + 6); earBtn && pos(earBtn, cx, Math.round(r.bottom) + 38); }
-  else                       { pos(micBtn, cx, Math.round(r.top) - 32); earBtn && pos(earBtn, cx, Math.round(r.top) - 64); }
+  const vert = edge === 'left' || edge === 'right';
+  const room = vert ? r.top : r.left;              // space before the ∃ along the rail
+  if (room >= 74) {
+    // along the edge, stacked before the ∃
+    if (vert) { pos(micBtn, cx, Math.round(r.top) - 34); earBtn && pos(earBtn, cx, Math.round(r.top) - 66); }
+    else      { pos(micBtn, Math.round(r.left) - 34, cy); earBtn && pos(earBtn, Math.round(r.left) - 66, cy); }
+  } else {
+    // corner: fold around it, perpendicular into the canvas
+    if (edge === 'left')       { pos(micBtn, Math.round(r.right) + 6, cy); earBtn && pos(earBtn, Math.round(r.right) + 38, cy); }
+    else if (edge === 'right') { pos(micBtn, Math.round(r.left) - 32, cy); earBtn && pos(earBtn, Math.round(r.left) - 64, cy); }
+    else if (edge === 'top')   { pos(micBtn, cx, Math.round(r.bottom) + 6); earBtn && pos(earBtn, cx, Math.round(r.bottom) + 38); }
+    else                       { pos(micBtn, cx, Math.round(r.top) - 32); earBtn && pos(earBtn, cx, Math.round(r.top) - 64); }
+  }
   // (re)bind the observer if the hud element itself was replaced
   if (hud !== _hudSeen) {
     _hudSeen = hud;
