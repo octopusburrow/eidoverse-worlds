@@ -742,59 +742,9 @@ export const chat = {
 };
 const open = chat.open;
 
-// ---- roster side pane — the "present" list folded into chat --------------
-// A free-floating roster is SL/IRC lineage; the sheet's chat mock (member
-// list as an adjustable right pane) is the modern shape. The old standalone
-// 'who' frame still exists via the dock — presets are memory (P6).
-// Default GONE (a resting column is dead space for three friends — R, 08-29);
-// the "# others" chip in the tab row toggles it, width drag persists.
-const SIDE_LS = 'ew-chat-side';           // {w, open}
-let sideSt = { w: 118, open: false };
-function initSidePane() {
-  const side = frame.body.querySelector('.chat-side');
-  const grip = side.querySelector('.chat-side-grip');
-  try { sideSt = { ...sideSt, ...JSON.parse(localStorage.getItem(SIDE_LS) || '{}') } } catch {}
-  grip.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    const x0 = e.clientX, w0 = sideSt.w;
-    const move = (ev) => { sideSt.w = Math.max(72, Math.min(260, w0 + (x0 - ev.clientX))); applySide(); };
-    const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); saveSide(); };
-    addEventListener('pointermove', move); addEventListener('pointerup', up);
-  });
-  bus.on('roster', paintSide);
-  applySide();
-}
-const saveSide = () => { try { localStorage.setItem(SIDE_LS, JSON.stringify(sideSt)) } catch {} };
-export function toggleChatRoster(force) {
-  sideSt.open = force ?? !sideSt.open;
-  applySide(); saveSide();
-}
-function applySide() {
-  const side = frame?.body.querySelector('.chat-side');
-  if (!side) return;
-  side.hidden = !sideSt.open;
-  side.style.width = `${sideSt.w}px`;
-  paintSide();
-}
-function paintSide() {
-  if (!frame) return;
-  const people = getPeople();
-  const others = people.filter((p) => !p.me).length;
-  const chip = frame.body.querySelector('.chat-others');
-  if (chip) {
-    chip.textContent = `${others} other${others === 1 ? '' : 's'}`;
-    chip.classList.toggle('on', sideSt.open);
-  }
-  const side = frame.body.querySelector('.chat-side');
-  if (!side || side.hidden) return;
-  side.querySelector('.chat-side-list').innerHTML = people.length
-    ? people.map((p) => `<div class="who-row ${p.me ? 'self' : ''}">
-        <span class="n" style="color:${colorFor(p.id)}">${esc(p.id)}${p.me ? ' (you)' : ''}</span>
-        <span class="d">${p.dist == null ? '' : p.dist.toFixed(0) + 'm'}</span></div>`).join('')
-    : '<div class="who-empty">nobody yet</div>';
-}
-const esc = (v) => String(v).replace(/[&<>"]/g, (c) => (
-  { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+// (The 08-29 experiment folding the roster into chat as a side pane / tab-row
+// chip is REMOVED by R's call: no affordance, wrong home. Presence lives in
+// the status pill — its "N others" opens the detachable who-frame.)
 
 export function initChat({ send, whisper, typing, people }) {
   onSend = send;
@@ -809,23 +759,14 @@ export function initChat({ send, whisper, typing, people }) {
   });
 
   frame.body.innerHTML = `
-    <div class="chat-cols">
-      <div class="chat-main">
-        <div class="chat-tabs"></div>
-        <div id="chatlog" class="chat-log"></div>
-        <button id="chat-jump" class="chat-jump"></button>
-        <div class="chat-typing"></div>
-        <div class="chat-compose">
-          <div id="chat-ac" class="ac panel"></div>
-          <input id="chatline" placeholder="say something…  @ to mention · / for commands">
-        </div>
-      </div>
-      <div class="chat-side" hidden>
-        <div class="chat-side-grip" title="drag to resize"></div>
-        <div class="chat-side-list"></div>
-      </div>
+    <div class="chat-tabs"></div>
+    <div id="chatlog" class="chat-log"></div>
+    <button id="chat-jump" class="chat-jump"></button>
+    <div class="chat-typing"></div>
+    <div class="chat-compose">
+      <div id="chat-ac" class="ac panel"></div>
+      <input id="chatline" placeholder="say something…  @ to mention · / for commands">
     </div>`;
-  initSidePane();
 
   logEl = frame.body.querySelector('#chatlog');
   inputEl = frame.body.querySelector('#chatline');
@@ -998,12 +939,6 @@ function paintTabs() {
   mk('mentions', 'mentions');
   mk('system', 'system');
   for (const [name, c] of convos) mk(`w:${name}`, `@${name}`, c.unread, true);
-  const chip = document.createElement('button');
-  chip.className = 'chat-others';
-  chip.title = "who's here";
-  chip.onclick = () => toggleChatRoster();
-  bar.appendChild(chip);
-  paintSide();
 }
 
 // ---------------------------------------------------------------- typing

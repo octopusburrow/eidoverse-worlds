@@ -193,35 +193,13 @@ select {
 
 /* ------------------------------------------------------------------- chat */
 .chat-frame .fr-body { padding: 0; }
-.chat-cols { display: flex; flex: 1; min-height: 0; }
-.chat-main { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; position: relative; }
-.chat-side {
-  flex: none; display: flex; flex-direction: column; position: relative;
-  border-left: 1px solid var(--edge); min-height: 0;
-}
-.chat-side[hidden] { display: none; }
-.chat-side-grip {
-  position: absolute; left: -4px; top: 0; bottom: 0; width: 8px;
-  cursor: ew-resize; z-index: 2;
-}
-.chat-others {
-  flex: none !important; margin-left: auto; padding: 3px 8px; font-size: 10.5px;
-  background: none; border: none; border-bottom: 2px solid transparent;
-  color: var(--dim); white-space: nowrap;
-}
-.chat-others:hover { color: var(--fg); }
-.chat-others.on { color: var(--accent); }
-.chat-side-list { flex: 1; overflow-y: auto; padding: 6px 8px; }
-.chat-side-list .who-row { display: flex; justify-content: space-between; gap: 8px; padding: 1px 0; font-size: var(--fs-sm); }
-.chat-side-list .who-row .d { color: var(--dim); }
-.chat-side-list .who-empty { color: var(--dim); font-size: var(--fs-sm); }
 .chat-tabs { display: flex; gap: 2px; padding: 5px 6px 0; flex: none; }
 .chat-tabs button {
   flex: 1; text-align: center; padding: 3px 4px; font-size: 10.5px;
   background: none; border: none; border-bottom: 2px solid transparent; color: var(--dim);
   border-radius: 0;
 }
-.chat-tabs button.on { color: var(--accent); border-bottom-color: var(--accent); background: none; }
+.chat-tabs button.on { color: var(--fg); border-bottom-color: var(--accent); background: none; }
 
 .chat-log {
   flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
@@ -289,7 +267,7 @@ select {
 .chat-log .line.whisper .who { color: #c4b5f0; }
 .chat-log .line.whisper .who::before { content: '⤷ '; }
 .chat-log .line.whisper.me .who::before { content: '⤶ '; }
-.chat-tabs button.has-unread { color: var(--ping); }
+.chat-tabs button.has-unread { color: var(--fg); font-weight: 600; }
 .chat-typing {
   display: none; padding: 0 10px 3px; font-size: 10.5px; color: var(--dim);
   font-style: italic; flex: none;
@@ -388,8 +366,10 @@ select {
   font-size: var(--fs-sm); color: var(--dim);
 }
 #hud b { color: var(--fg); font-weight: 600; }
-#hud .hud-others { background: none; border: none; padding: 0; font: inherit; color: inherit; cursor: pointer; }
-#hud .hud-others:hover { color: var(--fg); text-decoration: underline; }
+#hud .hud-others { background: none; border: none; padding: 0; font: inherit; color: inherit; cursor: pointer; text-decoration: underline dotted rgb(255 255 255 / .35); text-underline-offset: 3px; }
+#hud .hud-others:hover { color: var(--fg); text-decoration-color: var(--fg); }
+.hud-pop { position: fixed; z-index: 60; display: flex; flex-direction: column; gap: 6px; padding: 9px 12px; font-size: var(--fs-sm); }
+.hud-pop label { display: flex; gap: 7px; align-items: center; color: var(--fg); white-space: nowrap; }
 #hud .ok  { color: var(--accent); }
 #hud .bad { color: var(--err); }
 #hud .edit { color: var(--warn); }

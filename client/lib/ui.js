@@ -61,10 +61,6 @@ bus.on('loading', () => {
 // ============================================================ HUD + hints
 
 export function setHud(parts) { el.hud.innerHTML = parts; }
-// the "N others" count doubles as the door to the detachable roster frame
-document.addEventListener('click', (e) => {
-  if (e.target instanceof HTMLElement && e.target.classList.contains('hud-others')) toggleRoster();
-});
 
 export function setHint(html, { sticky = false } = {}) {
   el.hint.innerHTML = html;
