@@ -63,12 +63,13 @@ function paint() {
   el.style.setProperty('--spp', String(progress()));   // drives the mark's assembly
   phaseEl.textContent = currentLabel();
   const b = bootBytes();
-  // done can overrun total (dynamic discoveries join the manifest late);
-  // an over-100% fraction reads as a bug, so overruns show the count alone
+  // ALWAYS show the expected total (R, 16:01 — people deserve to know how
+  // much they're in for, in case they want to bail). done can overrun the
+  // manifest total when late discoveries join; display total grows with it
+  // so the fraction stays honest instead of reading 117%.
+  const shownTotal = Math.max(b.total, b.done);
   detailEl.textContent = b.total > 0
-    ? (b.done <= b.total
-        ? `${(b.done / 1048576).toFixed(1)} / ${(b.total / 1048576).toFixed(1)} MB`
-        : `${(b.done / 1048576).toFixed(1)} MB`)
+    ? `${(b.done / 1048576).toFixed(1)} / ${(shownTotal / 1048576).toFixed(1)} MB`
     : '';
 }
 

@@ -142,9 +142,9 @@ select {
 }
 /* hairline: the assembly carries the feel, the line carries the certainty —
    a bar affordance gives an unambiguous DONE (R's note, 08-30) */
-#splash .sp-bar { width: 148px; height: 2px; border-radius: 1px; background: rgb(143 232 200 / .12); }
-#splash .sp-bar-fill { height: 100%; border-radius: 1px; background: rgb(143 232 200 / .65); transition: width .3s ease; }
-.sp-sub { color: var(--dim); font-size: 15px; margin-top: -14px; text-align: center; }
+#splash .sp-bar { width: 260px; height: 3px; border-radius: 2px; background: rgb(143 232 200 / .12); }
+#splash .sp-bar-fill { height: 100%; border-radius: 2px; background: rgb(143 232 200 / .65); transition: width .3s ease; }
+.sp-sub { color: var(--dim); font-size: 15px; margin: -5px 0; text-align: center; }  /* equal air above + below (R, 16:01) */
 .sp-sub b { color: var(--fg); font-weight: 600; }
 .sp-bar {
   width: min(430px, 84vw); height: 3px; border-radius: 2px;
@@ -159,7 +159,7 @@ select {
    line, not furniture at opposite walls (R's note, 08-30 14:27) */
 .sp-status {
   display: flex; justify-content: center; align-items: baseline; gap: 10px;
-  font-size: 14px; margin-top: -12px;
+  font-size: 14px; margin-top: -10px;
 }
 .sp-phase { color: #8fe8c8; }
 .sp-phase::after { content: '…'; }
@@ -780,7 +780,7 @@ body.touch #touch { display: block; }
 </head>
 <body>
 <!-- Static so it paints before any module loads. boot.js only fills it in. -->
-<div id="splash" data-build="b25">
+<div id="splash" data-build="b26">
   <div class="sp-ver"></div>
   <svg class="sp-logo" viewBox="-70 -40 1372 1372" aria-hidden="true" fill="currentColor">
     <path class="pc-top" d="M 92 82 Q 616 140 1072 78 Q 1024 290 1012 511 L 852 511 L 852 228 Q 440 218 68 232 Q 88 155 92 82 Z"/>
