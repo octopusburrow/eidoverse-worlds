@@ -276,15 +276,8 @@ export function makeFrame(id, opts = {}) {
     if (!state.collapsed) onResize?.(state.w, state.h);
   }
 
-  // ---- buttons
-  if (collapsible) {
-    const b = document.createElement('button');
-    b.className = 'fr-btn';
-    b.title = 'collapse';
-    b.textContent = '–';
-    b.onclick = (e) => { e.stopPropagation(); api.collapse(); };
-    btns.appendChild(b);
-  }
+  // ---- buttons: name + ✕ only — the collapse chip retired (R, 08-30 15:12);
+  // api.collapse() survives for code callers, the chrome just doesn't offer it
   if (closable) {
     const b = document.createElement('button');
     b.className = 'fr-btn';
