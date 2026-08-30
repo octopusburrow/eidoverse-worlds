@@ -12,7 +12,8 @@ import {
 } from './lib/core.js';
 import { contributeThumbnail, makeAvatar, EMOTE_ORDER } from './lib/avatar.js';
 import { updateSky, updateAutoSystems, skyArgs, setCloudQuality } from './lib/sky.js';
-import { setSkyArgsSource, entities, buildsPending, avatarMounts } from './lib/world.js';
+import { setSkyArgsSource, entities, buildsPending, avatarMounts, roleOf, worldHasOwner } from './lib/world.js';
+import { initProfile } from './lib/profile.js';
 import { foldParity } from './lib/parity.js';
 import { initModelsRealizer, reconcileModels, residencyDebug, setResidencyFocus, drainPromoteTail } from './lib/realize/models.js';
 import { initEnvironmentRealizer } from './lib/realize/environment.js';
@@ -38,7 +39,7 @@ import { initAudioPanel } from './lib/audiopanel.js';
 import { initSceneGraph } from './lib/scenegraph.js';
 import {
   toast, setHint, flashHint, buildHelp, toggleHelp,
-  openDoor, toggleRoster, initRoster, initDock, panelFrame,
+  openDoor, toggleRoster, initRoster, initDock, panelFrame, settingsFrame,
 } from './lib/ui.js';
 import { initDebug, updateDebug, toggleDebug } from './lib/debug.js';
 
@@ -129,12 +130,23 @@ initChat({
 });
 initRoster(people);
 initEmoteBar();
+initProfile();
+settingsFrame();               // exists (hidden) so the ∃ menu can open it
 initDock([
-  { id: 'chat', label: '💬', icon: 'chat-circle' },
-  { id: 'world', label: '🧱', icon: 'planet' },
-  { id: 'who', label: '👥', icon: 'users' },
-  { id: 'emotes', label: '👋', icon: 'hand-waving' },
-  { id: 'debug', label: '🐞', icon: 'bug' },
+  // R's order, 22:01: profile right under ∃, then world, chat, emotes, debug;
+  // the wrench appears when this world grants you build rights.
+  { id: 'profile', icon: 'user-circle', always: true },
+  { id: 'world', icon: 'planet' },
+  { id: 'chat', icon: 'chat-circle' },
+  { id: 'emotes', icon: 'hand-waving' },
+  { id: 'debug', icon: 'bug' },
+  { id: 'settings', icon: 'gear-six' },
+  { id: 'edit', icon: 'wrench', action: toggleEditMode,
+    active: () => isEditing(),
+    gate: () => {
+      const r = roleOf(CONFIG.name);
+      return ['builder', 'owner'].includes(r?.role ?? r) || !worldHasOwner();
+    } },
 ]);
 initDebug({
   // the body in your HAND wins over your own — that is the one being worked on

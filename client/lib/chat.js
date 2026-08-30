@@ -757,7 +757,10 @@ function initSidePane() {
     if (!sideSt.open) return;
     e.preventDefault();
     const x0 = e.clientX, w0 = sideSt.w;
-    const move = (ev) => { sideSt.w = Math.max(72, Math.min(260, w0 + (x0 - ev.clientX))); applySide(); };
+    const move = (ev) => {
+      const d = sideSt.pos === 'left' ? ev.clientX - x0 : x0 - ev.clientX;   // grip side flips with the pane
+      sideSt.w = Math.max(72, Math.min(260, w0 + d)); applySide();
+    };
     const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); saveSide(); };
     addEventListener('pointermove', move); addEventListener('pointerup', up);
   });

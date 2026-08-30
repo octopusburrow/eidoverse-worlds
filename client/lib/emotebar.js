@@ -18,6 +18,9 @@ export function initEmoteBar() {
     const b = document.createElement('button');
     b.textContent = `${ICON[name] ?? '✨'}`;
     b.title = `${name}  (${i + 1})`;
+    // emoji here are CONTENT (the gesture itself), so they stay — but at a
+    // size that reads. Drawn glyphs for these are an open question (R, 22:06).
+    b.style.cssText = 'font-size:19px; line-height:1; padding:6px 8px;';
     b.onclick = () => { getMe()?.playEmote(name); myState.emote = name; };
     wrap.appendChild(b);
   });

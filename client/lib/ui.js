@@ -114,10 +114,27 @@ export function panelFrame() {
   return worldFrame;
 }
 
+// engine settings — machine-noun home (video, sound, controls). First tenant:
+// the audio panel, moved out of the world menu (R, 22:01). Same stack shape.
+let settingsFrameApi = null;
+export function settingsFrame() {
+  if (!settingsFrameApi) {
+    settingsFrameApi = makeFrame('settings', {
+      title: 'settings', x: -10, y: 340, w: 250, h: 260, minW: 210, hidden: true,
+    });
+    const stack = document.createElement('div');
+    stack.className = 'stack';
+    settingsFrameApi.body.appendChild(stack);
+    settingsFrameApi.stack = stack;
+  }
+  return settingsFrameApi;
+}
+
 /** Collapsible section inside the world frame. onOpen is awaited each time it
  *  opens, so rosters and catalogs re-fetch instead of going stale. */
-export function makeSection(title, onOpen, { id = '' } = {}) {
-  const host = panelFrame().stack;
+export function makeSection(title, onOpen, { id = '', host: hostName = 'world' } = {}) {
+  const hostFrame = hostName === 'settings' ? settingsFrame() : panelFrame();
+  const host = hostFrame.stack;
   const box = document.createElement('div');
   box.className = 'sec';
   if (id) box.id = `sec-${id}`;
@@ -138,7 +155,7 @@ export function makeSection(title, onOpen, { id = '' } = {}) {
       const open = force ?? !box.classList.contains('open');
       box.classList.toggle('open', open);
       head.setAttribute('aria-expanded', String(open));
-      if (open) { panelFrame().show(); await onOpen?.(body); }
+      if (open) { hostFrame.show(); await onOpen?.(body); }
     },
   };
   head.onclick = () => api.toggle().catch((e) => report(title, e));
@@ -204,16 +221,17 @@ export function initDock(entries) {
   // ∃ leads the rail — one unit. (Mic/ear are separate fixed elements that
   // anchor to the ∃'s live box, so they ride along without being "in" it.)
   el.dock.appendChild(el.hud);
-  for (const { id, label, icon } of entries) {
+  for (const entry of entries) {
+    const { id, label, icon, action } = entry;
     const b = document.createElement('button');
     if (icon && hasFill(icon)) b.innerHTML = fsvg(icon, 17);
     else b.textContent = label;
-    b.title = `toggle ${id}`;
+    b.title = action ? id : `toggle ${id}`;
     b.onclick = () => {
+      if (action) { action(); paintDock(); return; }
       const f = getFrame(id);
       if (!f) return;
       f.toggle();
-      if (id === 'who') paintRoster();
       paintDock();
     };
     b.dataset.toggles = id;   // NOT data-frame — that belongs to the window itself
@@ -231,31 +249,75 @@ export function initDock(entries) {
     const move = (ev) => {
       const x = Math.max(4, Math.min(innerWidth - r.width - 4, ev.clientX - ox));
       const y = Math.max(4, Math.min(innerHeight - r.height - 4, ev.clientY - oy));
+      el.dock.style.right = el.dock.style.bottom = '';
       el.dock.style.left = `${x}px`; el.dock.style.top = `${y}px`;
-      dispatchEvent(new Event('resize'));           // mic/ear re-anchor to the ∃ box
     };
-    const up = () => {
+    const up = (ev) => {
       removeEventListener('pointermove', move); removeEventListener('pointerup', up);
-      try { localStorage.setItem(DOCKPOS_LS, JSON.stringify({ x: parseInt(el.dock.style.left), y: parseInt(el.dock.style.top) })) } catch {}
+      snapDock(ev);             // the rail LIVES on an edge — release = snap flat
     };
     addEventListener('pointermove', move); addEventListener('pointerup', up);
   });
   el.dock.appendChild(grip);
-  try {
-    const p = JSON.parse(localStorage.getItem(DOCKPOS_LS) || 'null');
-    if (p && p.x >= 0) { el.dock.style.left = `${p.x}px`; el.dock.style.top = `${p.y}px`; }
-  } catch {}
+  applyDockEdge(loadDockEdge());
+  addEventListener('resize', () => applyDockEdge(loadDockEdge()));
   paintDock();
   bus.on('frames', () => paintDock());
+  setInterval(paintDock, 2000);   // role grants land async; the wrench follows
   initEMenu();
+}
+
+// ---- the rail lives flat on an edge (R, 22:01). {edge, along} persisted;
+// left/right = vertical (∃ on top), top/bottom = horizontal (∃ leftmost).
+function loadDockEdge() {
+  try { const p = JSON.parse(localStorage.getItem(DOCKPOS_LS) || 'null'); if (p?.edge) return p; } catch {}
+  return { edge: 'left', along: 10 };
+}
+function applyDockEdge({ edge, along }) {
+  const d = el.dock;
+  const horiz = edge === 'top' || edge === 'bottom';
+  d.classList.toggle('horizontal', horiz);
+  d.style.left = d.style.right = d.style.top = d.style.bottom = '';
+  const r = d.getBoundingClientRect();
+  const max = horiz ? innerWidth - r.width - 4 : innerHeight - r.height - 4;
+  const a = Math.max(4, Math.min(max, along));
+  if (edge === 'left') { d.style.left = '4px'; d.style.top = `${a}px`; }
+  if (edge === 'right') { d.style.right = '4px'; d.style.top = `${a}px`; }
+  if (edge === 'top') { d.style.top = '4px'; d.style.left = `${a}px`; }
+  if (edge === 'bottom') { d.style.bottom = '4px'; d.style.left = `${a}px`; }
+  // NO resize dispatch here — the window-resize listener calls this function,
+  // so announcing via 'resize' recurses (the alt-drag lesson, same shape).
+  // mic/ear re-anchor via mictoggle's own observer + safety interval.
+}
+function snapDock(ev) {
+  const r = el.dock.getBoundingClientRect();
+  // the POINTER picks the edge (dock-center is ambiguous near corners):
+  // you drop toward the edge you mean
+  const cx = ev?.clientX ?? r.left + r.width / 2;
+  const cy = ev?.clientY ?? r.top + r.height / 2;
+  const d = [
+    { edge: 'left', dist: cx, along: r.top },
+    { edge: 'right', dist: innerWidth - cx, along: r.top },
+    { edge: 'top', dist: cy, along: r.left },
+    { edge: 'bottom', dist: innerHeight - cy, along: r.left },
+  ].sort((a, b) => a.dist - b.dist)[0];
+  const pos = { edge: d.edge, along: Math.round(d.along) };
+  try { localStorage.setItem(DOCKPOS_LS, JSON.stringify(pos)) } catch {}
+  applyDockEdge(pos);
 }
 function paintDock() {
   // the rail never hides — it carries the ∃, which is always visible
   for (const b of el.dock.querySelectorAll('button[data-toggles]')) {
     const id = b.dataset.toggles;
+    const entry = dockEntries.find((x) => x.id === id);
+    if (entry?.action) {                          // action buttons (edit wrench)
+      b.hidden = entry.gate ? !entry.gate() : false;
+      b.classList.toggle('on', !!entry.active?.());
+      continue;
+    }
     const open = !!getFrame(id)?.visible;
     b.classList.toggle('on', open);
-    b.hidden = !open && !pins.has(id);
+    b.hidden = !open && !pins.has(id) && !entry?.always;
   }
   paintEMenu();
 }
@@ -331,10 +393,20 @@ function paintEMenu() {
   const m = emenuEl();
   if (!m || m.hidden) return;
   m.innerHTML = '';
-  for (const { id, icon } of dockEntries) {
+  for (const entry of dockEntries) {
+    const { id, icon, action, gate, active } = entry;
+    if (action) {
+      if (gate && !gate()) continue;
+      const row = document.createElement('button');
+      row.className = 'mrow' + (active?.() ? ' open' : '');
+      row.innerHTML = `${fsvg(icon, 15)}<span class="mname">${id}</span><span class="mdot"></span>`;
+      row.onclick = () => { action(); paintDock(); };
+      m.appendChild(row);
+      continue;
+    }
     const row = document.createElement('button');
     row.className = 'mrow' + (getFrame(id)?.visible ? ' open' : '');
-    row.innerHTML = `${fsvg(icon, 15)}<span class="mname">${id === 'who' ? 'people' : id}</span><span class="mdot"></span>`;
+    row.innerHTML = `${fsvg(icon, 15)}<span class="mname">${id}</span><span class="mdot"></span>`;
     // selecting a row OPENS the window into the viewport (arranging follows);
     // already open = flash it so the eye finds it. Closing is the frame's ✕.
     row.onclick = () => {
