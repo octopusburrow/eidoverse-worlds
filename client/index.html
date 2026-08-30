@@ -722,9 +722,12 @@ body.touch #touch { display: block; }
 <button id="hud" class="panel emark" title="eidoverse — menu">
   <!-- ∃ drawn as geometry, not typed as a glyph: no font can vary it, and it
        scales like a mark, not like text. Rounded caps, mid-arm a hair short. -->
-  <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" fill="none"
-    stroke="currentColor" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M6.5 4.75 H 16.75 V 19.25 H 6.5 M 16.75 12 H 9"/>
+  <!-- the serifed mark (art/eido-logo/emark.svg): three cut pieces, the arm
+       passing through the parted spine. Filled geometry, still no font. -->
+  <svg viewBox="-60 -30 1352 1352" width="28" height="28" aria-hidden="true" fill="currentColor">
+    <path d="M 86 52 Q 616 118 1083 48 Q 1022 280 1008 511 L 820 511 L 820 255 Q 430 242 45 258 Q 78 150 86 52 Z"/>
+    <path d="M 400 492 C 480 545 560 566 700 570 L 1140 568 Q 1170 564 1180 556 Q 1188 552 1187 562 Q 1182 653 1187 744 Q 1188 754 1180 750 Q 1170 742 1140 738 L 700 736 C 560 740 480 761 400 814 Q 420 653 400 492 Z"/>
+    <path d="M 115 1240 Q 616 1174 1091 1244 Q 1022 1012 1008 796 L 820 796 L 820 1037 Q 430 1050 40 1034 Q 78 1142 115 1240 Z"/>
   </svg>
 </button>
 <div id="dock" class="panel"></div>
