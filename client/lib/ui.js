@@ -201,31 +201,9 @@ const DOCKPOS_LS = 'ew-dock-pos';
 export function initDock(entries) {
   dockEntries = entries;
   el.dock.innerHTML = '';
-  // the rail is movable by its grip; position persists
-  const grip = document.createElement('button');
-  grip.className = 'dock-grip';
-  grip.title = 'move the hotbar';
-  grip.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="6" fill="currentColor" aria-hidden="true"><circle cx="6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18" cy="12" r="1.6"/></svg>';
-  grip.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    const r = el.dock.getBoundingClientRect();
-    const ox = e.clientX - r.left, oy = e.clientY - r.top;
-    const move = (ev) => {
-      const x = Math.max(4, Math.min(innerWidth - r.width - 4, ev.clientX - ox));
-      const y = Math.max(4, Math.min(innerHeight - r.height - 4, ev.clientY - oy));
-      el.dock.style.left = `${x}px`; el.dock.style.top = `${y}px`;
-    };
-    const up = () => {
-      removeEventListener('pointermove', move); removeEventListener('pointerup', up);
-      try { localStorage.setItem(DOCKPOS_LS, JSON.stringify({ x: parseInt(el.dock.style.left), y: parseInt(el.dock.style.top) })) } catch {}
-    };
-    addEventListener('pointermove', move); addEventListener('pointerup', up);
-  });
-  el.dock.appendChild(grip);
-  try {
-    const p = JSON.parse(localStorage.getItem(DOCKPOS_LS) || 'null');
-    if (p && p.x >= 0) { el.dock.style.left = `${p.x}px`; el.dock.style.top = `${p.y}px`; }
-  } catch {}
+  // ∃ leads the rail — one unit. (Mic/ear are separate fixed elements that
+  // anchor to the ∃'s live box, so they ride along without being "in" it.)
+  el.dock.appendChild(el.hud);
   for (const { id, label, icon } of entries) {
     const b = document.createElement('button');
     if (icon && hasFill(icon)) b.innerHTML = fsvg(icon, 17);
@@ -241,20 +219,44 @@ export function initDock(entries) {
     b.dataset.toggles = id;   // NOT data-frame — that belongs to the window itself
     el.dock.appendChild(b);
   }
+  // grip: bottom of the rail, exists only while arranging (CSS-gated)
+  const grip = document.createElement('button');
+  grip.className = 'dock-grip';
+  grip.title = 'move the hotbar';
+  grip.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="6" fill="currentColor" aria-hidden="true"><circle cx="6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18" cy="12" r="1.6"/></svg>';
+  grip.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    const r = el.dock.getBoundingClientRect();
+    const ox = e.clientX - r.left, oy = e.clientY - r.top;
+    const move = (ev) => {
+      const x = Math.max(4, Math.min(innerWidth - r.width - 4, ev.clientX - ox));
+      const y = Math.max(4, Math.min(innerHeight - r.height - 4, ev.clientY - oy));
+      el.dock.style.left = `${x}px`; el.dock.style.top = `${y}px`;
+      dispatchEvent(new Event('resize'));           // mic/ear re-anchor to the ∃ box
+    };
+    const up = () => {
+      removeEventListener('pointermove', move); removeEventListener('pointerup', up);
+      try { localStorage.setItem(DOCKPOS_LS, JSON.stringify({ x: parseInt(el.dock.style.left), y: parseInt(el.dock.style.top) })) } catch {}
+    };
+    addEventListener('pointermove', move); addEventListener('pointerup', up);
+  });
+  el.dock.appendChild(grip);
+  try {
+    const p = JSON.parse(localStorage.getItem(DOCKPOS_LS) || 'null');
+    if (p && p.x >= 0) { el.dock.style.left = `${p.x}px`; el.dock.style.top = `${p.y}px`; }
+  } catch {}
   paintDock();
   bus.on('frames', () => paintDock());
   initEMenu();
 }
 function paintDock() {
-  let shown = 0;
+  // the rail never hides — it carries the ∃, which is always visible
   for (const b of el.dock.querySelectorAll('button[data-toggles]')) {
     const id = b.dataset.toggles;
     const open = !!getFrame(id)?.visible;
     b.classList.toggle('on', open);
     b.hidden = !open && !pins.has(id);
-    if (!b.hidden) shown++;
   }
-  el.dock.style.display = shown ? '' : 'none';
   paintEMenu();
 }
 
@@ -265,13 +267,39 @@ addEventListener('keydown', (e) => { if (e.key === 'Alt') document.body.classLis
 addEventListener('keyup', (e) => { if (e.key === 'Alt') document.body.classList.remove('altgrab'); });
 addEventListener('blur', () => document.body.classList.remove('altgrab'));
 
+const EMENUPOS_LS = 'ew-emenu-pos';
 function initEMenu() {
   el.hud.onclick = () => toggleEMenu();
   addEventListener('keydown', (e) => { if (e.key === 'Escape' && !emenuEl().hidden) toggleEMenu(false); });
+  // Arranging survives clicks on ANY chrome (panels, headers, rail, menu) —
+  // it ends only out in the world (canvas/body) or back on the ∃ (R, 21:43).
   addEventListener('pointerdown', (e) => {
     const m = emenuEl();
-    if (!m.hidden && !m.contains(e.target) && !el.hud.contains(e.target)) toggleEMenu(false);
+    if (m.hidden) return;
+    const t = e.target;
+    if (el.hud.contains(t)) return;                       // ∃ itself toggles via click
+    const inChrome = t instanceof Element &&
+      (m.contains(t) || t.closest('.frame, #dock, .panel, .hud-pop'));
+    if (!inChrome) toggleEMenu(false);
   }, true);
+  // the menu is a panel like any other: drag it by its empty parts, kept
+  const m = emenuEl();
+  m.addEventListener('pointerdown', (e) => {
+    if (e.target !== m && e.target.className !== 'msep') return;
+    e.preventDefault();
+    const r = m.getBoundingClientRect();
+    const ox = e.clientX - r.left, oy = e.clientY - r.top;
+    const move = (ev) => {
+      m.style.left = `${Math.max(4, Math.min(innerWidth - r.width - 4, ev.clientX - ox))}px`;
+      m.style.top = `${Math.max(4, Math.min(innerHeight - r.height - 4, ev.clientY - oy))}px`;
+      m.style.right = ''; m.style.bottom = '';
+    };
+    const up = () => {
+      removeEventListener('pointermove', move); removeEventListener('pointerup', up);
+      try { localStorage.setItem(EMENUPOS_LS, JSON.stringify({ x: parseInt(m.style.left), y: parseInt(m.style.top) })) } catch {}
+    };
+    addEventListener('pointermove', move); addEventListener('pointerup', up);
+  });
 }
 const emenuEl = () => document.getElementById('emenu');
 export function toggleEMenu(force) {
@@ -280,14 +308,22 @@ export function toggleEMenu(force) {
   m.hidden = !open;
   document.body.classList.toggle('arranging', open);
   if (open) {
-    // pop toward the roomier side of the mark, and below/above likewise
-    const r = el.hud.getBoundingClientRect();
-    const right = r.left > innerWidth / 2;
-    m.style.left = right ? '' : `${Math.round(r.left)}px`;
-    m.style.right = right ? `${Math.round(innerWidth - r.right)}px` : '';
-    const below = r.top < innerHeight / 2;
-    m.style.top = below ? `${Math.round(r.bottom + 6)}px` : '';
-    m.style.bottom = below ? '' : `${Math.round(innerHeight - r.top + 6)}px`;
+    let placed = false;
+    try {
+      const p = JSON.parse(localStorage.getItem('ew-emenu-pos') || 'null');
+      if (p && p.x >= 0) { m.style.left = `${p.x}px`; m.style.top = `${p.y}px`; m.style.right = ''; m.style.bottom = ''; placed = true; }
+    } catch {}
+    if (!placed) {
+      // pop out beside the rail, toward the roomier side of the mark
+      const r = el.dock.getBoundingClientRect();
+      const right = r.left > innerWidth / 2;
+      m.style.left = right ? '' : `${Math.round(r.right + 8)}px`;
+      m.style.right = right ? `${Math.round(innerWidth - r.left + 8)}px` : '';
+      const h = el.hud.getBoundingClientRect();
+      const below = h.top < innerHeight / 2;
+      m.style.top = below ? `${Math.round(h.top)}px` : '';
+      m.style.bottom = below ? '' : `${Math.round(innerHeight - h.bottom)}px`;
+    }
     paintEMenu();
   }
 }

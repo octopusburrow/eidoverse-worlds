@@ -210,6 +210,22 @@ select {
 .chat-side-list .who-row { display: flex; justify-content: space-between; gap: 8px; padding: 1px 0; font-size: var(--fs-sm); }
 .chat-side-list .who-row .d { color: var(--dim); }
 .chat-side-list .who-empty { color: var(--dim); font-size: var(--fs-sm); }
+.chat-side-head { flex: none; padding: 6px 8px 2px; font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
+.chat-cols.side-left { flex-direction: row-reverse; }
+.chat-cols.side-left .chat-side-tog { border-left: none; border-right: 1px solid var(--edge); }
+.chat-cols.side-left .chat-side-grip { left: auto; right: -4px; }
+.chat-gear {
+  flex: none !important; margin-left: 2px; padding: 3px 6px;
+  background: none; border: none; color: var(--dim); border-radius: 5px;
+  display: grid; place-items: center;
+}
+.chat-gear:hover { color: var(--fg); background: rgb(255 255 255 / .06); }
+.chat-gearpop { position: absolute; z-index: 8; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; font-size: var(--fs-sm); }
+.chat-gearpop[hidden] { display: none; }
+.chat-gearpop .gp-row { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+.chat-gearpop .gp-row span { color: var(--dim); margin-right: 6px; }
+.chat-gearpop .gp-row b { min-width: 20px; text-align: center; }
+.chat-gearpop button { padding: 2px 8px; }
 .chat-tabs { display: flex; gap: 2px; padding: 5px 6px 0; flex: none; }
 .chat-tabs button {
   flex: 1; padding: 3px 4px; font-size: 11.5px;
@@ -383,10 +399,10 @@ select {
    when live, dimmed + pulsing when the socket is down. (R: "status without
    a status bar.") The mic/ear glyphs auto-ride its right edge. */
 #hud.emark {
-  position: fixed; top: 10px; left: 10px; z-index: 28;
-  width: 46px; height: 46px; padding: 0; display: grid; place-items: center;
-  color: #8fe8c8; border: none; cursor: pointer;   /* the brand seafoam — the
-     mark and the loading screen keep it; chrome accent stays amber */
+  /* lives INSIDE the rail now — one movable unit. Mic/ear ride its box. */
+  position: static; width: 42px; height: 42px; padding: 0;
+  display: grid; place-items: center;
+  color: #8fe8c8; border: none; cursor: pointer; background: none; box-shadow: none;
 }
 #hud.emark:hover { color: #b5f2dd; }
 #hud.emark.net-down { color: var(--dim); animation: netpulse 1.6s ease-in-out infinite; }
@@ -398,7 +414,10 @@ select {
 #emenu {
   position: fixed; top: 54px; left: 10px; z-index: 40;
   display: flex; flex-direction: column; min-width: 168px; padding: 6px;
+  cursor: grab;   /* the menu itself is a panel: drag its empty parts */
 }
+#emenu:active { cursor: grabbing; }
+#emenu .mrow, #emenu .mpin { cursor: pointer; }
 #emenu[hidden] { display: none; }
 #emenu .mrow {
   display: flex; align-items: center; gap: 9px; padding: 7px 9px;
@@ -423,13 +442,24 @@ select {
 .frame .fr-head { display: none; }
 body.arranging .frame { overflow: visible; outline: 1px dashed rgb(255 255 255 / .25); outline-offset: -1px; }
 body.arranging .frame > .fr-body { overflow: hidden; }
+/* the arrange chrome reads as TABS: name docked to the frame's top-left,
+   close/collapse docked top-right — corners, where hands expect them */
 body.arranging .frame .fr-head {
-  display: flex; position: absolute; bottom: calc(100% + 5px); left: 0;
-  width: max-content; max-width: 100%; padding: 3px 6px 3px 10px;
-  background: rgb(0 0 0 / .62); border: none; border-radius: 7px;
-  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  display: flex; position: absolute; bottom: 100%; left: 0; right: 0;
+  justify-content: space-between; align-items: flex-end;
+  padding: 0; background: none; border: none; pointer-events: none;
 }
-body.arranging .frame.label-below .fr-head { bottom: auto; top: calc(100% + 5px); }
+body.arranging .frame .fr-head .fr-title,
+body.arranging .frame .fr-head .fr-btns {
+  pointer-events: auto;
+  background: rgb(0 0 0 / .62); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border-radius: 7px 7px 0 0; padding: 3px 10px;
+}
+body.arranging .frame .fr-head .fr-title { flex: 0 1 auto; cursor: grab; }
+body.arranging .frame .fr-head .fr-btns { padding: 3px 5px; }
+body.arranging .frame.label-below .fr-head { bottom: auto; top: 100%; align-items: flex-start; }
+body.arranging .frame.label-below .fr-head .fr-title,
+body.arranging .frame.label-below .fr-head .fr-btns { border-radius: 0 0 7px 7px; }
 /* sticky-edge glow: this frame is riding that edge and will follow it */
 body.arranging .frame.st-l { box-shadow: inset 2px 0 0 rgb(143 232 200 / .6), inset 0 1px 0 rgb(255 255 255 / .09), 0 10px 30px rgba(0,0,0,.5); }
 body.arranging .frame.st-r { box-shadow: inset -2px 0 0 rgb(143 232 200 / .6), inset 0 1px 0 rgb(255 255 255 / .09), 0 10px 30px rgba(0,0,0,.5); }
@@ -478,16 +508,17 @@ body.edit-mode::after {
 
 /* dock: one row of toggles so a closed frame is never lost */
 #dock {
-  /* hotbar: ONE panel, movable by its grip; buttons are flat glyphs that
-     read "indented" only while their window is open (R, 08-29) */
-  position: fixed; top: 56px; left: 10px; z-index: 27;
-  display: flex; flex-direction: column; gap: 2px; padding: 4px;
+  /* hotbar: ∃ + window glyphs, ONE movable unit. Grip appears only while
+     arranging, at the bottom. (R, 08-29 21:43) */
+  position: fixed; top: 10px; left: 10px; z-index: 27;
+  display: flex; flex-direction: column; gap: 2px; padding: 4px; align-items: center;
 }
 #dock .dock-grip {
-  height: 12px; cursor: grab; display: grid; place-items: center;
-  color: var(--dim); opacity: .5; border: none; background: none; padding: 0;
+  height: 14px; width: 100%; cursor: grab; display: none; place-items: center;
+  color: var(--dim); opacity: .6; border: none; background: none; padding: 0;
 }
-#dock .dock-grip:hover { opacity: 1; }
+body.arranging #dock .dock-grip { display: grid; }
+#dock .dock-grip:hover { opacity: 1; color: var(--fg); }
 #dock .dock-grip:active { cursor: grabbing; }
 #dock button:not(.dock-grip) {
   display: grid; place-items: center; width: 34px; height: 34px; padding: 0;

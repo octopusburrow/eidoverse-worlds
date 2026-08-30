@@ -13,6 +13,7 @@
 import { CONFIG, bus, colorFor, assignColors } from './core.js';
 import { lastWhy } from './debuglog.js';
 import { makeFrame } from './frames.js';
+import { fsvg } from './icons.js';
 import { requestHistory } from './net.js';
 // ONLY the registry — never handlers.js, or the cycle chat→handlers→net→chat
 // closes (§14.2). The registry is a pure table with no imports of its own.
@@ -776,6 +777,9 @@ function paintSide() {
   const side = frame?.body.querySelector('.chat-side');
   if (!side || !sideSt.open) return;
   const people = getPeople();
+  const others = people.filter((p) => !p.me).length;
+  side.querySelector('.chat-side-head').textContent =
+    others === 0 ? 'just you' : `${others} other${others === 1 ? '' : 's'} here`;
   side.querySelector('.chat-side-list').innerHTML = people.length
     ? people.map((p) => `<div class="who-row ${p.me ? 'self' : ''}">
         <span class="n" style="color:${colorFor(p.id)}">${esc(p.id)}${p.me ? ' (you)' : ''}</span>
@@ -784,6 +788,48 @@ function paintSide() {
 }
 const esc = (v) => String(v).replace(/[&<>"]/g, (c) => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+// ---- chat gear: text size (the sheet's -a/+A) + which side the people pane
+// sits on. Small popover; both persisted.
+const CFS_LS = 'ew-chat-fs';
+function applyChatPrefs() {
+  const log = frame?.body.querySelector('.chat-log');
+  if (log) log.style.fontSize = `${chatFs}px`;
+  frame?.body.querySelector('.chat-cols')?.classList.toggle('side-left', sideSt.pos === 'left');
+}
+let chatFs = 14;
+try { chatFs = Math.min(20, Math.max(11, parseFloat(localStorage.getItem(CFS_LS)) || 14)) } catch {}
+function initChatGear() {
+  const pop = frame.body.querySelector('.chat-gearpop');
+  const paintPop = () => {
+    pop.innerHTML = `
+      <div class="gp-row"><span>text size</span>
+        <button data-fs="-1">−a</button><b>${chatFs}</b><button data-fs="1">+A</button></div>
+      <div class="gp-row"><span>people pane</span>
+        <button data-side="left" class="${sideSt.pos === 'left' ? 'on' : ''}">left</button>
+        <button data-side="right" class="${sideSt.pos !== 'left' ? 'on' : ''}">right</button></div>`;
+  };
+  pop.onclick = (e) => {
+    const fs = e.target?.dataset?.fs, sd = e.target?.dataset?.side;
+    if (fs) {
+      chatFs = Math.min(20, Math.max(11, chatFs + Number(fs)));
+      try { localStorage.setItem(CFS_LS, String(chatFs)) } catch {}
+    } else if (sd) {
+      sideSt.pos = sd; saveSide();
+    } else return;
+    applyChatPrefs(); paintPop();
+  };
+  window.__chatGearToggle = (anchor) => {
+    pop.hidden = !pop.hidden;
+    if (!pop.hidden) {
+      paintPop();
+      const a = anchor.getBoundingClientRect(), f = frame.el.getBoundingClientRect();
+      pop.style.right = `${Math.max(4, f.right - a.right)}px`;
+      pop.style.top = `${a.bottom - f.top + 6}px`;
+    }
+  };
+  applyChatPrefs();
+}
 
 export function initChat({ send, whisper, typing, people }) {
   onSend = send;
@@ -812,10 +858,13 @@ export function initChat({ send, whisper, typing, people }) {
       <button class="chat-side-tog" title="who's here"></button>
       <div class="chat-side closed">
         <div class="chat-side-grip"></div>
+        <div class="chat-side-head"></div>
         <div class="chat-side-list"></div>
       </div>
-    </div>`;
+    </div>
+    <div class="chat-gearpop panel" hidden></div>`;
   initSidePane();
+  initChatGear();
 
   logEl = frame.body.querySelector('#chatlog');
   inputEl = frame.body.querySelector('#chatline');
@@ -992,6 +1041,12 @@ function paintTabs() {
   mk('mentions', 'mentions');
   mk('system', 'system');
   for (const [name, c] of convos) mk(`w:${name}`, `@${name}`, c.unread, true);
+  const gear = document.createElement('button');
+  gear.className = 'chat-gear';
+  gear.title = 'chat options';
+  gear.innerHTML = fsvg('gear-six', 13);
+  gear.onclick = (e) => { e.stopPropagation(); window.__chatGearToggle?.(gear); };
+  bar.appendChild(gear);
 }
 
 // ---------------------------------------------------------------- typing
