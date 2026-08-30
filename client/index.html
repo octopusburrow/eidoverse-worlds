@@ -66,8 +66,9 @@ button, .btn {
 }
 button:hover, .btn:hover { background: rgba(32, 68, 62, 0.9); border-color: var(--edge-hi); }
 button:active { transform: translateY(1px); }
-button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-button.on { background: var(--accent-dk); border-color: var(--edge-hi); color: var(--accent); }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+input:focus-visible, textarea:focus-visible { outline: 1px solid var(--edge-hi); }
+button.on { background: rgb(255 255 255 / 0.08); border-color: var(--edge-hi); color: var(--fg); }
 /* unshared local changes are pending until committed */
 button.dirty { border-color: var(--warn); color: var(--warn); }
 
@@ -113,7 +114,7 @@ select {
 }
 .sp-bar-fill {
   width: 0%; height: 100%; border-radius: 2px;
-  background: linear-gradient(90deg, #4fb79a, var(--accent));
+  background: linear-gradient(90deg, #8a6a42, var(--accent));
   transition: width .45s cubic-bezier(.22,.9,.3,1);
 }
 .sp-status {
@@ -196,6 +197,7 @@ select {
   flex: none; display: flex; flex-direction: column; position: relative;
   border-left: 1px solid var(--edge); min-height: 0;
 }
+.chat-side[hidden] { display: none; }
 .chat-side-grip {
   position: absolute; left: -4px; top: 0; bottom: 0; width: 8px;
   cursor: ew-resize; z-index: 2;
@@ -230,7 +232,7 @@ select {
 .chat-log .line { padding: 1px 0; word-wrap: break-word; overflow-wrap: anywhere; }
 .chat-log .line.filtered { display: none; }
 .chat-log .line .t { color: var(--dim); font-size: 10px; margin-right: 6px; opacity: .6; }
-.chat-log .line .who { color: var(--accent); font-weight: 600; }
+.chat-log .line .who { color: var(--fg); font-weight: 600; }
 .chat-log .line .who::after { content: ':'; color: var(--dim); font-weight: 400; }
 .chat-log .line .body { margin-left: 5px; }
 /* Your own name now takes its participant colour like everyone else's (it must
@@ -252,7 +254,7 @@ select {
   background: rgba(255, 212, 121, .09);
   border-left: 2px solid var(--ping); margin-left: -10px; padding-left: 8px;
 }
-.chat-log .mention { color: var(--accent); background: rgba(143,232,200,.12); border-radius: 3px; padding: 0 2px; }
+.chat-log .mention { color: var(--accent); background: rgb(229 161 90 / .13); border-radius: 3px; padding: 0 2px; }
 .chat-log .mention.me { color: var(--ping); background: rgba(255,212,121,.18); font-weight: 600; }
 .chat-log .lnk { color: var(--accent); }
 
@@ -293,7 +295,12 @@ select {
 
 /* ------------------------------------------------------------ panel frames */
 .sec { display: flex; flex-direction: column; gap: 5px; }
-.sec > .head { font-weight: 600; }
+.sec > .head {
+  font-weight: 500; background: none; border: none; text-align: left;
+  padding: 6px 10px; border-radius: 6px; color: var(--fg);
+}
+.sec > .head:hover { background: rgb(255 255 255 / 0.06); }
+.sec.open > .head { background: rgb(255 255 255 / 0.05); font-weight: 600; }
 .sec > .body {
   display: none; flex-direction: column; gap: 4px;
   padding: 6px; max-height: 44vh; overflow-y: auto;
@@ -341,7 +348,7 @@ select {
    checkbox rows moved to .row.wide markup (R, 2026-08-16: "I could have sworn
    we did a styling for the checkboxes… seems to be gone now"). */
 .row input[type=checkbox] { accent-color: var(--accent); }
-.row .v { width: 34px; flex: none; text-align: right; color: var(--accent); }
+.row .v { width: 34px; flex: none; text-align: right; color: var(--dim); }
 
 /* 🔴 .row.wide — the SAME row, for panels whose labels are sentences.
    (R, 2026-08-16: "If there is an existing UI class we should 100% be using
@@ -370,7 +377,7 @@ select {
 .who-row { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; }
 .who-row .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .who-row .d { color: var(--dim); flex: none; }
-.who-row.self .n { color: var(--accent); }
+.who-row.self .n { color: var(--fg); }
 
 /* --------------------------------------------------------------- fixed hud */
 #hud {
@@ -444,7 +451,7 @@ body.edit-mode::after {
   width: min(560px, 100%); max-height: 100%; overflow-y: auto;
   padding: 20px 22px; box-sizing: border-box; position: relative;
 }
-.sheet h1 { font-size: 17px; margin: 0 0 3px; color: var(--accent); font-weight: 600; }
+.sheet h1 { font-size: 17px; margin: 0 0 3px; color: var(--fg); font-weight: 600; }
 .sheet h2 {
   font-size: var(--fs-sm); margin: 16px 0 7px; color: var(--dim);
   text-transform: uppercase; letter-spacing: .09em; font-weight: 600;
@@ -457,7 +464,7 @@ body.edit-mode::after {
   width: 100%; text-align: center; font-size: var(--fs); padding: 10px;
   background: var(--accent-dk); border-color: var(--edge-hi); color: var(--accent); font-weight: 600;
 }
-.sheet .go:hover { background: #2a5349; }
+.sheet .go:hover { background: #4a3620; }
 .keys {
   display: grid; grid-template-columns: max-content 1fr;
   gap: 7px 14px; align-items: baseline;
@@ -466,8 +473,8 @@ body.edit-mode::after {
 .keys dd { margin: 0; color: var(--fg); }
 kbd {
   display: inline-block; padding: 1px 6px; border-radius: 4px;
-  background: rgba(30, 60, 55, .8); border: 1px solid var(--edge);
-  font: 11px var(--font); color: var(--accent); white-space: nowrap;
+  background: rgb(0 0 0 / .35); border: 1px solid var(--edge);
+  font: 11px var(--font-code); color: var(--fg); white-space: nowrap;
 }
 .close-x {
   position: absolute; top: 12px; right: 14px; padding: 3px 8px;
