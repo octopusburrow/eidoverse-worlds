@@ -142,13 +142,16 @@ select {
   background: linear-gradient(90deg, #4fb79a, #8fe8c8);
   transition: width .45s cubic-bezier(.22,.9,.3,1);
 }
+/* one centered breath under the bar — phase and bytes are a single quiet
+   line, not furniture at opposite walls (R's note, 08-30 14:27) */
 .sp-status {
-  display: flex; justify-content: space-between; gap: 16px;
-  width: min(430px, 84vw); font-size: var(--fs-sm); margin-top: -14px;
+  display: flex; justify-content: center; align-items: baseline; gap: 10px;
+  font-size: var(--fs-sm); margin-top: -12px;
 }
 .sp-phase { color: #8fe8c8; }
 .sp-phase::after { content: '…'; }
 .sp-detail { color: var(--dim); font-variant-numeric: tabular-nums; }
+.sp-detail:not(:empty)::before { content: '·'; margin-right: 10px; color: rgb(143 232 200 / .3); }
 .sp-tip {
   display: flex; align-items: flex-start; gap: 11px;
   max-width: min(500px, 88vw); font-size: var(--fs-sm); color: var(--dim);

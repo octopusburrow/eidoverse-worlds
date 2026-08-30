@@ -63,8 +63,12 @@ function paint() {
   el.style.setProperty('--spp', String(progress()));   // drives the mark's assembly
   phaseEl.textContent = currentLabel();
   const b = bootBytes();
+  // done can overrun total (dynamic discoveries join the manifest late);
+  // an over-100% fraction reads as a bug, so overruns show the count alone
   detailEl.textContent = b.total > 0
-    ? `${(b.done / 1048576).toFixed(1)} / ${(b.total / 1048576).toFixed(1)} MB`
+    ? (b.done <= b.total
+        ? `${(b.done / 1048576).toFixed(1)} / ${(b.total / 1048576).toFixed(1)} MB`
+        : `${(b.done / 1048576).toFixed(1)} MB`)
     : '';
 }
 
