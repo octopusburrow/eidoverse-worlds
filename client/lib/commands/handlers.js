@@ -30,6 +30,20 @@ import { TOUCH_GAP } from '../../../shared/reachwire.js';
 
 register('help', () => toggleHelp());
 
+// Panel opacity — the glass escape hatch. Adaptive translucency fails over
+// bright scenes (Apple shipped "Tinted" after the Liquid Glass backlash);
+// this is our version of that lesson, one number, user-owned, persisted.
+register('panels', (arg) => {
+  const v = parseFloat(arg);
+  if (!(v >= 0.3 && v <= 1)) return logChat('*', 'usage: /panels <0.3–1> — panel opacity (current ' +
+    (localStorage.getItem('ew-panel-a') || '0.58') + ')');
+  document.documentElement.style.setProperty('--panel-a', String(v));
+  try { localStorage.setItem('ew-panel-a', String(v)) } catch {}
+  logChat('*', `panels at ${Math.round(v * 100)}% opacity`);
+});
+{ const saved = parseFloat(localStorage.getItem('ew-panel-a'));
+  if (saved >= 0.3 && saved <= 1) document.documentElement.style.setProperty('--panel-a', String(saved)); }
+
 // Eyelids are BONES on rigs that have them (L_/R_Eyelid_Upper) — most VRMs
 // blink with a blendshape instead and have none, so this says so plainly
 // rather than appearing to work. Local: your eyes are yours to close, and

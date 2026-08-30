@@ -742,6 +742,52 @@ export const chat = {
 };
 const open = chat.open;
 
+// ---- roster side pane — the "present" list folded into chat --------------
+// A free-floating roster is SL/IRC lineage; the sheet's chat mock (member
+// list as an adjustable right pane) is the modern shape. The old standalone
+// 'who' frame still exists via the dock — presets are memory (P6).
+const SIDE_LS = 'ew-chat-side';           // {w, open}
+function initSidePane() {
+  const side = frame.body.querySelector('.chat-side');
+  const head = side.querySelector('.chat-side-head');
+  const grip = side.querySelector('.chat-side-grip');
+  let st = { w: 118, open: true };
+  try { st = { ...st, ...JSON.parse(localStorage.getItem(SIDE_LS) || '{}') } } catch {}
+  const apply = () => {
+    side.style.width = st.open ? `${st.w}px` : '';
+    side.classList.toggle('closed', !st.open);
+    paintSide();
+  };
+  const save = () => { try { localStorage.setItem(SIDE_LS, JSON.stringify(st)) } catch {} };
+  head.onclick = () => { st.open = !st.open; apply(); save(); };
+  grip.addEventListener('pointerdown', (e) => {
+    if (!st.open) return;
+    e.preventDefault();
+    const x0 = e.clientX, w0 = st.w;
+    const move = (ev) => { st.w = Math.max(72, Math.min(260, w0 + (x0 - ev.clientX))); apply(); };
+    const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); save(); };
+    addEventListener('pointermove', move); addEventListener('pointerup', up);
+  });
+  bus.on('roster', paintSide);
+  apply();
+}
+function paintSide() {
+  const side = frame?.body.querySelector('.chat-side');
+  if (!side) return;
+  const people = getPeople();
+  const others = people.filter((p) => !p.me).length;
+  side.querySelector('.chat-side-head').textContent =
+    side.classList.contains('closed') ? `‹ ${others}` : `${others} other${others === 1 ? '' : 's'}`;
+  if (side.classList.contains('closed')) return;
+  side.querySelector('.chat-side-list').innerHTML = people.length
+    ? people.map((p) => `<div class="who-row ${p.me ? 'self' : ''}">
+        <span class="n" style="color:${colorFor(p.id)}">${esc(p.id)}${p.me ? ' (you)' : ''}</span>
+        <span class="d">${p.dist == null ? '' : p.dist.toFixed(0) + 'm'}</span></div>`).join('')
+    : '<div class="who-empty">nobody yet</div>';
+}
+const esc = (v) => String(v).replace(/[&<>"]/g, (c) => (
+  { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
 export function initChat({ send, whisper, typing, people }) {
   onSend = send;
   onWhisper = whisper ?? (() => {});
@@ -755,14 +801,24 @@ export function initChat({ send, whisper, typing, people }) {
   });
 
   frame.body.innerHTML = `
-    <div class="chat-tabs"></div>
-    <div id="chatlog" class="chat-log"></div>
-    <button id="chat-jump" class="chat-jump"></button>
-    <div class="chat-typing"></div>
-    <div class="chat-compose">
-      <div id="chat-ac" class="ac panel"></div>
-      <input id="chatline" placeholder="say something…  @ to mention · / for commands">
+    <div class="chat-cols">
+      <div class="chat-main">
+        <div class="chat-tabs"></div>
+        <div id="chatlog" class="chat-log"></div>
+        <button id="chat-jump" class="chat-jump"></button>
+        <div class="chat-typing"></div>
+        <div class="chat-compose">
+          <div id="chat-ac" class="ac panel"></div>
+          <input id="chatline" placeholder="say something…  @ to mention · / for commands">
+        </div>
+      </div>
+      <div class="chat-side">
+        <div class="chat-side-grip" title="drag to resize"></div>
+        <button class="chat-side-head" title="toggle who's here"></button>
+        <div class="chat-side-list"></div>
+      </div>
     </div>`;
+  initSidePane();
 
   logEl = frame.body.querySelector('#chatlog');
   inputEl = frame.body.querySelector('#chatline');
