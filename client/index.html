@@ -199,7 +199,7 @@ select {
   background: none; border: none; border-bottom: 2px solid transparent; color: var(--dim);
   border-radius: 0;
 }
-.chat-tabs button.on { color: var(--fg); border-bottom-color: var(--accent); background: none; }
+.chat-tabs button.on { color: var(--fg); border-bottom-color: rgb(255 255 255 / 0.55); background: none; }
 
 .chat-log {
   flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
@@ -362,7 +362,7 @@ select {
 /* --------------------------------------------------------------- fixed hud */
 #hud {
   position: fixed; top: 10px; left: 10px; z-index: 5;
-  padding: 8px 11px; white-space: pre; pointer-events: none;
+  padding: 8px 11px; white-space: pre; pointer-events: auto;
   font-size: var(--fs-sm); color: var(--dim);
 }
 #hud b { color: var(--fg); font-weight: 600; }
