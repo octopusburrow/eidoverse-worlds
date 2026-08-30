@@ -364,16 +364,47 @@ select {
 .who-row.self .n { color: var(--fg); }
 
 /* --------------------------------------------------------------- fixed hud */
-#hud {
-  position: fixed; top: 10px; left: 10px; z-index: 5;
-  padding: 8px 11px; white-space: pre; pointer-events: auto;
-  font-size: var(--fs-sm); color: var(--dim);
+/* the ∃ mark — anchor of the whole chrome. Carries connection truth: full
+   when live, dimmed + pulsing when the socket is down. (R: "status without
+   a status bar.") The mic/ear glyphs auto-ride its right edge. */
+#hud.emark {
+  position: fixed; top: 10px; left: 10px; z-index: 28;
+  width: 38px; height: 38px; padding: 0; display: grid; place-items: center;
+  color: var(--accent); border: none; cursor: pointer;
 }
-#hud b { color: var(--fg); font-weight: 600; }
-#hud .hud-others { background: none; border: none; padding: 0; font: inherit; color: inherit; cursor: pointer; text-decoration: underline dotted rgb(255 255 255 / .35); text-underline-offset: 3px; }
-#hud .hud-others:hover { color: var(--fg); text-decoration-color: var(--fg); }
-.hud-pop { position: fixed; z-index: 60; display: flex; flex-direction: column; gap: 6px; padding: 9px 12px; font-size: var(--fs-sm); }
-.hud-pop label { display: flex; gap: 7px; align-items: center; color: var(--fg); white-space: nowrap; }
+#hud.emark:hover { color: #f0b26b; }
+#hud.emark.net-down { color: var(--dim); animation: netpulse 1.6s ease-in-out infinite; }
+#hud.emark.editing::after {
+  content: ''; position: absolute; right: 5px; top: 5px; width: 7px; height: 7px;
+  border-radius: 50%; background: var(--warn);
+}
+@keyframes netpulse { 50% { opacity: .35; } }
+#emenu {
+  position: fixed; top: 54px; left: 10px; z-index: 40;
+  display: flex; flex-direction: column; min-width: 168px; padding: 6px;
+}
+#emenu[hidden] { display: none; }
+#emenu .mrow {
+  display: flex; align-items: center; gap: 9px; padding: 7px 9px;
+  background: none; border: none; border-radius: 6px; color: var(--fg);
+  font-size: var(--fs-sm); text-align: left;
+}
+#emenu .mrow:hover { background: rgb(255 255 255 / .06); }
+#emenu .mrow svg:first-child { flex: none; opacity: .8; }
+#emenu .mrow .mname { flex: 1; }
+#emenu .mrow .mdot { width: 5px; height: 5px; border-radius: 50%; background: var(--dim); opacity: 0; flex: none; }
+#emenu .mrow.open .mdot { opacity: 1; background: var(--fg); }
+#emenu .mpin {
+  flex: none; display: grid; place-items: center; width: 22px; height: 22px;
+  background: none; border: none; border-radius: 5px; color: var(--dim); opacity: .35;
+}
+#emenu .mpin:hover { opacity: 1; background: rgb(255 255 255 / .08); }
+#emenu .mpin.on { opacity: 1; color: var(--fg); }
+#emenu .msep { height: 1px; background: var(--edge); margin: 5px 4px; }
+/* headers exist only while arranging (the ∃ menu is open) */
+.frame .fr-head { display: none; }
+body.arranging .frame .fr-head { display: flex; }
+body.arranging .frame { outline: 1px dashed rgb(255 255 255 / .25); outline-offset: -1px; }
 #hud .ok  { color: var(--accent); }
 #hud .bad { color: var(--err); }
 #hud .edit { color: var(--warn); }
@@ -422,6 +453,10 @@ body.edit-mode::after {
   display: flex; flex-direction: column; gap: 4px; padding: 4px;
 }
 #dock button { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; color: var(--dim); }
+#dock button[hidden] { display: none; }
+/* alt held = every frame is grabbable, and says so */
+body.altgrab .frame { cursor: grab; }
+body.altgrab .frame:active { cursor: grabbing; }
 #dock button:hover { color: var(--fg); }
 #dock button.on { color: var(--fg); }
 .sec > .head { display: flex; align-items: center; gap: 9px; }
@@ -584,8 +619,13 @@ body.touch #touch { display: block; }
   <button class="sp-skip">go in anyway →</button>
 </div>
 
-<div id="hud" class="panel">connecting…</div>
+<button id="hud" class="panel emark" title="eidoverse — menu">
+  <svg viewBox="0 0 24 24" width="21" height="21" aria-hidden="true"><text x="12" y="12.5"
+    text-anchor="middle" dominant-baseline="central" font-family="ui-sans-serif,system-ui"
+    font-weight="700" font-size="17" fill="currentColor">∃</text></svg>
+</button>
 <div id="dock" class="panel"></div>
+<div id="emenu" class="panel" hidden></div>
 
 <div id="trayzone">
   <div id="loading" class="panel"></div>

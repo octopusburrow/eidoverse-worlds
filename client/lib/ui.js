@@ -188,7 +188,17 @@ const escapeHtml = (v) => String(v).replace(/[&<>"]/g, (c) => (
 // layout lock — the MMO convention: arrange it, then lock it so a stray drag
 // can't undo an hour of fiddling.
 
+// Rail semantics (the dev sheet's): an icon rides the rail while its window
+// is OPEN or while it is PINNED; otherwise it hides. Pinning lives in the
+// ∃ menu. Layout lock also lives there — the rail carries only windows.
+const PINS_LS = 'ew-dock-pins';
+let pins = new Set();
+try { pins = new Set(JSON.parse(localStorage.getItem(PINS_LS) || '[]')) } catch {}
+const savePins = () => { try { localStorage.setItem(PINS_LS, [...pins] && JSON.stringify([...pins])) } catch {} };
+let dockEntries = [];
+
 export function initDock(entries) {
+  dockEntries = entries;
   el.dock.innerHTML = '';
   for (const { id, label, icon } of entries) {
     const b = document.createElement('button');
@@ -200,28 +210,84 @@ export function initDock(entries) {
       if (!f) return;
       f.toggle();
       if (id === 'who') paintRoster();
-      paintDock(entries);
+      paintDock();
     };
     b.dataset.toggles = id;   // NOT data-frame — that belongs to the window itself
     el.dock.appendChild(b);
   }
-  const lock = document.createElement('button');
-  lock.title = 'lock the layout';
-  lock.onclick = () => { setLocked(!isLocked()); paintDock(entries); };
-  lock.dataset.lock = '1';
-  el.dock.appendChild(lock);
-  paintDock(entries);
-  bus.on('frames', () => paintDock(entries));
+  paintDock();
+  bus.on('frames', () => paintDock());
+  initEMenu();
 }
-function paintDock(entries) {
+function paintDock() {
+  let shown = 0;
   for (const b of el.dock.querySelectorAll('button[data-toggles]')) {
-    b.classList.toggle('on', !!getFrame(b.dataset.toggles)?.visible);
+    const id = b.dataset.toggles;
+    const open = !!getFrame(id)?.visible;
+    b.classList.toggle('on', open);
+    b.hidden = !open && !pins.has(id);
+    if (!b.hidden) shown++;
   }
-  const lock = el.dock.querySelector('button[data-lock]');
-  if (lock) {
-    lock.innerHTML = fsvg(isLocked() ? 'lock-simple' : 'lock-simple-open', 17);
-    lock.classList.toggle('on', isLocked());
+  el.dock.style.display = shown ? '' : 'none';
+  paintEMenu();
+}
+
+// ---- the ∃ menu — window list, pins, layout lock; open = arranging --------
+// Alt = the universal window-manager "grab anywhere" chord; show the hand
+// so the convention teaches itself (R, 08-29).
+addEventListener('keydown', (e) => { if (e.key === 'Alt') document.body.classList.add('altgrab'); });
+addEventListener('keyup', (e) => { if (e.key === 'Alt') document.body.classList.remove('altgrab'); });
+addEventListener('blur', () => document.body.classList.remove('altgrab'));
+
+function initEMenu() {
+  el.hud.onclick = () => toggleEMenu();
+  addEventListener('keydown', (e) => { if (e.key === 'Escape' && !emenuEl().hidden) toggleEMenu(false); });
+  addEventListener('pointerdown', (e) => {
+    const m = emenuEl();
+    if (!m.hidden && !m.contains(e.target) && !el.hud.contains(e.target)) toggleEMenu(false);
+  }, true);
+}
+const emenuEl = () => document.getElementById('emenu');
+export function toggleEMenu(force) {
+  const m = emenuEl();
+  const open = force ?? m.hidden;
+  m.hidden = !open;
+  document.body.classList.toggle('arranging', open);
+  if (open) paintEMenu();
+}
+function paintEMenu() {
+  const m = emenuEl();
+  if (!m || m.hidden) return;
+  m.innerHTML = '';
+  for (const { id, icon } of dockEntries) {
+    const row = document.createElement('button');
+    row.className = 'mrow' + (getFrame(id)?.visible ? ' open' : '');
+    row.innerHTML = `${fsvg(icon, 15)}<span class="mname">${id === 'who' ? 'people' : id}</span><span class="mdot"></span>`;
+    row.onclick = () => { const f = getFrame(id); if (!f) return; f.toggle(); if (id === 'who') paintRoster(); paintDock(); };
+    const pin = document.createElement('button');
+    pin.className = 'mpin' + (pins.has(id) ? ' on' : '');
+    pin.title = pins.has(id) ? 'unpin from rail' : 'pin to rail';
+    pin.innerHTML = fsvg('push-pin', 13);
+    pin.onclick = (e) => {
+      e.stopPropagation();
+      pins.has(id) ? pins.delete(id) : pins.add(id);
+      savePins(); paintDock();
+    };
+    row.appendChild(pin);
+    m.appendChild(row);
   }
+  const sep = document.createElement('div'); sep.className = 'msep'; m.appendChild(sep);
+  const lock = document.createElement('button');
+  lock.className = 'mrow' + (isLocked() ? ' open' : '');
+  lock.innerHTML = `${fsvg(isLocked() ? 'lock-simple' : 'lock-simple-open', 15)}<span class="mname">${isLocked() ? 'layout locked' : 'lock layout'}</span><span class="mdot"></span>`;
+  lock.onclick = () => { setLocked(!isLocked()); paintEMenu(); };
+  m.appendChild(lock);
+  const reset = document.createElement('button');
+  reset.className = 'mrow';
+  reset.innerHTML = `${fsvg('sparkle', 15)}<span class="mname">reset layout</span><span class="mdot"></span>`;
+  reset.title = 'put every window back where it started';
+  reset.onclick = () => { resetLayout(); paintDock(); };
+  m.appendChild(reset);
 }
 
 // ============================================================ overlays

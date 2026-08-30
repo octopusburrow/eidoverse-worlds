@@ -299,7 +299,10 @@ export function makeFrame(id, opts = {}) {
   // Alt+drag anywhere on the frame — the MMO habit, and it rescues a frame
   // whose title bar has been dragged off-screen.
   root.addEventListener('pointerdown', (e) => {
-    if (locked || !e.altKey) return;
+    if (locked || !e.altKey || !e.isTrusted) return;   // isTrusted: our own
+    // re-dispatch below bubbles back through this capture handler — without
+    // the guard it recurses to stack overflow (exposed when heads went
+    // display:none and alt-drag became the only rest-state move).
     e.preventDefault(); e.stopPropagation();
     head.dispatchEvent(new PointerEvent('pointerdown', e));
   }, true);
