@@ -160,6 +160,9 @@ function applyPairVisibility() {
 export const micLive = () => { try { return micIsOn(); } catch { return false; } };
 export const earOn = () => { try { return receivingVoice() && !isHushed(); } catch { return false; } };
 export { flipMic, flipEar };
+/** the menu wears the SAME glyphs as the floating pair (R, 15:35) */
+export const micGlyph = (size = 16) => MIC_SVG(micIsOn(), false).replace('width="26" height="26"', `width="${size}" height="${size}"`);
+export const earGlyph = (size = 16) => { let on = false; try { on = receivingVoice() && !isHushed(); } catch {} return EAR_SVG(on).replace('width="26" height="26"', `width="${size}" height="${size}"`); };
 
 async function flipMic() {
   const on = await toggleMic(CONFIG.name);

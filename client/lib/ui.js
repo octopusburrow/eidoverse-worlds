@@ -4,7 +4,7 @@
 
 import { bus, CONFIG, setName, setToken, setErrorSink, report, colorFor } from './core.js';
 import { resizeZoneAt } from './frames.js';
-import { flipMic, flipEar, micLive, earOn, pairPinned, setPairPinned } from './mictoggle.js';
+import { flipMic, flipEar, micLive, earOn, pairPinned, setPairPinned, micGlyph, earGlyph } from './mictoggle.js';
 import { svg, fsvg, hasFill } from './icons.js';
 
 // section-head emoji → Phosphor fill glyph (menu chrome never rides emoji —
@@ -363,13 +363,13 @@ function initEMenu() {
   // the menu is a panel like any other: drag it by its empty parts, kept
   const m = emenuEl();
   m.addEventListener('pointerdown', (e) => {
-    if (e.target !== m && e.target.className !== 'msep' && !e.target.closest?.('.menu-head')) return;
+    if (e.target !== m && e.target.className !== 'msep' && !e.target.closest?.('.fr-title')) return;
     e.preventDefault();
     const r = m.getBoundingClientRect();
     const ox = e.clientX - r.left, oy = e.clientY - r.top;
     const move = (ev) => {
       m.style.left = `${Math.max(4, Math.min(innerWidth - r.width - 4, ev.clientX - ox))}px`;
-      m.style.top = `${Math.max(4, Math.min(innerHeight - r.height - 4, ev.clientY - oy))}px`;
+      m.style.top = `${Math.max(34, Math.min(innerHeight - r.height - 4, ev.clientY - oy))}px`;
       m.style.right = ''; m.style.bottom = '';
     };
     const up = () => {
@@ -389,6 +389,7 @@ export function toggleEMenu(force) {
     let placed = false;
     try {
       const p = JSON.parse(localStorage.getItem('ew-emenu-pos') || 'null');
+      if (p) p.y = Math.max(34, p.y);   // tab headroom on restore too
       if (p && p.x >= 0) { m.style.left = `${p.x}px`; m.style.top = `${p.y}px`; m.style.right = ''; m.style.bottom = ''; placed = true; }
     } catch {}
     if (!placed) {
@@ -405,7 +406,8 @@ export function toggleEMenu(force) {
       m.style.right = right ? `${Math.round(innerWidth - r.left + 8)}px` : '';
       const h = el.hud.getBoundingClientRect();
       const below = h.top < innerHeight / 2;
-      m.style.top = below ? `${Math.round(h.top)}px` : '';
+      // ≥34px: the menu carries its tab ABOVE itself now — leave it headroom
+      m.style.top = below ? `${Math.max(34, Math.round(h.top))}px` : '';
       m.style.bottom = below ? '' : `${Math.round(innerHeight - h.bottom)}px`;
     }
     paintEMenu();
@@ -418,8 +420,24 @@ function fsvgOrStroke(name, size) {
 function paintEMenu() {
   const m = emenuEl();
   if (!m || m.hidden) return;
-  m.innerHTML = '<div class="menu-head"><span class="mh-name">menu</span><button class="mh-x" title="close">\u00d7</button></div>';
-  m.querySelector('.mh-x').onclick = () => toggleEMenu(false);
+  m.innerHTML = '<div class="fr-head"><span class="fr-title">menu</span><div class="fr-btns"><button class="fr-btn" title="close">\u2715</button></div></div>';
+  m.querySelector('.fr-btn').onclick = () => toggleEMenu(false);
+  // voice first: mic + ears lead the menu in their own section — they matter
+  // more than any window, and they wear the SAME glyphs as the floating pair
+  for (const [nm, glyph, isOn, flip] of [['mic', micGlyph, micLive, flipMic], ['ears', earGlyph, earOn, flipEar]]) {
+    const row = document.createElement('button');
+    row.className = 'mrow' + (isOn() ? ' open' : '');
+    row.innerHTML = `${glyph(16)}<span class="mname">${nm}</span>`;
+    row.onclick = async () => { await flip(); paintEMenu(); };
+    const pin = document.createElement('button');
+    pin.className = 'mpin' + (pairPinned() ? ' on' : '');
+    pin.title = pairPinned() ? 'detach from the rail' : 'attach to the rail';
+    pin.innerHTML = fsvg('push-pin', 13);
+    pin.onclick = (e) => { e.stopPropagation(); setPairPinned(!pairPinned()); paintEMenu(); };
+    row.appendChild(pin);
+    m.appendChild(row);
+  }
+  { const s = document.createElement('div'); s.className = 'msep'; m.appendChild(s); }
   for (const entry of dockEntries) {
     const { id, icon, action, gate, active } = entry;
     if (action) {
@@ -458,25 +476,10 @@ function paintEMenu() {
     row.appendChild(pin);
     m.appendChild(row);
   }
-  // mic + ears: same grammar — click toggles the thing, pin keeps the pair
-  // hanging off the ∃ (they have no window, so no open-flash, just brightness)
-  for (const [nm, ic, isOn, flip] of [['mic', 'speaker-high', micLive, flipMic], ['ears', 'ear', earOn, flipEar]]) {
-    const row = document.createElement('button');
-    row.className = 'mrow' + (isOn() ? ' open' : '');
-    row.innerHTML = `${fsvgOrStroke(ic, 15)}<span class="mname">${nm}</span>`;
-    row.onclick = async () => { await flip(); paintEMenu(); };
-    const pin = document.createElement('button');
-    pin.className = 'mpin' + (pairPinned() ? ' on' : '');
-    pin.title = pairPinned() ? 'detach from the rail' : 'attach to the rail';
-    pin.innerHTML = fsvg('push-pin', 13);
-    pin.onclick = (e) => { e.stopPropagation(); setPairPinned(!pairPinned()); paintEMenu(); };
-    row.appendChild(pin);
-    m.appendChild(row);
-  }
   const sep = document.createElement('div'); sep.className = 'msep'; m.appendChild(sep);
   const lock = document.createElement('button');
   lock.className = 'mrow' + (isLocked() ? ' open' : '');
-  lock.innerHTML = `${fsvg(isLocked() ? 'lock-simple' : 'lock-simple-open', 15)}<span class="mname">${isLocked() ? 'layout locked' : 'lock layout'}</span><span class="mdot"></span>`;
+  lock.innerHTML = `${fsvg(isLocked() ? 'lock' : 'lock-open', 15)}<span class="mname">${isLocked() ? 'layout locked' : 'layout unlocked'}</span>`;
   lock.onclick = () => { setLocked(!isLocked()); paintEMenu(); };
   m.appendChild(lock);
   const reset = document.createElement('button');

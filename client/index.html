@@ -462,6 +462,19 @@ body.arranging #dock #hud.emark {
 #emenu:active { cursor: grabbing; }
 #emenu .mrow, #emenu .mpin { cursor: pointer; }
 #emenu[hidden] { display: none; }
+/* the menu wears the frames' own arrange chrome — one grammar to maintain */
+#emenu { overflow: visible; border-top-left-radius: 0; border-top-right-radius: 0; }
+#emenu .fr-head {
+  display: flex; position: absolute; bottom: 100%; left: 0; right: 0;
+  justify-content: space-between; align-items: flex-end; pointer-events: none;
+}
+#emenu .fr-head .fr-title, #emenu .fr-head .fr-btns {
+  pointer-events: auto;
+  background: rgb(0 0 0 / .62); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border-radius: 7px 7px 0 0; padding: 3px 10px; font-size: var(--fs-sm); color: var(--fg);
+}
+#emenu .fr-head .fr-title { cursor: grab; }
+#emenu .fr-head .fr-btns { padding: 3px 5px; }
 #emenu .mrow {
   display: flex; align-items: center; gap: 9px; padding: 7px 9px;
   background: none; border: none; border-radius: 6px; color: var(--fg);
@@ -473,20 +486,6 @@ body.arranging #dock #hud.emark {
 #emenu .mrow { color: var(--dim); }
 #emenu .mrow.open { color: #cfeee4; }
 #emenu .mrow.open svg:first-child { opacity: 1; }
-#emenu .menu-head {
-  /* same chrome grammar as the frames' corner tabs: name chip, ✕, grabbable */
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 4px 6px 4px 10px; margin: -6px -6px 4px;
-  font-size: var(--fs-sm); color: var(--fg); letter-spacing: .06em; cursor: grab;
-  background: rgb(0 0 0 / .35); border-radius: var(--r) var(--r) 0 0;
-  border-bottom: 1px solid var(--edge); user-select: none;
-}
-#emenu .menu-head:active { cursor: grabbing; }
-#emenu .menu-head .mh-x {
-  border: none; background: none; color: var(--dim); font-size: 15px; line-height: 1;
-  width: 20px; height: 20px; border-radius: 5px; cursor: pointer; padding: 0;
-}
-#emenu .menu-head .mh-x:hover { color: var(--fg); background: rgb(255 255 255 / .08); }
 #emenu .mpin {
   flex: none; display: grid; place-items: center; width: 22px; height: 22px; padding: 0; line-height: 0;
   background: none; border: none; border-radius: 5px; color: var(--dim); opacity: .35;
@@ -499,6 +498,10 @@ body.arranging #dock #hud.emark {
    menu never shifts a single window's geometry. */
 .frame .fr-head { display: none; }
 body.arranging .frame { overflow: visible; outline: 1px dashed rgb(255 255 255 / .25); outline-offset: -1px; }
+/* the tab CONTINUES into the panel: the curved corner beneath a tab squares
+   off while arranging, so chip and panel read as one piece (R, 15:35) */
+body.arranging .frame:not(.label-below) { border-top-left-radius: 0; border-top-right-radius: 0; }
+body.arranging .frame.label-below { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 body.arranging .frame > .fr-body { overflow: hidden; }
 /* the arrange chrome reads as TABS: name docked to the frame's top-left,
    close/collapse docked top-right — corners, where hands expect them */
@@ -771,7 +774,7 @@ body.touch #touch { display: block; }
 </head>
 <body>
 <!-- Static so it paints before any module loads. boot.js only fills it in. -->
-<div id="splash" data-build="b23">
+<div id="splash" data-build="b24">
   <div class="sp-ver"></div>
   <svg class="sp-logo" viewBox="-70 -40 1372 1372" aria-hidden="true" fill="currentColor">
     <path class="pc-top" d="M 92 82 Q 616 140 1072 78 Q 1024 290 1012 511 L 852 511 L 852 228 Q 440 218 68 232 Q 88 155 92 82 Z"/>

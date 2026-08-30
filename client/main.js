@@ -135,7 +135,7 @@ settingsFrame();               // exists (hidden) so the ∃ menu can open it
 initDock([
   // R's order, 22:01: profile right under ∃, then world, chat, emotes, debug;
   // the wrench appears when this world grants you build rights.
-  { id: 'profile', icon: 'user-circle', always: true },
+  { id: 'profile', icon: 'user-circle' },   // pinnable like the rest (R, 15:35)
   { id: 'world', icon: 'planet' },
   { id: 'chat', icon: 'chat-circle' },
   { id: 'emotes', icon: 'hand-waving' },
