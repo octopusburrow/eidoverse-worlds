@@ -197,9 +197,35 @@ try { pins = new Set(JSON.parse(localStorage.getItem(PINS_LS) || '[]')) } catch 
 const savePins = () => { try { localStorage.setItem(PINS_LS, [...pins] && JSON.stringify([...pins])) } catch {} };
 let dockEntries = [];
 
+const DOCKPOS_LS = 'ew-dock-pos';
 export function initDock(entries) {
   dockEntries = entries;
   el.dock.innerHTML = '';
+  // the rail is movable by its grip; position persists
+  const grip = document.createElement('button');
+  grip.className = 'dock-grip';
+  grip.title = 'move the hotbar';
+  grip.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="6" fill="currentColor" aria-hidden="true"><circle cx="6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18" cy="12" r="1.6"/></svg>';
+  grip.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    const r = el.dock.getBoundingClientRect();
+    const ox = e.clientX - r.left, oy = e.clientY - r.top;
+    const move = (ev) => {
+      const x = Math.max(4, Math.min(innerWidth - r.width - 4, ev.clientX - ox));
+      const y = Math.max(4, Math.min(innerHeight - r.height - 4, ev.clientY - oy));
+      el.dock.style.left = `${x}px`; el.dock.style.top = `${y}px`;
+    };
+    const up = () => {
+      removeEventListener('pointermove', move); removeEventListener('pointerup', up);
+      try { localStorage.setItem(DOCKPOS_LS, JSON.stringify({ x: parseInt(el.dock.style.left), y: parseInt(el.dock.style.top) })) } catch {}
+    };
+    addEventListener('pointermove', move); addEventListener('pointerup', up);
+  });
+  el.dock.appendChild(grip);
+  try {
+    const p = JSON.parse(localStorage.getItem(DOCKPOS_LS) || 'null');
+    if (p && p.x >= 0) { el.dock.style.left = `${p.x}px`; el.dock.style.top = `${p.y}px`; }
+  } catch {}
   for (const { id, label, icon } of entries) {
     const b = document.createElement('button');
     if (icon && hasFill(icon)) b.innerHTML = fsvg(icon, 17);
@@ -253,7 +279,17 @@ export function toggleEMenu(force) {
   const open = force ?? m.hidden;
   m.hidden = !open;
   document.body.classList.toggle('arranging', open);
-  if (open) paintEMenu();
+  if (open) {
+    // pop toward the roomier side of the mark, and below/above likewise
+    const r = el.hud.getBoundingClientRect();
+    const right = r.left > innerWidth / 2;
+    m.style.left = right ? '' : `${Math.round(r.left)}px`;
+    m.style.right = right ? `${Math.round(innerWidth - r.right)}px` : '';
+    const below = r.top < innerHeight / 2;
+    m.style.top = below ? `${Math.round(r.bottom + 6)}px` : '';
+    m.style.bottom = below ? '' : `${Math.round(innerHeight - r.top + 6)}px`;
+    paintEMenu();
+  }
 }
 function paintEMenu() {
   const m = emenuEl();
@@ -263,7 +299,14 @@ function paintEMenu() {
     const row = document.createElement('button');
     row.className = 'mrow' + (getFrame(id)?.visible ? ' open' : '');
     row.innerHTML = `${fsvg(icon, 15)}<span class="mname">${id === 'who' ? 'people' : id}</span><span class="mdot"></span>`;
-    row.onclick = () => { const f = getFrame(id); if (!f) return; f.toggle(); if (id === 'who') paintRoster(); paintDock(); };
+    // selecting a row OPENS the window into the viewport (arranging follows);
+    // already open = flash it so the eye finds it. Closing is the frame's ✕.
+    row.onclick = () => {
+      const f = getFrame(id); if (!f) return;
+      if (!f.visible) f.show(); else { f.raise(); f.el.classList.remove('flash'); void f.el.offsetWidth; f.el.classList.add('flash'); }
+      if (id === 'who') paintRoster();
+      paintDock();
+    };
     const pin = document.createElement('button');
     pin.className = 'mpin' + (pins.has(id) ? ' on' : '');
     pin.title = pins.has(id) ? 'unpin from rail' : 'pin to rail';

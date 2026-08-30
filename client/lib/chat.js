@@ -742,9 +742,48 @@ export const chat = {
 };
 const open = chat.open;
 
-// (The 08-29 experiment folding the roster into chat as a side pane / tab-row
-// chip is REMOVED by R's call: no affordance, wrong home. Presence lives in
-// the status pill — its "N others" opens the detachable who-frame.)
+// ---- who's-here side pane (back by group demand, 08-29 21:23; R hates it,
+// precious, so the collapse must cost one click and the collapsed cost is a
+// 14px strip). Toggler rides the pane's left edge: › closes, ‹ opens.
+const SIDE_LS = 'ew-chat-side';
+let sideSt = { w: 118, open: false };
+function initSidePane() {
+  try { sideSt = { ...sideSt, ...JSON.parse(localStorage.getItem(SIDE_LS) || '{}') } } catch {}
+  const tog = frame.body.querySelector('.chat-side-tog');
+  tog.onclick = () => { sideSt.open = !sideSt.open; applySide(); saveSide(); };
+  const grip = frame.body.querySelector('.chat-side-grip');
+  grip.addEventListener('pointerdown', (e) => {
+    if (!sideSt.open) return;
+    e.preventDefault();
+    const x0 = e.clientX, w0 = sideSt.w;
+    const move = (ev) => { sideSt.w = Math.max(72, Math.min(260, w0 + (x0 - ev.clientX))); applySide(); };
+    const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); saveSide(); };
+    addEventListener('pointermove', move); addEventListener('pointerup', up);
+  });
+  bus.on('roster', paintSide);
+  applySide();
+}
+const saveSide = () => { try { localStorage.setItem(SIDE_LS, JSON.stringify(sideSt)) } catch {} };
+function applySide() {
+  const side = frame?.body.querySelector('.chat-side');
+  if (!side) return;
+  side.classList.toggle('closed', !sideSt.open);
+  side.style.width = sideSt.open ? `${sideSt.w}px` : '';
+  frame.body.querySelector('.chat-side-tog').textContent = sideSt.open ? '›' : '‹';
+  paintSide();
+}
+function paintSide() {
+  const side = frame?.body.querySelector('.chat-side');
+  if (!side || !sideSt.open) return;
+  const people = getPeople();
+  side.querySelector('.chat-side-list').innerHTML = people.length
+    ? people.map((p) => `<div class="who-row ${p.me ? 'self' : ''}">
+        <span class="n" style="color:${colorFor(p.id)}">${esc(p.id)}${p.me ? ' (you)' : ''}</span>
+        <span class="d">${p.dist == null ? '' : p.dist.toFixed(0) + 'm'}</span></div>`).join('')
+    : '<div class="who-empty">nobody yet</div>';
+}
+const esc = (v) => String(v).replace(/[&<>"]/g, (c) => (
+  { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 export function initChat({ send, whisper, typing, people }) {
   onSend = send;
@@ -759,14 +798,24 @@ export function initChat({ send, whisper, typing, people }) {
   });
 
   frame.body.innerHTML = `
-    <div class="chat-tabs"></div>
-    <div id="chatlog" class="chat-log"></div>
-    <button id="chat-jump" class="chat-jump"></button>
-    <div class="chat-typing"></div>
-    <div class="chat-compose">
-      <div id="chat-ac" class="ac panel"></div>
-      <input id="chatline" placeholder="say something…  @ to mention · / for commands">
+    <div class="chat-cols">
+      <div class="chat-main">
+        <div class="chat-tabs"></div>
+        <div id="chatlog" class="chat-log"></div>
+        <button id="chat-jump" class="chat-jump"></button>
+        <div class="chat-typing"></div>
+        <div class="chat-compose">
+          <div id="chat-ac" class="ac panel"></div>
+          <input id="chatline" placeholder="say something…  @ to mention · / for commands">
+        </div>
+      </div>
+      <button class="chat-side-tog" title="who's here"></button>
+      <div class="chat-side closed">
+        <div class="chat-side-grip"></div>
+        <div class="chat-side-list"></div>
+      </div>
     </div>`;
+  initSidePane();
 
   logEl = frame.body.querySelector('#chatlog');
   inputEl = frame.body.querySelector('#chatline');

@@ -91,14 +91,18 @@ document.addEventListener('pointerdown', (e) => {
   const s0 = { x: f.state.x, y: f.state.y, w: f.state.w, h: f.state.h };
   const move = (ev) => {
     const dx = ev.clientX - sx, dy = ev.clientY - sy;
-    if (z.includes('e')) f.state.w = clamp(s0.w + dx, f.minW, innerWidth - 20);
-    if (z.includes('s')) f.state.h = clamp(s0.h + dy, f.minH, innerHeight - 60);
+    // grows are clamped so no edge ever leaves the viewport (R, 08-29:
+    // windows stay inside the active area, full stop)
+    if (z.includes('e')) f.state.w = clamp(s0.w + dx, f.minW, innerWidth - s0.x - 8);
+    if (z.includes('s')) f.state.h = clamp(s0.h + dy, f.minH, innerHeight - s0.y - 40);
     if (z.includes('w')) {
-      f.state.w = clamp(s0.w - dx, f.minW, innerWidth - 20);
+      const maxW = s0.x + s0.w - 8;                // west edge stops at x=8
+      f.state.w = clamp(s0.w - dx, f.minW, maxW);
       f.state.x = s0.x + (s0.w - f.state.w);       // east side stays planted
     }
     if (z.includes('n')) {
-      f.state.h = clamp(s0.h - dy, f.minH, innerHeight - 60);
+      const maxH = s0.y + s0.h - 8;                // north edge stops at y=8
+      f.state.h = clamp(s0.h - dy, f.minH, maxH);
       f.state.y = s0.y + (s0.h - f.state.h);       // south side stays planted
     }
     f.paint();
@@ -204,6 +208,7 @@ export function makeFrame(id, opts = {}) {
 
   const api = {
     id, el: root, body, head,
+    _state: state, _paint: () => paint(),      // live refs for the edge-rider
     get state() { return { ...state }; },
     show() {
       state.hidden = false;
@@ -251,6 +256,13 @@ export function makeFrame(id, opts = {}) {
     root.style.width = `${state.w}px`;
     root.classList.toggle('collapsed', state.collapsed);
     body.style.height = state.collapsed ? '0' : `${state.h}px`;
+    // arrange-mode affordances: which viewport edges hold this frame (glow),
+    // and whether the floating label must sit below (frame hugs the top)
+    const hgt = root.offsetHeight || state.h;
+    const st = stickyEdges(state, hgt);
+    root.classList.toggle('st-l', st.l); root.classList.toggle('st-r', st.r);
+    root.classList.toggle('st-t', st.t); root.classList.toggle('st-b', st.b);
+    root.classList.toggle('label-below', state.y < 46);
     if (!state.collapsed) onResize?.(state.w, state.h);
   }
 
@@ -361,19 +373,43 @@ function snapPosition(id, state, height) {
     if (e.x != null && Math.abs(state.x - e.x) < SNAP) state.x = e.x;
     if (e.y != null && Math.abs(state.y - e.y) < SNAP) state.y = e.y;
   }
-  state.x = clamp(state.x, -state.w + 60, innerWidth - 60);
-  state.y = clamp(state.y, 0, innerHeight - 32);
+  // fully inside the viewport, always (no more parking a window half off-screen)
+  state.x = clamp(state.x, 8, Math.max(8, innerWidth - state.w - 8));
+  state.y = clamp(state.y, 8, Math.max(8, innerHeight - height - 8));
 }
 
-// Keep frames reachable when the window shrinks.
+// ---- viewport-edge stickiness ----------------------------------------------
+// A frame resting against a pane edge belongs to that edge: when the window
+// resizes, it rides the edge instead of being stranded mid-air. Sticky edges
+// glow in arrangement mode so the behavior is legible before it fires.
+const STICKY = 16;
+function stickyEdges(state, height) {
+  return {
+    l: state.x <= 8 + STICKY,
+    r: innerWidth - (state.x + state.w) <= 8 + STICKY,
+    t: state.y <= 8 + STICKY,
+    b: innerHeight - (state.y + height) <= 8 + STICKY,
+  };
+}
+let _lastVW = innerWidth, _lastVH = innerHeight;
+
+// Ride the edges: frames sticky to right/bottom keep their edge gap when the
+// window resizes; everything is then clamped back inside regardless.
 addEventListener('resize', () => {
+  const dw = innerWidth - _lastVW, dh = innerHeight - _lastVH;
   for (const f of frames.values()) {
-    const s = f.state;
-    if (s.x > innerWidth - 60 || s.y > innerHeight - 32) {
-      f.el.style.left = `${clamp(s.x, 8, innerWidth - 80)}px`;
-      f.el.style.top = `${clamp(s.y, 8, innerHeight - 60)}px`;
-    }
+    const st = f._state; if (!st) continue;
+    const hgt = f.el.offsetHeight || st.h;
+    // stickiness judged against the OLD viewport (pre-resize geometry)
+    const wasR = _lastVW - (st.x + st.w) <= 8 + STICKY;
+    const wasB = _lastVH - (st.y + hgt) <= 8 + STICKY;
+    if (wasR && !(st.x <= 8 + STICKY)) st.x += dw;
+    if (wasB && !(st.y <= 8 + STICKY)) st.y += dh;
+    st.x = clamp(st.x, 8, Math.max(8, innerWidth - st.w - 8));
+    st.y = clamp(st.y, 8, Math.max(8, innerHeight - hgt - 8));
+    f._paint?.();
   }
+  _lastVW = innerWidth; _lastVH = innerHeight;
 });
 
 export function getFrame(id) { return frames.get(id); }
