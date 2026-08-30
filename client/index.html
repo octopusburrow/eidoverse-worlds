@@ -15,8 +15,8 @@
      user-ownable number away. /panels <0.3-1> sets it, persisted. */
   --panel-a:   0.58;
   --panel:     rgb(26 20 15 / var(--panel-a));
-  --edge:      rgb(230 168 102 / 0.20);
-  --edge-hi:   rgb(232 161 90 / 0.55);
+  --edge:      rgb(205 195 180 / 0.14);
+  --edge-hi:   rgb(220 210 195 / 0.42);
   --fg:        #f3ede2;
   --dim:       #b0a28c;
   --accent:    #e5a15a;
@@ -196,18 +196,18 @@ select {
   flex: none; display: flex; flex-direction: column; position: relative;
   border-left: 1px solid var(--edge); min-height: 0;
 }
-.chat-side.closed { width: auto !important; border-left: none; }
 .chat-side-grip {
   position: absolute; left: -4px; top: 0; bottom: 0; width: 8px;
   cursor: ew-resize; z-index: 2;
 }
-.chat-side.closed .chat-side-grip { display: none; }
-.chat-side-head {
-  flex: none; padding: 5px 8px; font-size: var(--fs-sm); text-align: right;
-  background: none; border: none; color: var(--dim); white-space: nowrap;
+.chat-others {
+  flex: none !important; margin-left: auto; padding: 3px 8px; font-size: 10.5px;
+  background: none; border: none; border-bottom: 2px solid transparent;
+  color: var(--dim); white-space: nowrap;
 }
-.chat-side-head:hover { color: var(--fg); background: rgba(255,255,255,.05); }
-.chat-side-list { flex: 1; overflow-y: auto; padding: 2px 8px 6px; }
+.chat-others:hover { color: var(--fg); }
+.chat-others.on { color: var(--accent); }
+.chat-side-list { flex: 1; overflow-y: auto; padding: 6px 8px; }
 .chat-side-list .who-row { display: flex; justify-content: space-between; gap: 8px; padding: 1px 0; font-size: var(--fs-sm); }
 .chat-side-list .who-row .d { color: var(--dim); }
 .chat-side-list .who-empty { color: var(--dim); font-size: var(--fs-sm); }
@@ -379,6 +379,8 @@ select {
   font-size: var(--fs-sm); color: var(--dim);
 }
 #hud b { color: var(--fg); font-weight: 600; }
+#hud .hud-others { background: none; border: none; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+#hud .hud-others:hover { color: var(--fg); text-decoration: underline; }
 #hud .ok  { color: var(--accent); }
 #hud .bad { color: var(--err); }
 #hud .edit { color: var(--warn); }

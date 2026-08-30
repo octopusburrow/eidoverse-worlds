@@ -21,7 +21,7 @@ export function paintHud() {
   // bill live in the F3 panel's pinned frame block (debug.js)
   setHud(
     `${statusDot[net.status] ?? ''} <b>${CONFIG.name}</b> @ ${CONFIG.world}   ` +
-    `${perf.fps}fps   ${n} other${n === 1 ? '' : 's'}` +
+    `${perf.fps}fps   <button class="hud-others" title="who's here (detachable)">${n} other${n === 1 ? '' : 's'}</button>` +
     (isEditing() ? '   <span class="edit">✎ editing</span>' : '') +
     (skyImpl() === 'skymesh' ? '   <span style="opacity:.6">basic sky</span>' : ''),
   );

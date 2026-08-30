@@ -746,39 +746,47 @@ const open = chat.open;
 // A free-floating roster is SL/IRC lineage; the sheet's chat mock (member
 // list as an adjustable right pane) is the modern shape. The old standalone
 // 'who' frame still exists via the dock — presets are memory (P6).
+// Default GONE (a resting column is dead space for three friends — R, 08-29);
+// the "# others" chip in the tab row toggles it, width drag persists.
 const SIDE_LS = 'ew-chat-side';           // {w, open}
+let sideSt = { w: 118, open: false };
 function initSidePane() {
   const side = frame.body.querySelector('.chat-side');
-  const head = side.querySelector('.chat-side-head');
   const grip = side.querySelector('.chat-side-grip');
-  let st = { w: 118, open: true };
-  try { st = { ...st, ...JSON.parse(localStorage.getItem(SIDE_LS) || '{}') } } catch {}
-  const apply = () => {
-    side.style.width = st.open ? `${st.w}px` : '';
-    side.classList.toggle('closed', !st.open);
-    paintSide();
-  };
-  const save = () => { try { localStorage.setItem(SIDE_LS, JSON.stringify(st)) } catch {} };
-  head.onclick = () => { st.open = !st.open; apply(); save(); };
+  try { sideSt = { ...sideSt, ...JSON.parse(localStorage.getItem(SIDE_LS) || '{}') } } catch {}
   grip.addEventListener('pointerdown', (e) => {
-    if (!st.open) return;
     e.preventDefault();
-    const x0 = e.clientX, w0 = st.w;
-    const move = (ev) => { st.w = Math.max(72, Math.min(260, w0 + (x0 - ev.clientX))); apply(); };
-    const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); save(); };
+    const x0 = e.clientX, w0 = sideSt.w;
+    const move = (ev) => { sideSt.w = Math.max(72, Math.min(260, w0 + (x0 - ev.clientX))); applySide(); };
+    const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); saveSide(); };
     addEventListener('pointermove', move); addEventListener('pointerup', up);
   });
   bus.on('roster', paintSide);
-  apply();
+  applySide();
 }
-function paintSide() {
+const saveSide = () => { try { localStorage.setItem(SIDE_LS, JSON.stringify(sideSt)) } catch {} };
+export function toggleChatRoster(force) {
+  sideSt.open = force ?? !sideSt.open;
+  applySide(); saveSide();
+}
+function applySide() {
   const side = frame?.body.querySelector('.chat-side');
   if (!side) return;
+  side.hidden = !sideSt.open;
+  side.style.width = `${sideSt.w}px`;
+  paintSide();
+}
+function paintSide() {
+  if (!frame) return;
   const people = getPeople();
   const others = people.filter((p) => !p.me).length;
-  side.querySelector('.chat-side-head').textContent =
-    side.classList.contains('closed') ? `‹ ${others}` : `${others} other${others === 1 ? '' : 's'}`;
-  if (side.classList.contains('closed')) return;
+  const chip = frame.body.querySelector('.chat-others');
+  if (chip) {
+    chip.textContent = `${others} other${others === 1 ? '' : 's'}`;
+    chip.classList.toggle('on', sideSt.open);
+  }
+  const side = frame.body.querySelector('.chat-side');
+  if (!side || side.hidden) return;
   side.querySelector('.chat-side-list').innerHTML = people.length
     ? people.map((p) => `<div class="who-row ${p.me ? 'self' : ''}">
         <span class="n" style="color:${colorFor(p.id)}">${esc(p.id)}${p.me ? ' (you)' : ''}</span>
@@ -812,9 +820,8 @@ export function initChat({ send, whisper, typing, people }) {
           <input id="chatline" placeholder="say something…  @ to mention · / for commands">
         </div>
       </div>
-      <div class="chat-side">
+      <div class="chat-side" hidden>
         <div class="chat-side-grip" title="drag to resize"></div>
-        <button class="chat-side-head" title="toggle who's here"></button>
         <div class="chat-side-list"></div>
       </div>
     </div>`;
@@ -991,6 +998,12 @@ function paintTabs() {
   mk('mentions', 'mentions');
   mk('system', 'system');
   for (const [name, c] of convos) mk(`w:${name}`, `@${name}`, c.unread, true);
+  const chip = document.createElement('button');
+  chip.className = 'chat-others';
+  chip.title = "who's here";
+  chip.onclick = () => toggleChatRoster();
+  bar.appendChild(chip);
+  paintSide();
 }
 
 // ---------------------------------------------------------------- typing
