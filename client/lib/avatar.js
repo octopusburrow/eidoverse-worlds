@@ -149,7 +149,11 @@ function textSprite(draw, w, h, scaleW) {
 const disposeSprite = (s) => { s.material.map?.dispose(); s.material.dispose(); };
 
 const makeLabel = (name) => textSprite((ctx) => {
-  ctx.font = 'bold 40px ui-monospace, monospace';
+  // humanist, not terminal (R, 08-30: "Matrix vibes, can we do better").
+  // system-ui = Segoe on Windows: warm, rounded, no webfont race on a
+  // canvas that draws the moment someone arrives.
+  ctx.font = '600 40px system-ui, "Segoe UI", sans-serif';
+  try { ctx.letterSpacing = '1.5px'; } catch {}
   ctx.textAlign = 'center';
   const w = Math.min(500, ctx.measureText(name.slice(0, 24)).width + 40);
   ctx.fillStyle = 'rgba(6,16,22,0.62)';
@@ -178,7 +182,7 @@ function makeBubble(text) {
   if (clipped) lines.push('▾ more in chat');
   const h = 30 + lines.length * 34;
   return textSprite((ctx) => {
-    ctx.font = '27px ui-monospace, monospace';
+    ctx.font = '27px system-ui, "Segoe UI", sans-serif';
     // conform to the actual text (R, in-world 13:27): box hugs the widest
     // wrapped line; the old fixed 700 stays as the ceiling
     const wMax = Math.max(...lines.map((l) => ctx.measureText(l).width));
