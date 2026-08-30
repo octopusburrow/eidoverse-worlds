@@ -472,12 +472,12 @@ body.arranging #dock #hud.emark {
 #emenu .fr-head .fr-title { flex: 0 1 auto; }
 #emenu .fr-head .fr-title, #emenu .fr-head .fr-btns {
   pointer-events: auto;
-  background: rgb(0 0 0 / .62); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  background: #16191a;   /* OPAQUE: translucent chips double-darken where they descend over glass */
   border-radius: 7px 7px 0 0; padding: 3px 10px calc(3px + var(--r)); font-size: var(--fs-sm); color: var(--fg);
   margin-bottom: calc(-1 * var(--r));
 }
 #emenu .fr-head .fr-title { cursor: grab; }
-#emenu .fr-head .fr-btns { padding: 3px 5px; }
+#emenu .fr-head .fr-btns { padding: 3px 5px calc(3px + var(--r)); align-items: flex-start; }
 #emenu .mrow {
   display: flex; align-items: center; gap: 9px; padding: 7px 9px;
   background: none; border: none; border-radius: 6px; color: var(--fg);
@@ -512,14 +512,14 @@ body.arranging .frame .fr-head {
 body.arranging .frame .fr-head .fr-title,
 body.arranging .frame .fr-head .fr-btns {
   pointer-events: auto;
-  background: rgb(0 0 0 / .62); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  background: #16191a;   /* OPAQUE: translucent chips double-darken where they descend over glass */
   border-radius: 7px 7px 0 0; padding: 3px 10px;
   /* the chip DESCENDS var(--r) into the panel — it truly connects, instead of
      the corner pretending to be square (R, 15:49: "bit cheating ;)") */
   margin-bottom: calc(-1 * var(--r)); padding-bottom: calc(3px + var(--r));
 }
 body.arranging .frame .fr-head .fr-title { flex: 0 1 auto; cursor: grab; }
-body.arranging .frame .fr-head .fr-btns { padding: 3px 5px calc(3px + var(--r)); }
+body.arranging .frame .fr-head .fr-btns { padding: 3px 5px calc(3px + var(--r)); align-items: flex-start; }
 body.arranging .frame.label-below .fr-head { bottom: auto; top: 100%; align-items: flex-start; }
 body.arranging .frame.label-below .fr-head .fr-title,
 body.arranging .frame.label-below .fr-head .fr-btns {
@@ -780,7 +780,7 @@ body.touch #touch { display: block; }
 </head>
 <body>
 <!-- Static so it paints before any module loads. boot.js only fills it in. -->
-<div id="splash" data-build="b26">
+<div id="splash" data-build="b27">
   <div class="sp-ver"></div>
   <svg class="sp-logo" viewBox="-70 -40 1372 1372" aria-hidden="true" fill="currentColor">
     <path class="pc-top" d="M 92 82 Q 616 140 1072 78 Q 1024 290 1012 511 L 852 511 L 852 228 Q 440 218 68 232 Q 88 155 92 82 Z"/>

@@ -4,7 +4,7 @@
 
 import { bus, CONFIG, setName, setToken, setErrorSink, report, colorFor } from './core.js';
 import { resizeZoneAt } from './frames.js';
-import { flipMic, flipEar, micLive, earOn, pairPinned, setPairPinned, micGlyph, earGlyph } from './mictoggle.js';
+import { flipMic, flipEar, micLive, earOn, glyphPinned, setGlyphPinned, micGlyph, earGlyph } from './mictoggle.js';
 import { svg, fsvg, hasFill } from './icons.js';
 
 // section-head emoji → Phosphor fill glyph (menu chrome never rides emoji —
@@ -424,16 +424,16 @@ function paintEMenu() {
   m.querySelector('.fr-btn').onclick = () => toggleEMenu(false);
   // voice first: mic + ears lead the menu in their own section — they matter
   // more than any window, and they wear the SAME glyphs as the floating pair
-  for (const [nm, glyph, isOn, flip] of [['mic', micGlyph, micLive, flipMic], ['ears', earGlyph, earOn, flipEar]]) {
+  for (const [nm, key, glyph, isOn, flip] of [['mic', 'mic', micGlyph, micLive, flipMic], ['ears', 'ear', earGlyph, earOn, flipEar]]) {
     const row = document.createElement('button');
     row.className = 'mrow' + (isOn() ? ' open' : '');
     row.innerHTML = `${glyph(16)}<span class="mname">${nm}</span>`;
     row.onclick = async () => { await flip(); paintEMenu(); };
     const pin = document.createElement('button');
-    pin.className = 'mpin' + (pairPinned() ? ' on' : '');
-    pin.title = pairPinned() ? 'detach from the rail' : 'attach to the rail';
+    pin.className = 'mpin' + (glyphPinned(key) ? ' on' : '');
+    pin.title = glyphPinned(key) ? `detach ${nm} from the rail` : `attach ${nm} to the rail`;
     pin.innerHTML = fsvg('push-pin', 13);
-    pin.onclick = (e) => { e.stopPropagation(); setPairPinned(!pairPinned()); paintEMenu(); };
+    pin.onclick = (e) => { e.stopPropagation(); setGlyphPinned(key, !glyphPinned(key)); paintEMenu(); };
     row.appendChild(pin);
     m.appendChild(row);
   }

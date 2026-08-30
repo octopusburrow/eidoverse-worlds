@@ -143,19 +143,19 @@ setInterval(() => {
 
 // ---- pair API for the ∃ menu (R, 15:12): rows toggle these; the pin
 // controls whether the pair hangs off the ∃ at all
-const PAIRPIN_LS = 'ew-micear-pinned';
-let _pairPinned = true;
-try { _pairPinned = localStorage.getItem(PAIRPIN_LS) !== '0'; } catch {}
-export const pairPinned = () => _pairPinned;
-export function setPairPinned(v) {
-  _pairPinned = !!v;
-  try { localStorage.setItem(PAIRPIN_LS, v ? '1' : '0'); } catch {}
+// per-glyph pins (R, 16:07: forcing the pair to pin together was wrong)
+const PIN_LS = { mic: 'ew-mic-pinned', ear: 'ew-ear-pinned' };
+const _pinned = { mic: true, ear: true };
+try { for (const k of ['mic', 'ear']) _pinned[k] = localStorage.getItem(PIN_LS[k]) !== '0'; } catch {}
+export const glyphPinned = (k) => !!_pinned[k];
+export function setGlyphPinned(k, v) {
+  _pinned[k] = !!v;
+  try { localStorage.setItem(PIN_LS[k], v ? '1' : '0'); } catch {}
   applyPairVisibility(); placeMic();
 }
 function applyPairVisibility() {
-  const disp = _pairPinned ? 'inline-block' : 'none';
-  if (micBtn) micBtn.style.display = disp;
-  if (earBtn) earBtn.style.display = disp;
+  if (micBtn) micBtn.style.display = _pinned.mic ? 'inline-block' : 'none';
+  if (earBtn) earBtn.style.display = _pinned.ear ? 'inline-block' : 'none';
 }
 export const micLive = () => { try { return micIsOn(); } catch { return false; } };
 export const earOn = () => { try { return receivingVoice() && !isHushed(); } catch { return false; } };
@@ -233,17 +233,27 @@ function placeMic() {
   const pos = (b, x, y) => { b.style.left = x + 'px'; b.style.top = y + 'px'; b.style.right = b.style.bottom = ''; };
   const vert = edge === 'left' || edge === 'right';
   const room = vert ? r.top : r.left;              // space before the ∃ along the rail
-  // mic is ALWAYS the top/left of the pair (R, 15:12)
-  if (room >= 74) {
-    // along the edge, stacked before the ∃
-    if (vert) { pos(micBtn, cx, Math.round(r.top) - 66); earBtn && pos(earBtn, cx, Math.round(r.top) - 34); }
-    else      { pos(micBtn, Math.round(r.left) - 66, cy); earBtn && pos(earBtn, Math.round(r.left) - 34, cy); }
-  } else {
-    // corner: fold around it, perpendicular into the canvas
-    if (edge === 'left')       { pos(micBtn, Math.round(r.right) + 6, cy); earBtn && pos(earBtn, Math.round(r.right) + 38, cy); }
-    else if (edge === 'right') { pos(micBtn, Math.round(r.left) - 64, cy); earBtn && pos(earBtn, Math.round(r.left) - 32, cy); }
-    else if (edge === 'top')   { pos(micBtn, cx, Math.round(r.bottom) + 6); earBtn && pos(earBtn, cx, Math.round(r.bottom) + 38); }
-    else                       { pos(micBtn, cx, Math.round(r.top) - 64); earBtn && pos(earBtn, cx, Math.round(r.top) - 32); }
+  // mic is ALWAYS the top/left of whatever is visible (R, 15:12), and a lone
+  // pinned glyph packs into the slot nearest the ∃ (R, 16:07: pins are per-glyph)
+  const vis = [ _pinned.mic && micBtn, _pinned.ear && earBtn ].filter(Boolean);
+  const n = vis.length;
+  if (n) {
+    if (room >= 42 + 32 * (n - 1)) {
+      // along the edge, stacked before the ∃ (slot 0 = adjacent)
+      vis.forEach((b, i) => {
+        const off = 34 + 32 * (n - 1 - i);
+        if (vert) pos(b, cx, Math.round(r.top) - off);
+        else pos(b, Math.round(r.left) - off, cy);
+      });
+    } else {
+      // corner: fold around it, perpendicular into the canvas
+      vis.forEach((b, i) => {
+        if (edge === 'left')       pos(b, Math.round(r.right) + 6 + 32 * i, cy);
+        else if (edge === 'right') pos(b, Math.round(r.left) - 32 - 32 * (n - 1 - i), cy);
+        else if (edge === 'top')   pos(b, cx, Math.round(r.bottom) + 6 + 32 * i);
+        else                       pos(b, cx, Math.round(r.top) - 32 - 32 * (n - 1 - i));
+      });
+    }
   }
   applyPairVisibility();
   // (re)bind the observer if the hud element itself was replaced
