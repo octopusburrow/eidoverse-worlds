@@ -922,7 +922,11 @@ function paintTabs() {
   const mk = (key, label, unread = 0, closable = false) => {
     const b = document.createElement('button');
     b.className = filter === key ? 'on' : '';
-    b.textContent = label + (unread ? ` ${unread}` : '');
+    const t1 = document.createElement('span'); t1.className = 'tick';
+    const t2 = document.createElement('span'); t2.className = 'tick';
+    const lbl = document.createElement('span');
+    lbl.textContent = label + (unread ? ` ${unread}` : '');
+    b.append(t1, lbl, t2);
     if (unread) b.classList.add('has-unread');
     b.onclick = () => setFilter(key);
     if (closable) {
