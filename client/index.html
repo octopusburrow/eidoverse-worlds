@@ -468,11 +468,12 @@ body.arranging #dock #hud.emark {
   display: flex; position: absolute; bottom: 100%; left: 0; right: 0;
   justify-content: space-between; align-items: flex-end; pointer-events: none;
   padding: 0; background: none; border: none;   /* the base .fr-head strip bleeds in otherwise */
+  z-index: -1;   /* descent tucks behind the panel */
 }
 #emenu .fr-head .fr-title { flex: 0 1 auto; }
 #emenu .fr-head .fr-title, #emenu .fr-head .fr-btns {
   pointer-events: auto;
-  background: #16191a;   /* OPAQUE: translucent chips double-darken where they descend over glass */
+  background: rgb(0 0 0 / .62); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
   border-radius: 7px 7px 0 0; padding: 3px 10px calc(3px + var(--r)); font-size: var(--fs-sm); color: var(--fg);
   margin-bottom: calc(-1 * var(--r));
 }
@@ -508,11 +509,12 @@ body.arranging .frame .fr-head {
   display: flex; position: absolute; bottom: 100%; left: 0; right: 0;
   justify-content: space-between; align-items: flex-end;
   padding: 0; background: none; border: none; pointer-events: none;
+  z-index: -1;   /* the descent tucks invisibly BEHIND the panel (R, 16:17) */
 }
 body.arranging .frame .fr-head .fr-title,
 body.arranging .frame .fr-head .fr-btns {
   pointer-events: auto;
-  background: #16191a;   /* OPAQUE: translucent chips double-darken where they descend over glass */
+  background: rgb(0 0 0 / .62); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
   border-radius: 7px 7px 0 0; padding: 3px 10px;
   /* the chip DESCENDS var(--r) into the panel — it truly connects, instead of
      the corner pretending to be square (R, 15:49: "bit cheating ;)") */
@@ -780,7 +782,7 @@ body.touch #touch { display: block; }
 </head>
 <body>
 <!-- Static so it paints before any module loads. boot.js only fills it in. -->
-<div id="splash" data-build="b27">
+<div id="splash" data-build="b28">
   <div class="sp-ver"></div>
   <svg class="sp-logo" viewBox="-70 -40 1372 1372" aria-hidden="true" fill="currentColor">
     <path class="pc-top" d="M 92 82 Q 616 140 1072 78 Q 1024 290 1012 511 L 852 511 L 852 228 Q 440 218 68 232 Q 88 155 92 82 Z"/>
