@@ -28,18 +28,18 @@
   --panel-a:   0.58;
   --panel-rgb: 18 26 27;   /* charcoal-seafoam midpoint — picker-adjustable */
   --panel:     rgb(var(--panel-rgb) / var(--panel-a));
-  --chip:      var(--chip);       /* tabs & floating chips */
-  --well:      var(--well);        /* inputs, pressed-in states */
-  --edge:      var(--act);
+  --chip:      rgb(0 0 0 / .62);       /* tabs & floating chips */
+  --well:      rgb(0 0 0 / .4);        /* inputs, pressed-in states */
+  --edge:      rgb(255 255 255 / 0.10);
   --edge-hi:   rgb(255 255 255 / 0.32);
-  --rim:       var(--rim);  /* the top gleam */
-  --hov:       var(--hov);
-  --act:       var(--act);
+  --rim:       inset 0 1px 0 rgb(255 255 255 / .09);  /* the top gleam */
+  --hov:       rgb(255 255 255 / .06);
+  --act:       rgb(255 255 255 / .10);
   --fg:        #ebebe9;
   --dim:       #97979b;
   --icon:      #a3bfba;   /* Sky-CotL move: icons carry a whisper of the world's hue */
-  --brand:     var(--brand);   /* THE seafoam — the only one; tints via color-mix */
-  --brand-deep:var(--brand-deep);   /* the ∃ at rest when live */
+  --brand:     #8fe8c8;   /* THE seafoam — the only one; tints via color-mix */
+  --brand-deep:#7fc9b6;   /* the ∃ at rest when live */
   --attn:      #ffc46b;   /* THE attention amber — the only one */
   --err:       #ff8f8f;
   /* legacy aliases (pre-2026-08-30 names) — keep working, point at roles */
@@ -821,7 +821,7 @@ body.touch #touch { display: block; }
 </head>
 <body>
 <!-- Static so it paints before any module loads. boot.js only fills it in. -->
-<div id="splash" data-build="b32">
+<div id="splash" data-build="b32.1">
   <div class="sp-ver"></div>
   <svg class="sp-logo" viewBox="-70 -40 1372 1372" aria-hidden="true" fill="currentColor">
     <path class="pc-top" d="M 92 82 Q 616 140 1072 78 Q 1024 290 1012 511 L 852 511 L 852 228 Q 440 218 68 232 Q 88 155 92 82 Z"/>
