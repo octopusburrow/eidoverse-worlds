@@ -156,9 +156,10 @@ const makeLabel = (name) => textSprite((ctx) => {
   try { ctx.letterSpacing = '1.5px'; } catch {}
   ctx.textAlign = 'center';
   const w = Math.min(500, ctx.measureText(name.slice(0, 24)).width + 40);
+  const tokv = (n, fb) => (getComputedStyle(document.documentElement).getPropertyValue(n) || fb).trim();
   ctx.fillStyle = 'rgba(6,16,22,0.62)';
   ctx.beginPath(); ctx.roundRect((512 - w) / 2, 6, w, 52, 26); ctx.fill();   // pill (R, 15:12)
-  ctx.fillStyle = '#8fe8c8';
+  ctx.fillStyle = tokv('--brand', '#8fe8c8');
   ctx.fillText(name.slice(0, 24), 256, 46);
 }, 512, 64, 0.9);
 

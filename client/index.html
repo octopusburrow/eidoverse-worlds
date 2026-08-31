@@ -6,7 +6,19 @@
 <title>eidoverse-worlds</title>
 <style>
 /* ===========================================================================
-   Design tokens. One place to change the client's whole look.
+   DESIGN TOKENS — the one block that owns the client's whole look.
+   Modding the UI's colors = editing (or live-overriding) THIS BLOCK ONLY;
+   every rule below and every JS-drawn glyph reads these, never raw hex.
+
+   ROLES (the doctrine, R + H 2026-08-30):
+   · brand    = identity & liveness ONLY: the ∃, connection state, "this is
+                on/present". Never decoration.
+   · attn     = "needs YOUR attention": mentions, edit-mode, unsaved, mic-hot.
+                One warm amber — complements brand, colorblind-separable.
+   · ink ladder (fg/dim/icon) = content: primary text, labels/hints, glyphs.
+   · surfaces (panel/chip/well) = material. hover/active whites = interaction
+                feedback only.
+   · err      = failures only, never attention.
    =========================================================================== */
 :root {
   --bg:        #0c0c0d;
@@ -14,23 +26,31 @@
      glass legibility collapses over bright scenes, so the floor is one
      user-ownable number away. /panels <0.3-1> sets it, persisted. */
   --panel-a:   0.58;
-  --panel:     rgb(18 26 27 / var(--panel-a));   /* charcoal-seafoam midpoint (R, 08-30: split the difference) — the Sky trick:
-                                                    the hint of warmth lives in the
-                                                    SURFACE, the ink stays neutral */
-  --edge:      rgb(255 255 255 / 0.10);
+  --panel-rgb: 18 26 27;   /* charcoal-seafoam midpoint — picker-adjustable */
+  --panel:     rgb(var(--panel-rgb) / var(--panel-a));
+  --chip:      var(--chip);       /* tabs & floating chips */
+  --well:      var(--well);        /* inputs, pressed-in states */
+  --edge:      var(--act);
   --edge-hi:   rgb(255 255 255 / 0.32);
+  --rim:       var(--rim);  /* the top gleam */
+  --hov:       var(--hov);
+  --act:       var(--act);
   --fg:        #ebebe9;
   --dim:       #97979b;
   --icon:      #a3bfba;   /* Sky-CotL move: icons carry a whisper of the world's hue */
-  --accent:    #e5a15a;
-  --accent-dk: #382a1a;
-  --control:   #8fe8c8;   /* sliders/checkboxes keep the brand seafoam (R, 22:01) */
-  --warn:      #e8c96a;
+  --brand:     var(--brand);   /* THE seafoam — the only one; tints via color-mix */
+  --brand-deep:var(--brand-deep);   /* the ∃ at rest when live */
+  --attn:      #ffc46b;   /* THE attention amber — the only one */
   --err:       #ff8f8f;
-  --ping:      #ffd479;
+  /* legacy aliases (pre-2026-08-30 names) — keep working, point at roles */
+  --accent:    var(--attn);
+  --accent-dk: #382a1a;
+  --control:   var(--brand);
+  --warn:      var(--attn);
+  --ping:      var(--attn);
 
   --r:         10px;
-  --shadow:    0 8px 28px rgba(0, 0, 0, 0.4);
+  --shadow:    0 8px 28px var(--well);
   --font:      ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   --font-code: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
   --fs:        14px;
@@ -55,12 +75,12 @@ canvas { display: block; touch-action: none; }
   /* shadow is a STATE, not decoration (R, 08-30): near-flat at rest — games
      separate surfaces by fill + gleam, not by OS paper-stack shadows — and
      the .lifting rule below restores real depth only while a frame is HELD */
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / .09), 0 1px 5px rgb(0 0 0 / .28);
+  box-shadow: var(--rim), 0 1px 5px rgb(0 0 0 / .28);
   transition: box-shadow .25s ease;
   backdrop-filter: blur(16px) saturate(1.15);
   -webkit-backdrop-filter: blur(16px) saturate(1.15);
 }
-.frame.lifting { box-shadow: inset 0 1px 0 rgb(255 255 255 / .09), 0 12px 32px rgb(0 0 0 / .5); }
+.frame.lifting { box-shadow: var(--rim), 0 12px 32px rgb(0 0 0 / .5); }
 /* code stays mono; prose is prose */
 textarea, code, pre { font-family: var(--font-code); }
 
@@ -75,25 +95,25 @@ button, .btn {
   text-align: left;
   transition: background var(--speed), border-color var(--speed);
 }
-button:hover, .btn:hover { background: rgb(255 255 255 / 0.10); border-color: var(--edge-hi); }
+button:hover, .btn:hover { background: var(--act); border-color: var(--edge-hi); }
 button:active { transform: translateY(1px); }
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 input:focus-visible, textarea:focus-visible { outline: 1px solid var(--edge-hi); }
-button.on { background: rgb(255 255 255 / 0.08); border-color: var(--edge-hi); color: var(--fg); }
+button.on { background: var(--hov); border-color: var(--edge-hi); color: var(--fg); }
 /* unshared local changes are pending until committed */
 button.dirty { border-color: var(--warn); color: var(--warn); }
 
 input[type=text], input[type=search], input:not([type]) {
   font: var(--fs-sm) var(--font);
   color: var(--fg);
-  background: rgb(0 0 0 / 0.4);
+  background: var(--well);
   border: 1px solid var(--edge);
   border-radius: 5px;
   padding: 6px 8px;
 }
 input::placeholder { color: var(--dim); }
 select {
-  font: 11px var(--font); background: rgb(0 0 0 / .4); color: var(--fg);
+  font: 11px var(--font); background: var(--well); color: var(--fg);
   border: 1px solid var(--edge); border-radius: 5px; padding: 5px;
 }
 
@@ -108,18 +128,18 @@ select {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 22px; padding: 28px; box-sizing: border-box;
   background:
-    linear-gradient(to top, rgb(22 48 58 / .38), transparent 42%), var(--bg);
+    linear-gradient(to top, color-mix(in srgb, var(--brand) 10%, transparent), transparent 42%), var(--bg);
   transition: opacity .6s ease, visibility .6s;
   font: var(--fs)/1.6 var(--font); color: var(--fg);
 }
 #splash.gone { opacity: 0; visibility: hidden; pointer-events: none; }
 .sp-ver { position: absolute; right: 14px; bottom: 10px; font-size: 10px;
-  color: rgb(143 232 200 / .3); letter-spacing: .1em; }
+  color: color-mix(in srgb, var(--brand) 30%, transparent); letter-spacing: .1em; }
 .sp-logo {
   /* rendered 2x and scaled down: Chrome re-rasters animated svg children from
      the layer cache, which pixelates at 1x — the classic fix, plus will-change */
   width: 200px; height: 210px; transform: scale(.5); transform-origin: center;
-  margin: -52px 0; color: #8fe8c8; overflow: visible;
+  margin: -52px 0; color: var(--brand); overflow: visible;
 }
 .sp-logo path { transition: transform .45s cubic-bezier(.22,.9,.3,1.04); will-change: transform; }
 #splash.gone .sp-logo { filter: drop-shadow(0 0 26px rgb(143 232 200 / .55)); transition: filter .3s ease-out; }
@@ -131,19 +151,19 @@ select {
 .sp-logo .pc-arm { transform: translateX(calc((1 - var(--spp,0)) * -34%)); }  /* starts clear of the body — it SPEARS in */
 .sp-logo .pc-bot { transform: translate(calc((1 - var(--spp,0)) *  7%), calc((1 - var(--spp,0)) *  11%)); }
 .sp-mark {
-  font-size: 26px; letter-spacing: .34em; color: #8fe8c8; opacity: .9;
+  font-size: 26px; letter-spacing: .34em; color: var(--brand); opacity: .9;
   text-transform: lowercase; font-weight: 500; margin-left: .34em; /* recenter over tracking */
 }
 .sp-mark-sub {
   /* small, beneath, no fanfare: Technically Distinct while everyone gets
      used to the idea (R, 08-30 — the rebrand argument, softly) */
   font-size: 12px; letter-spacing: .58em; margin: -30px 0 0 .58em;
-  color: rgb(143 232 200 / .45); font-weight: 400; text-transform: lowercase;
+  color: color-mix(in srgb, var(--brand) 45%, transparent); font-weight: 400; text-transform: lowercase;
 }
 /* hairline: the assembly carries the feel, the line carries the certainty —
    a bar affordance gives an unambiguous DONE (R's note, 08-30) */
-#splash .sp-bar { width: 260px; height: 3px; border-radius: 2px; background: rgb(143 232 200 / .12); }
-#splash .sp-bar-fill { height: 100%; border-radius: 2px; background: rgb(143 232 200 / .65); transition: width .3s ease; }
+#splash .sp-bar { width: 260px; height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--brand) 12%, transparent); }
+#splash .sp-bar-fill { height: 100%; border-radius: 2px; background: color-mix(in srgb, var(--brand) 65%, transparent); transition: width .3s ease; }
 .sp-sub { color: var(--dim); font-size: 15px; margin: -5px 0; text-align: center; }  /* equal air above + below (R, 16:01) */
 .sp-sub b { color: var(--fg); font-weight: 600; }
 .sp-bar {
@@ -152,7 +172,7 @@ select {
 }
 .sp-bar-fill {
   width: 0%; height: 100%; border-radius: 2px;
-  background: linear-gradient(90deg, #4fb79a, #8fe8c8);
+  background: linear-gradient(90deg, #4fb79a, var(--brand));
   transition: width .45s cubic-bezier(.22,.9,.3,1);
 }
 /* one centered breath under the bar — phase and bytes are a single quiet
@@ -161,10 +181,10 @@ select {
   display: flex; justify-content: center; align-items: baseline; gap: 10px;
   font-size: 14px; margin-top: -10px;
 }
-.sp-phase { color: #8fe8c8; }
+.sp-phase { color: var(--brand); }
 .sp-phase::after { content: '…'; }
 .sp-detail { color: var(--dim); font-variant-numeric: tabular-nums; }
-.sp-detail:not(:empty)::before { content: '·'; margin-right: 10px; color: rgb(143 232 200 / .3); }
+.sp-detail:not(:empty)::before { content: '·'; margin-right: 10px; color: color-mix(in srgb, var(--brand) 30%, transparent); }
 .sp-tip {
   display: flex; align-items: flex-start; gap: 11px;
   max-width: min(500px, 88vw); font-size: var(--fs-sm); color: var(--dim);
@@ -173,8 +193,8 @@ select {
 .sp-tip b { color: var(--fg); font-weight: 600; }
 .sp-tip .tipk {
   flex: none; width: 26px; height: 26px; border-radius: 6px;
-  display: grid; place-items: center; color: #8fe8c8;
-  background: rgba(143,232,200,.1); border: 1px solid var(--edge);
+  display: grid; place-items: center; color: var(--brand);
+  background: color-mix(in srgb, var(--brand) 10%, transparent); border: 1px solid var(--edge);
 }
 .sp-skip {
   opacity: 0; pointer-events: none; transition: opacity .4s;
@@ -216,7 +236,7 @@ select {
   padding: 1px 6px; font-size: 11px; line-height: 1.4;
   background: none; border: none; color: var(--dim);
 }
-.fr-btn:hover { background: rgba(255,255,255,.07); color: var(--fg); }
+.fr-btn:hover { background: var(--hov); color: var(--fg); }
 .ui-locked .fr-btn { display: none; }
 .fr-body { display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
 .frame.collapsed .fr-body { display: none; }
@@ -257,7 +277,7 @@ select {
   display: grid; place-items: center;
 }
 .chat-gear { opacity: .4; }   /* quieter than the tabs — it's furniture, not content */
-.chat-gear:hover { opacity: 1; color: var(--fg); background: rgb(255 255 255 / .06); }
+.chat-gear:hover { opacity: 1; color: var(--fg); background: var(--hov); }
 .chat-gearpop { position: absolute; z-index: 8; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; font-size: var(--fs-sm); }
 .chat-gearpop[hidden] { display: none; }
 .chat-gearpop .gp-row { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
@@ -304,11 +324,11 @@ select {
 .chat-log .line.cont .t { visibility: hidden; font-size: 10px; }
 .chat-log .line.cont .who { display: none; }
 .chat-log .line.ping {
-  background: rgba(255, 212, 121, .09);
+  background: color-mix(in srgb, var(--attn) 9%, transparent);
   border-left: 2px solid var(--ping); margin-left: -10px; padding-left: 8px;
 }
-.chat-log .mention { color: var(--accent); background: rgb(229 161 90 / .13); border-radius: 3px; padding: 0 2px; }
-.chat-log .mention.me { color: var(--ping); background: rgba(255,212,121,.18); font-weight: 600; }
+.chat-log .mention { color: var(--accent); background: color-mix(in srgb, var(--attn) 13%, transparent); border-radius: 3px; padding: 0 2px; }
+.chat-log .mention.me { color: var(--ping); background: color-mix(in srgb, var(--attn) 18%, transparent); font-weight: 600; }
 .chat-log .lnk { color: var(--accent); }
 
 .chat-jump {
@@ -352,7 +372,7 @@ select {
   font-weight: 500; background: none; border: none; text-align: left;
   padding: 6px 10px; border-radius: 6px; color: var(--fg);
 }
-.sec > .head:hover { background: rgb(255 255 255 / 0.06); }
+.sec > .head:hover { background: var(--hov); }
 .sec.open > .head { background: rgb(255 255 255 / 0.05); font-weight: 600; }
 .sec > .body {
   display: none; flex-direction: column; gap: 4px;
@@ -400,7 +420,22 @@ select {
    panel first spent the house palette, and fell out of the selector when the
    checkbox rows moved to .row.wide markup (R, 2026-08-16: "I could have sworn
    we did a styling for the checkboxes… seems to be gone now"). */
-.row input[type=checkbox] { accent-color: var(--control); }
+.row input[type=checkbox] {
+  /* custom box (R, 16:47): accent-color only paints the CHECKED state in
+     Chromium — unchecked fell back to UA white. */
+  appearance: none; -webkit-appearance: none;
+  width: 15px; height: 15px; margin: 0; border-radius: 4px;
+  background: var(--well);
+  border: 1px solid color-mix(in srgb, var(--brand) 45%, transparent);
+  display: inline-grid; place-items: center; cursor: pointer;
+}
+.row input[type=checkbox]:hover { border-color: color-mix(in srgb, var(--brand) 75%, transparent); }
+.row input[type=checkbox]:checked { background: var(--brand); border-color: var(--brand); }
+.row input[type=checkbox]:checked::before {
+  content: ''; width: 8px; height: 5px; margin-top: -2px;
+  border-left: 2px solid #0f2024; border-bottom: 2px solid #0f2024;
+  transform: rotate(-45deg);
+}
 .row .v { width: 34px; flex: none; text-align: right; color: var(--dim); }
 
 /* 🔴 .row.wide — the SAME row, for panels whose labels are sentences.
@@ -440,14 +475,14 @@ select {
   /* lives INSIDE the rail now — one movable unit. Mic/ear ride its box. */
   position: static; width: 42px; height: 42px; padding: 0;
   display: grid; place-items: center;
-  color: #8fe8c8; border: none; cursor: pointer; background: none; box-shadow: none;
+  color: var(--brand); border: none; cursor: pointer; background: none; box-shadow: none;
 }
 #dock #hud.emark { color: var(--dim); }                             /* local only */
-#dock #hud.emark.net-live { color: #7fc9b6; }                        /* connected — subtle green-blue */
-#dock #hud.emark.net-live:hover { color: #b5f2dd; }
+#dock #hud.emark.net-live { color: var(--brand-deep); }                        /* connected — subtle green-blue */
+#dock #hud.emark.net-live:hover { color: color-mix(in srgb, var(--brand) 70%, white); }
 #dock #hud.emark.net-wait { color: var(--dim); animation: netpulse 2.6s ease-in-out infinite; }  /* trying */
 body.arranging #dock #hud.emark {
-  color: #0f2024; background: #7fc9b6; border-radius: 8px; animation: none;  /* inverted: you're holding the chrome */
+  color: #0f2024; background: var(--brand-deep); border-radius: 8px; animation: none;  /* inverted: you're holding the chrome */
 }
 #hud.emark.editing::after {
   content: ''; position: absolute; right: 5px; top: 5px; width: 7px; height: 7px;
@@ -472,7 +507,7 @@ body.arranging #dock #hud.emark {
 #emenu .fr-head .fr-title { flex: 0 1 auto; }
 #emenu .fr-head .fr-title, #emenu .fr-head .fr-btns {
   pointer-events: auto;
-  background: rgb(0 0 0 / .62); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  background: var(--chip); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
   border-radius: 7px 7px 0 0; padding: 3px 10px; font-size: var(--fs-sm); color: var(--dim);
   margin-bottom: -1px;
 }
@@ -483,17 +518,17 @@ body.arranging #dock #hud.emark {
   background: none; border: none; border-radius: 6px; color: var(--fg);
   font-size: var(--fs-sm); text-align: left;
 }
-#emenu .mrow:hover { background: rgb(255 255 255 / .06); }
+#emenu .mrow:hover { background: var(--hov); }
 #emenu .mrow svg:first-child { flex: none; opacity: .8; }
 #emenu .mrow .mname { flex: 1; }
 #emenu .mrow { color: var(--dim); }
-#emenu .mrow.open { color: #cfeee4; }
+#emenu .mrow.open { color: color-mix(in srgb, var(--brand) 35%, var(--fg)); }
 #emenu .mrow.open svg:first-child { opacity: 1; }
 #emenu .mpin {
   flex: none; display: grid; place-items: center; width: 22px; height: 22px; padding: 0; line-height: 0;
   background: none; border: none; border-radius: 5px; color: var(--dim); opacity: .35;
 }
-#emenu .mpin:hover { opacity: 1; background: rgb(255 255 255 / .08); }
+#emenu .mpin:hover { opacity: 1; background: var(--hov); }
 #emenu .mpin.on { opacity: 1; color: var(--fg); }
 #emenu .msep { height: 1px; background: var(--edge); margin: 5px 4px; }
 /* headers exist only while arranging (the ∃ menu is open) — and they FLOAT
@@ -515,7 +550,7 @@ body.arranging .frame .fr-head {
 body.arranging .frame .fr-head .fr-title,
 body.arranging .frame .fr-head .fr-btns {
   pointer-events: auto;
-  background: rgb(0 0 0 / .62); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  background: var(--chip); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
   border-radius: 7px 7px 0 0; padding: 3px 10px;
   margin-bottom: -1px;   /* seat onto the rim-light so the tab reads attached */
 }
@@ -528,10 +563,10 @@ body.arranging .frame.label-below .fr-head .fr-btns {
   margin-bottom: 0; margin-top: -1px;
 }
 /* sticky-edge glow: this frame is riding that edge and will follow it */
-body.arranging .frame.st-l { box-shadow: inset 2px 0 0 rgb(143 232 200 / .6), inset 0 1px 0 rgb(255 255 255 / .09), 0 1px 5px rgb(0 0 0 / .28); }
-body.arranging .frame.st-r { box-shadow: inset -2px 0 0 rgb(143 232 200 / .6), inset 0 1px 0 rgb(255 255 255 / .09), 0 1px 5px rgb(0 0 0 / .28); }
-body.arranging .frame.st-t { box-shadow: inset 0 2px 0 rgb(143 232 200 / .6), 0 1px 5px rgb(0 0 0 / .28); }
-body.arranging .frame.st-b { box-shadow: inset 0 -2px 0 rgb(143 232 200 / .6), inset 0 1px 0 rgb(255 255 255 / .09), 0 1px 5px rgb(0 0 0 / .28); }
+body.arranging .frame.st-l { box-shadow: inset 2px 0 0 color-mix(in srgb, var(--brand) 60%, transparent), var(--rim), 0 1px 5px rgb(0 0 0 / .28); }
+body.arranging .frame.st-r { box-shadow: inset -2px 0 0 color-mix(in srgb, var(--brand) 60%, transparent), var(--rim), 0 1px 5px rgb(0 0 0 / .28); }
+body.arranging .frame.st-t { box-shadow: inset 0 2px 0 color-mix(in srgb, var(--brand) 60%, transparent), 0 1px 5px rgb(0 0 0 / .28); }
+body.arranging .frame.st-b { box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--brand) 60%, transparent), var(--rim), 0 1px 5px rgb(0 0 0 / .28); }
 #hud .ok  { color: var(--accent); }
 #hud .bad { color: var(--err); }
 #hud .edit { color: var(--warn); }
@@ -541,7 +576,7 @@ body.arranging .frame.st-b { box-shadow: inset 0 -2px 0 rgb(143 232 200 / .6), i
 body.edit-mode canvas { cursor: crosshair; }
 body.edit-mode::after {
   content: ''; position: fixed; inset: 0; z-index: 2; pointer-events: none;
-  border: 2px solid rgba(232, 201, 106, .5); border-radius: 3px;
+  border: 2px solid color-mix(in srgb, var(--attn) 50%, transparent); border-radius: 3px;
 }
 
 #trayzone {
@@ -591,13 +626,19 @@ body.arranging #dock .dock-grip { display: grid; }
   display: grid; place-items: center; width: 34px; height: 34px; padding: 0;
   color: var(--icon); background: none; border: none; box-shadow: none; border-radius: 7px;
 }
-#dock button:not(.dock-grip):hover { color: var(--fg); background: rgb(255 255 255 / .06); }
+#dock button:not(.dock-grip):hover { color: var(--fg); background: var(--hov); }
 #dock button.on {
   color: var(--fg);
-  background: rgb(0 0 0 / .4);
+  background: var(--well);
   box-shadow: inset 0 1px 3px rgb(0 0 0 / .6);   /* pressed-in, not lit-up */
 }
 #dock button[hidden] { display: none; }
+/* keybtn: buttons that mirror physical KEYS read as key-caps — a darker well,
+   no outline (R, 16:58 dealer's-choice on the emote grid; the doctrine:
+   visible boxes only for key-mirrors and committal actions) */
+button.keybtn { background: var(--well); border: none; box-shadow: none; border-radius: 7px; }
+button.keybtn:hover { background: color-mix(in srgb, var(--well) 60%, var(--hov)); }
+button.keybtn:active { box-shadow: inset 0 1px 3px rgb(0 0 0 / .6); }
 /* the rail WELDS to its edge — it is part of the window frame, not a floating card */
 #dock[data-edge="left"]   { border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: none; }
 #dock[data-edge="right"]  { border-top-right-radius: 0; border-bottom-right-radius: 0; border-right: none; }
@@ -691,7 +732,7 @@ body.touch #touch { display: block; }
 }
 #stick .nub {
   position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px;
-  border-radius: 50%; background: rgba(143,232,200,.28); border: 1px solid var(--edge-hi);
+  border-radius: 50%; background: color-mix(in srgb, var(--brand) 28%, transparent); border: 1px solid var(--edge-hi);
 }
 #touchbtns { position: absolute; right: 18px; bottom: 18px; display: flex; gap: 8px; pointer-events: auto; }
 #touchbtns button { padding: 13px 15px; font-size: var(--fs); border-radius: 50%; }
@@ -780,7 +821,7 @@ body.touch #touch { display: block; }
 </head>
 <body>
 <!-- Static so it paints before any module loads. boot.js only fills it in. -->
-<div id="splash" data-build="b30">
+<div id="splash" data-build="b32">
   <div class="sp-ver"></div>
   <svg class="sp-logo" viewBox="-70 -40 1372 1372" aria-hidden="true" fill="currentColor">
     <path class="pc-top" d="M 92 82 Q 616 140 1072 78 Q 1024 290 1012 511 L 852 511 L 852 228 Q 440 218 68 232 Q 88 155 92 82 Z"/>

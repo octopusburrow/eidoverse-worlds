@@ -217,6 +217,24 @@ const savePins = () => { try { localStorage.setItem(PINS_LS, [...pins] && JSON.s
 let dockEntries = [];
 
 const DOCKPOS_LS = 'ew-dock-pos';
+// ---- mod seam (R, 16:58: "get un-painted into a corner"; the WoW/Resonite
+// lesson — the HUD is a REGISTRY, core panels are just the built-in entries).
+// A mod calls eido.ui.registerPanel() and gets: a frame, a menu row, a rail
+// icon when open/pinned, arrange/lock/reset participation — everything the
+// built-ins get, through the same door. See docs/MODDING-UI.md.
+export function registerPanel({ id, icon = 'puzzle-piece', title = id, mount,
+                                w = 260, h = 200, x = 60, y = 60 }) {
+  if (!id || dockEntries.some((e) => e.id === id)) return null;
+  const f = makeFrame(id, { title, x, y, w, h, hidden: true });
+  try { mount?.(f.body, f); } catch (err) { console.error(`[mod:${id}] mount failed`, err); }
+  dockEntries.push({ id, icon });
+  paintDock();
+  return f;
+}
+if (typeof window !== 'undefined') {
+  window.eido = Object.assign(window.eido ?? {}, { ui: { registerPanel } });
+}
+
 export function initDock(entries) {
   dockEntries = entries;
   el.dock.innerHTML = '';

@@ -26,12 +26,20 @@ import { bus } from './core.js';
 // air between them, so identical stroke colour lands heavier on the ear.
 // Equalising by giving the heavier glyph a slightly thinner stroke, which
 // matches perceived weight rather than nominal colour.
-const INK = { off: '#7d8f8a', on: '#f2f7f5', hot: '#ffd66b', slash: '#c0574f' };
+// glyph inks come from the token sheet (R, 16:47: no hex outside it) —
+// read fresh each paint (1Hz + events): live token edits restyle us too.
+const tok = (n, fb) => (getComputedStyle(document.documentElement).getPropertyValue(n) || fb).trim();
+const INK = {
+  get off()   { return tok('--dim', '#7d8f8a'); },
+  get on()    { return tok('--brand', '#8fe8c8'); },   // live = brand, like the ∃
+  get hot()   { return tok('--attn', '#ffd66b'); },
+  get slash() { return tok('--err', '#c0574f'); },
+};
 
 const MIC_SVG = (on, hot) => {
   const c = hot ? INK.hot : on ? INK.on : INK.off;
   return `
-<svg viewBox="0 0 32 32" width="26" height="26" style="${hot ? 'filter:drop-shadow(0 0 5px rgba(255,214,107,.9))' : ''}">
+<svg viewBox="0 0 32 32" width="26" height="26" style="${hot ? `filter:drop-shadow(0 0 5px ${INK.hot})` : ''}">
   <g fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round">
     <rect x="12" y="5" width="8" height="14" rx="4" fill="${hot ? 'rgba(255,214,107,.35)' : 'none'}"/>
     <path d="M8 15 a8 8 0 0 0 16 0"/>
