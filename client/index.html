@@ -373,7 +373,7 @@ select {
   padding: 6px 10px; border-radius: 6px; color: var(--fg);
 }
 .sec > .head:hover { background: var(--hov); }
-.sec.open > .head { background: rgb(255 255 255 / 0.05); font-weight: 600; }
+.sec.open > .head { background: rgb(255 255 255 / 0.05); font-weight: 600; color: color-mix(in srgb, var(--brand) 35%, var(--fg)); }
 .sec > .body {
   display: none; flex-direction: column; gap: 4px;
   padding: 6px; max-height: 44vh; overflow-y: auto;
@@ -383,7 +383,7 @@ select {
 .sec.open > .body { display: flex; }
 /* panel content hierarchy (R, 17:18): heads = fg with brand-whisper glyphs,
    body copy = dim; outlined buttons hug their text, never stretch the column */
-.sec > .head { color: var(--fg); }
+.sec > .head { color: var(--dim); }
 .sec > .head svg { color: var(--icon); }
 .sec > .body { color: var(--dim); }
 .sec > .body button { align-self: flex-start; width: fit-content; }
@@ -525,7 +525,7 @@ body.arranging #dock #hud.emark {
   font-size: var(--fs-sm); text-align: left;
 }
 #emenu .mrow:hover { background: var(--hov); }
-#emenu .mrow svg:first-child { flex: none; opacity: .8; }
+#emenu .mrow svg:first-child { flex: none; opacity: .8; color: var(--icon); }
 #emenu .mrow .mname { flex: 1; }
 #emenu .mrow { color: var(--dim); }
 #emenu .mrow.open { color: color-mix(in srgb, var(--brand) 35%, var(--fg)); }
@@ -535,7 +535,7 @@ body.arranging #dock #hud.emark {
   background: none; border: none; border-radius: 5px; color: var(--dim); opacity: .35;
 }
 #emenu .mpin:hover { opacity: 1; background: var(--hov); }
-#emenu .mpin.on { opacity: 1; color: var(--fg); }
+#emenu .mpin.on { opacity: 1; color: var(--brand); }
 #emenu .msep { height: 1px; background: var(--edge); margin: 5px 4px; }
 /* headers exist only while arranging (the ∃ menu is open) — and they FLOAT
    above the frame (below, when the frame hugs the top edge) so opening the
@@ -836,7 +836,7 @@ try { const o = JSON.parse(localStorage.getItem('ew-style-tokens') || '{}');
 </head>
 <body>
 <!-- Static so it paints before any module loads. boot.js only fills it in. -->
-<div id="splash" data-build="b36">
+<div id="splash" data-build="b37">
   <div class="sp-ver"></div>
   <svg class="sp-logo" viewBox="-70 -40 1372 1372" aria-hidden="true" fill="currentColor">
     <path class="pc-top" d="M 92 82 Q 616 140 1072 78 Q 1024 290 1012 511 L 852 511 L 852 228 Q 440 218 68 232 Q 88 155 92 82 Z"/>
