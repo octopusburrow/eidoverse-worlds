@@ -37,7 +37,7 @@
   --act:       rgb(255 255 255 / .10);
   --fg:        #ebebe9;
   --dim:       #97979b;
-  --icon:      color-mix(in srgb, var(--brand) 30%, #a8a8ac);  /* icons carry a whisper of the brand (derived: follows the picker) */
+  --icon:      color-mix(in srgb, var(--brand) 62%, #a8a8ac);  /* icons carry a whisper of the brand (derived: follows the picker) */
   --brand:     #8fe8c8;   /* THE seafoam — the only one; everything below derives */
   --brand-deep: color-mix(in srgb, var(--brand) 84%, #1a2a28);  /* the ∃ at rest when live */
   --attn:      #ffc46b;   /* THE attention amber — the only one */
@@ -836,7 +836,7 @@ try { const o = JSON.parse(localStorage.getItem('ew-style-tokens') || '{}');
 </head>
 <body>
 <!-- Static so it paints before any module loads. boot.js only fills it in. -->
-<div id="splash" data-build="b34">
+<div id="splash" data-build="b35">
   <div class="sp-ver"></div>
   <svg class="sp-logo" viewBox="-70 -40 1372 1372" aria-hidden="true" fill="currentColor">
     <path class="pc-top" d="M 92 82 Q 616 140 1072 78 Q 1024 290 1012 511 L 852 511 L 852 228 Q 440 218 68 232 Q 88 155 92 82 Z"/>
