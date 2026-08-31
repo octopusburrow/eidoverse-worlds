@@ -37,9 +37,9 @@
   --act:       rgb(255 255 255 / .10);
   --fg:        #ebebe9;
   --dim:       #97979b;
-  --icon:      #a3bfba;   /* Sky-CotL move: icons carry a whisper of the world's hue */
-  --brand:     #8fe8c8;   /* THE seafoam — the only one; tints via color-mix */
-  --brand-deep:#7fc9b6;   /* the ∃ at rest when live */
+  --icon:      color-mix(in srgb, var(--brand) 30%, #a8a8ac);  /* icons carry a whisper of the brand (derived: follows the picker) */
+  --brand:     #8fe8c8;   /* THE seafoam — the only one; everything below derives */
+  --brand-deep: color-mix(in srgb, var(--brand) 84%, #1a2a28);  /* the ∃ at rest when live */
   --attn:      #ffc46b;   /* THE attention amber — the only one */
   --err:       #ff8f8f;
   /* legacy aliases (pre-2026-08-30 names) — keep working, point at roles */
@@ -381,6 +381,12 @@ select {
   border: 1px solid var(--edge); border-radius: 5px;
 }
 .sec.open > .body { display: flex; }
+/* panel content hierarchy (R, 17:18): heads = fg with brand-whisper glyphs,
+   body copy = dim; outlined buttons hug their text, never stretch the column */
+.sec > .head { color: var(--fg); }
+.sec > .head svg { color: var(--icon); }
+.sec > .body { color: var(--dim); }
+.sec > .body button { align-self: flex-start; width: fit-content; }
 .stack { padding: 7px; gap: 6px; display: flex; flex-direction: column; overflow-y: auto; flex: 1; min-height: 0; }
 .stack::-webkit-scrollbar, .sec > .body::-webkit-scrollbar { width: 6px; }
 .stack::-webkit-scrollbar-thumb, .sec > .body::-webkit-scrollbar-thumb { background: var(--edge); border-radius: 3px; }
@@ -821,7 +827,7 @@ body.touch #touch { display: block; }
 </head>
 <body>
 <!-- Static so it paints before any module loads. boot.js only fills it in. -->
-<div id="splash" data-build="b32.1">
+<div id="splash" data-build="b33">
   <div class="sp-ver"></div>
   <svg class="sp-logo" viewBox="-70 -40 1372 1372" aria-hidden="true" fill="currentColor">
     <path class="pc-top" d="M 92 82 Q 616 140 1072 78 Q 1024 290 1012 511 L 852 511 L 852 228 Q 440 218 68 232 Q 88 155 92 82 Z"/>
