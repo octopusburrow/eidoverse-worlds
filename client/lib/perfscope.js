@@ -288,12 +288,14 @@ function loupeHtml(rec) {
   // worst textures first, each with its estimated resident bytes; `raw`
   // flags an uncompressed image (the usual VRAM crime — a 4096² RGBA8
   // costs ~89 MB with mips where the same KTX2 costs ~11)
-  // textures STACK vertically (R, 09-02: don't let one wide line bump the
-  // window super-wide) — each its own indented sub-row, biggest first
+  // textures STACK vertically (R, 09-02), each on ONE line with its dims and
+  // size TOGETHER (not split across the row). biggest first. `raw` = an
+  // uncompressed image sitting in VRAM at full w·h·4 bytes — the usual VRAM
+  // crime; a KTX2/compressed version of the same image costs ~4-8× less.
   const texRows = [...rec.texs]
     .map((t) => ({ t, b: texBytes(t) }))
     .sort((a, b) => b.b - a.b).slice(0, 4)
-    .map(({ t, b }) => `<div class="pl-tex"><span>${t.image?.width ?? '?'}×${t.image?.height ?? '?'}${t.isCompressedTexture ? '' : ' <em>raw</em>'}</span><span class="pl-texb">${fmtB(b)}</span></div>`)
+    .map(({ t, b }) => `<div class="pl-tex">${t.image?.width ?? '?'}×${t.image?.height ?? '?'}${t.isCompressedTexture ? '' : ' <em title="uncompressed — sits in VRAM at full size; a compressed (KTX2) version costs ~4-8× less">raw</em>'}<span class="pl-texb">${fmtB(b)}</span></div>`)
     .join('');
   const meta = rec.kind === 'entity' ? entityMeta.get(rec.key.slice(2)) : null;
   // Maya channel-box layout (R, 09-02): a 3-column grid with a center seam.
@@ -329,9 +331,11 @@ function loupeHtml(rec) {
   const worstLabel = { tris: 'triangles', draws: 'draw calls', texMB: 'texture VRAM',
     bones: 'bones', mats: 'materials', alpha: 'transparency' }[rec.worst] || rec.worst;
   const why = `overall = worst category wins (VRChat model). this object's ${TIER_NAMES[rec.rank]} rank is set by ${worstLabel}. fix the red/orange rows to raise it.`;
+  // header: the rank pill, then a right column with the name and (aligned
+  // under it, R 09-02) the 'placed by' line — so the sub-text lines up with
+  // the name, not the pill.
   return `
-  <div class="pl-head"><span title="${esc(why)}" class="pl-rank">${badge(rec.rank, TIER_NAMES[rec.rank], true)}</span> <b>${rec.label}</b></div>
-  ${meta?.by ? `<div class="pl-sub">placed by ${meta.by}</div>` : ''}
+  <div class="pl-head"><span title="${esc(why)}" class="pl-rank">${badge(rec.rank, TIER_NAMES[rec.rank], true)}</span><div class="pl-headtext"><b>${rec.label}</b>${meta?.by ? `<div class="pl-sub">placed by ${meta.by}</div>` : ''}</div></div>
   <div class="pl-grid">${rows}</div>
   <div class="pl-foot">${pinned ? 'click elsewhere to unpin' : 'click to pin'}</div>`;
 }

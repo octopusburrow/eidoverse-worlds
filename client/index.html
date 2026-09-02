@@ -860,12 +860,17 @@ body.touch #touch { display: block; }
 .perf-loupe .plv { color: var(--fg); text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
 .perf-loupe .plp { display: flex; justify-content: flex-start; }
 /* stacked texture sub-rows span all three columns; each is dims … bytes */
-.perf-loupe .pl-texwrap { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 1px; padding: 1px 0 2px; }
-.perf-loupe .pl-tex { display: flex; justify-content: space-between; gap: 12px; font-size: 9.5px; color: var(--dim); padding-left: 14px; opacity: .85; }
+/* texture sub-rows: dims and size sit TOGETHER (R, 09-02 — not split across
+   the row), indented under "textures", biggest first. */
+.perf-loupe .pl-texwrap { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 1px; padding: 1px 0 2px 14px; }
+.perf-loupe .pl-tex { font-size: 9.5px; color: var(--dim); opacity: .85; }
+.perf-loupe .pl-tex .pl-texb { color: var(--fg); opacity: .8; font-variant-numeric: tabular-nums; margin-left: 5px; }
 .perf-loupe .pl-tex em { font-style: normal; color: var(--attn); opacity: .85; }
-.perf-loupe .pl-texb { font-variant-numeric: tabular-nums; }
-.perf-loupe .pl-head { display: flex; gap: 7px; align-items: center; margin-bottom: 5px; color: var(--fg); }
-.perf-loupe .pl-sub { color: var(--dim); font-size: 10px; margin: -4px 0 5px; }
+/* header: pill + a text column (name over 'placed by'), so the sub aligns
+   under the NAME not the pill (R, 09-02) */
+.perf-loupe .pl-head { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; color: var(--fg); }
+.perf-loupe .pl-headtext { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.perf-loupe .pl-sub { color: var(--dim); font-size: 10px; }
 /* texlist tucks under "textures" as a clear sub-detail */
 .perf-loupe .pl-texlist { font-size: 9.5px; color: var(--dim); padding: 0 0 1px 12px; opacity: .85; }
 .perf-loupe .pl-foot { color: var(--dim); font-size: 9.5px; margin-top: 7px; opacity: .75; border-top: 1px solid var(--edge); padding-top: 5px; }
@@ -890,6 +895,11 @@ body.touch #touch { display: block; }
   /* dark outline so a bright pill (green/amber) stays legible over a light
      pane background (R, 09-02) */
   border: 1px solid rgb(0 0 0 / .5);
+  /* measured (R, 09-02): with align-items:center the LINE box centers, but
+     monospace caps sit high in their line box, leaving ~0.5px more space below
+     than above — the "still not centered" R keeps catching. Nudge the glyph
+     down half a pixel to true optical center. */
+  padding-top: 1px;
 }
 .perf-loupe .pl-head .pf-badge-lg { height: 18px; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; text-indent: .06em; }
 .perf-loupe .pl-rank { cursor: help; }
