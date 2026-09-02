@@ -528,7 +528,7 @@ export function buildPerfPanel(stack, { toast = console.log } = {}) {
   };
 
   const btns = document.createElement('div');
-  btns.className = 'row pf-btns';
+  btns.className = 'row btn-row';
   const rescan = document.createElement('button');
   rescan.textContent = 'rescan';
   rescan.onclick = () => { collect(); if (mode !== 'off') applyTint(); paintTable(); toast('perfscope: rescanned'); };

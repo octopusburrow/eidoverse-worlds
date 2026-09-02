@@ -122,6 +122,13 @@ button, .btn {
 }
 button:hover, .btn:hover { background: var(--act); border-color: var(--edge-hi); }
 button:active { transform: translateY(1px); }
+/* ONE unified pattern for a row of equal-width action buttons (reset/pause/copy
+   etc). Menus used to hand-roll `flex:1;padding:3px 0` inline per-panel, which
+   drifted (0 horizontal padding jammed the text to the edges) — this centers
+   the label with the base button's own padding and shares the row (R, 09-02:
+   avoid inter-menu handrolling; unified fallback). Use `<div class="row btn-row">`. */
+.btn-row { display: flex; gap: 6px; }
+.btn-row > button { flex: 1; text-align: center; padding: 5px 8px; }
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 input:focus-visible, textarea:focus-visible { outline: 1px solid var(--edge-hi); }
 button.on { background: var(--hov); border-color: var(--edge-hi); color: var(--fg); }
@@ -872,8 +879,9 @@ body.touch #touch { display: block; }
 .pf-legend i { width: 16px; height: 7px; border-radius: 2px; }
 .pf-legend span { margin-left: 7px; letter-spacing: .02em; }
 .pf-table { display: flex; flex-direction: column; gap: 1px; margin-top: 2px; }
-.pf-btns { gap: 6px; margin-top: 4px; }
-.pf-btns button { flex: 1; font-size: var(--fs-sm); padding: 4px 0 5px; }
+/* pf-btns kept only for its top margin; equal-width sizing now comes from
+   the shared .btn-row (R, 09-02 unification) */
+.pf-btns, .perf-loupe + .btn-row { margin-top: 4px; }
 .pf-row {
   display: flex; align-items: center; gap: 6px; padding: 2px 4px;
   font-size: 11px; border-radius: 4px; cursor: pointer;

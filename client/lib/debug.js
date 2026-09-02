@@ -415,7 +415,7 @@ function buildJointPanel(stack) {
   paint();
 
   const btns = document.createElement('div');
-  btns.className = 'row';
+  btns.className = 'row btn-row';
   const mk = (label, fn) => {
     const b = document.createElement('button');
     b.textContent = label; b.onclick = fn; btns.appendChild(b); return b;
@@ -569,7 +569,7 @@ function buildHairPanel(stack) {
   };
   mk();
   const btns = document.createElement('div');
-  btns.className = 'row';
+  btns.className = 'row btn-row';
   const b1 = document.createElement('button');
   b1.textContent = 'reset hair';
   b1.onclick = () => { Object.assign(HAIR_TUNING, defaults); mk(); apply(); };
@@ -659,7 +659,7 @@ function buildWingPanel(stack) {
     return h;
   };
   const btns = document.createElement('div');
-  btns.className = 'row';
+  btns.className = 'row btn-row';
   const b1 = document.createElement('button');
   b1.textContent = 'reset wings';
   b1.onclick = () => {
@@ -723,11 +723,10 @@ export function initDebug(p = {}) {
   for (const [k] of SWITCHES) DEFAULTS[k] = TUNING[k];
 
   const btns = document.createElement('div');
-  btns.className = 'row';
+  btns.className = 'row btn-row';   // unified equal-width action-button row
   const mk = (label, fn) => {
     const b = document.createElement('button');
     b.textContent = label; b.onclick = fn;
-    b.style.cssText = 'flex:1;font-size:var(--fs-sm);padding:3px 0';
     return b;
   };
   const pause = mk('pause', () => {
