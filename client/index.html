@@ -212,7 +212,7 @@ select {
 .sp-detail { color: var(--dim); font-variant-numeric: tabular-nums; }
 .sp-detail:not(:empty)::before { content: '·'; margin-right: 10px; color: color-mix(in srgb, var(--brand) 30%, transparent); }
 .sp-tip {
-  display: flex; align-items: flex-start; gap: 11px;
+  display: flex; align-items: center; gap: 11px;   /* keycap centers on the tip line (R, 09-02 00:23) */
   max-width: min(500px, 88vw); font-size: var(--fs-sm); color: var(--dim);
   min-height: 44px; text-align: left;
 }
