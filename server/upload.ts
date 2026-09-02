@@ -119,7 +119,12 @@ async function pumpOptimize() {
 }
 // Boot sweep: whatever accumulated before this shipped (or failed mid-queue
 // last run) gets its shadow now. Deferred so boot stays about serving worlds.
+// SKIP_OPT_SWEEP=1 skips both boot sweeps entirely: the encode pump (sharp +
+// basis, tens of seconds of native memory per file, "not smaller" verdicts
+// retried every boot) OOM-crashed a 7.3GB WSL VM twice on 2026-09-01 —
+// serving worlds must be startable without shouldering the optimizer.
 setTimeout(() => {
+  if (process.env.SKIP_OPT_SWEEP) return;
   const dir = join(OPT_DIR, "store");
   if (!existsSync(dir)) return;
   // isStoreOriginal, not endsWith(".glb"): the KTX2 variants live in this
@@ -148,6 +153,7 @@ setTimeout(() => {
 // overlay (assets/opt/...) — and serving prefers the overlay, so the sweep
 // sources each rel from the base that actually wins.
 setTimeout(() => {
+  if (process.env.SKIP_OPT_SWEEP) return;
   if (ktx2Skip) return;
   const items: OptItem[] = [];
   const seen = new Set<string>();
