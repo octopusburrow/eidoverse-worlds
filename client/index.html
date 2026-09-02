@@ -839,7 +839,11 @@ body.touch #touch { display: block; }
 /* ------------------------------------------------------- perfscope (debug) */
 .perf-loupe {
   position: fixed; z-index: 55; pointer-events: none;
-  min-width: 230px; max-width: 330px; padding: 9px 11px; border-radius: 8px;
+  /* shrink to content (R, 09-02 r8: kill the huge left gutter). The old
+     min-width floor + the grid's 1fr stretch column dumped all slack as empty
+     space on the left; width:max-content lets the card hug its rows, still
+     bounded by max-width for pathological long names. */
+  width: max-content; max-width: 320px; padding: 9px 11px; border-radius: 8px;
   font: 11.5px/1.5 var(--font-code); color: var(--fg);
   background: rgb(var(--panel-rgb) / .94);   /* floats over content: near-opaque */
   box-shadow: 0 6px 20px rgb(0 0 0 / .45), var(--rim);
@@ -852,7 +856,9 @@ body.touch #touch { display: block; }
    the panel wide. auto-sized columns so the panel fits its content. */
 .perf-loupe .pl-grid {
   display: grid;
-  grid-template-columns: 1fr auto minmax(38px, auto);
+  /* all three columns size to content — nothing stretches, so the card is only
+     as wide as label+value+pill actually need (R, 09-02 r8: no left gutter). */
+  grid-template-columns: auto auto auto;
   align-items: center;
   column-gap: 14px; row-gap: 3px;
 }
@@ -876,20 +882,23 @@ body.touch #touch { display: block; }
 /* header: name/sub block on the left, rank pill pushed to the RIGHT and top-
    aligned (R, 09-02: line the pill up with the data column, no empty space
    below it). A separator divides header from data, matching the footer's. */
+/* header (R, 09-02 r8): a column — top row [name | pill], then the standing
+   line left-justified on its own row, then 'placed by'. */
 .perf-loupe .pl-head {
-  display: flex; align-items: flex-start; gap: 8px; color: var(--fg);
+  display: flex; flex-direction: column; gap: 2px; color: var(--fg);
   padding-bottom: 6px; margin-bottom: 6px; border-bottom: 1px solid var(--edge);
 }
-.perf-loupe .pl-headtext { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1 1 auto; }
-/* the name WRAPS (R, 09-02 r7) so a long object name stacks onto a narrow
-   second line instead of forcing the whole panel wide. */
-.perf-loupe .pl-headtext > b { overflow-wrap: anywhere; line-height: 1.2; }
-/* right column: perf pill + the scene-standing line stacked under it, both
-   right-justified — they're one unit ("this object's grade"). */
-.perf-loupe .pl-headgrade { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: none; }
+.perf-loupe .pl-headtop { display: flex; align-items: baseline; gap: 10px; }
+/* name: left, single line, ellipsised so it NEVER dictates panel width — the
+   data grid governs the width, killing the left gutter (R, 09-02 r8). Full name
+   lives in the title tooltip + is selectable when pinned. */
+.perf-loupe .pl-name {
+  flex: 1 1 auto; min-width: 0; max-width: 190px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .perf-loupe .pl-head .pl-rank { flex: none; }
 .perf-loupe .pl-sub { color: var(--dim); font-size: 10px; }
-.perf-loupe .pl-standing { text-align: right; white-space: nowrap; }
+.perf-loupe .pl-standing { text-align: left; }
 /* texlist tucks under "textures" as a clear sub-detail */
 .perf-loupe .pl-texlist { font-size: 9.5px; color: var(--dim); padding: 0 0 1px 12px; opacity: .85; }
 /* action hint right-justified — echoes the panel's right edge and reads as

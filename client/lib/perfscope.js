@@ -360,15 +360,17 @@ function loupeHtml(rec) {
   const worstLabel = { tris: 'triangles', draws: 'draw calls', texMB: 'texture VRAM',
     bones: 'bones', mats: 'materials', alpha: 'transparency' }[rec.worst] || rec.worst;
   const why = `overall = worst category wins (VRChat model). this object's ${TIER_NAMES[rec.rank]} rank is set by ${worstLabel}. fix the red/orange rows to raise it.`;
-  // header, two columns (R, 09-02 r7):
-  //  LEFT  — the object name (allowed to WRAP so a long name stacks narrow
-  //          instead of forcing the panel wide) + 'placed by' under it.
-  //  RIGHT — the perf pill with the scene-standing line RIGHT-JUSTIFIED beneath
-  //          it, because both are "this object's grade" and belong together.
-  // A separator divides header from data, matching the footer's.
+  // header (R, 09-02 r8 — her preferred shape, now that the grid no longer
+  // stretches): top row is [ name (left, wraps at a max width, ellipsis if it
+  // overflows even wrapped) | perf pill (right) ]; the scene-standing line sits
+  // LEFT-justified on its own second row. 'placed by' rides under the name.
+  // The full name is always in the title tooltip (her '…' idea).
   const placed = meta?.by ? `<div class="pl-sub">placed by ${meta.by}</div>` : '';
   return `
-  <div class="pl-head"><div class="pl-headtext"><b>${rec.label}</b>${placed}</div><div class="pl-headgrade"><span title="${esc(why)}" class="pl-rank">${badge(rec.rank, TIER_NAMES[rec.rank], true)}</span><div class="pl-sub pl-standing">${standing}</div></div></div>
+  <div class="pl-head">
+    <div class="pl-headtop"><b class="pl-name" title="${esc(rec.label)}">${rec.label}</b><span title="${esc(why)}" class="pl-rank">${badge(rec.rank, TIER_NAMES[rec.rank], true)}</span></div>
+    <div class="pl-sub pl-standing">${standing}</div>${placed}
+  </div>
   <div class="pl-grid">${rows}</div>
   <div class="pl-foot">${pinned ? 'click elsewhere to unpin' : 'click to pin'}</div>`;
 }
