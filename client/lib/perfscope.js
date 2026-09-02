@@ -334,11 +334,13 @@ function loupeHtml(rec) {
   const worstLabel = { tris: 'triangles', draws: 'draw calls', texMB: 'texture VRAM',
     bones: 'bones', mats: 'materials', alpha: 'transparency' }[rec.worst] || rec.worst;
   const why = `overall = worst category wins (VRChat model). this object's ${TIER_NAMES[rec.rank]} rank is set by ${worstLabel}. fix the red/orange rows to raise it.`;
-  // header: the rank pill, then a right column with the name and (aligned
-  // under it, R 09-02) the 'placed by' line — so the sub-text lines up with
-  // the name, not the pill.
+  // header: name/sub block on the left, the rank pill on the RIGHT — aligned to
+  // the same seam the data values sit against (R, 09-02: shift the pill right to
+  // line up with the longest data title), and top-aligned so no empty space
+  // hangs below it. A separator line divides the header from the data, matching
+  // the one above 'click to pin'.
   return `
-  <div class="pl-head"><span title="${esc(why)}" class="pl-rank">${badge(rec.rank, TIER_NAMES[rec.rank], true)}</span><div class="pl-headtext"><b>${rec.label}</b>${meta?.by ? `<div class="pl-sub">placed by ${meta.by}</div>` : ''}</div></div>
+  <div class="pl-head"><div class="pl-headtext"><b>${rec.label}</b>${meta?.by ? `<div class="pl-sub">placed by ${meta.by}</div>` : ''}</div><span title="${esc(why)}" class="pl-rank">${badge(rec.rank, TIER_NAMES[rec.rank], true)}</span></div>
   <div class="pl-grid">${rows}</div>
   <div class="pl-foot">${pinned ? 'click elsewhere to unpin' : 'click to pin'}</div>`;
 }
