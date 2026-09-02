@@ -57,15 +57,39 @@ export function initStylePanel() {
       row.append(sw, name);
       body.appendChild(row);
     }
+    // panel visibility — the --panel-a opacity dial (the visionOS "Tinted"
+    // lesson already lived behind /panels; R asked for it here, 09-01 23:31)
+    const vrow = document.createElement('label');
+    vrow.className = 'row';
+    const vnm = document.createElement('span');
+    vnm.className = 'nm'; vnm.textContent = 'panels';
+    const vis = document.createElement('input');
+    vis.type = 'range'; vis.min = 0.3; vis.max = 1; vis.step = 0.02;
+    vis.value = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--panel-a')) || 0.58;
+    const vval = document.createElement('span');
+    vval.className = 'v'; vval.textContent = Number(vis.value).toFixed(2);
+    vis.oninput = () => {
+      rootStyle().setProperty('--panel-a', vis.value);
+      vval.textContent = Number(vis.value).toFixed(2);
+      const o = load(); o['--panel-a'] = vis.value; save(o);
+    };
+    vrow.append(vnm, vis, vval);
+    body.appendChild(vrow);
+
     const reset = document.createElement('button');
     reset.textContent = 'reset to defaults';
     reset.style.cssText = 'margin-top:6px;';
     reset.onclick = () => {
       for (const f of FIELDS) rootStyle().removeProperty(f.key);
+      rootStyle().removeProperty('--panel-a');
       save({});
-      // repaint swatches from the sheet's own values
+      // repaint swatches + the visibility slider from the sheet's own values
       const inputs = reset.parentElement.querySelectorAll('input[type=color]');
       FIELDS.forEach((f, i) => { inputs[i].value = currentHex(f); });
+      vis.value = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--panel-a')) || 0.58;
+      vval.textContent = Number(vis.value).toFixed(2);
+      // ui.js's 1s sweep repaints the --p fill; dispatching input here would
+      // re-save the default into the just-emptied store
     };
     body.appendChild(reset);
   }, { id: 'style', host: 'settings' });

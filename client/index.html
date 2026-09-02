@@ -85,30 +85,14 @@ body.loupe-on canvas { cursor: var(--cur-loupe, crosshair); }
    reset the standard props to auto and let the pseudos own the bar. */
 @supports selector(::-webkit-scrollbar) {
   * { scrollbar-width: auto; scrollbar-color: auto; }
-  /* v2 (R, 09-01 23:05): thinner, arrows at both ends — the classic chat-bar
-     grammar promoted, plus deliberate end buttons instead of vestigial UA
-     ones. Inset from the frame edge comes from .fr-body's padding below. */
+  /* main's chat-log bar, verbatim, as the one global grammar (R, 09-01
+     23:31: "the styling on this one element was already pretty good" — the
+     v2 arrow buttons read as bulk and are retired). */
   *::-webkit-scrollbar { width: 7px; height: 7px; }
   *::-webkit-scrollbar-thumb { background: var(--edge); border-radius: 4px; }
   *::-webkit-scrollbar-thumb:hover { background: var(--edge-hi); }
   *::-webkit-scrollbar-track, *::-webkit-scrollbar-corner { background: transparent; }
-  *::-webkit-scrollbar-button { display: none; }
-  *::-webkit-scrollbar-button:vertical:single-button {
-    display: block; height: 9px; width: 7px;
-    background-repeat: no-repeat; background-position: center; background-size: 7px 5px;
-  }
-  *::-webkit-scrollbar-button:vertical:single-button:decrement {
-    background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 6'><path d='M4 1 L7 5 L1 5 Z' fill='rgba(255,255,255,0.32)'/></svg>");
-  }
-  *::-webkit-scrollbar-button:vertical:single-button:increment {
-    background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 6'><path d='M4 5 L7 1 L1 1 Z' fill='rgba(255,255,255,0.32)'/></svg>");
-  }
-  *::-webkit-scrollbar-button:vertical:single-button:decrement:hover {
-    background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 6'><path d='M4 1 L7 5 L1 5 Z' fill='rgba(255,255,255,0.6)'/></svg>");
-  }
-  *::-webkit-scrollbar-button:vertical:single-button:increment:hover {
-    background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 6'><path d='M4 5 L7 1 L1 1 Z' fill='rgba(255,255,255,0.6)'/></svg>");
-  }
+  *::-webkit-scrollbar-button { display: none; height: 0; width: 0; }
 }
 body { font: var(--fs)/1.5 var(--font); color: var(--fg); -webkit-font-smoothing: antialiased; }
 canvas { display: block; touch-action: none; }
