@@ -137,6 +137,23 @@ new MutationObserver(() => {
   if (b !== _cursorBrand) { _cursorBrand = b; buildCursors(); }
 }).observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
 
+// ============================================================ slider fill
+// WebKit custom tracks have no progress fill, so every .row range carries a
+// --p custom property the track gradient reads (index.html). Painted on user
+// input, and swept once a second because panels also set .value from code
+// (syncSky and friends fire no events).
+
+function paintRange(i) {
+  const min = +i.min || 0, max = +i.max || 100;
+  i.style.setProperty('--p', `${(((+i.value || 0) - min) / (max - min || 1)) * 100}%`);
+}
+document.addEventListener('input', (e) => {
+  if (e.target.matches?.('.row input[type=range]')) paintRange(e.target);
+}, true);
+setInterval(() => {
+  for (const i of document.querySelectorAll('.row input[type=range]')) paintRange(i);
+}, 1000);
+
 // ============================================================ tooltips
 // Every hover hint in the client is a native title= attribute, which browsers
 // paint in OS chrome no token can reach — so "style the tooltips" means owning
