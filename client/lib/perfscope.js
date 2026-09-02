@@ -29,7 +29,11 @@ import { fsvg } from './icons.js';
 // (VRChat's five ranks). Deliberately literal — these mean the same thing in
 // every world and every theme, like a heatmap's, so they do NOT follow the
 // accent picker.
-export const TIERS = ['#3ddc84', '#a3e048', '#ffd166', '#ff9f43', '#ff5b5b'];
+// perceptually-separated ramp (R, 09-02: old ramp blurred — green≈lime, and
+// the top three were all one warm tone). Even hue walk + rising chroma:
+// emerald → spring-green → amber → tangerine → hot-red. Each tier is its own
+// hue AND its own lightness, so they separate at a glance and for CVD eyes.
+export const TIERS = ['#2fd08a', '#9be04a', '#ffc23d', '#ff7a2f', '#f23b52'];
 const TIER_NAMES = ['excellent', 'good', 'medium', 'poor', 'very poor'];
 
 // per-subject thresholds: crossing [i] puts you in tier i+1
@@ -74,7 +78,11 @@ function texBytes(tex) {
     return tex.mipmaps.reduce((s, m) => s + (m.data?.byteLength ?? 0), 0);
   }
   const w = img.width ?? img.videoWidth ?? 0, h = img.height ?? img.videoHeight ?? 0;
-  return Math.round(w * h * bppOf(tex) * (tex.generateMipmaps ? 1.333 : 1));
+  // mip chain adds exactly 1/3 (geometric series 1+¼+1/16+… = 4/3) IF mips exist:
+  // real uploaded mipmaps, or the auto-generate flag on a power-of-two-ish image.
+  const hasMips = (Array.isArray(tex.mipmaps) && tex.mipmaps.length > 1) ||
+                  (tex.generateMipmaps && tex.minFilter !== THREE.NearestFilter && tex.minFilter !== THREE.LinearFilter);
+  return Math.round(w * h * bppOf(tex) * (hasMips ? 4 / 3 : 1));
 }
 
 // ---- collection -------------------------------------------------------------
@@ -284,24 +292,31 @@ function loupeHtml(rec) {
     .map(({ t, b }) => `${t.image?.width ?? '?'}×${t.image?.height ?? '?'}${t.isCompressedTexture ? '' : ' raw'} ${fmtB(b)}`)
     .join(' · ');
   const meta = rec.kind === 'entity' ? entityMeta.get(rec.key.slice(2)) : null;
+  // one grid row: label · value · pill. The value sits RIGHT NEXT TO its label
+  // (old table stretched 100% and right-aligned, exiling every number across a
+  // huge void — R, 09-02). rows with no tier badge just omit the pill cell.
+  const row = (label, val, tier) =>
+    `<div class="plr"><span class="pll">${label}</span><span class="plv">${val}</span>${
+      tier == null ? '<span></span>' : `<span class="plp">${badge(tier, '')}</span>`}</div>`;
+  const rows = [
+    row('triangles', rec.tris.toLocaleString(), rec.tiers.tris),
+    row('draw calls', rec.draws, rec.tiers.draws),
+    row('materials', rec.mats.size, rec.tiers.mats),
+    row('textures', rec.texs.size, null),
+    texList ? `<div class="pl-texlist">${texList}</div>` : '',
+    row('tex VRAM', fmtB(rec.texBytes), rec.tiers.texMB),
+    row('geometry', fmtB(rec.attrBytes), null),
+    rec.bones ? row('bones', rec.bones, rec.tiers.bones) : '',
+    rec.morphs ? row('morph targets', rec.morphs, null) : '',
+    rec.instances ? row('instances', rec.instances.toLocaleString(), null) : '',
+    rec.alpha ? row('transparent mats', rec.alpha, rec.tiers.alpha) : '',
+    row('meshes', rec.meshes, null),
+  ].join('');
   return `
   <div class="pl-head">${badge(rec.rank, TIER_NAMES[rec.rank])} <b>${rec.label}</b></div>
   ${meta?.by ? `<div class="pl-sub">placed by ${meta.by}</div>` : ''}
-  <table>
-    <tr><td>triangles</td><td>${rec.tris.toLocaleString()}</td><td>${badge(rec.tiers.tris, '')}</td></tr>
-    <tr><td>draw calls</td><td>${rec.draws}</td><td>${badge(rec.tiers.draws, '')}</td></tr>
-    <tr><td>materials</td><td>${rec.mats.size}</td><td>${badge(rec.tiers.mats, '')}</td></tr>
-    <tr><td>textures</td><td>${rec.texs.size}</td><td></td></tr>
-    ${texList ? `<tr><td colspan="3" class="pl-texlist">${texList}</td></tr>` : ''}
-    <tr><td>tex VRAM <i>est</i></td><td>${fmtB(rec.texBytes)}</td><td>${badge(rec.tiers.texMB, '')}</td></tr>
-    <tr><td>geometry <i>est</i></td><td>${fmtB(rec.attrBytes)}</td><td></td></tr>
-    ${rec.bones ? `<tr><td>bones</td><td>${rec.bones}</td><td>${badge(rec.tiers.bones, '')}</td></tr>` : ''}
-    ${rec.morphs ? `<tr><td>morph targets</td><td>${rec.morphs}</td><td></td></tr>` : ''}
-    ${rec.instances ? `<tr><td>instances</td><td>${rec.instances.toLocaleString()}</td><td></td></tr>` : ''}
-    ${rec.alpha ? `<tr><td>transparent mats</td><td>${rec.alpha}</td><td>${badge(rec.tiers.alpha, '')}</td></tr>` : ''}
-    <tr><td>meshes</td><td>${rec.meshes}</td><td></td></tr>
-  </table>
-  <div class="pl-foot">${pinned ? 'click elsewhere to unpin' : 'click to pin'} · counts measured, sizes estimated</div>`;
+  <div class="pl-grid">${rows}</div>
+  <div class="pl-foot">${pinned ? 'click elsewhere to unpin' : 'click to pin'} · <span title="counts are exact; texture VRAM is computed w·h·bpp·mips (±driver alignment); geometry is CPU-side attribute bytes">counts exact · VRAM computed</span></div>`;
 }
 
 function castAt(ev) {
