@@ -74,6 +74,23 @@ function _contentClaims(e) {
   }
   return false;
 }
+/** Is this pointer over DRAGGABLE frame chrome — i.e. none of: interactive
+ *  content (_contentClaims), a click-styled row (computed cursor:pointer —
+ *  the house convention for every clickable), a label (clicks toggle its
+ *  input), or selectable text (the chat log — a grab there would eat copy)?
+ *  The SL Build-window/WoW convention (R, 09-01): empty pane pixels move the
+ *  pane; everything that DOES something keeps doing it. */
+function _grabbableAt(e) {
+  if (_contentClaims(e)) return false;
+  for (let t = e.target; t instanceof HTMLElement; t = t.parentElement) {
+    if (t.tagName === 'LABEL') return false;
+    const cs = getComputedStyle(t);
+    if (cs.cursor === 'pointer') return false;
+    if ((cs.userSelect || cs.webkitUserSelect) === 'text') return false;
+    if (t.classList?.contains('frame')) return true;   // reached bare chrome
+  }
+  return false;
+}
 function _hit(e) {
   const cands = _resizables.filter((f) => f.active());
   cands.sort((a, b) => (+b.root.style.zIndex || 0) - (+a.root.style.zIndex || 0));
@@ -314,9 +331,17 @@ export function makeFrame(id, opts = {}) {
     head.addEventListener('pointerup', up);
   });
   // Alt+drag anywhere on the frame — the MMO habit, and it rescues a frame
-  // whose title bar has been dragged off-screen.
+  // whose title bar has been dragged off-screen. Without Alt, EMPTY frame
+  // pixels drag too when the layout is unlocked (grab-by-empty-space, R's
+  // "ship 1" 09-01) — interactive content, pointer-cursor rows, labels,
+  // selectable text and the edge-resize band all still win.
+  root.addEventListener('pointermove', (e) => {
+    if (locked || _resizing) { root.style.cursor = ''; return; }
+    root.style.cursor = (!_hit(e) && _grabbableAt(e)) ? 'grab' : '';
+  });
   root.addEventListener('pointerdown', (e) => {
-    if (locked || !e.altKey || !e.isTrusted) return;   // isTrusted: our own
+    if (locked || !e.isTrusted) return;                // isTrusted: our own
+    if (!e.altKey && (_hit(e) || !_grabbableAt(e))) return;
     // re-dispatch below bubbles back through this capture handler — without
     // the guard it recurses to stack overflow (exposed when heads went
     // display:none and alt-drag became the only rest-state move).
