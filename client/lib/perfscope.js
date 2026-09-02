@@ -25,6 +25,10 @@ import { THREE, scene, camera, renderer, canvas } from './core.js';
 import { entities, entityMeta } from './world.js';
 import { fsvg } from './icons.js';
 
+// HTML-attribute escaper for the tooltip strings below (was used un-imported —
+// a real hover threw ReferenceError; mocked-innerHTML shots never caught it).
+const esc = (v) => String(v ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
 // data colors, not chrome: a perceptual cheap→dear ramp shared by every mode
 // (VRChat's five ranks). Deliberately literal — these mean the same thing in
 // every world and every theme, like a heatmap's, so they do NOT follow the
@@ -301,6 +305,24 @@ function loupeHtml(rec) {
     .map(({ t, b }) => `<div class="pl-texd">${t.image?.width ?? '?'}×${t.image?.height ?? '?'}${t.isCompressedTexture ? '' : ' <em title="uncompressed — sits in VRAM at full size; a compressed (KTX2) version costs ~4-8× less">raw</em>'}</div><div class="pl-texb">${fmtB(b)}</div>`)
     .join('');
   const meta = rec.kind === 'entity' ? entityMeta.get(rec.key.slice(2)) : null;
+  // scene standing (R, 09-02): "poor" is the tier; "#2 of 17 by draw calls" is
+  // the actionable number — where this subject sits among all subjects under the
+  // lens you're currently looking through. Mirrors paintTable's sort so the
+  // card agrees with the false-color overlay and the heaviest table. When no
+  // overlay is active we fall back to overall rank (worst-wins) as the ordering.
+  const lensMode = mode === 'off' ? 'rank' : mode;
+  const lensLabel = MODES[lensMode]?.label ?? 'overall rank';
+  const lensMetric = (r) => lensMode === 'rank' ? r.rank
+    : lensMode === 'tris' ? r.tris : lensMode === 'draws' ? r.draws
+    : lensMode === 'tex' ? r.texBytes : lensMode === 'mat' ? r.matCost
+    : lensMode === 'bones' ? r.bones : lensMode === 'alpha' ? r.alpha : r.rank;
+  const ordered = [...subjects.values()]
+    .sort((a, b) => lensMode === 'rank'
+      ? b.rank - a.rank || b.tris - a.tris
+      : lensMetric(b) - lensMetric(a));
+  const pos = ordered.indexOf(rec) + 1, total = ordered.length;
+  const standing = total > 1 && pos > 0
+    ? `#${pos} of ${total} · ${lensLabel}` : lensLabel;
   // Maya channel-box layout (R, 09-02): a 3-column grid with a center seam.
   // label RIGHT-justified against the seam · value RIGHT-justified against the
   // pill column (with buffer) · tier pill. Everything lines up on two clean
@@ -338,9 +360,11 @@ function loupeHtml(rec) {
   // the same seam the data values sit against (R, 09-02: shift the pill right to
   // line up with the longest data title), and top-aligned so no empty space
   // hangs below it. A separator line divides the header from the data, matching
-  // the one above 'click to pin'.
+  // the one above 'click to pin'. The sub-line names the active lens and this
+  // subject's standing in it (R, 09-02); 'placed by' rides a second sub-line.
+  const sub = `<div class="pl-sub">${standing}</div>${meta?.by ? `<div class="pl-sub">placed by ${meta.by}</div>` : ''}`;
   return `
-  <div class="pl-head"><div class="pl-headtext"><b>${rec.label}</b>${meta?.by ? `<div class="pl-sub">placed by ${meta.by}</div>` : ''}</div><span title="${esc(why)}" class="pl-rank">${badge(rec.rank, TIER_NAMES[rec.rank], true)}</span></div>
+  <div class="pl-head"><div class="pl-headtext"><b>${rec.label}</b>${sub}</div><span title="${esc(why)}" class="pl-rank">${badge(rec.rank, TIER_NAMES[rec.rank], true)}</span></div>
   <div class="pl-grid">${rows}</div>
   <div class="pl-foot">${pinned ? 'click elsewhere to unpin' : 'click to pin'}</div>`;
 }
