@@ -100,6 +100,59 @@ export function flashHint(html, ms = 2600) {
   }, ms);
 }
 
+// ============================================================ tooltips
+// Every hover hint in the client is a native title= attribute, which browsers
+// paint in OS chrome no token can reach — so "style the tooltips" means owning
+// them. One delegated chip: on hover we borrow the title (native suppressed by
+// removing the attribute), show the house version, and hand it back on leave.
+// Zero call-site changes; new code keeps writing title= and inherits this.
+
+const tip = document.createElement('div');
+tip.id = 'tipchip';
+document.body.appendChild(tip);
+let tipTimer = null, tipHost = null;
+
+function tipHide() {
+  clearTimeout(tipTimer); tipTimer = null;
+  if (tipHost) { if (tipHost._tip) tipHost.setAttribute('title', tipHost._tip); tipHost._tip = null; tipHost = null; }
+  tip.classList.remove('show');
+}
+document.addEventListener('mouseover', (e) => {
+  const host = e.target.closest?.('[title]');
+  if (!host || host === tipHost) return;
+  tipHide();
+  const text = host.getAttribute('title');
+  if (!text) return;
+  tipHost = host; host._tip = text; host.removeAttribute('title');
+  tipTimer = setTimeout(() => {
+    if (tipHost !== host || !document.body.contains(host)) return;
+    tip.textContent = host._tip;   // reread: paintHud may have refreshed it
+    const r = host.getBoundingClientRect();
+    tip.style.left = '0px'; tip.style.top = '0px';   // reset before measuring
+    tip.classList.add('show');
+    const tw = tip.offsetWidth, th = tip.offsetHeight;
+    let x = Math.round(r.left + r.width / 2 - tw / 2);
+    let y = Math.round(r.bottom + 7);
+    if (y + th > innerHeight - 4) y = Math.round(r.top - th - 7);   // flip above
+    x = Math.max(4, Math.min(x, innerWidth - tw - 4));
+    tip.style.left = `${x}px`; tip.style.top = `${y}px`;
+  }, 450);
+}, true);
+document.addEventListener('mouseout', (e) => {
+  if (tipHost && !tipHost.contains(e.relatedTarget)) tipHide();
+}, true);
+document.addEventListener('mousedown', tipHide, true);
+
+// paintHud rewrites #hud.title at 1Hz; while we hold the borrow, route the
+// refresh into the stash instead of re-arming the native tooltip mid-hover.
+new MutationObserver(() => {
+  if (tipHost?.hasAttribute('title')) {
+    tipHost._tip = tipHost.getAttribute('title');
+    tipHost.removeAttribute('title');
+    if (tip.classList.contains('show')) tip.textContent = tipHost._tip;
+  }
+}).observe(document.body, { attributes: true, attributeFilter: ['title'], subtree: true });
+
 // ============================================================ panel frames
 
 let worldFrame = null;
