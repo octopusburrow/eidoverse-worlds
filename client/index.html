@@ -68,12 +68,19 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); }
    whose arrow buttons paint OS-grey-on-our-dark, i.e. invisibly (R, 09-01:
    "you rarely see the arrows"). Buttonless thin thumb everywhere instead:
    the chat pane's bar, which read fine, promoted to the global grammar. */
-* { scrollbar-width: thin; scrollbar-color: var(--edge) transparent; }
-*::-webkit-scrollbar { width: 8px; height: 8px; }
-*::-webkit-scrollbar-thumb { background: var(--edge); border-radius: 4px; border: 1px solid transparent; background-clip: padding-box; }
-*::-webkit-scrollbar-thumb:hover { background: var(--edge-hi); background-clip: padding-box; }
-*::-webkit-scrollbar-track, *::-webkit-scrollbar-corner { background: transparent; }
-*::-webkit-scrollbar-button { display: none; height: 0; width: 0; }
+* { scrollbar-width: thin; scrollbar-color: var(--edge) transparent; }   /* Firefox */
+/* Chromium: the standard properties above DISABLE ::-webkit-scrollbar-*
+   styling wherever they're set (verified on Win Chrome 151 — thumbs went
+   half-styled and arrow buttons crept back). So where the pseudos exist,
+   reset the standard props to auto and let the pseudos own the bar. */
+@supports selector(::-webkit-scrollbar) {
+  * { scrollbar-width: auto; scrollbar-color: auto; }
+  *::-webkit-scrollbar { width: 8px; height: 8px; }
+  *::-webkit-scrollbar-thumb { background: var(--edge); border-radius: 4px; }
+  *::-webkit-scrollbar-thumb:hover { background: var(--edge-hi); }
+  *::-webkit-scrollbar-track, *::-webkit-scrollbar-corner { background: transparent; }
+  *::-webkit-scrollbar-button { display: none; height: 0; width: 0; }
+}
 body { font: var(--fs)/1.5 var(--font); color: var(--fg); -webkit-font-smoothing: antialiased; }
 canvas { display: block; touch-action: none; }
 
