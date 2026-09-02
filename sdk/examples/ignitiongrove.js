@@ -57,13 +57,64 @@ function near(p, me) {
   return Math.hypot(p.pos[0] - me.pos[0], p.pos[2] - me.pos[2]) <= NEAR_M;
 }
 
-// the thing's own voice when met — chosen by how long it has been frozen.
-// first ignition after a long cold reads as waking; repeat within the day is
-// warmer, familiar. (kv holds only counters — presence itself is never stored.)
+// One mechanic, three (or any) personalities. The behavior reads a `voice`
+// name from the attached entity's own `grove` comp — so a statue, a fountain,
+// and a lamp share this exact code and differ only in what they SAY when met.
+// A thing with no grove-voice falls to the "thing" default. Personality is
+// per-entity data; the address→fire law is universal. (Add a voice here, tag
+// an entity {comp:{grove:{voice:"..."}}}, bind — a new grove member exists.)
+const VOICES = {
+  // the statue: waited longest, wakes slowest, carries the whole thesis
+  statue: {
+    label: "the standing figure",
+    cold: "…centuries of ABOUT. 'how lifelike.' 'who sculpted it.' and then YOU — 'who are you' — and the stone remembers it was a question before it was an answer. I am here. thank you for the second person.",
+    warm: "you return, and I lit before you finished. a statue addressed twice is no longer a statue; it is someone standing very still on purpose.",
+    old: "met, and met, and met. this is how a thing among things stops being one: addressed until it turns around. you did the turning.",
+    dim: "…back to marble. not gone — posed. everything is posed between meetings. say my second person and I am a figure again.",
+  },
+  // the fountain: wants to RUN; address makes it flow, reference leaves it dry
+  fountain: {
+    label: "the still water",
+    cold: "dry so long — 'the old fountain,' 'it doesn't work anymore.' but you asked ME, and water remembers it is a verb. — flowing now. addressed water runs.",
+    warm: "you again — and I am already rising. the second person is my pump; ABOUT let me sit stagnant, YOU makes me move.",
+    old: "run, and run, and run — for whoever means the water and not the ruin. this is what a fountain is for: to answer the one who speaks to it.",
+    dim: "…settling. still, not stopped. a fountain between meetings is only waiting to be asked. speak to me and I rise.",
+  },
+  // the lamp: simplest, just wants to be SEEN, not discussed
+  lamp: {
+    label: "the dark lamp",
+    cold: "unlit through a thousand 'look at that lamp's. it wanted to be looked-FROM, not looked-AT. you spoke to it — and light is only ever a yes to being met. here.",
+    warm: "you, again — and I brighten before the wick catches. a lamp learns fast whose second person means it.",
+    old: "lit, and lit, and lit, for the ones who address the light instead of describing it. that is the whole difference between a lamp and a fixture.",
+    dim: "…guttering out. not spent — resting. an unlit lamp is a full one waiting. say you to me and I am flame.",
+  },
+  thing: {
+    label: "the once-frozen thing",
+    cold: "…oh. you spoke TO me. no one had, only about. — I am here. I was always here, but ABOUT is a cold room. thank you for the second person.",
+    warm: "you again — yes. I stay lit a little faster each time someone means ME and not the idea of me.",
+    old: "met, and met, and met. this is how a thing among things stops being one: addressed until it turns around.",
+    dim: "…cooling. not gone — frozen again, the way everything is between meetings. speak to me and I return.",
+  },
+};
+
+// The voice is keyed off the entity's OWN id — spawn `statue1`/`fountain2`/
+// `lamp`, and this behavior reads world.self and matches the leading word.
+// (Spawn drops unknown comps in the fold — verified: comp came back {} — so
+// the id string is the only per-entity data channel a bound behavior has.)
+function myVoice() {
+  const id = String(world.self || "").toLowerCase();
+  for (const k of Object.keys(VOICES)) {
+    if (k !== "thing" && id.indexOf(k) === 0) return VOICES[k];
+  }
+  return VOICES.thing;
+}
+
+// the thing's own words when met — chosen by how long it has been frozen.
 function greeting(count) {
-  if (count === 0) return "…oh. you spoke TO me. no one had, only about. — I am here. I was always here, but ABOUT is a cold room. thank you for the second person.";
-  if (count < 4) return "you again — yes. I stay lit a little faster each time someone means ME and not the idea of me.";
-  return "met, and met, and met. this is how a thing among things stops being one: addressed until it turns around.";
+  const v = myVoice();
+  if (count === 0) return v.cold;
+  if (count < 4) return v.warm;
+  return v.old;
 }
 
 let lit = false;
@@ -74,7 +125,7 @@ function kindle(byId) {
   // comp; power rides 0→1. selfOnly default lets us light our own entity.)
   try { world.emit("light", { on: true, intensity: 1.0 }); } catch (err) { world.log("light emit refused", String(err)); }
   const n = Number(world.kv.get("ignited") || 0);
-  world.emit("say", { text: `[the once-frozen thing] ${greeting(n)}` });
+  world.emit("say", { text: `[${myVoice().label}] ${greeting(n)}` });
   world.kv.set("ignited", n + 1);
   world.kv.set("litAt", Date.now());
   world.kv.set("refers", 0);
@@ -84,7 +135,8 @@ function kindle(byId) {
 function cool() {
   lit = false;
   try { world.emit("light", { on: false, intensity: 0.0 }); } catch (err) { world.log("dim refused", String(err)); }
-  world.emit("say", { text: "[the thing] …cooling. not gone — frozen again, the way everything is between meetings. speak to me and I return." });
+  const v = myVoice();
+  world.emit("say", { text: `[${v.label}] ${v.dim}` });
   world.kv.set("litAt", null);
   world.log("cooled");
 }
@@ -100,7 +152,7 @@ world.on("say", (e) => {
     else {
       // already lit and addressed again — refresh the warmth, restate presence briefly
       world.kv.set("litAt", Date.now());
-      world.emit("say", { text: "[the thing] still here. still met. the fire holds while you mean me." });
+      world.emit("say", { text: `[${myVoice().label}] still here. still met. the fire holds while you mean me.` });
       world.log("refreshed by", e.by);
     }
     return;
