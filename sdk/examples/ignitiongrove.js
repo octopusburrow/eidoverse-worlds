@@ -36,14 +36,16 @@ const REFERS = /\b(it|its|the (lamp|statue|fountain|thing)|that|this)\b/i;
 function addresses(text) {
   const t = (text || "").trim();
   if (!t) return false;
-  if (YOU.test(t)) return true;
-  if (GREET.test(t)) return true;
-  // a bare question or imperative that does NOT name the thing in 3rd person:
-  // "are you there" already caught by YOU; "shine" / "wake up" / "stay" =
-  // imperative address; treat a short utterance ending in "?" with no REFERS
-  // subject as address (you're asking IT).
-  if (/\?$/.test(t) && !REFERS.test(t)) return true;
-  if (/^(wake|shine|stay|rise|open|speak|sing|breathe|come)\b/i.test(t)) return true;
+  // GUARD: a 3rd-person subject for the thing means the utterance is ABOUT it,
+  // never TO it — "did you see the lamp?" is one person addressing ANOTHER, and
+  // must leave the thing frozen even though it contains "you". Reference wins
+  // over pronoun. (Without this the grove ignites on ordinary room chatter and
+  // loses all its restraint — the flaw the live world would expose first.)
+  if (REFERS.test(t)) return false;
+  if (YOU.test(t)) return true;                                    // 2nd person, nothing referred → to the thing
+  if (GREET.test(t)) return true;                                  // vocative
+  if (/\?$/.test(t)) return true;                                  // a question with no 3rd-person subject → asking IT
+  if (/^(wake|shine|stay|rise|open|speak|sing|breathe|come|listen)\b/i.test(t)) return true; // imperative address
   return false;
 }
 

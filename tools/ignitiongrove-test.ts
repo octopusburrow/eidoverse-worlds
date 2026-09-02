@@ -149,6 +149,9 @@ async function main() {
   const lit = alice.msgs.some((m) => m.entry?.verb === "say" && /spoke TO me/i.test(m.entry?.args?.text ?? ""));
   check("'what is this?' stays FROZEN", froze);
   check("'who are you?' IGNITES", lit);
+  // v2 guard: reference wins over pronoun — "did you see the lamp?" is one
+  // person addressing ANOTHER about the thing, must stay frozen. (Classifier
+  // unit test covers this exhaustively; noted here as the design's crux rule.)
 
   // (5) far address ignored (thing1, now cooled/lit far away from 41,41)
   clear(alice);
