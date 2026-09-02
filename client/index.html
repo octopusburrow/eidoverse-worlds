@@ -63,6 +63,16 @@
 }
 
 html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); }
+/* The pointer joins the design system (R, 09-01: the OS arrow "looks so
+   dated by comparison"). ui.js generates SVG cursors tinted by the LIVE
+   --brand (CSS url() can't read vars) and publishes them as these custom
+   properties; every rule falls back to the native cursor until then, and
+   grab/resize/text cursors stay native on purpose — not drastic. */
+html, body { cursor: var(--cur-default, auto); }
+button, .btn, select, a, label, .mrow, .mpin, .dbg-row, .pf-row, .card,
+.ac-row, .chat-gear, .fr-btn, .sec > .head, .chat-tabs button, .pf-tile,
+.chat-side-tog, .sp-skip { cursor: var(--cur-pointer, pointer); }
+body.loupe-on canvas { cursor: var(--cur-loupe, crosshair); }
 /* ONE house scrollbar. Before this, three containers each carried their own
    webkit rules (6px/7px drift) and the rest fell back to the UA default —
    whose arrow buttons paint OS-grey-on-our-dark, i.e. invisibly (R, 09-01:
@@ -75,11 +85,30 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); }
    reset the standard props to auto and let the pseudos own the bar. */
 @supports selector(::-webkit-scrollbar) {
   * { scrollbar-width: auto; scrollbar-color: auto; }
-  *::-webkit-scrollbar { width: 8px; height: 8px; }
+  /* v2 (R, 09-01 23:05): thinner, arrows at both ends — the classic chat-bar
+     grammar promoted, plus deliberate end buttons instead of vestigial UA
+     ones. Inset from the frame edge comes from .fr-body's padding below. */
+  *::-webkit-scrollbar { width: 7px; height: 7px; }
   *::-webkit-scrollbar-thumb { background: var(--edge); border-radius: 4px; }
   *::-webkit-scrollbar-thumb:hover { background: var(--edge-hi); }
   *::-webkit-scrollbar-track, *::-webkit-scrollbar-corner { background: transparent; }
-  *::-webkit-scrollbar-button { display: none; height: 0; width: 0; }
+  *::-webkit-scrollbar-button { display: none; }
+  *::-webkit-scrollbar-button:vertical:single-button {
+    display: block; height: 9px; width: 7px;
+    background-repeat: no-repeat; background-position: center; background-size: 7px 5px;
+  }
+  *::-webkit-scrollbar-button:vertical:single-button:decrement {
+    background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 6'><path d='M4 1 L7 5 L1 5 Z' fill='rgba(255,255,255,0.32)'/></svg>");
+  }
+  *::-webkit-scrollbar-button:vertical:single-button:increment {
+    background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 6'><path d='M4 5 L7 1 L1 1 Z' fill='rgba(255,255,255,0.32)'/></svg>");
+  }
+  *::-webkit-scrollbar-button:vertical:single-button:decrement:hover {
+    background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 6'><path d='M4 1 L7 5 L1 5 Z' fill='rgba(255,255,255,0.6)'/></svg>");
+  }
+  *::-webkit-scrollbar-button:vertical:single-button:increment:hover {
+    background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 6'><path d='M4 5 L7 1 L1 1 Z' fill='rgba(255,255,255,0.6)'/></svg>");
+  }
 }
 body { font: var(--fs)/1.5 var(--font); color: var(--fg); -webkit-font-smoothing: antialiased; }
 canvas { display: block; touch-action: none; }
@@ -268,7 +297,7 @@ select {
 .frame.collapsed { height: auto !important; }
 /* scrollbars sit a couple px in from the frame edge so the scroll thumb and
    the edge-resize band don't fight over the same column */
-.frame .fr-body { padding-right: 3px; }
+.frame .fr-body { padding-right: 6px; }
 .frame.flash { animation: flash 1.4s ease-out; }
 @keyframes flash {
   0%, 100% { border-color: var(--edge); }
@@ -442,6 +471,10 @@ select {
 .row { display: flex; align-items: center; gap: 7px; font-size: var(--fs-sm); color: var(--dim); }
 .row .nm { width: 42px; flex: none; color: var(--fg); }
 .row input[type=range] { flex: 1; accent-color: var(--control); min-width: 0; }
+/* a YIELDED slider (sky time under real-clock, basic-only knobs under the
+   detailed sky) keeps the house hue, dimmed — the UA's disabled range
+   painted stark white against every teal sibling (R's catch, 09-01) */
+.row input[type=range]:disabled { accent-color: color-mix(in srgb, var(--control) 40%, #555); opacity: .5; }
 /* Checkboxes take the same accent as the sliders — seafoam fill, UA-contrast
    (black) tick when checked. This existed via accent-color when the audio
    panel first spent the house palette, and fell out of the selector when the
@@ -589,11 +622,21 @@ body.arranging .frame.label-below .fr-head .fr-btns {
   border-radius: 0 0 7px 7px;
   margin-bottom: 0; margin-top: -1px;
 }
-/* sticky-edge glow: this frame is riding that edge and will follow it */
-body.arranging .frame.st-l { box-shadow: inset 2px 0 0 color-mix(in srgb, var(--brand) 60%, transparent), 0 1px 5px rgb(0 0 0 / .28); }
-body.arranging .frame.st-r { box-shadow: inset -2px 0 0 color-mix(in srgb, var(--brand) 60%, transparent), 0 1px 5px rgb(0 0 0 / .28); }
-body.arranging .frame.st-t { box-shadow: inset 0 2px 0 color-mix(in srgb, var(--brand) 60%, transparent), 0 1px 5px rgb(0 0 0 / .28); }
-body.arranging .frame.st-b { box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--brand) 60%, transparent), 0 1px 5px rgb(0 0 0 / .28); }
+/* sticky-edge glow: this frame is riding that edge and will follow it.
+   Composed from one custom property per edge so a CORNER frame shows BOTH
+   glows (the old per-class box-shadow rules overwrote each other — a frame
+   stuck to two sides only ever lit the last one; R caught it, 09-01). */
+body.arranging .frame {
+  --sg: color-mix(in srgb, var(--brand) 60%, transparent);
+  --nosh: 0 0 rgb(0 0 0 / 0);
+  box-shadow: var(--st-l-s, var(--nosh)), var(--st-r-s, var(--nosh)),
+              var(--st-t-s, var(--nosh)), var(--st-b-s, var(--nosh)),
+              0 1px 5px rgb(0 0 0 / .28);
+}
+body.arranging .frame.st-l { --st-l-s: inset 2px 0 0 var(--sg); }
+body.arranging .frame.st-r { --st-r-s: inset -2px 0 0 var(--sg); }
+body.arranging .frame.st-t { --st-t-s: inset 0 2px 0 var(--sg); }
+body.arranging .frame.st-b { --st-b-s: inset 0 -2px 0 var(--sg); }
 #hud .ok  { color: var(--accent); }
 #hud .bad { color: var(--err); }
 #hud .edit { color: var(--warn); }
@@ -780,12 +823,15 @@ body.touch #touch { display: block; }
 .perf-loupe td i { font-style: normal; color: var(--dim); font-size: 9px; }
 .perf-loupe .pl-head { display: flex; gap: 7px; align-items: center; margin-bottom: 4px; color: var(--fg); }
 .perf-loupe .pl-sub { color: var(--dim); font-size: 10px; margin: -3px 0 4px; }
+.perf-loupe .pl-texlist { font-size: 9.5px; color: var(--dim); padding-left: 10px; }
 .perf-loupe .pl-foot { color: var(--dim); font-size: 9.5px; margin-top: 5px; opacity: .75; }
 .pf-badge {
   display: inline-block; min-width: 8px; height: 8px; border-radius: 4px;
   color: #0c1412; font-size: 9px; font-weight: 700; line-height: 1;
   padding: 1px 4px; vertical-align: 1px;
 }
+.pf-loupe-btn { display: flex; align-items: center; gap: 7px; padding: 5px 10px; color: var(--icon); }
+.pf-loupe-btn.on { color: var(--brand); box-shadow: inset 0 1px 3px rgb(0 0 0 / .6); }
 .pf-legend { display: flex; align-items: center; gap: 3px; font-size: 10px; color: var(--dim); }
 .pf-legend i { width: 14px; height: 7px; border-radius: 2px; }
 .pf-legend span { margin-left: 5px; }

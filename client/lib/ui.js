@@ -100,6 +100,43 @@ export function flashHint(html, ms = 2600) {
   }, ms);
 }
 
+// ============================================================ cursors
+// SVG pointers tinted by the live --brand. CSS url() cursors can't read
+// custom properties, so the tint is baked here and published as
+// --cur-default / --cur-pointer / --cur-loupe (index.html holds the rules
+// and the native fallbacks). Rebuilt whenever the accent picker writes new
+// tokens onto the root element.
+
+function buildCursors() {
+  const cs = getComputedStyle(document.documentElement);
+  const brand = (cs.getPropertyValue('--brand') || '#8fe8c8').trim();
+  const ink = '#101b1a';
+  const enc = (s) => `url("data:image/svg+xml,${encodeURIComponent(s)}")`;
+  const arrow = (fill, stroke) =>
+    `<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='0 0 22 22'>` +
+    `<path d='M4 2 L4 17 L8.2 13.4 L10.8 19 L13.6 17.6 L11 12.2 L16.5 12 Z' ` +
+    `fill='${fill}' stroke='${stroke}' stroke-width='1.4' stroke-linejoin='round'/></svg>`;
+  const loupe =
+    `<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'>` +
+    `<circle cx='10' cy='10' r='6.5' fill='rgba(16,27,26,0.25)' stroke='${brand}' stroke-width='2'/>` +
+    `<line x1='15' y1='15' x2='21' y2='21' stroke='${brand}' stroke-width='2.6' stroke-linecap='round'/>` +
+    `<line x1='15' y1='15' x2='21' y2='21' stroke='${ink}' stroke-width='1' stroke-linecap='round'/></svg>`;
+  const root = document.documentElement.style;
+  root.setProperty('--cur-default', `${enc(arrow(ink, brand))} 3 2, auto`);
+  root.setProperty('--cur-pointer', `${enc(arrow(brand, ink))} 3 2, pointer`);
+  root.setProperty('--cur-loupe', `${enc(loupe)} 10 10, crosshair`);
+}
+buildCursors();
+// the style panel writes tokens straight onto the root element's style —
+// watch it so the pointer follows the accent picker live. Guard: our own
+// three writes above also mutate [style]; only rebuild when --brand differs
+// from what we last baked, or the observer feeds itself forever.
+let _cursorBrand = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim();
+new MutationObserver(() => {
+  const b = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim();
+  if (b !== _cursorBrand) { _cursorBrand = b; buildCursors(); }
+}).observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
+
 // ============================================================ tooltips
 // Every hover hint in the client is a native title= attribute, which browsers
 // paint in OS chrome no token can reach — so "style the tooltips" means owning

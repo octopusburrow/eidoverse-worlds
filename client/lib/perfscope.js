@@ -23,6 +23,7 @@
 
 import { THREE, scene, camera, renderer, canvas } from './core.js';
 import { entities, entityMeta } from './world.js';
+import { fsvg } from './icons.js';
 
 // data colors, not chrome: a perceptual cheap→dear ramp shared by every mode
 // (VRChat's five ranks). Deliberately literal — these mean the same thing in
@@ -142,11 +143,13 @@ function collect() {
       if (!m) continue;
       rec.mats.add(m);
       if (m.transparent) rec.alpha += 1;
-      for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap',
-        'emissiveMap', 'alphaMap', 'envMap', 'lightMap', 'bumpMap', 'displacementMap']) {
-        const t = m[k];
-        if (t?.isTexture && !rec.texs.has(t)) { rec.texs.add(t); rec.texBytes += texBytes(t); }
-      }
+      // exhaustive texture sweep: any own value that IS a texture, plus
+      // shader-style uniforms. Named-key lists missed everything MToon and
+      // node materials carry (R's read, 09-01: unoptimized textures are the
+      // real VRAM hit — so the census must not have blind spots).
+      const seen = (t) => { if (t?.isTexture && !rec.texs.has(t)) { rec.texs.add(t); rec.texBytes += texBytes(t); } };
+      for (const v of Object.values(m)) seen(v);
+      if (m.uniforms) for (const u of Object.values(m.uniforms)) seen(u?.value);
     }
     if (g?.attributes) for (const a of Object.values(g.attributes)) rec.attrBytes += a.array?.byteLength ?? 0;
     if (o.isSkinnedMesh && o.skeleton) rec.bones = Math.max(rec.bones, o.skeleton.bones.length);
@@ -183,36 +186,67 @@ export const MODES = {
 };
 
 let mode = 'off';
+// Tint is an OVERLAY, not a replacement (R, 09-01 23:05): a translucent
+// veil mesh sharing the original's geometry draws over it, so the object's
+// own detail stays readable beneath the cost color — plus a bounds outline
+// per subject in its tier color. This also retires the material-swap/restore
+// hazard entirely: originals are never touched.
 const tintMats = TIERS.map((c) => {
-  const m = new THREE.MeshBasicMaterial({ color: new THREE.Color(c) });
+  const m = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(c), transparent: true, opacity: 0.5,
+    depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+  });
   m.name = `perfscope-tint-${c}`;
   return m;
 });
-const stashed = new WeakMap();   // mesh -> original material (only while tinted)
+const veils = new Set();      // overlay meshes we added
+const outlines = new Set();   // per-subject Box3Helpers
+const _box = new THREE.Box3();
+
+function veilFor(mesh, mat) {
+  let ov = null;
+  if (mesh.isSkinnedMesh) {
+    ov = new THREE.SkinnedMesh(mesh.geometry, mat);
+    ov.bindMode = mesh.bindMode;
+    ov.bind(mesh.skeleton, mesh.bindMatrix);
+    ov.frustumCulled = false;
+  } else if (mesh.isInstancedMesh) {
+    ov = new THREE.InstancedMesh(mesh.geometry, mat, mesh.count);
+    ov.instanceMatrix = mesh.instanceMatrix;
+  } else {
+    ov = new THREE.Mesh(mesh.geometry, mat);
+  }
+  ov.userData.perfscopeIgnore = true;
+  ov.renderOrder = (mesh.renderOrder || 0) + 1;
+  ov.raycast = () => {};          // the loupe must hit the REAL mesh beneath
+  mesh.add(ov);                   // rides the original's transform verbatim
+  return ov;
+}
 
 function applyTint() {
+  clearTint();
   for (const rec of subjects.values()) {
-    const t = MODES[mode].tier?.(rec) ?? 0;
+    const t = Math.min(4, MODES[mode].tier?.(rec) ?? 0);
+    _box.makeEmpty();
     for (const mesh of rec.meshList) {
-      if (!stashed.has(mesh)) {
-        const cur = mesh.material;
-        if (Array.isArray(cur) ? cur.some((m) => tintMats.includes(m)) : tintMats.includes(cur)) continue;
-        stashed.set(mesh, cur);
-      }
-      mesh.material = tintMats[Math.min(4, t)];
+      if (!mesh.parent) continue;                    // churned out since collect
+      veils.add(veilFor(mesh, tintMats[t]));
+      _box.expandByObject(mesh);
+    }
+    if (!_box.isEmpty()) {
+      const o = new THREE.Box3Helper(_box.clone(), new THREE.Color(TIERS[t]));
+      o.userData.perfscopeIgnore = true;
+      outlines.add(o);
+      scene.add(o);
     }
   }
 }
 
 function clearTint() {
-  scene.traverse((o) => {
-    if ((o.isMesh || o.isSkinnedMesh) && stashed.has(o)) {
-      // only un-tint what still wears our paint — if another system replaced
-      // the material mid-tint (avatar swap), its choice wins
-      if (tintMats.includes(o.material)) o.material = stashed.get(o);
-      stashed.delete(o);
-    }
-  });
+  for (const v of veils) v.parent?.remove(v);
+  veils.clear();
+  for (const o of outlines) { scene.remove(o); o.dispose?.(); }
+  outlines.clear();
 }
 
 let timer = null;
@@ -240,8 +274,14 @@ const fmtB = (b) => (b >= 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.round(b /
 const badge = (t, txt) => `<b class="pf-badge" style="background:${TIERS[Math.min(4, t)]}">${txt}</b>`;
 
 function loupeHtml(rec) {
-  const texList = [...rec.texs].slice(0, 3)
-    .map((t) => `${t.image?.width ?? '?'}×${t.image?.height ?? '?'}`).join(' · ');
+  // worst textures first, each with its estimated resident bytes; `raw`
+  // flags an uncompressed image (the usual VRAM crime — a 4096² RGBA8
+  // costs ~89 MB with mips where the same KTX2 costs ~11)
+  const texList = [...rec.texs]
+    .map((t) => ({ t, b: texBytes(t) }))
+    .sort((a, b) => b.b - a.b).slice(0, 3)
+    .map(({ t, b }) => `${t.image?.width ?? '?'}×${t.image?.height ?? '?'}${t.isCompressedTexture ? '' : ' raw'} ${fmtB(b)}`)
+    .join(' · ');
   const meta = rec.kind === 'entity' ? entityMeta.get(rec.key.slice(2)) : null;
   return `
   <div class="pl-head">${badge(rec.rank, TIER_NAMES[rec.rank])} <b>${rec.label}</b></div>
@@ -250,7 +290,8 @@ function loupeHtml(rec) {
     <tr><td>triangles</td><td>${rec.tris.toLocaleString()}</td><td>${badge(rec.tiers.tris, '')}</td></tr>
     <tr><td>draw calls</td><td>${rec.draws}</td><td>${badge(rec.tiers.draws, '')}</td></tr>
     <tr><td>materials</td><td>${rec.mats.size}</td><td>${badge(rec.tiers.mats, '')}</td></tr>
-    <tr><td>textures</td><td>${rec.texs.size}${texList ? ` (${texList})` : ''}</td><td></td></tr>
+    <tr><td>textures</td><td>${rec.texs.size}</td><td></td></tr>
+    ${texList ? `<tr><td colspan="3" class="pl-texlist">${texList}</td></tr>` : ''}
     <tr><td>tex VRAM <i>est</i></td><td>${fmtB(rec.texBytes)}</td><td>${badge(rec.tiers.texMB, '')}</td></tr>
     <tr><td>geometry <i>est</i></td><td>${fmtB(rec.attrBytes)}</td><td></td></tr>
     ${rec.bones ? `<tr><td>bones</td><td>${rec.bones}</td><td>${badge(rec.tiers.bones, '')}</td></tr>` : ''}
@@ -312,6 +353,7 @@ export function setLoupe(onOff) {
     loupeEl.className = 'perf-loupe';
     document.body.appendChild(loupeEl);
   }
+  document.body.classList.toggle('loupe-on', loupeOn);  // the loupe cursor (ui.js bakes it)
   if (loupeOn) {
     if (!subjects.size) collect();
     canvas.addEventListener('pointermove', onMove);
@@ -321,7 +363,9 @@ export function setLoupe(onOff) {
     canvas.removeEventListener('click', onClick);
     loupeEl.classList.remove('show');
   }
+  onLoupeChange?.(loupeOn);
 }
+let onLoupeChange = null;
 
 // ---- heaviest table + receipt ----------------------------------------------
 
@@ -380,7 +424,10 @@ async function copyReceipt() {
       .sort((a, b) => b.rank - a.rank || b.tris - a.tris).slice(0, 20)
       .map((r) => ({ label: r.label, kind: r.kind, rank: TIER_NAMES[r.rank], worst: r.worst,
         tris: r.tris, draws: r.draws, mats: r.mats.size, texMB: +(r.texBytes / 1e6).toFixed(1),
-        bones: r.bones, meshes: r.meshes, instances: r.instances })),
+        bones: r.bones, meshes: r.meshes, instances: r.instances,
+        topTex: [...r.texs].map((t) => ({ b: texBytes(t), w: t.image?.width, h: t.image?.height, raw: !t.isCompressedTexture }))
+          .sort((a, b) => b.b - a.b).slice(0, 3)
+          .map((x) => `${x.w}x${x.h}${x.raw ? ' raw' : ''} ${(x.b / 1e6).toFixed(1)}MB`) })),
   };
   const text = JSON.stringify(receipt, null, 1);
   try { await navigator.clipboard.writeText(text); } catch { console.log(text); }
@@ -411,14 +458,17 @@ export function buildPerfPanel(stack, { toast = console.log } = {}) {
   onModeChange = () => { sel.value = mode; };
   modeRow.append(lbl, sel);
 
-  const loupeRow = document.createElement('label');
-  loupeRow.className = 'row dbg-row';
-  const cb = document.createElement('input');
-  cb.type = 'checkbox';
-  cb.onchange = () => setLoupe(cb.checked);
-  const nm = document.createElement('span');
-  nm.textContent = 'loupe (hover an object)';
-  loupeRow.append(cb, nm);
+  // the loupe gets a proper TOOL button (R, 09-01): key-mirror styling,
+  // its own glyph, pressed-in while armed; the cursor changes with it
+  const loupeRow = document.createElement('div');
+  loupeRow.className = 'row';
+  const lb = document.createElement('button');
+  lb.className = 'keybtn pf-loupe-btn';
+  lb.title = 'loupe — hover an object for its cost card; click pins';
+  lb.innerHTML = `${fsvg('magnifying-glass', 15)}<span>loupe</span>`;
+  lb.onclick = () => setLoupe(!loupeOn);
+  onLoupeChange = (on) => lb.classList.toggle('on', on);
+  loupeRow.append(lb);
 
   const legend = document.createElement('div');
   legend.className = 'pf-legend';
