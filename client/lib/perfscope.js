@@ -201,6 +201,7 @@ const tintMats = TIERS.map((c) => {
 });
 const veils = new Set();      // overlay meshes we added
 const outlines = new Set();   // per-subject Box3Helpers
+let outlinesOn = false;       // bounds boxes are opt-in (R, 09-02: 'a bit much' on by default)
 const _box = new THREE.Box3();
 
 function veilFor(mesh, mat) {
@@ -233,7 +234,7 @@ function applyTint() {
       veils.add(veilFor(mesh, tintMats[t]));
       _box.expandByObject(mesh);
     }
-    if (!_box.isEmpty()) {
+    if (outlinesOn && !_box.isEmpty()) {
       const o = new THREE.Box3Helper(_box.clone(), new THREE.Color(TIERS[t]));
       o.userData.perfscopeIgnore = true;
       outlines.add(o);
@@ -448,7 +449,7 @@ export function buildPerfPanel(stack, { toast = console.log } = {}) {
   const lbl = document.createElement('span');
   lbl.className = 'nm'; lbl.textContent = 'overlay';
   const sel = document.createElement('select');
-  sel.style.flex = '1';
+  sel.style.cssText = 'flex:0 1 auto;max-width:150px;min-width:0;margin-left:auto';
   for (const [k, m] of Object.entries(MODES)) {
     const o = document.createElement('option');
     o.value = k; o.textContent = m.label;
@@ -470,10 +471,20 @@ export function buildPerfPanel(stack, { toast = console.log } = {}) {
   onLoupeChange = (on) => lb.classList.toggle('on', on);
   loupeRow.append(lb);
 
+  const olRow = document.createElement('label');
+  olRow.className = 'row';
+  olRow.style.cssText = 'gap:8px';
+  const olCb = document.createElement('input');
+  olCb.type = 'checkbox'; olCb.checked = outlinesOn;
+  olCb.onchange = () => { outlinesOn = olCb.checked; if (mode !== 'off') applyTint(); };
+  const olNm = document.createElement('span');
+  olNm.className = 'nm'; olNm.textContent = 'bounds outlines';
+  olRow.append(olCb, olNm);
+
   const legend = document.createElement('div');
   legend.className = 'pf-legend';
   legend.innerHTML = TIERS.map((c, i) => `<i style="background:${c}" title="${TIER_NAMES[i]}"></i>`).join('')
-    + '<span>cheap → dear · fixed thresholds</span>';
+    + '<span>cheap → costly · fixed thresholds</span>';
 
   tableEl = document.createElement('div');
   tableEl.className = 'pf-table';
@@ -483,18 +494,16 @@ export function buildPerfPanel(stack, { toast = console.log } = {}) {
   };
 
   const btns = document.createElement('div');
-  btns.className = 'row';
+  btns.className = 'row pf-btns';
   const rescan = document.createElement('button');
   rescan.textContent = 'rescan';
-  rescan.style.cssText = 'flex:1;font-size:var(--fs-sm);padding:3px 0';
   rescan.onclick = () => { collect(); if (mode !== 'off') applyTint(); paintTable(); toast('perfscope: rescanned'); };
   const rcpt = document.createElement('button');
   rcpt.textContent = 'copy receipt';
-  rcpt.style.cssText = 'flex:1;font-size:var(--fs-sm);padding:3px 0';
   rcpt.onclick = async () => toast(`perfscope: receipt copied (${await copyReceipt()} subjects)`);
   btns.append(rescan, rcpt);
 
-  stack.append(head, modeRow, loupeRow, legend, tableEl, btns);
+  stack.append(head, modeRow, loupeRow, olRow, legend, tableEl, btns);
 }
 
 /** Full teardown — restore every material, drop listeners, stop timers. */
