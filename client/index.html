@@ -406,6 +406,12 @@ select {
   border: 1px solid var(--edge); border-radius: 5px;
 }
 .sec.open > .body { display: flex; }
+/* debug subsections: collapsible with a ▸/▾ arrow (R, 09-02 — split Debug into
+   subareas). Looser than panel sections, so arrow not icon; tighter spacing. */
+.dbg-sec { margin-top: 4px; }
+.dbg-sec > .head { display: flex; align-items: center; gap: 7px; padding: 5px 8px; color: var(--dim); }
+.dbg-sec.open > .head { color: color-mix(in srgb, var(--brand) 35%, var(--fg)); }
+.dbg-sec .dbg-arrow { font-size: 9px; width: 9px; color: var(--icon); flex: none; }
 /* panel content hierarchy (R, 17:18): heads = fg with brand-whisper glyphs,
    body copy = dim; outlined buttons hug their text, never stretch the column */
 .sec > .head { color: var(--dim); }

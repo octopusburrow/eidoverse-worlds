@@ -758,53 +758,44 @@ export function initDebug(p = {}) {
     stack.appendChild(d.wrap);
   }
 
-  // blink, live
-  const bhead = document.createElement('div');
-  bhead.className = 'row';
-  bhead.style.cssText = 'margin-top:6px;opacity:.75';
-  bhead.textContent = '— blink (live) —';
-  stack.appendChild(bhead);
-  buildBlinkPanel(stack);
-
-  // hair, live
-  const hhead = document.createElement('div');
-  hhead.className = 'row';
-  hhead.style.cssText = 'margin-top:6px;opacity:.75';
-  hhead.textContent = '— hair (live, while ragdolled) —';
-  stack.appendChild(hhead);
-  buildHairPanel(stack);
-
-  // limp springbones (remotes and post-dispose), live
-  const lhead = document.createElement('div');
-  lhead.className = 'row';
-  lhead.style.cssText = 'margin-top:6px;opacity:.75';
-  lhead.textContent = '— limp hair, no local sim —';
-  stack.appendChild(lhead);
-  buildLimpPanel(stack);
-
-  // wings, live
-  const whead = document.createElement('div');
-  whead.className = 'row';
-  whead.style.cssText = 'margin-top:6px;opacity:.75';
-  whead.textContent = '— wings —';
-  stack.appendChild(whead);
-  buildWingPanel(stack);
-
-  // joint limits, live
-  const jhead = document.createElement('div');
-  jhead.className = 'row';
-  jhead.style.cssText = 'margin-top:6px;opacity:.75';
-  jhead.textContent = '— joint limits (live) —';
-  stack.appendChild(jhead);
-  buildJointPanel(stack);
-
-  buildPerfPanel(stack, { toast: toastLike });
+  // The live-tuning groups become COLLAPSIBLE subsections (R, 09-02: split the
+  // debug menu into subareas with a dropdown arrow, matching World/Settings).
+  // These are looser than the panel sections, so an arrow (not an icon) marks
+  // each; they reuse the .sec grammar so open/hover styling matches the house.
+  dbgSection(stack, 'blink', (body) => buildBlinkPanel(body));
+  dbgSection(stack, 'hair (while ragdolled)', (body) => buildHairPanel(body));
+  dbgSection(stack, 'limp hair (no local sim)', (body) => buildLimpPanel(body));
+  dbgSection(stack, 'wings', (body) => buildWingPanel(body));
+  dbgSection(stack, 'joint limits', (body) => buildJointPanel(body));
+  dbgSection(stack, 'perf', (body) => buildPerfPanel(body, { toast: toastLike }));
 
   statsEl = document.createElement('pre');
   statsEl.className = 'dbg-stats';
   stack.appendChild(statsEl);
   frame.body.appendChild(stack);
   return frame;
+}
+
+// A collapsible debug subsection: reuses the .sec CSS (open/hover/body) with a
+// ▸/▾ dropdown arrow. `build(body)` populates it once, lazily, on first open —
+// so a closed section costs nothing and the panel opens light.
+function dbgSection(parent, title, build) {
+  const box = document.createElement('div');
+  box.className = 'sec dbg-sec';
+  const head = document.createElement('button');
+  head.className = 'head';
+  head.innerHTML = `<span class="dbg-arrow">▸</span><span>${title}</span>`;
+  const body = document.createElement('div');
+  body.className = 'body';
+  let built = false;
+  head.onclick = () => {
+    const open = box.classList.toggle('open');
+    head.querySelector('.dbg-arrow').textContent = open ? '▾' : '▸';
+    if (open && !built) { built = true; build(body); }
+  };
+  box.append(head, body);
+  parent.appendChild(box);
+  return box;
 }
 
 export function toggleDebug() { frame?.toggle(); }
