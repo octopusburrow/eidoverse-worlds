@@ -73,26 +73,14 @@ button, .btn, select, a, label, .mrow, .mpin, .dbg-row, .pf-row, .card,
 .ac-row, .chat-gear, .fr-btn, .sec > .head, .chat-tabs button, .pf-tile,
 .chat-side-tog, .sp-skip { cursor: var(--cur-pointer, pointer); }
 body.loupe-on canvas { cursor: var(--cur-loupe, crosshair); }
-/* ONE house scrollbar. Before this, three containers each carried their own
-   webkit rules (6px/7px drift) and the rest fell back to the UA default —
-   whose arrow buttons paint OS-grey-on-our-dark, i.e. invisibly (R, 09-01:
-   "you rarely see the arrows"). Buttonless thin thumb everywhere instead:
-   the chat pane's bar, which read fine, promoted to the global grammar. */
-* { scrollbar-width: thin; scrollbar-color: var(--edge) transparent; }   /* Firefox */
-/* Chromium: the standard properties above DISABLE ::-webkit-scrollbar-*
-   styling wherever they're set (verified on Win Chrome 151 — thumbs went
-   half-styled and arrow buttons crept back). So where the pseudos exist,
-   reset the standard props to auto and let the pseudos own the bar. */
-@supports selector(::-webkit-scrollbar) {
-  * { scrollbar-width: auto; scrollbar-color: auto; }
-  /* main's chat-log bar, verbatim, as the one global grammar (R, 09-01
-     23:31: "the styling on this one element was already pretty good" — the
-     v2 arrow buttons read as bulk and are retired). */
-  *::-webkit-scrollbar { width: 7px; height: 7px; }
-  *::-webkit-scrollbar-thumb { background: var(--edge); border-radius: 4px; }
-  *::-webkit-scrollbar-thumb:hover { background: var(--edge-hi); }
-  *::-webkit-scrollbar-track, *::-webkit-scrollbar-corner { background: transparent; }
-  *::-webkit-scrollbar-button { display: none; height: 0; width: 0; }
+/* ONE house scrollbar — the standard properties, nothing else. The bar R
+   liked in main's chat was never the ::-webkit-scrollbar rules there: on
+   Chromium, scrollbar-width:thin DISABLES the pseudos, so what actually
+   rendered was the NATIVE thin overlay bar reading scrollbar-color. The
+   pseudo grammar (b39.1 v1, then v2 arrows, then a "verbatim restore" of
+   main's dead code) chased the wrong layer three times (R, 09-01 23:54:
+   "you *still* have not reverted"). Standard props ARE the original. */
+* { scrollbar-width: thin; scrollbar-color: var(--edge) transparent; }
 }
 body { font: var(--fs)/1.5 var(--font); color: var(--fg); -webkit-font-smoothing: antialiased; }
 canvas { display: block; touch-action: none; }
@@ -718,9 +706,9 @@ body.arranging #dock .dock-grip { display: grid; }
   /* selected = the accent speaks, not white — brighter kin of --icon, plus a
      thin brand outline while in use (R, 09-01 23:43) */
   color: color-mix(in srgb, var(--brand) 80%, white);
-  background: var(--well);
+  background: color-mix(in srgb, var(--brand) 7%, var(--well));
   box-shadow: inset 0 1px 3px rgb(0 0 0 / .6);   /* pressed-in, not lit-up */
-  outline: 1px solid color-mix(in srgb, var(--brand) 45%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--brand) 22%, transparent);   /* knocked back 50% (R, 23:54) */
   outline-offset: -1px;
 }
 #dock button[hidden] { display: none; }
