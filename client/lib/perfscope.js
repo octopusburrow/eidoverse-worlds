@@ -292,10 +292,13 @@ function loupeHtml(rec) {
   // size TOGETHER (not split across the row). biggest first. `raw` = an
   // uncompressed image sitting in VRAM at full w·h·4 bytes — the usual VRAM
   // crime; a KTX2/compressed version of the same image costs ~4-8× less.
+  // textures as their own inner table with a center break: dims (+ raw flag)
+  // right-justified against the seam, size left-justified after it — the same
+  // channel-box grammar as the main grid, nested (R, 09-02).
   const texRows = [...rec.texs]
     .map((t) => ({ t, b: texBytes(t) }))
     .sort((a, b) => b.b - a.b).slice(0, 4)
-    .map(({ t, b }) => `<div class="pl-tex">${t.image?.width ?? '?'}×${t.image?.height ?? '?'}${t.isCompressedTexture ? '' : ' <em title="uncompressed — sits in VRAM at full size; a compressed (KTX2) version costs ~4-8× less">raw</em>'}<span class="pl-texb">${fmtB(b)}</span></div>`)
+    .map(({ t, b }) => `<div class="pl-texd">${t.image?.width ?? '?'}×${t.image?.height ?? '?'}${t.isCompressedTexture ? '' : ' <em title="uncompressed — sits in VRAM at full size; a compressed (KTX2) version costs ~4-8× less">raw</em>'}</div><div class="pl-texb">${fmtB(b)}</div>`)
     .join('');
   const meta = rec.kind === 'entity' ? entityMeta.get(rec.key.slice(2)) : null;
   // Maya channel-box layout (R, 09-02): a 3-column grid with a center seam.

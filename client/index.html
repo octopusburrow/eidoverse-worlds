@@ -860,12 +860,19 @@ body.touch #touch { display: block; }
 .perf-loupe .plv { color: var(--fg); text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
 .perf-loupe .plp { display: flex; justify-content: flex-start; }
 /* stacked texture sub-rows span all three columns; each is dims … bytes */
-/* texture sub-rows: dims and size sit TOGETHER (R, 09-02 — not split across
-   the row), indented under "textures", biggest first. */
-.perf-loupe .pl-texwrap { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 1px; padding: 1px 0 2px 14px; }
-.perf-loupe .pl-tex { font-size: 9.5px; color: var(--dim); opacity: .85; }
-.perf-loupe .pl-tex .pl-texb { color: var(--fg); opacity: .8; font-variant-numeric: tabular-nums; margin-left: 5px; }
-.perf-loupe .pl-tex em { font-style: normal; color: var(--attn); opacity: .85; }
+/* textures as their own inner table with a center break (R, 09-02): dims
+   right-justified against the seam, size left-justified after it — the main
+   grid's channel-box grammar, nested and indented under "textures". */
+.perf-loupe .pl-texwrap {
+  grid-column: 1 / -1;
+  display: grid; grid-template-columns: 1fr 1fr;
+  column-gap: 10px; row-gap: 1px;
+  padding: 1px 0 2px; margin-left: 14px;
+  font-size: 9.5px; color: var(--dim); opacity: .85;
+}
+.perf-loupe .pl-texd { text-align: right; }
+.perf-loupe .pl-texb { text-align: left; color: var(--fg); opacity: .8; font-variant-numeric: tabular-nums; }
+.perf-loupe .pl-texwrap em { font-style: normal; color: var(--attn); opacity: .85; }
 /* header: pill + a text column (name over 'placed by'), so the sub aligns
    under the NAME not the pill (R, 09-02) */
 .perf-loupe .pl-head { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; color: var(--fg); }
@@ -873,7 +880,9 @@ body.touch #touch { display: block; }
 .perf-loupe .pl-sub { color: var(--dim); font-size: 10px; }
 /* texlist tucks under "textures" as a clear sub-detail */
 .perf-loupe .pl-texlist { font-size: 9.5px; color: var(--dim); padding: 0 0 1px 12px; opacity: .85; }
-.perf-loupe .pl-foot { color: var(--dim); font-size: 9.5px; margin-top: 7px; opacity: .75; border-top: 1px solid var(--edge); padding-top: 5px; }
+/* action hint right-justified — echoes the panel's right edge and reads as
+   chrome/affordance, not data (R, 09-02; I agreed right beats left here) */
+.perf-loupe .pl-foot { color: var(--dim); font-size: 9.5px; margin-top: 7px; opacity: .75; border-top: 1px solid var(--edge); padding-top: 5px; text-align: right; }
 .pf-badge {
   display: inline-block; min-width: 8px; height: 8px; border-radius: 4px;
   color: #0c1412; font-size: 9px; font-weight: 700; line-height: 1;
@@ -890,18 +899,17 @@ body.touch #touch { display: block; }
 .pf-badge-lg {
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 34px; height: 17px; border-radius: 5px; padding: 0 8px;
-  font-size: 9.5px; font-weight: 700; line-height: 1; vertical-align: middle;
+  font-size: 9.5px; font-weight: 700; vertical-align: middle;
   letter-spacing: .04em; text-indent: .04em;
-  /* dark outline so a bright pill (green/amber) stays legible over a light
-     pane background (R, 09-02) */
+  /* dark outline so a bright pill stays legible over a light pane (R, 09-02) */
   border: 1px solid rgb(0 0 0 / .5);
-  /* measured (R, 09-02): with align-items:center the LINE box centers, but
-     monospace caps sit high in their line box, leaving ~0.5px more space below
-     than above — the "still not centered" R keeps catching. Nudge the glyph
-     down half a pixel to true optical center. */
-  padding-top: 1px;
+  /* OPTICAL cap centering (R, 09-02, measured): "POOR" ink is 8px ascent + 1px
+     descent around the baseline. Flex-centering the LINE box leaves the caps
+     high. Setting line-height to the content box + a measured padding-top puts
+     the INK, not the line box, at true center. Tuned by re-measuring ink gaps. */
+  line-height: 14px; padding-top: 1px; padding-bottom: 0;
 }
-.perf-loupe .pl-head .pf-badge-lg { height: 18px; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; text-indent: .06em; }
+.perf-loupe .pl-head .pf-badge-lg { height: 18px; font-size: 10px; line-height: 15px; padding-top: 1px; text-transform: uppercase; letter-spacing: .06em; text-indent: .06em; }
 .perf-loupe .pl-rank { cursor: help; }
 .pf-loupe-btn { display: flex; align-items: center; gap: 7px; padding: 5px 10px; color: var(--icon); }
 .pf-loupe-btn.on { color: var(--brand); box-shadow: inset 0 1px 3px rgb(0 0 0 / .6); }
