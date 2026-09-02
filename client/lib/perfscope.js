@@ -288,20 +288,18 @@ function loupeHtml(rec) {
   // worst textures first, each with its estimated resident bytes; `raw`
   // flags an uncompressed image (the usual VRAM crime — a 4096² RGBA8
   // costs ~89 MB with mips where the same KTX2 costs ~11)
-  const texList = [...rec.texs]
+  // textures STACK vertically (R, 09-02: don't let one wide line bump the
+  // window super-wide) — each its own indented sub-row, biggest first
+  const texRows = [...rec.texs]
     .map((t) => ({ t, b: texBytes(t) }))
-    .sort((a, b) => b.b - a.b).slice(0, 3)
-    .map(({ t, b }) => `${t.image?.width ?? '?'}×${t.image?.height ?? '?'}${t.isCompressedTexture ? '' : ' raw'} ${fmtB(b)}`)
-    .join(' · ');
+    .sort((a, b) => b.b - a.b).slice(0, 4)
+    .map(({ t, b }) => `<div class="pl-tex"><span>${t.image?.width ?? '?'}×${t.image?.height ?? '?'}${t.isCompressedTexture ? '' : ' <em>raw</em>'}</span><span class="pl-texb">${fmtB(b)}</span></div>`)
+    .join('');
   const meta = rec.kind === 'entity' ? entityMeta.get(rec.key.slice(2)) : null;
-  // each metric row: [label + value grouped on the left] … [chunky tier pill].
-  // label & value are ONE left group (value right after its label, not exiled
-  // across the panel — R, 09-02 round 2), the tier pill floats to the right
-  // edge carrying the short tier WORD (R wants the chonky labeled pills back).
-  // the pill's hover names the rank boundaries for this metric, e.g.
-  // "materials — great ≤2 · good ≤4 · ok ≤8 · poor ≤16 · bad >16". So a viewer
-  // sees not just the tier but where the next step is (R, 09-02: explain the
-  // boundaries between ranks).
+  // Maya channel-box layout (R, 09-02): a 3-column grid with a center seam.
+  // label RIGHT-justified against the seam · value RIGHT-justified against the
+  // pill column (with buffer) · tier pill. Everything lines up on two clean
+  // vertical rules instead of floating apart.
   const boundsTip = (label, key) => {
     const th = T[key]; if (!th) return '';
     const u = key === 'texMB' ? ' MB' : '';
@@ -310,14 +308,14 @@ function loupeHtml(rec) {
     return `${label} — ${parts.join(' · ')}`;
   };
   const row = (label, val, tier, key) =>
-    `<div class="plr"><span class="pll">${label}</span><span class="plv">${val}</span>${
-      tier == null ? '' : `<span class="plp" title="${esc(boundsTip(label, key))}">${badge(tier, TIER_SHORT[Math.min(4, tier)], true)}</span>`}</div>`;
+    `<div class="pll">${label}</div><div class="plv">${val}</div>${
+      tier == null ? '<div></div>' : `<div class="plp" title="${esc(boundsTip(label, key))}">${badge(tier, TIER_SHORT[Math.min(4, tier)], true)}</div>`}`;
   const rows = [
     row('triangles', rec.tris.toLocaleString(), rec.tiers.tris, 'tris'),
     row('draw calls', rec.draws, rec.tiers.draws, 'draws'),
     row('materials', rec.mats.size, rec.tiers.mats, 'mats'),
     row('textures', rec.texs.size, null),
-    texList ? `<div class="pl-texlist">${texList}</div>` : '',
+    texRows ? `<div class="pl-texwrap">${texRows}</div>` : '',
     row('tex VRAM', fmtB(rec.texBytes), rec.tiers.texMB, 'texMB'),
     row('geometry', fmtB(rec.attrBytes), null),
     rec.bones ? row('bones', rec.bones, rec.tiers.bones, 'bones') : '',
@@ -335,7 +333,7 @@ function loupeHtml(rec) {
   <div class="pl-head"><span title="${esc(why)}" class="pl-rank">${badge(rec.rank, TIER_NAMES[rec.rank], true)}</span> <b>${rec.label}</b></div>
   ${meta?.by ? `<div class="pl-sub">placed by ${meta.by}</div>` : ''}
   <div class="pl-grid">${rows}</div>
-  <div class="pl-foot">${pinned ? 'click elsewhere to unpin' : 'click to pin'} · <span title="counts are exact; texture VRAM is computed w·h·bpp·mips (±driver alignment); geometry is CPU-side attribute bytes">counts exact · VRAM computed</span></div>`;
+  <div class="pl-foot">${pinned ? 'click elsewhere to unpin' : 'click to pin'}</div>`;
 }
 
 function castAt(ev) {
