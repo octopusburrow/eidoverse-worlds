@@ -280,7 +280,9 @@ const ndc = new THREE.Vector2();
 let loupeEl = null, loupeOn = false, pinned = null, lastCast = 0;
 
 const fmtB = (b) => (b >= 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`);
-const badge = (t, txt) => `<b class="pf-badge" style="background:${TIERS[Math.min(4, t)]}">${txt}</b>`;
+// short tier words for the chunky row pills (R wants labeled pills back, 09-02)
+const TIER_SHORT = ['great', 'good', 'ok', 'poor', 'bad'];
+const badge = (t, txt, chunky) => `<b class="pf-badge${chunky ? ' pf-badge-lg' : ''}" style="background:${TIERS[Math.min(4, t)]}">${txt}</b>`;
 
 function loupeHtml(rec) {
   // worst textures first, each with its estimated resident bytes; `raw`
@@ -292,28 +294,45 @@ function loupeHtml(rec) {
     .map(({ t, b }) => `${t.image?.width ?? '?'}×${t.image?.height ?? '?'}${t.isCompressedTexture ? '' : ' raw'} ${fmtB(b)}`)
     .join(' · ');
   const meta = rec.kind === 'entity' ? entityMeta.get(rec.key.slice(2)) : null;
-  // one grid row: label · value · pill. The value sits RIGHT NEXT TO its label
-  // (old table stretched 100% and right-aligned, exiling every number across a
-  // huge void — R, 09-02). rows with no tier badge just omit the pill cell.
-  const row = (label, val, tier) =>
+  // each metric row: [label + value grouped on the left] … [chunky tier pill].
+  // label & value are ONE left group (value right after its label, not exiled
+  // across the panel — R, 09-02 round 2), the tier pill floats to the right
+  // edge carrying the short tier WORD (R wants the chonky labeled pills back).
+  // the pill's hover names the rank boundaries for this metric, e.g.
+  // "materials — great ≤2 · good ≤4 · ok ≤8 · poor ≤16 · bad >16". So a viewer
+  // sees not just the tier but where the next step is (R, 09-02: explain the
+  // boundaries between ranks).
+  const boundsTip = (label, key) => {
+    const th = T[key]; if (!th) return '';
+    const u = key === 'texMB' ? ' MB' : '';
+    const parts = TIER_SHORT.map((name, i) =>
+      i < th.length ? `${name} ≤${th[i].toLocaleString()}${u}` : `${name} >${th[th.length - 1].toLocaleString()}${u}`);
+    return `${label} — ${parts.join(' · ')}`;
+  };
+  const row = (label, val, tier, key) =>
     `<div class="plr"><span class="pll">${label}</span><span class="plv">${val}</span>${
-      tier == null ? '<span></span>' : `<span class="plp">${badge(tier, '')}</span>`}</div>`;
+      tier == null ? '' : `<span class="plp" title="${esc(boundsTip(label, key))}">${badge(tier, TIER_SHORT[Math.min(4, tier)], true)}</span>`}</div>`;
   const rows = [
-    row('triangles', rec.tris.toLocaleString(), rec.tiers.tris),
-    row('draw calls', rec.draws, rec.tiers.draws),
-    row('materials', rec.mats.size, rec.tiers.mats),
+    row('triangles', rec.tris.toLocaleString(), rec.tiers.tris, 'tris'),
+    row('draw calls', rec.draws, rec.tiers.draws, 'draws'),
+    row('materials', rec.mats.size, rec.tiers.mats, 'mats'),
     row('textures', rec.texs.size, null),
     texList ? `<div class="pl-texlist">${texList}</div>` : '',
-    row('tex VRAM', fmtB(rec.texBytes), rec.tiers.texMB),
+    row('tex VRAM', fmtB(rec.texBytes), rec.tiers.texMB, 'texMB'),
     row('geometry', fmtB(rec.attrBytes), null),
-    rec.bones ? row('bones', rec.bones, rec.tiers.bones) : '',
+    rec.bones ? row('bones', rec.bones, rec.tiers.bones, 'bones') : '',
     rec.morphs ? row('morph targets', rec.morphs, null) : '',
     rec.instances ? row('instances', rec.instances.toLocaleString(), null) : '',
-    rec.alpha ? row('transparent mats', rec.alpha, rec.tiers.alpha) : '',
+    rec.alpha ? row('transparent mats', rec.alpha, rec.tiers.alpha, 'alpha') : '',
     row('meshes', rec.meshes, null),
   ].join('');
+  // "why this rank" — the overall badge carries a hover explaining the rule
+  // (worst category wins, VRChat model) and which metric set THIS rank.
+  const worstLabel = { tris: 'triangles', draws: 'draw calls', texMB: 'texture VRAM',
+    bones: 'bones', mats: 'materials', alpha: 'transparency' }[rec.worst] || rec.worst;
+  const why = `overall = worst category wins (VRChat model). this object's ${TIER_NAMES[rec.rank]} rank is set by ${worstLabel}. fix the red/orange rows to raise it.`;
   return `
-  <div class="pl-head">${badge(rec.rank, TIER_NAMES[rec.rank])} <b>${rec.label}</b></div>
+  <div class="pl-head"><span title="${esc(why)}" class="pl-rank">${badge(rec.rank, TIER_NAMES[rec.rank], true)}</span> <b>${rec.label}</b></div>
   ${meta?.by ? `<div class="pl-sub">placed by ${meta.by}</div>` : ''}
   <div class="pl-grid">${rows}</div>
   <div class="pl-foot">${pinned ? 'click elsewhere to unpin' : 'click to pin'} · <span title="counts are exact; texture VRAM is computed w·h·bpp·mips (±driver alignment); geometry is CPU-side attribute bytes">counts exact · VRAM computed</span></div>`;
