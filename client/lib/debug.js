@@ -20,6 +20,7 @@ import { closestParams, TUNING } from './ragdoll.js';
 import { JOINT_SPECS, HAIR_TUNING, WING_TUNING } from './ammodoll.js';
 import { BLINK, WING_IDLE, LIMP_SPRINGS } from './avatar.js';
 import { makeFrame } from './frames.js';
+import { buildPerfPanel } from './perfscope.js';
 
 // box = an OBB, walkable on top, solid on the sides between min.y and max.y
 // pillar = anything over 2.4m tall, collapsed to a slim centre column so you
@@ -796,6 +797,8 @@ export function initDebug(p = {}) {
   jhead.textContent = '— joint limits (live) —';
   stack.appendChild(jhead);
   buildJointPanel(stack);
+
+  buildPerfPanel(stack, { toast: toastLike });
 
   statsEl = document.createElement('pre');
   statsEl.className = 'dbg-stats';
