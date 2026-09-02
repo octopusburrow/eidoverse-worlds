@@ -311,7 +311,11 @@ function loupeHtml(rec) {
   // card agrees with the false-color overlay and the heaviest table. When no
   // overlay is active we fall back to overall rank (worst-wins) as the ordering.
   const lensMode = mode === 'off' ? 'rank' : mode;
-  const lensLabel = MODES[lensMode]?.label ?? 'overall rank';
+  // compact lens label for the tight header standing-line (the dropdown keeps
+  // the fuller MODES labels with their (est)/(proxy) qualifiers).
+  const lensLabel = { rank: 'overall', tris: 'triangles', draws: 'draw calls',
+    tex: 'texture memory', mat: 'material cost', bones: 'bones',
+    alpha: 'transparency' }[lensMode] ?? 'overall';
   const lensMetric = (r) => lensMode === 'rank' ? r.rank
     : lensMode === 'tris' ? r.tris : lensMode === 'draws' ? r.draws
     : lensMode === 'tex' ? r.texBytes : lensMode === 'mat' ? r.matCost
@@ -356,15 +360,15 @@ function loupeHtml(rec) {
   const worstLabel = { tris: 'triangles', draws: 'draw calls', texMB: 'texture VRAM',
     bones: 'bones', mats: 'materials', alpha: 'transparency' }[rec.worst] || rec.worst;
   const why = `overall = worst category wins (VRChat model). this object's ${TIER_NAMES[rec.rank]} rank is set by ${worstLabel}. fix the red/orange rows to raise it.`;
-  // header: name/sub block on the left, the rank pill on the RIGHT — aligned to
-  // the same seam the data values sit against (R, 09-02: shift the pill right to
-  // line up with the longest data title), and top-aligned so no empty space
-  // hangs below it. A separator line divides the header from the data, matching
-  // the one above 'click to pin'. The sub-line names the active lens and this
-  // subject's standing in it (R, 09-02); 'placed by' rides a second sub-line.
-  const sub = `<div class="pl-sub">${standing}</div>${meta?.by ? `<div class="pl-sub">placed by ${meta.by}</div>` : ''}`;
+  // header, two columns (R, 09-02 r7):
+  //  LEFT  — the object name (allowed to WRAP so a long name stacks narrow
+  //          instead of forcing the panel wide) + 'placed by' under it.
+  //  RIGHT — the perf pill with the scene-standing line RIGHT-JUSTIFIED beneath
+  //          it, because both are "this object's grade" and belong together.
+  // A separator divides header from data, matching the footer's.
+  const placed = meta?.by ? `<div class="pl-sub">placed by ${meta.by}</div>` : '';
   return `
-  <div class="pl-head"><div class="pl-headtext"><b>${rec.label}</b>${sub}</div><span title="${esc(why)}" class="pl-rank">${badge(rec.rank, TIER_NAMES[rec.rank], true)}</span></div>
+  <div class="pl-head"><div class="pl-headtext"><b>${rec.label}</b>${placed}</div><div class="pl-headgrade"><span title="${esc(why)}" class="pl-rank">${badge(rec.rank, TIER_NAMES[rec.rank], true)}</span><div class="pl-sub pl-standing">${standing}</div></div></div>
   <div class="pl-grid">${rows}</div>
   <div class="pl-foot">${pinned ? 'click elsewhere to unpin' : 'click to pin'}</div>`;
 }

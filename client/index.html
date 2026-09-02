@@ -880,9 +880,16 @@ body.touch #touch { display: block; }
   display: flex; align-items: flex-start; gap: 8px; color: var(--fg);
   padding-bottom: 6px; margin-bottom: 6px; border-bottom: 1px solid var(--edge);
 }
-.perf-loupe .pl-headtext { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+.perf-loupe .pl-headtext { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1 1 auto; }
+/* the name WRAPS (R, 09-02 r7) so a long object name stacks onto a narrow
+   second line instead of forcing the whole panel wide. */
+.perf-loupe .pl-headtext > b { overflow-wrap: anywhere; line-height: 1.2; }
+/* right column: perf pill + the scene-standing line stacked under it, both
+   right-justified — they're one unit ("this object's grade"). */
+.perf-loupe .pl-headgrade { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: none; }
 .perf-loupe .pl-head .pl-rank { flex: none; }
 .perf-loupe .pl-sub { color: var(--dim); font-size: 10px; }
+.perf-loupe .pl-standing { text-align: right; white-space: nowrap; }
 /* texlist tucks under "textures" as a clear sub-detail */
 .perf-loupe .pl-texlist { font-size: 9.5px; color: var(--dim); padding: 0 0 1px 12px; opacity: .85; }
 /* action hint right-justified — echoes the panel's right edge and reads as
