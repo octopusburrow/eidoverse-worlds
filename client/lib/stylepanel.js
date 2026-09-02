@@ -62,7 +62,7 @@ export function initStylePanel() {
     const vrow = document.createElement('label');
     vrow.className = 'row';
     const vnm = document.createElement('span');
-    vnm.className = 'nm'; vnm.textContent = 'panels';
+    vnm.className = 'nm'; vnm.textContent = 'panel opacity';
     const vis = document.createElement('input');
     vis.type = 'range'; vis.min = 0.3; vis.max = 1; vis.step = 0.02;
     vis.value = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--panel-a')) || 0.58;

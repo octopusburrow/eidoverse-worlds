@@ -715,9 +715,13 @@ body.arranging #dock .dock-grip { display: grid; }
 }
 #dock button:not(.dock-grip):hover { color: var(--fg); background: var(--hov); }
 #dock button.on {
-  color: var(--fg);
+  /* selected = the accent speaks, not white — brighter kin of --icon, plus a
+     thin brand outline while in use (R, 09-01 23:43) */
+  color: color-mix(in srgb, var(--brand) 80%, white);
   background: var(--well);
   box-shadow: inset 0 1px 3px rgb(0 0 0 / .6);   /* pressed-in, not lit-up */
+  outline: 1px solid color-mix(in srgb, var(--brand) 45%, transparent);
+  outline-offset: -1px;
 }
 #dock button[hidden] { display: none; }
 /* keybtn: buttons that mirror physical KEYS read as key-caps — a darker well,
@@ -756,7 +760,7 @@ button.keybtn:active { box-shadow: inset 0 1px 3px rgb(0 0 0 / .6); }
 body.altgrab .frame { cursor: grab; }
 body.altgrab .frame:active { cursor: grabbing; }
 #dock button:hover { color: var(--fg); }
-#dock button.on { color: var(--fg); }
+#dock button.on { color: color-mix(in srgb, var(--brand) 80%, white); }
 .sec > .head { display: flex; align-items: center; gap: 9px; }
 .sec > .head svg { flex: none; opacity: .8; }
 #dock button { padding: 4px 8px; font-size: 11px; }
