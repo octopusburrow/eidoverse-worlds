@@ -749,6 +749,11 @@ body.altgrab .frame { cursor: grab; }
 body.altgrab .frame:active { cursor: grabbing; }
 #dock button:hover { color: var(--fg); }
 #dock button.on { color: color-mix(in srgb, var(--brand) 80%, white); }
+/* scene-tree selection: text brightens toward the accent, same selected-
+   speaks-accent grammar as tabs/heads/dock (R, 09-02 00:00) */
+.sg-row.sel { background: rgb(255 255 255 / .06); }
+.sg-row.sel .n b { color: color-mix(in srgb, var(--brand) 45%, var(--fg)); }
+.sg-row.sel .d { color: color-mix(in srgb, var(--brand) 25%, var(--dim)); }
 .sec > .head { display: flex; align-items: center; gap: 9px; }
 .sec > .head svg { flex: none; opacity: .8; }
 #dock button { padding: 4px 8px; font-size: 11px; }
