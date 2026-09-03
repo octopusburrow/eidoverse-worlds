@@ -340,8 +340,23 @@ function loupeHtml(rec) {
       i < th.length ? `${name} ≤${th[i].toLocaleString()}${u}` : `${name} >${th[th.length - 1].toLocaleString()}${u}`);
     return `${label} — ${parts.join(' · ')}`;
   };
+  // what each metric IMPACTS (R, 09-02 r11: data labels should describe which
+  // part of performance they affect). Hovering the label row shows this.
+  const LABEL_TIP = {
+    triangles: 'geometry the GPU rasterizes each frame; high counts tax vertex processing & fill',
+    'draw calls': 'separate GPU submissions (≈1 per material/group); high counts are CPU-bound overhead — often the true bottleneck',
+    materials: 'distinct material instances; more = more state changes & draw calls',
+    textures: 'number of distinct texture images this subject references',
+    'tex VRAM': 'estimated GPU memory the textures occupy (w·h·bpp ×1.33 mips); compressed textures use their real mip payloads',
+    geometry: 'estimated CPU/GPU bytes of vertex attribute buffers (position, normal, uv…)',
+    bones: 'skeleton size; every bone is a per-frame matrix the skinning shader applies',
+    'morph targets': 'blend-shape channels; each adds vertex data & per-frame blending',
+    instances: 'instanced copies drawn in one call — cheap multiplicity (good)',
+    'transparent mats': 'alpha/transmission materials; cause overdraw & back-to-front sorting cost',
+    meshes: 'mesh objects rolled into this subject',
+  };
   const row = (label, val, tier, key) =>
-    `<div class="pll">${label}</div><div class="plv">${val}</div>${
+    `<div class="pll" title="${esc(LABEL_TIP[label] || label)}">${label}</div><div class="plv">${val}</div>${
       tier == null ? '<div></div>' : `<div class="plp" title="${esc(boundsTip(label, key))}">${badge(tier, TIER_SHORT[Math.min(4, tier)], true)}</div>`}`;
   const rows = [
     row('triangles', rec.tris.toLocaleString(), rec.tiers.tris, 'tris'),
@@ -369,15 +384,21 @@ function loupeHtml(rec) {
   // placer field in real entityMeta is `actor` (NOT `by` — that key never
   // existed, so 'placed by' had silently never rendered on a real object).
   const placer = meta?.actor ?? meta?.by;
-  const line2 = [placer ? `placed by ${placer}` : '', lensLabel]
-    .filter(Boolean).join(' · ');
+  // row 2 (R, 09-02 r11): perf-mode LEFT, 'placed by' RIGHT — split to opposite
+  // edges. row 3: rank right-justified. Tooltips explain each.
+  const lensTip = { rank: 'overall rank — worst category wins (VRChat model)',
+    tris: 'triangle count — GPU vertex/geometry load', draws: 'draw calls — CPU→GPU submit overhead, often the real cost',
+    tex: 'texture memory — estimated VRAM the images occupy', mat: 'material cost — a categorical shader-complexity proxy',
+    bones: 'skinning — bone count driving per-frame skeletal transforms', alpha: 'transparency — overdraw & sort cost from alpha materials' }[lensMode] ?? '';
+  const modeEl = `<span class="pl-mode" title="${esc(lensTip)}">${lensLabel}</span>`;
+  const placedEl = placer ? `<span class="pl-placer" title="the actor who placed this object into the world">placed by ${placer}</span>` : '';
   return `
   <div class="pl-head">
     <div class="pl-headtop"><b class="pl-name" title="${esc(rec.label)}">${rec.label}</b><span title="${esc(why)}" class="pl-rank">${badge(rec.rank, TIER_NAMES[rec.rank], true)}</span></div>
-    <div class="pl-sub pl-metarow">${line2}</div>${rankStr ? `<div class="pl-sub pl-rankrow">${rankStr}</div>` : ''}
+    <div class="pl-sub pl-metarow">${modeEl}${placedEl}</div>${rankStr ? `<div class="pl-sub pl-rankrow" title="this object's position among all ${total} subjects in the scene, ranked by the active lens">${rankStr}</div>` : ''}
   </div>
   <div class="pl-grid">${rows}</div>
-  <div class="pl-foot">${pinned ? 'click elsewhere to unpin' : 'click to pin'}</div>`;
+  <div class="pl-foot" title="${pinned ? 'click anywhere in the scene to unpin this card' : 'click an object to pin its card so you can hover its rows for detail'}">${pinned ? 'click elsewhere to unpin' : 'click to pin'}</div>`;
 }
 
 function castAt(ev) {
@@ -417,9 +438,15 @@ function placeLoupe(ev) {
 
 function onClick(ev) {
   if (!loupeOn) return;
-  if (pinned) { pinned = null; loupeEl.classList.remove('show'); return; }
+  if (pinned) { pinned = null; loupeEl.classList.remove('show', 'pinned'); return; }
   const rec = castAt(ev);
-  if (rec) { pinned = rec; loupeEl.innerHTML = loupeHtml(rec); placeLoupe(ev); loupeEl.classList.add('show'); }
+  if (rec) {
+    pinned = rec; loupeEl.innerHTML = loupeHtml(rec); placeLoupe(ev);
+    // pinned → make the card hoverable so every `title` tooltip fires (R, 09-02
+    // r11). Unpinned it stays pointer-events:none so it follows the cursor and
+    // the raycast reaches the scene beneath it.
+    loupeEl.classList.add('show', 'pinned');
+  }
 }
 
 export function setLoupe(onOff) {
@@ -438,7 +465,7 @@ export function setLoupe(onOff) {
   } else {
     canvas.removeEventListener('pointermove', onMove);
     canvas.removeEventListener('click', onClick);
-    loupeEl.classList.remove('show');
+    loupeEl.classList.remove('show', 'pinned');
   }
   onLoupeChange?.(loupeOn);
 }

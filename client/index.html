@@ -850,6 +850,10 @@ body.touch #touch { display: block; }
   opacity: 0; transition: opacity .1s;
 }
 .perf-loupe.show { opacity: 1; }
+/* pinned → hoverable, so every `title` tooltip on the rows actually fires
+   (unpinned the card is pointer-events:none to follow the cursor & let the
+   raycast through). R, 09-02 r11. */
+.perf-loupe.pinned { pointer-events: auto; }
 /* Maya channel-box grid (R, 09-02): label right-justified against the center
    seam · value right-justified against the pill column (buffer via column-gap)
    · tier pill. Two clean vertical rules; nothing floats apart, nothing bumps
@@ -892,15 +896,19 @@ body.touch #touch { display: block; }
 /* name: left, single line, ellipsised so it NEVER dictates panel width — the
    data grid governs the width, killing the left gutter (R, 09-02 r8). Full name
    lives in the title tooltip + is selectable when pinned. */
+/* name: left, wraps to at most TWO lines then ellipsises (R, 09-02 r11); capped
+   width so line 2 breaks before the pill column. Full name in the title tooltip. */
 .perf-loupe .pl-name {
-  flex: 1 1 auto; min-width: 0; max-width: 190px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  flex: 1 1 auto; min-width: 0; max-width: 200px; line-height: 1.25;
+  overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
 }
 .perf-loupe .pl-head .pl-rank { flex: none; }
 .perf-loupe .pl-sub { color: var(--dim); font-size: 10px; }
-/* row 2 left (placed by · lens); row 3 the rank, right-justified under the pill
-   (R, 09-02 r10 — split off the chunky merged line). */
-.perf-loupe .pl-metarow { text-align: left; }
+/* row 2: perf-mode LEFT, 'placed by' RIGHT — split to opposite edges (R r11).
+   row 3: rank right-justified under the pill column. */
+.perf-loupe .pl-metarow { display: flex; justify-content: space-between; gap: 12px; }
+.perf-loupe .pl-metarow .pl-placer { text-align: right; }
 .perf-loupe .pl-rankrow { text-align: right; font-variant-numeric: tabular-nums; }
 /* texlist tucks under "textures" as a clear sub-detail */
 .perf-loupe .pl-texlist { font-size: 9.5px; color: var(--dim); padding: 0 0 1px 12px; opacity: .85; }
