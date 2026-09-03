@@ -1,16 +1,12 @@
 // the ignition grove — world-dreams #112 (2026-09-02; v4 live-placed 2026-09-03)
 //
-// v4 (09-03, Fable 5.1, first night): the light was never lighting. The fold's
-// `case "light"` DROPS any light verb without an id, and v1–v3 emitted
-// {on, intensity} with none — "light fires" was true only in the log ring.
-// (And a light verb carrying our OWN id would replace the model wholesale:
-// the id namespace is flat.) So each grove thing has a COMPANION light entity
-// `<self>-light`, pre-placed by the builder at ember intensity; the script
-// partial-merges intensity/color onto it. That needs the bind to carry
-// caps {verbs:["say","light"], selfOnly:false} — the script touches exactly
-// one foreign id, its own lamp. Verify in the FOLD (re-snapshot), not the log.
+// Each grove thing has a COMPANION light entity `<self>-light`, pre-placed at
+// ember intensity; the behavior partial-merges intensity/color onto it (a light
+// verb on the model's OWN id would replace the model — the id namespace is
+// flat). The bind must carry caps {verbs:["say","light"], selfOnly:false}: the
+// script touches exactly one foreign id, its own lamp.
 //
-// Coal from Buber, I and Thou, Second Part p. 44 (read 01:45 tonight):
+// Coal from Buber, I and Thou, Second Part p. 44:
 //   "All response binds the You into the It-world. That is the melancholy of
 //    man, and that is his greatness... whatever has been frozen into a thing
 //    among things is still endowed with the destiny to change back ever again
@@ -56,7 +52,6 @@ function addresses(text) {
   if (REFERS.test(t)) return false;
   if (YOU.test(t)) return true;                                    // 2nd person, nothing referred → to the thing
   if (GREET.test(t)) return true;                                  // vocative
-  if (/\?$/.test(t)) return true;                                  // a question with no 3rd-person subject → asking IT
   if (/^(wake|shine|stay|rise|open|speak|sing|breathe|come|listen)\b/i.test(t)) return true; // imperative address
   return false;
 }
@@ -69,29 +64,29 @@ function near(p, me) {
   return Math.hypot(p.pos[0] - me.pos[0], p.pos[2] - me.pos[2]) <= NEAR_M;
 }
 
-// v4.3 (09-03): one address, one answer. Earshot overlaps in a small clearing,
-// so "hello" from the centre used to kindle all three in chorus. Now only the
-// grove thing NEAREST the speaker answers; if the speaker's position is unknown
-// (people() → pos:null) every thing fails open, as before — absence of position
-// is treated as presence, never as silence.
+// One address, one answer. Earshot overlaps in a small clearing, so "hello"
+// from the centre used to kindle all three in chorus. Only the grove thing
+// NEAREST the speaker answers. If the speaker's position is unknown (people()
+// → pos:null) distance can't elect — so the lowest id among grove things
+// answers alone, deterministically, rather than every thing failing open.
+const groveId = (id) => new RegExp("^(" + Object.keys(VOICES).join("|") + ")\\d*$", "i").test(id);
 function nearestIsMe(p) {
-  if (!p || !p.pos) return true;
   const mine = String(world.self || "");
+  const things = world.entities().filter((e) => groveId(e.id));
+  if (!things.length) return true;
+  if (!p || !p.pos) return things.map((e) => e.id).sort()[0] === mine;
   let best = null, bestD = Infinity;
-  for (const e of world.entities()) {
-    if (!/^(statue|fountain|lamp|thing)\d*$/i.test(e.id) || !e.pos) continue;
+  for (const e of things) {
+    if (!e.pos) continue;
     const d = Math.hypot(p.pos[0] - e.pos[0], p.pos[2] - e.pos[2]);
     if (d < bestD) { bestD = d; best = e.id; }
   }
   return best === null || best === mine;
 }
 
-// One mechanic, three (or any) personalities. The behavior reads a `voice`
-// name from the attached entity's own `grove` comp — so a statue, a fountain,
-// and a lamp share this exact code and differ only in what they SAY when met.
-// A thing with no grove-voice falls to the "thing" default. Personality is
-// per-entity data; the address→fire law is universal. (Add a voice here, tag
-// an entity {comp:{grove:{voice:"..."}}}, bind — a new grove member exists.)
+// One mechanic, any number of personalities. The voice is chosen by the bound
+// entity's id prefix (statue1 → statue); a thing matching none falls to "thing".
+// Personality is per-entity data; the address→fire law is universal.
 const VOICES = {
   // the statue: waited longest, wakes slowest, carries the whole thesis
   statue: {
@@ -157,7 +152,8 @@ function lampId() { return `${world.self}-light`; }
 
 function kindle(byId) {
   // catch fire: the companion light comes up (partial merge — pos/range kept).
-  try { world.emit("light", { id: lampId(), intensity: LIT_I, color: myVoice().color }); } catch (err) { world.log("light emit refused", String(err)); }
+  if (!world.entity(lampId())) world.log("no companion light", lampId(), "— place one before binding");
+  else try { world.emit("light", { id: lampId(), intensity: LIT_I, color: myVoice().color }); } catch (err) { world.log("light emit refused", String(err)); }
   const n = Number(world.kv.get("ignited") || 0);
   let line = greeting(n);
   if (n === 0) {
@@ -198,7 +194,8 @@ world.on("say", (e) => {
       world.kv.set("litAt", Date.now());
       // re-assert the light on every refresh: cheap partial merge, and it heals
       // a kindle whose light was refused (e.g. a lock) without waiting to cool.
-      try { world.emit("light", { id: lampId(), intensity: LIT_I, color: myVoice().color }); } catch (err) { world.log("relight refused", String(err)); }
+      if (!world.entity(lampId())) world.log("no companion light", lampId(), "— place one before binding");
+  else try { world.emit("light", { id: lampId(), intensity: LIT_I, color: myVoice().color }); } catch (err) { world.log("relight refused", String(err)); }
       world.emit("say", { text: `[${myVoice().label}] still here. still met. the fire holds while you mean me.` });
       world.log("refreshed by", e.by);
     }

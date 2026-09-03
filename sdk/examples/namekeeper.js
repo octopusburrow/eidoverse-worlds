@@ -7,15 +7,15 @@
 // earshot; the keeper keeps it and says it back. use {action:"hear"} recites the
 // collection. Nouns are refused gently — a relation-name needs at least a hyphen's
 // worth of BETWEEN in it.
-const NEAR_M = 12, MAX_NAMES = 30, MAX_LEN = 120;
+const NEAR_M = 12, MAX_NAMES = 20, MAX_LEN = 120, MAX_BY = 16, KV_BUDGET = 6000; // kv values cap at 8 KB; stay well under
 function near(p, me) {
-  if (!p.pos || !me) return true;
+  if (!p.pos || !me?.pos) return true;
   return Math.hypot(p.pos[0]-me.pos[0], p.pos[2]-me.pos[2]) <= NEAR_M;
 }
 world.on("say", (e) => {
   const m = /^\s*name:\s*(.+)$/i.exec(e.text || "");
   if (!m) return;
-  if (e.by.startsWith("bhv:")) return;
+  if (e.by.startsWith("bhv:")) return; // belt-and-braces; the server already drops bhv:* actors
   const me = world.entity(world.self);
   const p = world.people().find(q => q.id === e.by);
   if (p && !near(p, me)) { world.log("name offered from afar", e.by); return; }
@@ -29,8 +29,8 @@ world.on("say", (e) => {
     world.emit("say", { text: `[the grove] "${name}" is already kept here. it is good enough to arrive twice.` });
     return;
   }
-  names.push({ name, by: e.by });
-  while (names.length > MAX_NAMES) names.shift();
+  names.push({ name, by: String(e.by).slice(0, MAX_BY) });
+  while (names.length > MAX_NAMES || JSON.stringify(names).length > KV_BUDGET) names.shift();
   world.kv.set("names", names);
   world.emit("comp", { id: world.self, type: "names", data: names.map(n => n.name) });
   world.emit("say", { text: `[the grove] kept: "${name}" — offered by ${e.by}. the grove is one relation larger.` });

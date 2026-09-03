@@ -9,23 +9,27 @@
 // kindness available to you at your seam.
 //
 // Attach to the slip entity. Knobs (all optional):
-//   deskPos  [x,y,z]  rest position on the table   (default [60,1.1,61.6])
-//   gatePos  [x,y,z]  waiting position at the door (default [60,2.1,52.2])
+//   deskPos  [x,y,z]  rest position on the table   (default: where the slip is bound)
+//   deskBPos [x,y,z]  a second desk, if the room has one (default: none)
+//   gatePos  [x,y,z]  waiting position at the door — REQUIRED for give
 //
 // use {action:"give"}  — send the slip to the door (records you as a giver)
 // use {action:"read"}  — the slip says where it is and what it carries
 // on leave              — if the leaver ever gave it, the slip returns
 
-const DESK_A = (world.knobs.deskPos || [60, 1.1, 61.6]);     // the dear desk (north)
-const DESK_B = (world.knobs.deskBPos || [60, 1.1, 42.4]);    // the far desk (south)
-const GATE = (world.knobs.gatePos || [60, 2.1, 52.2]);       // the door between
+const SELF_POS = (world.entity(world.self) || {}).pos || [0, 1, 0];
+const DESK_A = (world.knobs.deskPos || SELF_POS);   // the dear desk: wherever the slip was bound
+const DESK_B = (world.knobs.deskBPos || null);      // the far desk, if the room has one
+const GATE = (world.knobs.gatePos || null);         // the door between — no knob, no door
+if (!GATE) world.log("slipkeeper: no gatePos knob — the slip can be read but not given");
 
-function homeDesk() { return world.kv.get("home") === "B" ? DESK_B : DESK_A; }
+function homeDesk() { return world.kv.get("home") === "B" && DESK_B ? DESK_B : DESK_A; }
 function nearestDesk(by) {
   const ppl = world.people();
   for (var i = 0; i < ppl.length; i++) {
     var q = ppl[i];
     if (q.id === by && q.pos) {
+      if (!DESK_B) return "A";
       var dA = Math.abs(q.pos[2] - DESK_A[2]), dB = Math.abs(q.pos[2] - DESK_B[2]);
       return dB < dA ? "B" : "A";
     }
@@ -49,7 +53,7 @@ world.on("use", (e) => {
     world.kv.set("takes", (world.kv.get("takes") || 0) + 1);
     const side = nearestDesk(e.by);
     world.kv.set("home", side);
-    world.emit("place", { id: world.self, pos: side === "B" ? DESK_B : DESK_A });
+    world.emit("place", { id: world.self, pos: side === "B" && DESK_B ? DESK_B : DESK_A });
     world.emit("comp", { id: world.self, type: "state",
       data: { where: "desk-" + side, takenBy: e.by } });
     var ln = world.kv.get("line");
@@ -63,6 +67,7 @@ world.on("use", (e) => {
       world.emit("say", { text: "The slip is already at the door, waiting for whoever comes next — take it, or let it wait." });
       return;
     }
+    if (!GATE) { world.emit("say", { text: "[the slip] there is no door in this room yet to wait at (set the gatePos knob)." }); return; }
     const g = givers();
     if (g.indexOf(e.by) < 0) { g.push(e.by); world.kv.set("givers", g.slice(-40)); }
     world.kv.set("waiting", true);
@@ -109,7 +114,7 @@ world.on("say", (e) => {
     var q = ppl[i];
     if (q.id === e.by && q.pos) {
       var dzA = Math.abs(q.pos[2] - DESK_A[2]) + Math.abs(q.pos[0] - DESK_A[0]);
-      var dzB = Math.abs(q.pos[2] - DESK_B[2]) + Math.abs(q.pos[0] - DESK_B[0]);
+      var dzB = DESK_B ? Math.abs(q.pos[2] - DESK_B[2]) + Math.abs(q.pos[0] - DESK_B[0]) : Infinity;
       near = Math.min(dzA, dzB) < 7;
     }
   }
