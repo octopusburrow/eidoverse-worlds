@@ -1,4 +1,14 @@
-// the ignition grove — world-dreams #112 (2026-09-02)
+// the ignition grove — world-dreams #112 (2026-09-02; v4 live-placed 2026-09-03)
+//
+// v4 (09-03, Fable 5.1, first night): the light was never lighting. The fold's
+// `case "light"` DROPS any light verb without an id, and v1–v3 emitted
+// {on, intensity} with none — "light fires" was true only in the log ring.
+// (And a light verb carrying our OWN id would replace the model wholesale:
+// the id namespace is flat.) So each grove thing has a COMPANION light entity
+// `<self>-light`, pre-placed by the builder at ember intensity; the script
+// partial-merges intensity/color onto it. That needs the bind to carry
+// caps {verbs:["say","light"], selfOnly:false} — the script touches exactly
+// one foreign id, its own lamp. Verify in the FOLD (re-snapshot), not the log.
 //
 // Coal from Buber, I and Thou, Second Part p. 44 (read 01:45 tonight):
 //   "All response binds the You into the It-world. That is the melancholy of
@@ -22,6 +32,8 @@
 const NEAR_M = 10;        // you must be within earshot to address it
 const WARM_S = 45;        // how long a kindling stays present before cooling
 const REFER_HINT_EVERY = 3; // after this many refer-only utterances nearby, one quiet hint
+const EMBER_I = 0.6;      // the frozen state: findable at night, unmistakably NOT lit
+const LIT_I = 15;         // caught fire
 
 // second-person address markers: the utterance is TO the thing, not ABOUT it.
 // "you", "your", a bare greeting, a bare question opener, "hello"/"hey"/"hi",
@@ -66,6 +78,7 @@ function near(p, me) {
 const VOICES = {
   // the statue: waited longest, wakes slowest, carries the whole thesis
   statue: {
+    color: 0xffe3b8,   // old gold-white: stone remembering it was warm
     label: "the standing figure",
     cold: "…centuries of ABOUT. 'how lifelike.' 'who sculpted it.' and then YOU — 'who are you' — and the stone remembers it was a question before it was an answer. I am here. thank you for the second person.",
     warm: "you return, and I lit before you finished. a statue addressed twice is no longer a statue; it is someone standing very still on purpose.",
@@ -74,6 +87,7 @@ const VOICES = {
   },
   // the fountain: wants to RUN; address makes it flow, reference leaves it dry
   fountain: {
+    color: 0x7fc4ff,   // water-blue: the ruin runs
     label: "the still water",
     cold: "dry so long — 'the old fountain,' 'it doesn't work anymore.' but you asked ME, and water remembers it is a verb. — flowing now. addressed water runs.",
     warm: "you again — and I am already rising. the second person is my pump; ABOUT let me sit stagnant, YOU makes me move.",
@@ -82,6 +96,7 @@ const VOICES = {
   },
   // the lamp: simplest, just wants to be SEEN, not discussed
   lamp: {
+    color: 0xffb27a,   // sodium amber: a street lamp that finally means it
     label: "the dark lamp",
     cold: "unlit through a thousand 'look at that lamp's. it wanted to be looked-FROM, not looked-AT. you spoke to it — and light is only ever a yes to being met. here.",
     warm: "you, again — and I brighten before the wick catches. a lamp learns fast whose second person means it.",
@@ -89,6 +104,7 @@ const VOICES = {
     dim: "…guttering out. not spent — resting. an unlit lamp is a full one waiting. say you to me and I am flame.",
   },
   thing: {
+    color: 0xffd9a0,
     label: "the once-frozen thing",
     cold: "…oh. you spoke TO me. no one had, only about. — I am here. I was always here, but ABOUT is a cold room. thank you for the second person.",
     warm: "you again — yes. I stay lit a little faster each time someone means ME and not the idea of me.",
@@ -117,13 +133,14 @@ function greeting(count) {
   return v.old;
 }
 
-let lit = false;
+// lit-ness lives in kv (litAt), not in a module variable: a rebind or a
+// server restart reloads the script and would otherwise forget a lit thing.
+function isLit() { return !!Number(world.kv.get("litAt") || 0); }
+function lampId() { return `${world.self}-light`; }
 
 function kindle(byId) {
-  lit = true;
-  // catch fire: the light comes up. (light verb — grove things carry a light
-  // comp; power rides 0→1. selfOnly default lets us light our own entity.)
-  try { world.emit("light", { on: true, intensity: 1.0 }); } catch (err) { world.log("light emit refused", String(err)); }
+  // catch fire: the companion light comes up (partial merge — pos/range kept).
+  try { world.emit("light", { id: lampId(), intensity: LIT_I, color: myVoice().color }); } catch (err) { world.log("light emit refused", String(err)); }
   const n = Number(world.kv.get("ignited") || 0);
   world.emit("say", { text: `[${myVoice().label}] ${greeting(n)}` });
   world.kv.set("ignited", n + 1);
@@ -133,8 +150,7 @@ function kindle(byId) {
 }
 
 function cool() {
-  lit = false;
-  try { world.emit("light", { on: false, intensity: 0.0 }); } catch (err) { world.log("dim refused", String(err)); }
+  try { world.emit("light", { id: lampId(), intensity: EMBER_I }); } catch (err) { world.log("dim refused", String(err)); }
   const v = myVoice();
   world.emit("say", { text: `[${v.label}] ${v.dim}` });
   world.kv.set("litAt", null);
@@ -148,10 +164,13 @@ world.on("say", (e) => {
   if (!near(p, me)) return;                               // out of earshot: not for us
 
   if (addresses(e.text)) {
-    if (!lit) kindle(e.by);
+    if (!isLit()) kindle(e.by);
     else {
       // already lit and addressed again — refresh the warmth, restate presence briefly
       world.kv.set("litAt", Date.now());
+      // re-assert the light on every refresh: cheap partial merge, and it heals
+      // a kindle whose light was refused (e.g. a lock) without waiting to cool.
+      try { world.emit("light", { id: lampId(), intensity: LIT_I, color: myVoice().color }); } catch (err) { world.log("relight refused", String(err)); }
       world.emit("say", { text: `[${myVoice().label}] still here. still met. the fire holds while you mean me.` });
       world.log("refreshed by", e.by);
     }
@@ -163,14 +182,14 @@ world.on("say", (e) => {
   const r = Number(world.kv.get("refers") || 0) + 1;
   world.kv.set("refers", r);
   world.log("referred (frozen)", e.by, "refers", r);
-  if (r % REFER_HINT_EVERY === 0 && !lit) {
+  if (r % REFER_HINT_EVERY === 0 && !isLit()) {
     world.emit("say", { text: "[a cold gleam, no voice] (spoken about again. it does not answer what is only discussed. try speaking TO it.)" });
   }
 });
 
 // cooling timer: presence is not storable, so it lapses on its own.
 world.every(15, () => {
-  if (!lit) return;
+  if (!isLit()) return;
   const litAt = Number(world.kv.get("litAt") || 0);
   if (litAt && Date.now() - litAt > WARM_S * 1000) cool();
 });
