@@ -412,8 +412,10 @@ function loupeHtml(rec) {
     <b class="pl-name" title="${esc(rec.label)}">${nameHtml}</b>
     <div class="pl-verdict">
       <span title="${esc(why)}" class="pl-rank">${badge(rec.rank, TIER_NAMES[rec.rank], true)}</span>
-      <span class="pl-mode" title="${esc(lensTip)}">${lensLabel}</span>
-      ${rankStr ? `<span class="pl-rankrow" title="this object's position among all ${total} subjects in the scene, ranked by the active lens">${rankStr}</span>` : ''}
+      <div class="pl-verdictsub">
+        <span class="pl-mode" title="${esc(lensTip)}">${lensLabel}</span>
+        ${rankStr ? `<span class="pl-rankrow" title="this object's position among all ${total} subjects in the scene, ranked by the active lens">${rankStr}</span>` : ''}
+      </div>
     </div>
   </div>
   <div class="pl-grid">${rows}</div>
