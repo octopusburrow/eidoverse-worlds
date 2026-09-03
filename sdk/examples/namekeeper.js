@@ -39,7 +39,7 @@ world.on("say", (e) => {
   world.log("kept", name, "by", e.by);
 });
 world.on("use", (e) => {
-  if (e.action !== "hear") return;
+  if (e.entity !== world.self || e.action !== "hear") return;
   const names = world.kv.get("names") || [];
   if (!names.length) {
     world.emit("say", { text: "[the grove] no names kept yet. offer one: say  name: <a-whole-scene-between-beings>" });

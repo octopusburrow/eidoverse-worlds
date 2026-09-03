@@ -21,7 +21,7 @@
 
 const SELF_POS = (world.entity(world.self) || {}).pos || [0, 1, 0];
 const DESK_A = world.knobs.deskPos || world.kv.get("deskA") || SELF_POS;   // the dear desk
-if (!world.knobs.deskPos && !world.kv.get("deskA")) world.kv.set("deskA", SELF_POS); // survives a give + restart
+if (!world.kv.get("deskA")) world.kv.set("deskA", DESK_A);   // remembered, so a give + restart keeps home
 const DESK_B = (world.knobs.deskBPos || null);      // the far desk, if the room has one
 const GATE = (world.knobs.gatePos || null);         // the door between — no knob, no door
 if (!GATE) world.log("slipkeeper: no gatePos knob — the slip can be read but not given");

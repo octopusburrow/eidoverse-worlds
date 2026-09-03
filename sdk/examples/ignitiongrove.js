@@ -78,7 +78,7 @@ function near(p, me) {
 // One predicate for "is a grove thing" and "which voice": the id's leading word.
 // Election is by id shape, not by binding — keep grove-shaped ids for grove things.
 const grovePrefix = (id) => Object.keys(VOICES).find((k) => k !== "thing" && String(id).toLowerCase().indexOf(k) === 0);
-const groveId = (id) => !!grovePrefix(id) || /^thing\d*$/i.test(String(id));
+const groveId = (id) => !/-light$/i.test(String(id)) && (!!grovePrefix(id) || /^thing\d*$/i.test(String(id))); // the companion light is not a thing
 function nearestIsMe(p) {
   const mine = String(world.self || "");
   const things = world.entities().filter((e) => groveId(e.id));
