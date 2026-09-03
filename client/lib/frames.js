@@ -19,9 +19,9 @@ const frames = new Map();
 // pixels belong to content — scrollbars and buttons always win (we test the
 // real element under the pointer, not geometry alone).
 const _resizables = [];
-const _BAND = 4, _REACH = 6;   // band R-tuned 17:23 at 2, widened to 4 after
-                               // antra's live receipt (edge target was ~8px
-                               // total and half of that hung in the air)
+const _BAND = 4, _REACH = 6;   // band was 2, widened to 4 after a live
+                               // report (edge target was ~8px total and
+                               // half of that hung in the air)
 const _CORNER = 15;            // the corner is the hardest 2D target on the
                                // frame and USED to be the intersection of two
                                // 2px bands — invisible in practice. It gets
@@ -78,7 +78,7 @@ function _contentClaims(e) {
  *  content (_contentClaims), a click-styled row (computed cursor:pointer —
  *  the house convention for every clickable), a label (clicks toggle its
  *  input), or selectable text (the chat log — a grab there would eat copy)?
- *  The SL Build-window/WoW convention (R, 09-01): empty pane pixels move the
+ *  The SL Build-window/WoW convention: empty pane pixels move the
  *  pane; everything that DOES something keeps doing it. */
 function _grabbableAt(e) {
   if (_contentClaims(e)) return false;
@@ -118,8 +118,8 @@ document.addEventListener('pointerdown', (e) => {
   const s0 = { x: f.state.x, y: f.state.y, w: f.state.w, h: f.state.h };
   const move = (ev) => {
     const dx = ev.clientX - sx, dy = ev.clientY - sy;
-    // grows are clamped so no edge ever leaves the viewport (R, 08-29:
-    // windows stay inside the active area, full stop)
+    // grows are clamped so no edge ever leaves the viewport
+    // (windows stay inside the active area, full stop)
     if (z.includes('e')) f.state.w = clamp(s0.w + dx, f.minW, innerWidth - s0.x - 8);
     if (z.includes('s')) f.state.h = clamp(s0.h + dy, f.minH, innerHeight - s0.y - 40);
     if (z.includes('w')) {
@@ -303,7 +303,7 @@ export function makeFrame(id, opts = {}) {
     if (!state.collapsed) onResize?.(state.w, state.h);
   }
 
-  // ---- buttons: name + ✕ only — the collapse chip retired (R, 08-30 15:12);
+  // ---- buttons: name + ✕ only — the collapse chip retired;
   // api.collapse() survives for code callers, the chrome just doesn't offer it
   if (closable) {
     const b = document.createElement('button');
@@ -342,8 +342,8 @@ export function makeFrame(id, opts = {}) {
   });
   // Alt+drag anywhere on the frame — the MMO habit, and it rescues a frame
   // whose title bar has been dragged off-screen. Without Alt, EMPTY frame
-  // pixels drag too when the layout is unlocked (grab-by-empty-space, R's
-  // "ship 1" 09-01) — interactive content, pointer-cursor rows, labels,
+  // pixels drag too when the layout is unlocked (grab-by-empty-space)
+  // — interactive content, pointer-cursor rows, labels,
   // selectable text and the edge-resize band all still win.
   root.addEventListener('pointermove', (e) => {
     if (locked || _resizing) { root.style.cursor = ''; return; }
@@ -362,7 +362,7 @@ export function makeFrame(id, opts = {}) {
   // ---- resizing: registered with the module-level edge hit-tester (below) —
   // one document listener serves every frame, which is the only way to grab
   // OUTSIDE a frame's border without an overlay stealing its content's events
-  // (the ::before halo painted over scrollbars and buttons — R, 17:20).
+  // (the ::before halo painted over scrollbars and buttons).
   if (resizable) _resizables.push({ root, state, minW, minH, paint, save, raise,
     active: () => !locked && !state.collapsed && !state.hidden });
 
@@ -371,6 +371,9 @@ export function makeFrame(id, opts = {}) {
 
   frames.set(id, api);
   paint();
+  // restored frames enter through raise() too, so boot order becomes z order
+  // and the first click on any of them lands above the rest
+  if (!state.hidden) raise();
   // The anchor was computed from the BODY height, but a frame is also a title
   // bar and whatever padding its content carries — so a bottom-anchored frame
   // hung its composer off the screen. Measure once it exists and pull it back.

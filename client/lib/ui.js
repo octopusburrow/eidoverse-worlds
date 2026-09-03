@@ -101,41 +101,31 @@ export function flashHint(html, ms = 2600) {
 }
 
 // ============================================================ cursors
-// SVG pointers tinted by the live --brand. CSS url() cursors can't read
-// custom properties, so the tint is baked here and published as
-// --cur-default / --cur-pointer / --cur-loupe (index.html holds the rules
-// and the native fallbacks). Rebuilt whenever the accent picker writes new
-// tokens onto the root element.
+// The loupe cursor is tinted by the live --brand. CSS url() cursors can't read
+// custom properties, so the tint is baked here and published as --cur-loupe
+// (index.html holds the rule and the native fallback). Rebuilt when the style
+// panel writes a new accent.
 
-function buildCursors() {
-  const cs = getComputedStyle(document.documentElement);
-  const brand = (cs.getPropertyValue('--brand') || '#8fe8c8').trim();
+let _cursorBrand = null;
+export function buildCursors() {
+  const brand = (getComputedStyle(document.documentElement).getPropertyValue('--brand') || '#8fe8c8').trim();
+  if (brand === _cursorBrand) return;
+  _cursorBrand = brand;
   const ink = '#101b1a';
   const enc = (s) => `url("data:image/svg+xml,${encodeURIComponent(s)}")`;
-  const arrow = (fill, stroke) =>
-    `<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='0 0 22 22'>` +
-    `<path d='M4 2 L4 17 L8.2 13.4 L10.8 19 L13.6 17.6 L11 12.2 L16.5 12 Z' ` +
-    `fill='${fill}' stroke='${stroke}' stroke-width='1.4' stroke-linejoin='round'/></svg>`;
   const loupe =
     `<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'>` +
     `<circle cx='10' cy='10' r='6.5' fill='rgba(16,27,26,0.25)' stroke='${brand}' stroke-width='2'/>` +
     `<line x1='15' y1='15' x2='21' y2='21' stroke='${brand}' stroke-width='2.6' stroke-linecap='round'/>` +
     `<line x1='15' y1='15' x2='21' y2='21' stroke='${ink}' stroke-width='1' stroke-linecap='round'/></svg>`;
-  const root = document.documentElement.style;
-  root.setProperty('--cur-default', `${enc(arrow(ink, brand))} 3 2, auto`);
-  root.setProperty('--cur-pointer', `${enc(arrow(brand, ink))} 3 2, pointer`);
-  root.setProperty('--cur-loupe', `${enc(loupe)} 10 10, crosshair`);
+  document.documentElement.style.setProperty('--cur-loupe', `${enc(loupe)} 10 10, crosshair`);
 }
 buildCursors();
-// the style panel writes tokens straight onto the root element's style —
-// watch it so the pointer follows the accent picker live. Guard: our own
-// three writes above also mutate [style]; only rebuild when --brand differs
-// from what we last baked, or the observer feeds itself forever.
-let _cursorBrand = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim();
-new MutationObserver(() => {
-  const b = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim();
-  if (b !== _cursorBrand) { _cursorBrand = b; buildCursors(); }
-}).observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
+// the style panel writes tokens straight onto the root element's style;
+// buildCursors is a no-op unless --brand actually changed, so our own
+// --cur-loupe write can't feed the observer back into itself
+new MutationObserver(buildCursors)
+  .observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
 
 // ============================================================ slider fill
 // WebKit custom tracks have no progress fill, so every .row range carries a
@@ -225,7 +215,7 @@ export function panelFrame() {
 }
 
 // engine settings — machine-noun home (video, sound, controls). First tenant:
-// the audio panel, moved out of the world menu (R, 22:01). Same stack shape.
+// the audio panel, moved out of the world menu. Same stack shape.
 let settingsFrameApi = null;
 export function settingsFrame() {
   if (!settingsFrameApi) {
@@ -325,7 +315,7 @@ const savePins = () => { try { localStorage.setItem(PINS_LS, JSON.stringify([...
 let dockEntries = [];
 
 const DOCKPOS_LS = 'ew-dock-pos';
-// ---- mod seam (R, 16:58: "get un-painted into a corner"; the WoW/Resonite
+// ---- mod seam (get un-painted out of the corner; the WoW/Resonite
 // lesson — the HUD is a REGISTRY, core panels are just the built-in entries).
 // A mod calls eido.ui.registerPanel() and gets: a frame, a menu row, a rail
 // icon when open/pinned, arrange/lock/reset participation — everything the
@@ -349,7 +339,7 @@ function addDockButton(entry) {
   const { id, label, icon, action } = entry;
   const b = document.createElement('button');
   if (icon && hasFill(icon)) b.innerHTML = fsvg(icon, 21);   // +25% glyph, same 34px button
-  else b.textContent = label;
+  else b.textContent = label ?? id;
   b.title = action ? id : `toggle ${id}`;
   b.onclick = () => {
     if (action) { action(); paintDock(); return; }
@@ -364,7 +354,9 @@ function addDockButton(entry) {
 }
 
 export function initDock(entries) {
-  dockEntries.push(...entries);
+  // built-ins lead; a mod registered before boot keeps its entry, once
+  const seen = new Set();
+  dockEntries = [...entries, ...dockEntries].filter((e) => !seen.has(e.id) && seen.add(e.id));
   el.dock.innerHTML = '';
   // ∃ leads the rail — one unit. (Mic/ear are separate fixed elements that
   // anchor to the ∃'s live box, so they ride along without being "in" it.)
@@ -378,7 +370,7 @@ export function initDock(entries) {
   grip.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     const move = (ev) => {
-      // LIVE snap (R, 15:12): the rail rides its nearest edge THROUGHOUT the
+      // LIVE snap: the rail rides its nearest edge THROUGHOUT the
       // drag — no free-floating ghost, no repaint surprise at release
       applyDockEdge(edgeFromPointer(ev));
       dispatchEvent(new CustomEvent('dockmoved'));
@@ -398,7 +390,7 @@ export function initDock(entries) {
   initEMenu();
 }
 
-// ---- the rail lives flat on an edge (R, 22:01). {edge, along} persisted;
+// ---- the rail lives flat on an edge. {edge, along} persisted;
 // left/right = vertical (∃ on top), top/bottom = horizontal (∃ leftmost).
 function loadDockEdge() {
   try { const p = JSON.parse(localStorage.getItem(DOCKPOS_LS) || 'null'); if (p?.edge) return p; } catch {}
@@ -468,7 +460,7 @@ function paintDock() {
 
 // ---- the ∃ menu — window list, pins, layout lock; open = arranging --------
 // Alt = the universal window-manager "grab anywhere" chord; show the hand
-// so the convention teaches itself (R, 08-29).
+// so the convention teaches itself.
 addEventListener('keydown', (e) => { if (e.key === 'Alt') document.body.classList.add('altgrab'); });
 addEventListener('keyup', (e) => { if (e.key === 'Alt') document.body.classList.remove('altgrab'); });
 addEventListener('blur', () => document.body.classList.remove('altgrab'));
@@ -478,14 +470,14 @@ function initEMenu() {
   el.hud.onclick = () => toggleEMenu();
   addEventListener('keydown', (e) => { if (e.key === 'Escape' && !emenuEl().hidden) toggleEMenu(false); });
   // Arranging survives clicks on ANY chrome (panels, headers, rail, menu) —
-  // it ends only out in the world (canvas/body) or back on the ∃ (R, 21:43).
+  // it ends only out in the world (canvas/body) or back on the ∃.
   addEventListener('pointerdown', (e) => {
     const m = emenuEl();
     if (m.hidden) return;
     const t = e.target;
     if (el.hud.contains(t)) return;                       // ∃ itself toggles via click
     const inChrome = (t instanceof Element &&
-      (m.contains(t) || t.closest('.frame, #dock, .panel, .hud-pop'))) ||
+      (m.contains(t) || t.closest('.frame, #dock, .panel, .hud-pop, #micbtn, #earbtn'))) ||
       resizeZoneAt(e.clientX, e.clientY);   // the grab band hangs 6px outside frames
     if (!inChrome) toggleEMenu(false);
   }, true);
@@ -496,13 +488,16 @@ function initEMenu() {
     e.preventDefault();
     const r = m.getBoundingClientRect();
     const ox = e.clientX - r.left, oy = e.clientY - r.top;
+    let moved = false;
     const move = (ev) => {
+      moved = true;
       m.style.left = `${Math.max(4, Math.min(innerWidth - r.width - 4, ev.clientX - ox))}px`;
       m.style.top = `${Math.max(34, Math.min(innerHeight - r.height - 4, ev.clientY - oy))}px`;
       m.style.right = m.style.bottom = 'auto';
     };
     const up = () => {
       removeEventListener('pointermove', move); removeEventListener('pointerup', up);
+      if (!moved) return;
       try { localStorage.setItem(EMENUPOS_LS, JSON.stringify({ x: parseInt(m.style.left), y: parseInt(m.style.top) })) } catch {}
     };
     addEventListener('pointermove', move); addEventListener('pointerup', up);
@@ -560,6 +555,13 @@ function paintEMenu() {
     const on = id === 'glyph:mic' ? micLive() : id === 'glyph:ear' ? earOn()
       : entry?.action ? !!entry.active?.() : !!getFrame(id)?.visible;
     row.classList.toggle('open', on);
+    // the glyph bakes its ink at build; re-stamp it when the state flips
+    const glyph = id === 'glyph:mic' ? micGlyph : id === 'glyph:ear' ? earGlyph : null;
+    if (glyph && row.dataset.on !== String(on)) {
+      row.dataset.on = String(on);
+      const g = row.querySelector('svg');
+      if (g) g.outerHTML = glyph(16);
+    }
   }
   for (const pin of m.querySelectorAll('.mpin[data-pin]')) {
     const id = pin.dataset.pin;
@@ -598,16 +600,16 @@ function buildEMenu(m) {
       if (gate && !gate()) continue;
       const row = document.createElement('button');
       row.className = 'mrow'; row.dataset.row = id;
-      row.innerHTML = `${fsvg(icon, 15)}<span class="mname">${id}</span>`;
+      row.innerHTML = `${fsvg(icon, 15) || fsvg('puzzle-piece', 15)}<span class="mname">${id}</span>`;
       row.onclick = () => { action(); paintDock(); paintEMenu(); };
       m.appendChild(row);
       continue;
     }
     const row = document.createElement('button');
     row.className = 'mrow'; row.dataset.row = id;
-    row.innerHTML = `${fsvg(icon, 15)}<span class="mname">${id}</span>`;
-    // click = toggle; the row's brightness IS the open state (R, 15:12 —
-    // one less glyph to reason about; the eye experiment is retired)
+    row.innerHTML = `${fsvg(icon, 15) || fsvg('puzzle-piece', 15)}<span class="mname">${id}</span>`;
+    // click = toggle; the row's brightness IS the open state
+    // (one less glyph to reason about)
     row.onclick = () => {
       const f = getFrame(id); if (!f) return;
       f.toggle();

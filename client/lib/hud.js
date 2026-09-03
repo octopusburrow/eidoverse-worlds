@@ -1,4 +1,4 @@
-// hud — now the ∃ mark. The status BAR is gone (R + the dev channel, 08-29):
+// hud — now the ∃ mark. The status BAR is gone:
 // identity lives in Profile-to-be, fps lives in debug, the people list lives
 // behind the ∃ menu and the rail. What survives here is what must be ambient:
 // connection truth (mark dims + pulses when the socket is down) and the

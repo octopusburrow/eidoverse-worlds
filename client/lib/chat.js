@@ -213,7 +213,7 @@ export function logChat(who, text, kind = '', meta = {}) {
   lastLineEl = line;
 
   const wasAtBottom = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 48;
-  // Causal placement (R, 16:30, verified against the world log — seq #1052/53
+  // Causal placement (verified against a world log where two records
   // landed same-second, interrupter first): a spoken utterance is an INTERVAL.
   // Its record arrives when the voice stops, but it BEGAN before the interrupt
   // that cut it. When a spoken say carries t0 (air-start), it slots in front
@@ -238,7 +238,7 @@ export function logChat(who, text, kind = '', meta = {}) {
     // visual predecessor. buildLine computed it against chronological arrival
     // (lastAuthor), and the two disagree exactly when this branch runs — a
     // 'cont' line landing under another speaker renders their nameplate over
-    // these words. (2026-08-05, "your line was credited to me"; repro:
+    // these words — a line credited to the wrong speaker. (repro:
     // exultation/tools/repro-stale-t0.mjs. Sys lines pass through a group,
     // same as the chronological rule.)
     let prev = line.previousElementSibling;
@@ -293,7 +293,7 @@ function buildLine(who, text, { kind = '', ts = Date.now(), historical = false }
   // sys lines pass THROUGH a group without erasing it: an act narration mid-
   // paragraph (an agent's tool use between spoken sentences) shouldn't force
   // the name to reprint on the next sentence. Only a real change of speaker
-  // or the window ends a group. (Live observation, Rabscuttle 14:53.)
+  // or the window ends a group. (Live observation.)
   if (!historical && !sys) { lastAuthor = who; lastAt = now; }
   if (grouped) line.classList.add('cont');
   if (historical) line.classList.add('old');
@@ -524,7 +524,7 @@ function audioReport() {
     // 🔴 DO NOT querySelectorAll('audio') — voicesfu builds `new Audio()`
     // elements that are NEVER appended to the DOM, so the document cannot see
     // them and this printed "no <audio> elements yet" on a phone that was
-    // audibly playing two speakers (R, 2026-08-16). A probe that reads the
+    // audibly playing two speakers. A probe that reads the
     // wrong source reports a failure that is not happening, which is worse
     // than reporting nothing. Ask the transport for its own elements.
     const entries = typeof window.__voiceSpeakerEls === 'function' ? window.__voiceSpeakerEls() : null;
@@ -542,8 +542,8 @@ function audioReport() {
     const has = !!(window.SpeechRecognition ?? window.webkitSpeechRecognition);
     if (!has) return 'no SpeechRecognition in this browser';
     // The TALLY is the load-bearing part: a last-event slot cannot prove that
-    // something never happened, and on 2026-08-16 I read exactly that absence
-    // out of it and was wrong twice.
+    // something never happened, and reading that absence
+    // out of it was wrong twice.
     return `${window.__sttOn?.() ? 'ON' : 'off'}`
       + (window.__sttTally ? ` [${window.__sttTally()}]` : '')
       + (window.__sttLast ? ` — last: ${window.__sttLast}` : ' — no events yet');
@@ -555,10 +555,10 @@ function audioReport() {
   probe('source', () => lastWhy('publish'));
   probe('secure', () => `${window.isSecureContext} · isolated=${window.crossOriginIsolated}`);
 
-  // 🔴 STAMP THE BUILD (2026-08-16). Three times this morning I diagnosed a
-  // "bug" that was really the phone running an older copy of a module — most
-  // recently for a full round trip, because her output said "last event:" while
-  // the server had been serving "last:" for ten minutes. Without a version in
+  // 🔴 STAMP THE BUILD. Repeatedly a "bug" was really the phone running an
+  // older copy of a module — once for a full round trip, because the report
+  // said "last event:" while the server had been serving "last:" for ten
+  // minutes. Without a version in
   // the report, a stale page and a broken probe are indistinguishable, and I
   // will chase the wrong one every time.
   L.push(`build: ${_build}`);
@@ -569,7 +569,7 @@ function audioReport() {
 function sttReport() {
   const parts = [`build ${_build}`];
   // The recognizer's language — a wrong one returns confident nothing (nomatch)
-  // rather than an error, which is exactly what R's Galaxy reported.
+  // rather than an error, which is exactly what one Android phone reported.
   try { if (window.__sttLang) parts.push(`lang ${window.__sttLang}`); } catch { /* ignore */ }
   try { parts.push(window.__sttOn?.() ? 'stt ON' : 'stt off'); } catch { parts.push('stt ?'); }
   try { parts.push(window.__sttTally ? window.__sttTally() : 'NO TALLY (stale page)'); }
@@ -619,17 +619,17 @@ function runCommand(raw) {
       bus.emit('command', { cmd: 'debug', arg });
       return true;
     case 'audio':
-      // 🔴 /audio — the phone's own console (R, 2026-08-16: "maybe you can
-      // temporarily add a chatlog command that can return something?").
+      // 🔴 /audio — the phone's own console: a chat command that returns the
+      // diagnostics where no devtools exist.
       //
       // Android Chrome has no on-device console, so every mobile-only voice bug
-      // this morning was diagnosed by me guessing and her testing. The page
+      // was diagnosed by guessing on a desk and testing on the phone. The page
       // already knows all of this; it just had nowhere to say it. Answers
       // LOCALLY (logChat, not the world) — it is a self-report, and nobody else
       // in the room needs to read someone's mic diagnostics.
       // Three forms, because the full report is unreadable on the device that
-      // needs it most (R, 2026-08-16 — mobile copy/paste "exceeds the window
-      // size", and she relayed one in two batches):
+      // needs it most (mobile copy/paste of the full report exceeds the
+      // message window and had to be relayed in two batches):
       //   /audio       full picture, for a desk
       //   /audio stt   captions only, short enough to read on a phone
       //   /audio say   posts the short form INTO the world — no copy/paste
@@ -746,7 +746,7 @@ export const chat = {
 };
 const open = chat.open;
 
-// ---- who's-here side pane (back by group demand, 08-29 21:23; R hates it,
+// ---- who's-here side pane (wanted by some, disliked by others as
 // precious, so the collapse must cost one click and the collapsed cost is a
 // 14px strip). Toggler rides the pane's left edge: › closes, ‹ opens.
 const SIDE_LS = 'ew-chat-side';
@@ -803,7 +803,7 @@ function applyChatPrefs() {
   if (log) log.style.fontSize = `${chatFs}px`;
   frame?.body.querySelector('.chat-cols')?.classList.toggle('side-left', sideSt.pos === 'left');
 }
-let gearToggle = null, gearAnchor = null;
+let gearToggle = null, gearAnchor = null, gearOpen = () => false;
 let chatFs = 14;
 try { chatFs = Math.min(20, Math.max(11, parseFloat(localStorage.getItem(CFS_LS)) || 14)) } catch {}
 function initChatGear() {
@@ -826,6 +826,7 @@ function initChatGear() {
     } else return;
     applyChatPrefs(); paintPop();
   };
+  gearOpen = () => !pop.hidden;
   gearToggle = (anchor) => {
     pop.hidden = !pop.hidden;
     anchor.setAttribute('aria-expanded', String(!pop.hidden));
@@ -1059,7 +1060,10 @@ function paintTabs() {
   gear.className = 'chat-gear';
   gear.title = 'chat options';
   gear.innerHTML = fsvg('gear-six', 13);
-  gear.setAttribute('aria-expanded', 'false');
+  // tabs repaint while the popover may be open: the new gear inherits it
+  const open = gearOpen();
+  gear.setAttribute('aria-expanded', String(open));
+  if (open) gearAnchor = gear;
   gear.onclick = (e) => { e.stopPropagation(); gearToggle?.(gear); };
   bar.appendChild(gear);
 }

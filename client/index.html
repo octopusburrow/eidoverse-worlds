@@ -10,7 +10,7 @@
    Modding the UI's colors = editing (or live-overriding) THIS BLOCK ONLY;
    every rule below and every JS-drawn glyph reads these, never raw hex.
 
-   ROLES (the doctrine, R + H 2026-08-30):
+   ROLES:
    · brand    = identity & liveness ONLY: the ∃, connection state, "this is
                 on/present". Never decoration.
    · attn     = "needs YOUR attention": mentions, edit-mode, unsaved, mic-hot.
@@ -25,8 +25,8 @@
   /* --panel-a is the opacity fallback dial (visionOS "Tinted" lesson):
      glass legibility collapses over bright scenes, so the floor is one
      user-ownable number away. /panels <0.3-1> sets it, persisted. */
-  --panel-a:   0.7;   /* R, 09-02: brighter default */
-  --panel-rgb: 5 20 20;    /* deep-ocean teal (R, 08-30) — saturated dark that the brand seafoam sits IN, not ON */
+  --panel-a:   0.7;
+  --panel-rgb: 5 20 20;    /* deep-ocean teal — saturated dark that the brand seafoam sits IN, not ON */
   --panel:     rgb(var(--panel-rgb) / var(--panel-a));
   --chip:      rgb(0 0 0 / .62);       /* tabs & floating chips */
   --well:      rgb(0 0 0 / .4);        /* inputs, pressed-in states */
@@ -37,12 +37,12 @@
   --act:       rgb(255 255 255 / .10);
   --fg:        #ebebe9;
   --dim:       #97979b;
-  --icon:      color-mix(in srgb, var(--brand) 55%, #c2c2c6);  /* icons carry a whisper of the brand (derived: follows the picker); base lightened 09-02 (R: idle dock icons read muddy next to the new lit state) */
+  --icon:      color-mix(in srgb, var(--brand) 55%, #c2c2c6);  /* icons carry a whisper of the brand (derived: follows the picker); base kept light so idle dock icons don't read muddy next to the lit state */
   --brand:     #8fe8c8;   /* THE seafoam — the only one; everything below derives */
   --brand-deep: color-mix(in srgb, var(--brand) 84%, #1a2a28);  /* the ∃ at rest when live */
   --attn:      #ffc46b;   /* THE attention amber — the only one */
   --err:       #ff8f8f;
-  /* legacy aliases (pre-2026-08-30 names) — keep working, point at roles */
+  /* legacy aliases — keep working, point at roles */
   --accent:    var(--attn);
   --accent-dk: #382a1a;
   --control:   var(--brand);
@@ -63,23 +63,17 @@
 }
 
 html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); }
-/* The pointer joins the design system (R, 09-01: the OS arrow "looks so
-   dated by comparison"). ui.js generates SVG cursors tinted by the LIVE
-   --brand (CSS url() can't read vars) and publishes them as these custom
-   properties; every rule falls back to the native cursor until then, and
-   grab/resize/text cursors stay native on purpose — not drastic. */
-/* default/pointer cursors reverted to native (R, 09-02 00:09: 'the white arrow is fine actually'); the loupe keeps its house cursor */
+/* Cursors stay native except the loupe: ui.js generates an SVG loupe tinted
+   by the LIVE --brand (CSS url() can't read vars) and publishes it as
+   --cur-loupe; the rule falls back to the native cursor until then. */
 button, .btn, select, a, label, .mrow, .mpin, .dbg-row, .pf-row, .card,
 .ac-row, .chat-gear, .fr-btn, .sec > .head, .chat-tabs button, .pf-tile,
 .chat-side-tog, .sp-skip { cursor: pointer; }
 body.loupe-on canvas { cursor: var(--cur-loupe, crosshair); }
-/* ONE house scrollbar — the standard properties, nothing else. The bar R
-   liked in main's chat was never the ::-webkit-scrollbar rules there: on
-   Chromium, scrollbar-width:thin DISABLES the pseudos, so what actually
-   rendered was the NATIVE thin overlay bar reading scrollbar-color. The
-   pseudo grammar (b39.1 v1, then v2 arrows, then a "verbatim restore" of
-   main's dead code) chased the wrong layer three times (R, 09-01 23:54:
-   "you *still* have not reverted"). Standard props ARE the original. */
+/* ONE house scrollbar — the standard properties, nothing else. On Chromium,
+   scrollbar-width:thin DISABLES the ::-webkit-scrollbar pseudos, so what
+   renders is the NATIVE thin overlay bar reading scrollbar-color; pseudo
+   rules here would be dead code. */
 * { scrollbar-width: thin; scrollbar-color: var(--edge) transparent; }
 body { font: var(--fs)/1.5 var(--font); color: var(--fg); -webkit-font-smoothing: antialiased; }
 canvas { display: block; touch-action: none; }
@@ -89,8 +83,8 @@ canvas { display: block; touch-action: none; }
   border: none;
   border-radius: var(--r);
   /* rim-light: glass catching light on its top edge — surfaces separate by
-     elevation + gleam, never by outline (border study C, R-approved-ish) */
-  /* shadow is a STATE, not decoration (R, 08-30): near-flat at rest — games
+     elevation + gleam, never by outline (border study C) */
+  /* shadow is a STATE, not decoration: near-flat at rest — games
      separate surfaces by fill + gleam, not by OS paper-stack shadows — and
      the .lifting rule below restores real depth only while a frame is HELD */
   box-shadow: 0 1px 5px rgb(0 0 0 / .28);
@@ -99,7 +93,7 @@ canvas { display: block; touch-action: none; }
   -webkit-backdrop-filter: blur(16px) saturate(1.15);
 }
 .frame.lifting { box-shadow: 0 12px 32px rgb(0 0 0 / .5); }
-/* the rim rides an overlay so it gleams OVER header chips too (R, 17:53) —
+/* the rim rides an overlay so it gleams OVER header chips too —
    inset box-shadow paints under children, so light "behind" the title read
    wrong; glass catches light on its whole top edge, contents included */
 .frame::after {
@@ -125,8 +119,8 @@ button:active { transform: translateY(1px); }
 /* ONE unified pattern for a row of equal-width action buttons (reset/pause/copy
    etc). Menus used to hand-roll `flex:1;padding:3px 0` inline per-panel, which
    drifted (0 horizontal padding jammed the text to the edges) — this centers
-   the label with the base button's own padding and shares the row (R, 09-02:
-   avoid inter-menu handrolling; unified fallback). Use `<div class="row btn-row">`. */
+   the label with the base button's own padding and shares the row
+   (no per-menu handrolling; one fallback). Use `<div class="row btn-row">`. */
 .btn-row { display: flex; gap: 6px; }
 .btn-row > button { flex: 1; text-align: center; padding: 5px 8px; }
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -188,18 +182,18 @@ select {
 }
 .sp-mark-sub {
   /* small, beneath, no fanfare: Technically Distinct while everyone gets
-     used to the idea (R, 08-30 — the rebrand argument, softly) */
+     used to the idea */
   font-size: 12px; letter-spacing: .58em; margin: -30px 0 0 .58em;
   color: color-mix(in srgb, var(--brand) 45%, transparent); font-weight: 400; text-transform: lowercase;
 }
 /* hairline: the assembly carries the feel, the line carries the certainty —
-   a bar affordance gives an unambiguous DONE (R's note, 08-30) */
+   a bar affordance gives an unambiguous DONE */
 #splash .sp-bar { width: 260px; height: 3px; border-radius: 2px; overflow: hidden; background: color-mix(in srgb, var(--brand) 12%, transparent); }
 #splash .sp-bar-fill { width: 0%; height: 100%; border-radius: 2px; background: color-mix(in srgb, var(--brand) 65%, transparent); transition: width .3s ease; }
-.sp-sub { color: var(--dim); font-size: 15px; margin: -5px 0; text-align: center; }  /* equal air above + below (R, 16:01) */
+.sp-sub { color: var(--dim); font-size: 15px; margin: -5px 0; text-align: center; }  /* equal air above + below */
 .sp-sub b { color: var(--fg); font-weight: 600; }
 /* one centered breath under the bar — phase and bytes are a single quiet
-   line, not furniture at opposite walls (R's note, 08-30 14:27) */
+   line, not furniture at opposite walls */
 .sp-status {
   display: flex; justify-content: center; align-items: baseline; gap: 10px;
   font-size: 14px; margin-top: -10px;
@@ -209,7 +203,7 @@ select {
 .sp-detail { color: var(--dim); font-variant-numeric: tabular-nums; }
 .sp-detail:not(:empty)::before { content: '·'; margin-right: 10px; color: color-mix(in srgb, var(--brand) 30%, transparent); }
 .sp-tip {
-  display: flex; align-items: center; gap: 11px;   /* keycap centers on the tip line (R, 09-02 00:23) */
+  display: flex; align-items: center; gap: 11px;   /* keycap centers on the tip line */
   max-width: min(500px, 88vw); font-size: var(--fs-sm); color: var(--dim);
   min-height: 44px; text-align: left;
 }
@@ -232,7 +226,7 @@ select {
    content, so the chrome has to get out of the way on the user's terms. */
 .frame {
   position: fixed; display: flex; flex-direction: column;
-  z-index: 20; min-width: 170px; overflow: hidden;
+  z-index: 10; min-width: 170px; overflow: hidden;
 }
 .fr-head {
   display: flex; align-items: center; gap: 6px;
@@ -262,7 +256,7 @@ select {
 .fr-btn:hover { background: var(--hov); color: var(--fg); }
 .ui-locked .fr-btn { display: none; }
 .fr-body { display: flex; flex-direction: column; overflow: hidden; min-height: 0;
-  /* text never touches the pane's top or bottom edge (R, 09-01 23:20) */
+  /* text never touches the pane's top or bottom edge */
   padding-top: 5px; padding-bottom: 5px; }
 .frame.collapsed .fr-body { display: none; }
 .frame.collapsed { height: auto !important; }
@@ -296,8 +290,8 @@ select {
 .chat-cols.side-left { flex-direction: row-reverse; }
 .chat-cols.side-left .chat-side-tog { border-left: none; border-right: 1px solid var(--edge); }
 .chat-cols.side-left .chat-side-grip { left: auto; right: -4px; }
-.chat-gear {
-  flex: none !important; margin-left: 2px; padding: 3px 6px;
+.chat-tabs .chat-gear {
+  flex: none; margin-left: 2px; padding: 3px 6px;
   background: none; border: none; color: var(--dim); border-radius: 5px;
   display: grid; place-items: center;
 }
@@ -406,13 +400,13 @@ select {
   border: 1px solid var(--edge); border-radius: 5px;
 }
 .sec.open > .body { display: flex; }
-/* debug subsections: collapsible with a ▸/▾ arrow (R, 09-02 — split Debug into
+/* debug subsections: collapsible with a ▸/▾ arrow (Debug is split into
    subareas). Looser than panel sections, so arrow not icon; tighter spacing. */
 .dbg-sec { margin-top: 4px; }
 .dbg-sec > .head { display: flex; align-items: center; gap: 7px; padding: 5px 8px; color: var(--dim); }
 .dbg-sec.open > .head { color: color-mix(in srgb, var(--brand) 35%, var(--fg)); }
 .dbg-sec .dbg-arrow { font-size: 9px; width: 9px; color: var(--icon); flex: none; }
-/* panel content hierarchy (R, 17:18): heads = fg with brand-whisper glyphs,
+/* panel content hierarchy: heads = fg with brand-whisper glyphs,
    body copy = dim; outlined buttons hug their text, never stretch the column */
 .sec > .body { color: var(--dim); }
 .sec > .body button { align-self: flex-start; width: fit-content; }
@@ -450,7 +444,7 @@ select {
 .row input[type=range] { flex: 1; accent-color: var(--control); min-width: 0;
   appearance: none; -webkit-appearance: none; height: 14px; background: none; }
 /* the track joins the theme: bright-filled to the thumb, accent-flavored
-   dark well after it (R, 09-01: value must read at a glance). WebKit has no
+   dark well after it (the value must read at a glance). WebKit has no
    native progress fill on custom tracks, so ui.js paints --p per input. */
 .row input[type=range] { --p: 50%; }
 .row input[type=range]::-webkit-slider-runnable-track {
@@ -458,7 +452,7 @@ select {
   background: linear-gradient(to right,
     var(--control) 0 var(--p),
     color-mix(in srgb, var(--control) 14%, rgb(255 255 255 / .07)) var(--p) 100%);
-  /* dark outline so the bar stays legible over a bright surface (R, 09-02) */
+  /* dark outline so the bar stays legible over a bright surface */
   border: 1px solid rgb(0 0 0 / .55);
   box-shadow: inset 0 1px 1px rgb(0 0 0 / .45);
 }
@@ -481,15 +475,14 @@ select {
 }
 /* a YIELDED slider (sky time under real-clock, basic-only knobs under the
    detailed sky) keeps the house hue, dimmed — the UA's disabled range
-   painted stark white against every teal sibling (R's catch, 09-01) */
+   painted stark white against every teal sibling */
 .row input[type=range]:disabled { accent-color: color-mix(in srgb, var(--control) 40%, #555); opacity: .5; }
 /* Checkboxes take the same accent as the sliders — seafoam fill, UA-contrast
    (black) tick when checked. This existed via accent-color when the audio
    panel first spent the house palette, and fell out of the selector when the
-   checkbox rows moved to .row.wide markup (R, 2026-08-16: "I could have sworn
-   we did a styling for the checkboxes… seems to be gone now"). */
+   checkbox rows moved to .row.wide markup. */
 .row input[type=checkbox] {
-  /* custom box (R, 16:47): accent-color only paints the CHECKED state in
+  /* custom box: accent-color only paints the CHECKED state in
      Chromium — unchecked fell back to UA white. */
   appearance: none; -webkit-appearance: none;
   width: 15px; height: 15px; margin: 0; border-radius: 4px;
@@ -507,8 +500,7 @@ select {
 .row .v { width: 34px; flex: none; text-align: right; color: var(--dim); }
 
 /* 🔴 .row.wide — the SAME row, for panels whose labels are sentences.
-   (R, 2026-08-16: "If there is an existing UI class we should 100% be using
-   it." She is right, and the audio panel was not: it carried 40 lines of
+   (Reuse the existing class: the audio panel once carried 40 lines of
    private CSS re-implementing .row under sp-* names, which is how its spacing
    drifted to gap:10px while the house row is 7px and nobody could see it
    without measuring.)
@@ -537,11 +529,11 @@ select {
 
 /* --------------------------------------------------------------- fixed hud */
 /* the ∃ mark — anchor of the whole chrome. Carries connection truth: full
-   when live, dimmed + pulsing when the socket is down. (R: "status without
-   a status bar.") The mic/ear glyphs auto-ride its right edge. */
+   when live, dimmed + pulsing when the socket is down. (status without
+   a status bar.) The mic/ear glyphs auto-ride its right edge. */
 #hud.emark {
   /* lives INSIDE the rail now — one movable unit. Mic/ear ride its box. */
-  position: relative; width: 42px; height: 42px; padding: 0;
+  position: relative;
   display: grid; place-items: center;
   color: var(--brand); border: none; cursor: pointer; background: none; box-shadow: none;
 }
@@ -605,7 +597,7 @@ body.arranging #dock #hud.emark {
 body.arranging .frame { overflow: visible; }
 /* the dashed arrange border rides the ::after overlay (z-30): it paints OVER
    the seated header chips — which used to darken the segment beneath them —
-   and follows the corner radius, which outline never did (R, 09-01 23:20) */
+   and follows the corner radius, which outline never did */
 body.arranging .frame::after { border: 1px dashed rgb(255 255 255 / .25); }
 body.arranging .frame > .fr-body { overflow: hidden; }
 /* the arrange chrome reads as TABS: name docked to the frame's top-left,
@@ -613,7 +605,7 @@ body.arranging .frame > .fr-body { overflow: hidden; }
 body.arranging .frame .fr-head {
   /* tabs start AFTER the corner radius (browser-tab convention): the curve
      stays pristine, the rim-light unbroken, and no corner needs filling.
-     Fourth iteration; the simple one wins (R, 16:32). */
+     The simple one wins. */
   display: flex; position: absolute; bottom: 100%; left: calc(var(--r) + 2px); right: calc(var(--r) + 2px);
   justify-content: space-between; align-items: flex-end;
   padding: 0; background: none; border: none; pointer-events: none;
@@ -636,7 +628,7 @@ body.arranging .frame.label-below .fr-head .fr-btns {
 /* sticky-edge glow: this frame is riding that edge and will follow it.
    Composed from one custom property per edge so a CORNER frame shows BOTH
    glows (the old per-class box-shadow rules overwrote each other — a frame
-   stuck to two sides only ever lit the last one; R caught it, 09-01). */
+   stuck to two sides only ever lit the last one). */
 body.arranging .frame {
   --sg: color-mix(in srgb, var(--brand) 60%, transparent);
   --nosh: 0 0 rgb(0 0 0 / 0);
@@ -689,7 +681,7 @@ body.edit-mode::after {
 /* dock: one row of toggles so a closed frame is never lost */
 #dock {
   /* hotbar: ∃ + window glyphs, ONE movable unit. Grip appears only while
-     arranging, at the bottom. (R, 08-29 21:43) */
+     arranging, at the bottom. */
   position: fixed; top: 10px; left: 10px; z-index: 27;
   display: flex; flex-direction: column; gap: 2px; padding: 4px; align-items: center;
 }
@@ -706,8 +698,8 @@ body.arranging #dock .dock-grip { display: grid; }
   color: var(--icon); background: none; border: none; box-shadow: none; border-radius: 7px;
 }
 #dock button:not(.dock-grip):hover { color: var(--fg); background: var(--hov); }
-/* b76 (R, 09-03 11:18: the ON look is "too loud and distracting" — and quieting
-   it moves OFF too, so both are redrawn together; the ∃ mark is untouched).
+/* The ON look must not be loud or distracting, and quieting it moves OFF
+   too, so both are drawn together; the ∃ mark is untouched.
    The dock is an ACTIVITY BAR, not a tool palette: each button opens a window,
    and the rail knows which screen edge it is welded to. The reference for that
    shape is VS Code's activity bar — a thin accent border on the content-facing
@@ -737,8 +729,7 @@ body.arranging #dock .dock-grip { display: grid; }
 }
 #dock button[hidden] { display: none; }
 /* keybtn: buttons that mirror physical KEYS read as key-caps — a darker well,
-   no outline (R, 16:58 dealer's-choice on the emote grid; the doctrine:
-   visible boxes only for key-mirrors and committal actions) */
+   no outline (the doctrine: visible boxes only for key-mirrors and committal actions) */
 button.keybtn { background: var(--well); border: none; box-shadow: none; border-radius: 7px; }
 button.keybtn:hover { background: color-mix(in srgb, var(--well) 60%, var(--hov)); }
 button.keybtn:active { box-shadow: inset 0 1px 3px rgb(0 0 0 / .6); }
@@ -750,7 +741,7 @@ button.keybtn:active { box-shadow: inset 0 1px 3px rgb(0 0 0 / .6); }
 #dock.horizontal { flex-direction: row; }
 #dock.horizontal .dock-grip { width: 14px; height: 100%; }
 /* ------------------------------------------------------------- profile */
-.profile-body { padding: 14px !important; gap: 12px; }
+.frame .profile-body { padding: 14px; gap: 12px; }
 .pf-id { display: flex; align-items: center; gap: 12px; }
 .pf-dot { width: 38px; height: 38px; border-radius: 50%; flex: none; opacity: .85; }
 .pf-who { display: flex; flex-direction: column; min-width: 0; }
@@ -771,11 +762,8 @@ button.keybtn:active { box-shadow: inset 0 1px 3px rgb(0 0 0 / .6); }
 /* alt held = every frame is grabbable, and says so */
 body.altgrab .frame { cursor: grab; }
 body.altgrab .frame:active { cursor: grabbing; }
-/* (duplicate #dock hover/.on rules that lived here were folded into the main
-   dock block — the stray hover one was winning the cascade and blanking the
-   selected state to white. Fable, 09-03.) */
 /* scene-tree selection: text brightens toward the accent, same selected-
-   speaks-accent grammar as tabs/heads/dock (R, 09-02 00:00) */
+   speaks-accent grammar as tabs/heads/dock */
 .sg-row.sel { background: rgb(255 255 255 / .06); }
 .sg-row.sel .n b { color: color-mix(in srgb, var(--brand) 45%, var(--fg)); }
 .sg-row.sel .d { color: color-mix(in srgb, var(--brand) 25%, var(--dim)); }
@@ -845,7 +833,7 @@ body.touch #touch { display: block; }
 /* ------------------------------------------------------- perfscope (debug) */
 .perf-loupe {
   position: fixed; z-index: 55; pointer-events: none;
-  /* shrink to content (R, 09-02 r8: kill the huge left gutter). The old
+  /* shrink to content (no left gutter). The old
      min-width floor + the grid's 1fr stretch column dumped all slack as empty
      space on the left; width:max-content lets the card hug its rows, still
      bounded by max-width for pathological long names. */
@@ -858,16 +846,16 @@ body.touch #touch { display: block; }
 .perf-loupe.show { opacity: 1; }
 /* pinned → hoverable, so every `title` tooltip on the rows actually fires
    (unpinned the card is pointer-events:none to follow the cursor & let the
-   raycast through). R, 09-02 r11. */
+   raycast through). */
 .perf-loupe.pinned { pointer-events: auto; }
-/* Maya channel-box grid (R, 09-02): label right-justified against the center
+/* Maya channel-box grid: label right-justified against the center
    seam · value right-justified against the pill column (buffer via column-gap)
    · tier pill. Two clean vertical rules; nothing floats apart, nothing bumps
    the panel wide. auto-sized columns so the panel fits its content. */
 .perf-loupe .pl-grid {
   display: grid;
   /* all three columns size to content — nothing stretches, so the card is only
-     as wide as label+value+pill actually need (R, 09-02 r8: no left gutter). */
+     as wide as label+value+pill actually need (no left gutter). */
   grid-template-columns: auto auto auto;
   align-items: center;
   column-gap: 8px; row-gap: 3px;
@@ -876,7 +864,7 @@ body.touch #touch { display: block; }
 .perf-loupe .plv { color: var(--fg); text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
 .perf-loupe .plp { display: flex; justify-content: flex-start; }
 /* stacked texture sub-rows span all three columns; each is dims … bytes */
-/* textures as their own inner table with a center break (R, 09-02): dims
+/* textures as their own inner table with a center break: dims
    right-justified against the seam, size left-justified after it — the main
    grid's channel-box grammar, nested and indented under "textures". */
 .perf-loupe .pl-texwrap {
@@ -889,10 +877,10 @@ body.touch #touch { display: block; }
 .perf-loupe .pl-texd { text-align: right; }
 .perf-loupe .pl-texb { text-align: left; color: var(--fg); opacity: .8; font-variant-numeric: tabular-nums; }
 .perf-loupe .pl-texwrap em { font-style: normal; color: var(--attn); opacity: .85; }
-/* header (R, 09-02): name (left) + a right-aligned VERDICT STACK (pill · lens ·
+/* header: name (left) + a right-aligned VERDICT STACK (pill · lens ·
    rank) — the three tightly-coupled perf facts grouped under the pill. 'placed
    by' dropped (provenance, not perf). Header is now just name | verdict.
-   Fable, 09-02 ("fill the blank between the label and the pill"): the verdict
+   To fill the blank between the label and the pill, the verdict
    pieces are RIGHT-FLOATS — pill first, lens+rank cleared beneath it — and the
    name is a plain block whose LINES flow around them. Floats are the one CSS
    mechanism that gives each text line its own width: title line 1 wraps at the
@@ -922,12 +910,12 @@ body.touch #touch { display: block; }
   display: block; position: relative;
   font-size: 12px; font-weight: 700; line-height: 1.3;
   overflow-wrap: anywhere; hyphens: auto;
-  /* b75 (R, 09-03): three lines when the verdict stack leaves the room — the
+  /* three lines when the verdict stack leaves the room — the
      stack is already three rows tall, so a third name line costs no height. */
   max-height: calc(3 * 1.3em); clip-path: inset(0);
 }
 /* provenance under the name: the GLB basename, dim and small, flowing around the
-   same floats (b75 — the name stopped carrying the filename) */
+   same floats (the name no longer carries the filename) */
 .perf-loupe .pl-lib {
   display: block; font-size: 9.5px; font-weight: 400; line-height: 1.3;
   color: var(--dim); opacity: .85; overflow-wrap: anywhere; margin-top: 1px;
@@ -941,18 +929,18 @@ body.touch #touch { display: block; }
 .perf-loupe .pl-verdict .pl-rankrow { color: var(--dim); font-size: 10px; line-height: 1.3; }
 .perf-loupe .pl-verdict .pl-rankrow { font-variant-numeric: tabular-nums; }
 /* action hint right-justified — echoes the panel's right edge and reads as
-   chrome/affordance, not data (R, 09-02; I agreed right beats left here) */
+   chrome/affordance, not data */
 .perf-loupe .pl-foot { color: var(--dim); font-size: 9.5px; margin-top: 4px; opacity: .75; border-top: 1px solid var(--edge); padding-top: 4px; text-align: right; }
 .pf-badge {
   display: inline-block; min-width: 8px; height: 8px; border-radius: 4px;
   color: #0c1412; font-size: 9px; font-weight: 700; line-height: 1;
   padding: 1px 4px; vertical-align: 1px;
 }
-/* chunky labeled pills (R, 09-02 r2 — wants the readable performance pills back):
+/* chunky labeled pills (readable performance pills):
    the tier WORD in a solid rounded chip, dark ink on the tier color. Same chip
    for row pills and the header rank pill, header just a hair larger + uppercase. */
 /* chunky labeled pill — inline-FLEX centering fixes the old off-center text
-   (R, 09-02: "why is it so off-center?"): the base .pf-badge's height:8px +
+   (the text sat off-center): the base .pf-badge's height:8px +
    line-height:1 + vertical-align shoved the label up, and trailing letter-
    spacing pushed it left. Flex-center owns both axes; a text-indent equal to
    the letter-spacing cancels the trailing-gap lean. */
@@ -961,9 +949,9 @@ body.touch #touch { display: block; }
   min-width: 34px; height: 17px; border-radius: 5px; padding: 0 8px;
   font-size: 9.5px; font-weight: 700; vertical-align: middle;
   letter-spacing: .04em; text-indent: .04em;
-  /* dark outline so a bright pill stays legible over a light pane (R, 09-02) */
+  /* dark outline so a bright pill stays legible over a light pane */
   border: 1px solid rgb(0 0 0 / .5);
-  /* OPTICAL cap centering (R, 09-02, measured): "POOR" ink is 8px ascent + 1px
+  /* OPTICAL cap centering (measured): "POOR" ink is 8px ascent + 1px
      descent around the baseline. Flex-centering the LINE box leaves the caps
      high. Setting line-height to the content box + a measured padding-top puts
      the INK, not the line box, at true center. Tuned by re-measuring ink gaps. */
@@ -1003,14 +991,14 @@ body.touch #touch { display: block; }
 .dbg-row input { accent-color: var(--control); margin: 0; }
 .dbg-stats {
   /* bottom margin clears the frame's edge-resize band, which was sitting on
-     the last line (R, 09-02: "can't quite scroll down far enough to read") */
+     the last line (the last line could not be scrolled into view) */
   margin: 2px 0 8px; padding: 6px 7px; font: 11px/1.45 ui-monospace, monospace;
   color: var(--dim); background: rgba(0,0,0,0.25); border-radius: 5px;
   white-space: pre; overflow-x: auto;
 }
 </style>
 <script>
-/* pre-paint token restore (R, 17:22: default accent flashes for a beat before
+/* pre-paint token restore (the default accent flashed for a beat before
    snapping) — same key stylepanel.js persists to; runs before any module so
    first paint already wears the chosen tokens. Kept inline: modules are
    deferred, and a FOUC fix that loads late isn't one. */
@@ -1113,7 +1101,7 @@ try { const o = JSON.parse(localStorage.getItem('ew-style-tokens') || '{}');
 
 <!-- no .panel here: the mark lives INSIDE the dock's glass now, and a nested
      panel's backdrop-filter (blur + saturate) re-processes the rail beneath
-     it — a subtly brighter square that read as a mistake (R, 09-01) -->
+     it — a subtly brighter square that read as a mistake -->
 <button id="hud" class="emark" title="eidoverse — menu">
   <!-- ∃ drawn as geometry, not typed as a glyph: no font can vary it, and it
        scales like a mark, not like text. Rounded caps, mid-arm a hair short. -->

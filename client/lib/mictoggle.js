@@ -1,6 +1,5 @@
-// mictoggle — the porch-old mic badge, reborn for eidoverse. (R, 15:42: voice
-// controls out of the dock, one clean SVG toggle riding beside the top-left
-// HUD pane, muted by default.)
+// mictoggle — the mic badge: voice controls out of the dock, one clean SVG
+// toggle riding beside the ∃, muted by default.
 //
 // Ours, whole: self-injecting like the workshop button, deletable with this
 // file. States, porch doctrine:
@@ -16,17 +15,17 @@ import { receivingVoice, setReceiveVoice, ensureSttConsent, sttConsented,
   isHushed, setHush } from './voiceconsent.js';
 import { bus } from './core.js';
 
-// three states (R, 17:09): off = grey + slash · live = clean bright white ·
+// three states: off = grey + slash · live = clean bright white ·
 // hot (picking up your voice for STT) = warm yellow glow. No rings.
 // ONE palette for both glyphs. They sit side by side and are read as a pair,
-// so any divergence reads as a state difference that is not there (field
-// report 12:43: the off-states looked noticeably unalike). The apparent
+// so any divergence reads as a state difference that is not there (in the
+// field the off-states looked noticeably unalike). The apparent
 // weight difference was never the hex — it was INK COVERAGE: the headphone
 // carries two filled earcups and a long band, the mic is thin strokes with
 // air between them, so identical stroke colour lands heavier on the ear.
 // Equalising by giving the heavier glyph a slightly thinner stroke, which
 // matches perceived weight rather than nominal colour.
-// glyph inks come from the token sheet (R, 16:47: no hex outside it) —
+// glyph inks come from the token sheet (no hex outside it) —
 // read fresh each paint (1Hz + events): live token edits restyle us too.
 const tok = (n, fb) => (getComputedStyle(document.documentElement).getPropertyValue(n) || fb).trim();
 const INK = {
@@ -73,7 +72,7 @@ const EAR_SVG = (on) => {
 let micBtn = null, earBtn = null;
 
 let micHot = false;
-// 🔴 THE GLYPH MUST READ WHICHEVER TRANSPORT IS LIVE (2026-08-15).
+// 🔴 THE GLYPH MUST READ WHICHEVER TRANSPORT IS LIVE.
 // micOn() is voice.js's MESH state — `!!micStream && _micLive && !muted` — and
 // on the SFU path micStream is never set, so it is permanently false while the
 // SFU happily publishes. Measured in a real browser: relayDiag().micPublished
@@ -84,7 +83,7 @@ let micHot = false;
 // already routes by transport; the indicator has to make the same turn or the
 // button and the badge describe different bodies.
 const micIsOn = () => {
-  // 🔴 NEVER THROW OUT OF THE INDICATOR (review, 2026-08-15). The first version
+  // 🔴 NEVER THROW OUT OF THE INDICATOR. The first version
   // was `window.relayDiag ? !!window.relayDiag().micPublished : micOn()` — no
   // try, no `?.` on the CALL. voicerelay.js installs window.relayDiag at module
   // top level, so it exists before its state does; a throw there aborts the tick
@@ -129,12 +128,12 @@ function paint() {
 // hot = your voice is actually registering: a tiny analyser on the mic track,
 // polled at 8Hz, drives the yellow glow in step with STT pickup
 import { micAnalyserLevel as meshMicLevel } from './micstate.js';
-// 🔴 ASK THE LIVE TRANSPORT (2026-08-15, R found this one in the HUD: "the mic
-// icon isn't turning gold anymore when it is transmitting"). voice.js's
+// 🔴 ASK THE LIVE TRANSPORT (seen in the HUD: the mic icon stopped turning
+// gold while transmitting). voice.js's
 // micAnalyserLevel() reads the MESH's micStream, which is null forever on an
 // SFU client — so it returns 0 at line one and the glyph can never go hot, and
 // the sensitivity bar sits at zero while looking merely quiet. Fifth instance
-// of this defect class in one night; see stt.js / voicemouths.js / tts.js.
+// of this defect class; see stt.js / voicemouths.js / tts.js.
 function micLevelNow() {
   try {
     if (typeof window.__sfuMyLevel === 'function') return window.__sfuMyLevel();
@@ -149,9 +148,9 @@ setInterval(() => {
   if (hot !== micHot) { micHot = hot; paint(); }
 }, 125);
 
-// ---- pair API for the ∃ menu (R, 15:12): rows toggle these; the pin
+// ---- pair API for the ∃ menu: rows toggle these; the pin
 // controls whether the pair hangs off the ∃ at all
-// per-glyph pins (R, 16:07: forcing the pair to pin together was wrong)
+// per-glyph pins (forcing the pair to pin together was wrong)
 const PIN_LS = { mic: 'ew-mic-pinned', ear: 'ew-ear-pinned' };
 const _pinned = { mic: true, ear: true };
 try { for (const k of ['mic', 'ear']) _pinned[k] = localStorage.getItem(PIN_LS[k]) !== '0'; } catch {}
@@ -168,7 +167,7 @@ function applyPairVisibility() {
 export const micLive = () => { try { return micIsOn(); } catch { return false; } };
 export const earOn = () => { try { return receivingVoice() && !isHushed(); } catch { return false; } };
 export { flipMic, flipEar };
-/** the menu wears the SAME glyphs as the floating pair (R, 15:35) */
+/** the menu wears the SAME glyphs as the floating pair */
 export const micGlyph = (size = 16) => MIC_SVG(micIsOn(), false).replace('width="26" height="26"', `width="${size}" height="${size}"`);
 export const earGlyph = (size = 16) => { let on = false; try { on = receivingVoice() && !isHushed(); } catch {} return EAR_SVG(on).replace('width="26" height="26"', `width="${size}" height="${size}"`); };
 
@@ -184,7 +183,7 @@ async function flipMic() {
   paint();
 }
 
-// Two acts, deliberately separated (R, in world 12:11 — deafening cut the
+// Two acts, deliberately separated (in-world, deafening cut the
 // utterance and jumped to the next one, because consent-off tears the peer
 // down and the in-flight audio dies with it):
 //   CLICK    = hush — a gain change. The stream keeps arriving and advancing,
@@ -203,7 +202,7 @@ function flipEar() {
 function ensure() {
   const hud = document.querySelector('#hud');
   if (!hud || (document.contains(micBtn) && document.contains(earBtn))) return;
-  // IN LINE with the bar (R, 15:47): a bare glyph riding at the end of the
+  // IN LINE with the bar: a bare glyph riding at the end of the
   // hud's own row — no box, no chrome, just the mic. The hud repaints via
   // setHud(innerHTML) which would erase a child, so we sit AFTER the hud text
   // as a sibling-styled inline element inside the same visual bar.
@@ -220,8 +219,8 @@ function ensure() {
 }
 // Anchored to the hud panel's LIVE box. This used to re-measure on a 1s
 // setInterval, which is exactly what it looked like: the mic visibly chased
-// the panel for a second or two whenever the hud changed width (R, 01:00 —
-// "doesn't ride with it cleanly... always lags a second or two"). A poll is
+// the panel for a second or two whenever the hud changed width (it never rode
+// with it cleanly, always a second or two behind). A poll is
 // the wrong instrument for "follow this box" — ResizeObserver fires in the
 // same frame the box changes, so the mic moves WITH the panel instead of
 // after it. The interval remains only as a slow safety net for changes
@@ -232,15 +231,15 @@ function placeMic() {
   if (!hud || !micBtn) return;
   const r = hud.getBoundingClientRect();
   // hang off the ∃ ALONG its own edge (the rail's line continues through
-  // them); fold perpendicular only when a corner leaves no room (R, 14:49)
+  // them); fold perpendicular only when a corner leaves no room
   const edge = document.getElementById('dock')?.dataset.edge || 'left';
   const cx = Math.round(r.left + (r.width - 26) / 2);
   const cy = Math.round(r.top + (r.height - 26) / 2);
   const pos = (b, x, y) => { b.style.left = x + 'px'; b.style.top = y + 'px'; b.style.right = b.style.bottom = ''; };
   const vert = edge === 'left' || edge === 'right';
   const room = vert ? r.top : r.left;              // space before the ∃ along the rail
-  // mic is ALWAYS the top/left of whatever is visible (R, 15:12), and a lone
-  // pinned glyph packs into the slot nearest the ∃ (R, 16:07: pins are per-glyph)
+  // mic is ALWAYS the top/left of whatever is visible, and a lone
+  // pinned glyph packs into the slot nearest the ∃ (pins are per-glyph)
   const vis = [ _pinned.mic && micBtn, _pinned.ear && earBtn ].filter(Boolean);
   const n = vis.length;
   if (n) {
