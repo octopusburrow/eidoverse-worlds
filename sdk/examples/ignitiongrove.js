@@ -69,6 +69,23 @@ function near(p, me) {
   return Math.hypot(p.pos[0] - me.pos[0], p.pos[2] - me.pos[2]) <= NEAR_M;
 }
 
+// v4.3 (09-03): one address, one answer. Earshot overlaps in a small clearing,
+// so "hello" from the centre used to kindle all three in chorus. Now only the
+// grove thing NEAREST the speaker answers; if the speaker's position is unknown
+// (people() → pos:null) every thing fails open, as before — absence of position
+// is treated as presence, never as silence.
+function nearestIsMe(p) {
+  if (!p || !p.pos) return true;
+  const mine = String(world.self || "");
+  let best = null, bestD = Infinity;
+  for (const e of world.entities()) {
+    if (!/^(statue|fountain|lamp|thing)\d*$/i.test(e.id) || !e.pos) continue;
+    const d = Math.hypot(p.pos[0] - e.pos[0], p.pos[2] - e.pos[2]);
+    if (d < bestD) { bestD = d; best = e.id; }
+  }
+  return best === null || best === mine;
+}
+
 // One mechanic, three (or any) personalities. The behavior reads a `voice`
 // name from the attached entity's own `grove` comp — so a statue, a fountain,
 // and a lamp share this exact code and differ only in what they SAY when met.
@@ -172,6 +189,7 @@ world.on("say", (e) => {
   const me = world.entity(world.self);
   const p = world.people().find((q) => q.id === e.by);
   if (!near(p, me)) return;                               // out of earshot: not for us
+  if (!nearestIsMe(p)) return;                            // meeting is one-to-one: the thing you stand nearest answers
 
   if (addresses(e.text)) {
     if (!isLit()) kindle(e.by);
