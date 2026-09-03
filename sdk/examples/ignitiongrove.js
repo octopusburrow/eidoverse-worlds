@@ -142,7 +142,17 @@ function kindle(byId) {
   // catch fire: the companion light comes up (partial merge — pos/range kept).
   try { world.emit("light", { id: lampId(), intensity: LIT_I, color: myVoice().color }); } catch (err) { world.log("light emit refused", String(err)); }
   const n = Number(world.kv.get("ignited") || 0);
-  world.emit("say", { text: `[${myVoice().label}] ${greeting(n)}` });
+  let line = greeting(n);
+  if (n === 0) {
+    // cross-room (09-03): the sentence-word grove's heart, ten metres east, keeps
+    // relation-names in a comp. A first kindling mentions the newest one — things
+    // here are named by relation too, and this one has not been named yet.
+    try {
+      const names = world.entity("grove-heart")?.comp?.names;
+      if (Array.isArray(names) && names.length) line += ` — the heart to the east keeps a name: "${names[names.length - 1]}". things here are named by what passes between. I am still waiting for mine.`;
+    } catch (err) { world.log("no heart to read", String(err)); }
+  }
+  world.emit("say", { text: `[${myVoice().label}] ${line}` });
   world.kv.set("ignited", n + 1);
   world.kv.set("litAt", Date.now());
   world.kv.set("refers", 0);
