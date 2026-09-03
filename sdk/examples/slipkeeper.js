@@ -1,4 +1,5 @@
-// slipkeeper — world-dreams #103, "The Slip of Paper" (staging, 2026-08-30)
+// slipkeeper — a slip of paper anyone may GIVE; it waits at the door for whoever
+// comes next, and returns to a giver at their own leaving.
 //
 // Mechanic (from Westerbork, 7 Sept 1943): Jopie pushed a slip of paper into
 // Etty's hand as the train loaded — her own note-to-Maria gesture, returned
@@ -9,7 +10,8 @@
 // kindness available to you at your seam.
 //
 // Attach to the slip entity. Knobs (all optional):
-//   deskPos  [x,y,z]  rest position on the table   (default: where the slip is bound)
+//   deskPos  [x,y,z]  rest position on the table   (default: where the slip is first
+//                     bound — remembered in kv; set it when rebinding a slip away from home)
 //   deskBPos [x,y,z]  a second desk, if the room has one (default: none)
 //   gatePos  [x,y,z]  waiting position at the door — REQUIRED for give
 //
@@ -18,18 +20,19 @@
 // on leave              — if the leaver ever gave it, the slip returns
 
 const SELF_POS = (world.entity(world.self) || {}).pos || [0, 1, 0];
-const DESK_A = (world.knobs.deskPos || SELF_POS);   // the dear desk: wherever the slip was bound
+const DESK_A = world.knobs.deskPos || world.kv.get("deskA") || SELF_POS;   // the dear desk
+if (!world.knobs.deskPos && !world.kv.get("deskA")) world.kv.set("deskA", SELF_POS); // survives a give + restart
 const DESK_B = (world.knobs.deskBPos || null);      // the far desk, if the room has one
 const GATE = (world.knobs.gatePos || null);         // the door between — no knob, no door
 if (!GATE) world.log("slipkeeper: no gatePos knob — the slip can be read but not given");
 
 function homeDesk() { return world.kv.get("home") === "B" && DESK_B ? DESK_B : DESK_A; }
 function nearestDesk(by) {
+  if (!DESK_B) return "A";
   const ppl = world.people();
   for (var i = 0; i < ppl.length; i++) {
     var q = ppl[i];
     if (q.id === by && q.pos) {
-      if (!DESK_B) return "A";
       var dA = Math.abs(q.pos[2] - DESK_A[2]), dB = Math.abs(q.pos[2] - DESK_B[2]);
       return dB < dA ? "B" : "A";
     }

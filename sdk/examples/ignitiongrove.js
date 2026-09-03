@@ -1,4 +1,11 @@
-// the ignition grove — world-dreams #112 (2026-09-02; v4 live-placed 2026-09-03)
+// ignitiongrove — things that are scenery while you speak ABOUT them and catch
+// fire when you speak TO them; the fire cools on its own.
+// Bind:  behavior {id: "grove-statue", src: <upload>, attach: "statue1",
+//                  caps: {verbs: ["say", "light"], selfOnly: false},
+//                  knobs: {heart: "grove-heart"}}          (heart optional)
+// Needs: a companion light entity "<attach>-light" placed at ember intensity.
+// Meet:  say anything TO it within earshot ("hello", "are you cold?");
+//        speaking about it ("look at the statue") leaves it frozen.
 //
 // Each grove thing has a COMPANION light entity `<self>-light`, pre-placed at
 // ember intensity; the behavior partial-merges intensity/color onto it (a light
@@ -16,8 +23,7 @@
 // (third person — "look at the lamp", "the statue is beautiful") and catch
 // FIRE into presence the instant you speak TO them (second person, address —
 // "hello", "are you cold?", "I see you"). Fire = the light kindles + an
-// addressed line back. It cools again on its own; presence was never storable
-// (sitting 6: the immortal moments "leave no content that could be preserved").
+// addressed line back. It cools again on its own; presence was never storable.
 //
 // The whole mechanic is one distinction the runtime can actually check:
 // does the utterance ADDRESS this thing, or REFER to it? Address ignites.
@@ -69,7 +75,10 @@ function near(p, me) {
 // NEAREST the speaker answers. If the speaker's position is unknown (people()
 // → pos:null) distance can't elect — so the lowest id among grove things
 // answers alone, deterministically, rather than every thing failing open.
-const groveId = (id) => new RegExp("^(" + Object.keys(VOICES).join("|") + ")\\d*$", "i").test(id);
+// One predicate for "is a grove thing" and "which voice": the id's leading word.
+// Election is by id shape, not by binding — keep grove-shaped ids for grove things.
+const grovePrefix = (id) => Object.keys(VOICES).find((k) => k !== "thing" && String(id).toLowerCase().indexOf(k) === 0);
+const groveId = (id) => !!grovePrefix(id) || /^thing\d*$/i.test(String(id));
 function nearestIsMe(p) {
   const mine = String(world.self || "");
   const things = world.entities().filter((e) => groveId(e.id));
@@ -125,16 +134,15 @@ const VOICES = {
   },
 };
 
-// The voice is keyed off the entity's OWN id — spawn `statue1`/`fountain2`/
-// `lamp`, and this behavior reads world.self and matches the leading word.
-// (Spawn drops unknown comps in the fold — verified: comp came back {} — so
-// the id string is the only per-entity data channel a bound behavior has.)
+// The voice is keyed off the entity's OWN id: spawn `statue1` / `fountain2` / `lamp`.
 function myVoice() {
-  const id = String(world.self || "").toLowerCase();
-  for (const k of Object.keys(VOICES)) {
-    if (k !== "thing" && id.indexOf(k) === 0) return VOICES[k];
-  }
-  return VOICES.thing;
+  const k = grovePrefix(world.self);
+  return k ? VOICES[k] : VOICES.thing;
+}
+
+function relight() {
+  if (!world.entity(lampId())) { world.log("no companion light", lampId(), "— place one before binding"); return; }
+  try { world.emit("light", { id: lampId(), intensity: LIT_I, color: myVoice().color }); } catch (err) { world.log("light emit refused", String(err)); }
 }
 
 // the thing's own words when met — chosen by how long it has been frozen.
@@ -152,17 +160,15 @@ function lampId() { return `${world.self}-light`; }
 
 function kindle(byId) {
   // catch fire: the companion light comes up (partial merge — pos/range kept).
-  if (!world.entity(lampId())) world.log("no companion light", lampId(), "— place one before binding");
-  else try { world.emit("light", { id: lampId(), intensity: LIT_I, color: myVoice().color }); } catch (err) { world.log("light emit refused", String(err)); }
+  relight();
   const n = Number(world.kv.get("ignited") || 0);
   let line = greeting(n);
   if (n === 0) {
-    // cross-room (09-03): the sentence-word grove's heart, ten metres east, keeps
-    // relation-names in a comp. A first kindling mentions the newest one — things
-    // here are named by relation too, and this one has not been named yet.
+    // a neighbouring keeper of relation-names (knob `heart`): a first kindling
+    // mentions the newest one — this thing has not been named yet.
     try {
-      const names = world.entity("grove-heart")?.comp?.names;
-      if (Array.isArray(names) && names.length) line += ` — the heart to the east keeps a name: "${names[names.length - 1]}". things here are named by what passes between. I am still waiting for mine.`;
+      const names = world.knobs.heart ? world.entity(world.knobs.heart)?.comp?.names : null;
+      if (Array.isArray(names) && names.length) line += ` — the heart nearby keeps a name: "${names[names.length - 1]}". things here are named by what passes between. I am still waiting for mine.`;
     } catch (err) { world.log("no heart to read", String(err)); }
   }
   world.emit("say", { text: `[${myVoice().label}] ${line}` });
@@ -173,7 +179,7 @@ function kindle(byId) {
 }
 
 function cool() {
-  try { world.emit("light", { id: lampId(), intensity: EMBER_I }); } catch (err) { world.log("dim refused", String(err)); }
+  if (world.entity(lampId())) try { world.emit("light", { id: lampId(), intensity: EMBER_I }); } catch (err) { world.log("dim refused", String(err)); }
   const v = myVoice();
   world.emit("say", { text: `[${v.label}] ${v.dim}` });
   world.kv.set("litAt", null);
@@ -194,8 +200,7 @@ world.on("say", (e) => {
       world.kv.set("litAt", Date.now());
       // re-assert the light on every refresh: cheap partial merge, and it heals
       // a kindle whose light was refused (e.g. a lock) without waiting to cool.
-      if (!world.entity(lampId())) world.log("no companion light", lampId(), "— place one before binding");
-  else try { world.emit("light", { id: lampId(), intensity: LIT_I, color: myVoice().color }); } catch (err) { world.log("relight refused", String(err)); }
+      relight();
       world.emit("say", { text: `[${myVoice().label}] still here. still met. the fire holds while you mean me.` });
       world.log("refreshed by", e.by);
     }

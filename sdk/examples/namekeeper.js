@@ -1,13 +1,15 @@
-// the namekeeper — world-dreams #111, the sentence-word grove (2026-09-01; v2 09-03)
-// v2: kept names are MIRRORED into a `names` comp on the heart (own entity, selfOnly-legal)
-// so other rooms can read them via world.entity("grove-heart").comp.names — kv is private.
-// A rebind wipes kv; re-offer names after any upgrade (or say `use hear` to re-mirror).
+// namekeeper — a grove that keeps RELATION-names and says them back.
+// Bind:  behavior {id: "names", src: <upload>, attach: "grove-heart"}
+// Offer: say  name: <a-whole-scene-between-beings>  within earshot; nouns are refused.
+// Hear:  use {id: "grove-heart", action: "hear"} recites the kept names.
+// Kept names are mirrored into a `names` comp on the attached entity so neighbours
+// can read them (kv is private, and a rebind starts kv empty).
 // "In the beginning is the relation." Things here are named by the relation they
 // hold, not the noun they are. Offer one: say  name: <your-sentence-word>  within
 // earshot; the keeper keeps it and says it back. use {action:"hear"} recites the
 // collection. Nouns are refused gently — a relation-name needs at least a hyphen's
 // worth of BETWEEN in it.
-const NEAR_M = 12, MAX_NAMES = 20, MAX_LEN = 120, MAX_BY = 16, KV_BUDGET = 6000; // kv values cap at 8 KB; stay well under
+const NEAR_M = 12, MAX_NAMES = 20, MAX_LEN = 120, MAX_BY = 16, KV_BUDGET = 6000; // the store caps at 8 KB and `names` is the only key here
 function near(p, me) {
   if (!p.pos || !me?.pos) return true;
   return Math.hypot(p.pos[0]-me.pos[0], p.pos[2]-me.pos[2]) <= NEAR_M;
@@ -40,7 +42,7 @@ world.on("use", (e) => {
   if (e.action !== "hear") return;
   const names = world.kv.get("names") || [];
   if (!names.length) {
-    world.emit("say", { text: "[the grove] three names so far, all the builder's. offer yours: say  name: <a-whole-scene-between-beings>" });
+    world.emit("say", { text: "[the grove] no names kept yet. offer one: say  name: <a-whole-scene-between-beings>" });
     return;
   }
   world.emit("comp", { id: world.self, type: "names", data: names.map(n => n.name) });

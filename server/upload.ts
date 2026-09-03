@@ -146,10 +146,8 @@ async function pumpOptimize() {
 }
 // Boot sweep: whatever accumulated before this shipped (or failed mid-queue
 // last run) gets its shadow now. Deferred so boot stays about serving worlds.
-// SKIP_OPT_SWEEP=1 skips both boot sweeps entirely: the encode pump (sharp +
-// basis, tens of seconds of native memory per file, "not smaller" verdicts
-// retried every boot) OOM-crashed a 7.3GB WSL VM twice on 2026-09-01 —
-// serving worlds must be startable without shouldering the optimizer.
+// SKIP_OPT_SWEEP: see config.ts — a memory-tight host must be able to serve
+// worlds without shouldering the optimizer.
 setTimeout(() => {
   if (SKIP_OPT_SWEEP) return;
   const dir = join(OPT_DIR, "store");
