@@ -399,29 +399,21 @@ function loupeHtml(rec) {
   const nameHtml = esc(rec.label)
     .replace(/([_./:\-])/g, '$1<wbr>')          // break after separators
     .replace(/([a-z0-9])([A-Z])/g, '$1<wbr>$2'); // and at camelCase humps
-  // ── header, redesigned from first principles (R, 09-02: "arrange these in a
-  //    way that feels good to you"). It's a TITLE BLOCK, not a table. The job of
-  //    a pinned card's head is one glance: WHAT is this (name) and HOW is it
-  //    doing (grade). Everything else is a quiet caption. So:
-  //      TITLE ROW — name (the star, left, wraps) + pill (the badge, top-right).
-  //                  the pill is the single spot of color and it earns the top.
-  //      CAPTION   — one dim line, read as a sentence: "#N of M in <lens>",
-  //                  then a faint separator, then "placed by <name>". Attribution
-  //                  is provenance, so it trails; the actor name still brightens.
-  //    Stopping the grid pretense (heterogeneous items forced into matching rows)
-  //    is the whole move — a masthead lets each element be its own kind of thing.
-  const standingPhrase = rankStr ? `${rankStr} in ${lensLabel}` : lensLabel;
-  const placedTail = placer
-    ? `<span class="pl-capsep">·</span><span class="pl-placer" title="the actor who placed this object into the world">placed by <b>${esc(placer)}</b></span>`
-    : '';
+  // ── header (R, 09-02): name (left) + a right-aligned VERDICT STACK (pill ·
+  //    lens · rank). Those three are the tightly-coupled performance verdict —
+  //    the grade, which lens produced it, and where it ranks under that lens — so
+  //    they belong together on the right, stacked under the pill. 'placed by' is
+  //    provenance, not a perf fact, so it's DROPPED from the loupe entirely (R's
+  //    call: "it's not really a perf thing" — a home in the inspector's history
+  //    is the right follow-up). With attribution gone the header is just two
+  //    things: what it is (name) and how it's doing (the verdict stack).
   return `
   <div class="pl-head">
-    <div class="pl-title">
-      <b class="pl-name" title="${esc(rec.label)}">${nameHtml}</b>
+    <b class="pl-name" title="${esc(rec.label)}">${nameHtml}</b>
+    <div class="pl-verdict">
       <span title="${esc(why)}" class="pl-rank">${badge(rec.rank, TIER_NAMES[rec.rank], true)}</span>
-    </div>
-    <div class="pl-caption">
-      <span class="pl-standing" title="this object's position among all ${total} subjects in the scene, ranked by the active lens · ${esc(lensTip)}">${standingPhrase}</span>${placedTail}
+      <span class="pl-mode" title="${esc(lensTip)}">${lensLabel}</span>
+      ${rankStr ? `<span class="pl-rankrow" title="this object's position among all ${total} subjects in the scene, ranked by the active lens">${rankStr}</span>` : ''}
     </div>
   </div>
   <div class="pl-grid">${rows}</div>
