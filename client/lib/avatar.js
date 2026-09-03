@@ -408,6 +408,7 @@ export class Avatar {
     this.vrm = vrm;
     this.root = new THREE.Group();
     this.root.userData.isBody = true;   // so the sky's scene-diff never claims a person
+    this.root.userData.who = id;        // perf attribution: this subtree is a PERSON (perfscope)
     this.root.add(vrm.scene);
     this.mixer = new THREE.AnimationMixer(vrm.scene);
     this.actions = {};

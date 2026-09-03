@@ -14,6 +14,8 @@
 // have shown nothing wrong on the day it mattered most.
 
 import { THREE, scene } from './core.js';
+import { toast } from './ui.js';
+import { mountPerfPanel } from './perfscope.js';
 import { MeshBVHHelper } from 'three-mesh-bvh';
 import { colliders } from './colliders.js';
 import { closestParams, TUNING } from './ragdoll.js';
@@ -740,6 +742,7 @@ export function initDebug(p = {}) {
     mk('reset', () => { for (const r of resets) r(); for (const [k] of SWITCHES) TUNING[k] = DEFAULTS[k]; repaintSwitches(); }),
   );
   stack.appendChild(btns);
+  mountPerfPanel(stack, { toast });
 
   const swBox = document.createElement('div');
   // NOT .stack — that is flex:1 with its own scroller, and nested inside the
