@@ -715,17 +715,29 @@ body.arranging #dock .dock-grip { display: grid; }
 #dock .dock-grip:active { cursor: grabbing; }
 #dock button:not(.dock-grip) {
   display: grid; place-items: center; width: 34px; height: 34px; padding: 0;
+  font-size: 11px;   /* label-fallback buttons (entries with no fill icon) */
   color: var(--icon); background: none; border: none; box-shadow: none; border-radius: 7px;
 }
 #dock button:not(.dock-grip):hover { color: var(--fg); background: var(--hov); }
+/* selected = the accent speaks, not white (R, 09-01 23:43). Fable, 09-03 audit
+   (R: "something a little off"): the old treatment was FOUR devices each too
+   weak to read on the dark rail — 7% fill, 22% outline, an invisible inset
+   shadow saying 'pressed' against the house 'selected-speaks-accent' grammar,
+   and a barely-brighter icon — so open vs pinned-closed looked near-identical.
+   Now two devices that actually carry: a visible brand-tinted well (20%) and a
+   45% brand outline, same grammar, no mixed metaphor. */
 #dock button.on {
-  /* selected = the accent speaks, not white — brighter kin of --icon, plus a
-     thin brand outline while in use (R, 09-01 23:43) */
   color: color-mix(in srgb, var(--brand) 80%, white);
-  background: color-mix(in srgb, var(--brand) 7%, var(--well));
-  box-shadow: inset 0 1px 3px rgb(0 0 0 / .6);   /* pressed-in, not lit-up */
-  outline: 1px solid color-mix(in srgb, var(--brand) 22%, transparent);   /* knocked back 50% (R, 23:54) */
+  background: color-mix(in srgb, var(--brand) 20%, var(--well));
+  outline: 1px solid color-mix(in srgb, var(--brand) 45%, transparent);
   outline-offset: -1px;
+}
+/* hovering an OPEN button must stay in the accent family — the plain hover
+   rule used to win the cascade and flip it white + --hov, making about-to-
+   close look identical to about-to-open (Fable, 09-03). */
+#dock button.on:hover {
+  color: color-mix(in srgb, var(--brand) 55%, white);
+  background: color-mix(in srgb, var(--brand) 28%, var(--well));
 }
 #dock button[hidden] { display: none; }
 /* keybtn: buttons that mirror physical KEYS read as key-caps — a darker well,
@@ -763,8 +775,9 @@ button.keybtn:active { box-shadow: inset 0 1px 3px rgb(0 0 0 / .6); }
 /* alt held = every frame is grabbable, and says so */
 body.altgrab .frame { cursor: grab; }
 body.altgrab .frame:active { cursor: grabbing; }
-#dock button:hover { color: var(--fg); }
-#dock button.on { color: color-mix(in srgb, var(--brand) 80%, white); }
+/* (duplicate #dock hover/.on rules that lived here were folded into the main
+   dock block — the stray hover one was winning the cascade and blanking the
+   selected state to white. Fable, 09-03.) */
 /* scene-tree selection: text brightens toward the accent, same selected-
    speaks-accent grammar as tabs/heads/dock (R, 09-02 00:00) */
 .sg-row.sel { background: rgb(255 255 255 / .06); }
@@ -772,7 +785,6 @@ body.altgrab .frame:active { cursor: grabbing; }
 .sg-row.sel .d { color: color-mix(in srgb, var(--brand) 25%, var(--dim)); }
 .sec > .head { display: flex; align-items: center; gap: 9px; }
 .sec > .head svg { flex: none; opacity: .8; }
-#dock button { padding: 4px 8px; font-size: 11px; }
 
 /* --------------------------------------------------------------- overlays */
 .scrim {
