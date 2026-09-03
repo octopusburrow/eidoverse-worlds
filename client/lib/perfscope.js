@@ -28,7 +28,9 @@
 import { THREE, scene, camera, renderer, canvas } from './core.js';
 import { positionLocal, normalLocal, positionWorld, cameraPosition, modelScale } from 'three/tsl';
 import { entities, entityMeta } from './world.js';
-import { fsvg } from './icons.js';
+import * as icons from './icons.js';
+// the fill icon set is optional: without it the loupe button is its word
+const fsvg = (name, size) => (typeof icons.fsvg === 'function' ? icons.fsvg(name, size) : '');
 
 // HTML-attribute escaper for the tooltip strings below (was used un-imported —
 // a real hover threw ReferenceError; mocked-innerHTML shots never caught it).
