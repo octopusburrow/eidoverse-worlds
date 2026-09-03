@@ -210,6 +210,22 @@ let mode = 'off';
 // beneath, effectively gone. Veil drops to 25%, and the outline becomes a true
 // SILHOUETTE: an inverted hull (back faces pushed out along normals, tier
 // color) that the mesh's own front faces hide everywhere except the edge.
+// b73 (research, 09-03): the industry cost views — UE Shader Complexity, Unity
+// and Godot Overdraw — are global material OVERRIDES: flat tier color replaces
+// every texture, sky and landscape included; only editor gizmos are exempt.
+// That reading answers "where are the pixels dear?". Our default answers "WHAT
+// is heavy?" and keeps the object recognisable. Both are offered: `solid`
+// flips to the conventional override (fabric included); overlay leaves the
+// world fabric (terrain · sky · grass) untinted and un-hulled — a hull on
+// instanced grass would double the grass draw, a perf tool costing perf.
+let solidOn = false;
+export function setSolid(on) { solidOn = !!on; if (mode !== 'off') applyTint(); onSolidChange?.(); }
+let onSolidChange = null;
+const solidMats = TIERS.map((c) => {
+  const m = new THREE.MeshBasicMaterial({ color: new THREE.Color(c), polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  m.name = `perfscope-solid-${c}`;
+  return m;
+});
 const VEIL_OPACITY = 0.25;
 const tintMats = TIERS.map((c) => {
   const m = new THREE.MeshBasicMaterial({
@@ -273,11 +289,13 @@ function applyTint() {
   clearTint();
   for (const rec of subjects.values()) {
     const t = Math.min(4, MODES[mode].tier?.(rec) ?? 0);
+    const fabric = rec.kind === 'fabric';
+    if (fabric && !solidOn) continue;               // overlay: the ground stays the ground
     _box.makeEmpty();
     for (const mesh of rec.meshList) {
       if (!mesh.parent) continue;                    // churned out since collect
-      veils.add(veilFor(mesh, tintMats[t]));
-      veils.add(hullFor(mesh, t));
+      veils.add(veilFor(mesh, solidOn ? solidMats[t] : tintMats[t]));
+      if (!fabric) veils.add(hullFor(mesh, t));      // never hull the meadow
       _box.expandByObject(mesh);
     }
     if (outlinesOn && !_box.isEmpty()) {
@@ -645,6 +663,7 @@ export function buildPerfPanel(stack, { toast = console.log } = {}) {
     o.value = k; o.textContent = m.label;
     sel.appendChild(o);
   }
+  sel.value = mode;                         // b73: the section builds lazily — read the live mode, don't assume 'off'
   sel.onchange = () => setMode(sel.value);
   onModeChange = () => { sel.value = mode; };
   modeRow.append(lbl, sel);
@@ -671,6 +690,18 @@ export function buildPerfPanel(stack, { toast = console.log } = {}) {
   olNm.className = 'nm'; olNm.textContent = 'bounds outlines';
   olRow.append(olCb, olNm);
 
+  const solRow = document.createElement('label');
+  solRow.className = 'row';
+  solRow.style.cssText = 'gap:8px';
+  const solCb = document.createElement('input');
+  solCb.type = 'checkbox'; solCb.checked = solidOn;
+  solCb.title = 'the conventional cost view (UE/Unity/Godot): flat tier color replaces textures, ground and sky included';
+  solCb.onchange = () => setSolid(solCb.checked);
+  onSolidChange = () => { solCb.checked = solidOn; };
+  const solNm = document.createElement('span');
+  solNm.className = 'nm'; solNm.textContent = 'solid colors (replace textures)';
+  solRow.append(solCb, solNm);
+
   const legend = document.createElement('div');
   legend.className = 'pf-legend';
   legend.innerHTML = TIERS.map((c, i) => `<i style="background:${c}" title="${TIER_NAMES[i]}"></i>`).join('')
@@ -693,7 +724,7 @@ export function buildPerfPanel(stack, { toast = console.log } = {}) {
   rcpt.onclick = async () => toast(`perfscope: receipt copied (${await copyReceipt()} subjects)`);
   btns.append(rescan, rcpt);
 
-  stack.append(head, modeRow, loupeRow, olRow, legend, tableEl, btns);
+  stack.append(head, modeRow, loupeRow, olRow, solRow, legend, tableEl, btns);
 }
 
 /** Full teardown — restore every material, drop listeners, stop timers. */
