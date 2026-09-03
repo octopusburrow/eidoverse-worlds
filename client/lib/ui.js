@@ -200,12 +200,13 @@ document.addEventListener('mousedown', tipHide, true);
 // paintHud rewrites #hud.title at 1Hz; while we hold the borrow, route the
 // refresh into the stash instead of re-arming the native tooltip mid-hover.
 new MutationObserver(() => {
+  if (tipHost && !document.body.contains(tipHost)) return tipHide();   // host repainted away mid-hover
   if (tipHost?.hasAttribute('title')) {
     tipHost._tip = tipHost.getAttribute('title');
     tipHost.removeAttribute('title');
     if (tip.classList.contains('show')) tip.textContent = tipHost._tip;
   }
-}).observe(document.body, { attributes: true, attributeFilter: ['title'], subtree: true });
+}).observe(document.body, { attributes: true, attributeFilter: ['title'], childList: true, subtree: true });
 
 // ============================================================ panel frames
 
@@ -320,7 +321,7 @@ const escapeHtml = (v) => String(v).replace(/[&<>"]/g, (c) => (
 const PINS_LS = 'ew-dock-pins';
 let pins = new Set();
 try { pins = new Set(JSON.parse(localStorage.getItem(PINS_LS) || '[]')) } catch {}
-const savePins = () => { try { localStorage.setItem(PINS_LS, [...pins] && JSON.stringify([...pins])) } catch {} };
+const savePins = () => { try { localStorage.setItem(PINS_LS, JSON.stringify([...pins])) } catch {} };
 let dockEntries = [];
 
 const DOCKPOS_LS = 'ew-dock-pos';
@@ -334,7 +335,9 @@ export function registerPanel({ id, icon = 'puzzle-piece', title = id, mount,
   if (!id || dockEntries.some((e) => e.id === id)) return null;
   const f = makeFrame(id, { title, x, y, w, h, hidden: true });
   try { mount?.(f.body, f); } catch (err) { console.error(`[mod:${id}] mount failed`, err); }
-  dockEntries.push({ id, icon });
+  const entry = { id, icon };
+  dockEntries.push(entry);
+  addDockButton(entry);
   paintDock();
   return f;
 }
@@ -342,28 +345,31 @@ if (typeof window !== 'undefined') {
   window.eido = Object.assign(window.eido ?? {}, { ui: { registerPanel } });
 }
 
+function addDockButton(entry) {
+  const { id, label, icon, action } = entry;
+  const b = document.createElement('button');
+  if (icon && hasFill(icon)) b.innerHTML = fsvg(icon, 21);   // +25% glyph, same 34px button
+  else b.textContent = label;
+  b.title = action ? id : `toggle ${id}`;
+  b.onclick = () => {
+    if (action) { action(); paintDock(); return; }
+    const f = getFrame(id);
+    if (!f) return;
+    f.toggle();
+    paintDock();
+  };
+  b.dataset.toggles = id;   // NOT data-frame — that belongs to the window itself
+  el.dock.insertBefore(b, el.dock.querySelector('.dock-grip'));   // the grip stays last
+  return b;
+}
+
 export function initDock(entries) {
-  dockEntries = entries;
+  dockEntries.push(...entries);
   el.dock.innerHTML = '';
   // ∃ leads the rail — one unit. (Mic/ear are separate fixed elements that
   // anchor to the ∃'s live box, so they ride along without being "in" it.)
   el.dock.appendChild(el.hud);
-  for (const entry of entries) {
-    const { id, label, icon, action } = entry;
-    const b = document.createElement('button');
-    if (icon && hasFill(icon)) b.innerHTML = fsvg(icon, 21);   // +25% glyph, same 34px button
-    else b.textContent = label;
-    b.title = action ? id : `toggle ${id}`;
-    b.onclick = () => {
-      if (action) { action(); paintDock(); return; }
-      const f = getFrame(id);
-      if (!f) return;
-      f.toggle();
-      paintDock();
-    };
-    b.dataset.toggles = id;   // NOT data-frame — that belongs to the window itself
-    el.dock.appendChild(b);
-  }
+  for (const entry of dockEntries) addDockButton(entry);
   // grip: bottom of the rail, exists only while arranging (CSS-gated)
   const grip = document.createElement('button');
   grip.className = 'dock-grip';
@@ -371,8 +377,6 @@ export function initDock(entries) {
   grip.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="6" fill="currentColor" aria-hidden="true"><circle cx="6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18" cy="12" r="1.6"/></svg>';
   grip.addEventListener('pointerdown', (e) => {
     e.preventDefault();
-    const r = el.dock.getBoundingClientRect();
-    const ox = e.clientX - r.left, oy = e.clientY - r.top;
     const move = (ev) => {
       // LIVE snap (R, 15:12): the rail rides its nearest edge THROUGHOUT the
       // drag — no free-floating ghost, no repaint surprise at release
@@ -495,7 +499,7 @@ function initEMenu() {
     const move = (ev) => {
       m.style.left = `${Math.max(4, Math.min(innerWidth - r.width - 4, ev.clientX - ox))}px`;
       m.style.top = `${Math.max(34, Math.min(innerHeight - r.height - 4, ev.clientY - oy))}px`;
-      m.style.right = ''; m.style.bottom = '';
+      m.style.right = m.style.bottom = 'auto';
     };
     const up = () => {
       removeEventListener('pointermove', move); removeEventListener('pointerup', up);
@@ -513,9 +517,9 @@ export function toggleEMenu(force) {
   if (open) {
     let placed = false;
     try {
-      const p = JSON.parse(localStorage.getItem('ew-emenu-pos') || 'null');
+      const p = JSON.parse(localStorage.getItem(EMENUPOS_LS) || 'null');
       if (p) p.y = Math.max(34, p.y);   // tab headroom on restore too
-      if (p && p.x >= 0) { m.style.left = `${p.x}px`; m.style.top = `${p.y}px`; m.style.right = ''; m.style.bottom = ''; placed = true; }
+      if (p && p.x >= 0) { m.style.left = `${p.x}px`; m.style.top = `${p.y}px`; m.style.right = m.style.bottom = 'auto'; placed = true; }
     } catch {}
     if (!placed) {
       // pop out beside the rail, toward the roomier side of the mark
@@ -527,13 +531,14 @@ export function toggleEMenu(force) {
         const g = document.getElementById(id)?.getBoundingClientRect();
         if (g && g.left < r.right + 80 && g.top < r.bottom && g.bottom > r.top) clearRight = Math.max(clearRight, g.right);
       }
-      m.style.left = right ? '' : `${Math.round(clearRight + 8)}px`;
-      m.style.right = right ? `${Math.round(innerWidth - r.left + 8)}px` : '';
+      // 'auto', never '' — the sheet's top:54px/left:10px resurrect on '' (the dock's lesson)
+      m.style.left = right ? 'auto' : `${Math.round(clearRight + 8)}px`;
+      m.style.right = right ? `${Math.round(innerWidth - r.left + 8)}px` : 'auto';
       const h = el.hud.getBoundingClientRect();
       const below = h.top < innerHeight / 2;
       // ≥34px: the menu carries its tab ABOVE itself now — leave it headroom
-      m.style.top = below ? `${Math.max(34, Math.round(h.top))}px` : '';
-      m.style.bottom = below ? '' : `${Math.round(innerHeight - h.bottom)}px`;
+      m.style.top = below ? `${Math.max(34, Math.round(h.top))}px` : 'auto';
+      m.style.bottom = below ? 'auto' : `${Math.round(innerHeight - h.bottom)}px`;
     }
     paintEMenu();
   }
@@ -542,21 +547,45 @@ function fsvgOrStroke(name, size) {
   if (hasFill(name)) return fsvg(name, size);
   try { return svg(name, size); } catch { return ''; }
 }
+const emenuKey = () => dockEntries.filter((e) => !e.action || !e.gate || e.gate()).map((e) => e.id).join('|');
 function paintEMenu() {
   const m = emenuEl();
   if (!m || m.hidden) return;
+  // rows are built once per entry-set; the 2s sweep only moves their state
+  const key = emenuKey();
+  if (m.dataset.key !== key) { buildEMenu(m); m.dataset.key = key; }
+  for (const row of m.querySelectorAll('.mrow[data-row]')) {
+    const id = row.dataset.row;
+    const entry = dockEntries.find((x) => x.id === id);
+    const on = id === 'glyph:mic' ? micLive() : id === 'glyph:ear' ? earOn()
+      : entry?.action ? !!entry.active?.() : !!getFrame(id)?.visible;
+    row.classList.toggle('open', on);
+  }
+  for (const pin of m.querySelectorAll('.mpin[data-pin]')) {
+    const id = pin.dataset.pin;
+    const on = id.startsWith('glyph:') ? glyphPinned(id.slice(6)) : pins.has(id);
+    pin.classList.toggle('on', on);
+    pin.title = id.startsWith('glyph:')
+      ? (on ? `detach ${pin.dataset.nm} from the rail` : `attach ${pin.dataset.nm} to the rail`)
+      : (on ? 'unpin from rail' : 'pin to rail');
+  }
+  const lock = m.querySelector('.mrow[data-lock]');
+  const lockHtml = `${fsvg(isLocked() ? 'lock' : 'lock-open', 15)}<span class="mname">${isLocked() ? 'layout locked' : 'layout unlocked'}</span>`;
+  if (lock && lock.dataset.lock !== String(isLocked())) { lock.dataset.lock = String(isLocked()); lock.innerHTML = lockHtml; }
+  lock?.classList.toggle('open', isLocked());
+}
+function buildEMenu(m) {
   m.innerHTML = '<div class="fr-head"><span class="fr-title">menu</span><div class="fr-btns"><button class="fr-btn" title="close">\u2715</button></div></div>';
   m.querySelector('.fr-btn').onclick = () => toggleEMenu(false);
   // voice first: mic + ears lead the menu in their own section — they matter
   // more than any window, and they wear the SAME glyphs as the floating pair
-  for (const [nm, key, glyph, isOn, flip] of [['mic', 'mic', micGlyph, micLive, flipMic], ['ears', 'ear', earGlyph, earOn, flipEar]]) {
+  for (const [nm, key, glyph, flip] of [['mic', 'mic', micGlyph, flipMic], ['ears', 'ear', earGlyph, flipEar]]) {
     const row = document.createElement('button');
-    row.className = 'mrow' + (isOn() ? ' open' : '');
+    row.className = 'mrow'; row.dataset.row = `glyph:${key}`;
     row.innerHTML = `${glyph(16)}<span class="mname">${nm}</span>`;
     row.onclick = async () => { await flip(); paintEMenu(); };
     const pin = document.createElement('button');
-    pin.className = 'mpin' + (glyphPinned(key) ? ' on' : '');
-    pin.title = glyphPinned(key) ? `detach ${nm} from the rail` : `attach ${nm} to the rail`;
+    pin.className = 'mpin'; pin.dataset.pin = `glyph:${key}`; pin.dataset.nm = nm;
     pin.innerHTML = fsvg('push-pin', 13);
     pin.onclick = (e) => { e.stopPropagation(); setGlyphPinned(key, !glyphPinned(key)); paintEMenu(); };
     row.appendChild(pin);
@@ -564,23 +593,19 @@ function paintEMenu() {
   }
   { const s = document.createElement('div'); s.className = 'msep'; m.appendChild(s); }
   for (const entry of dockEntries) {
-    const { id, icon, action, gate, active } = entry;
+    const { id, icon, action, gate } = entry;
     if (action) {
       if (gate && !gate()) continue;
       const row = document.createElement('button');
-      row.className = 'mrow' + (active?.() ? ' open' : '');
-      row.className = 'mrow' + (active?.() ? ' open' : '');
+      row.className = 'mrow'; row.dataset.row = id;
       row.innerHTML = `${fsvg(icon, 15)}<span class="mname">${id}</span>`;
       row.onclick = () => { action(); paintDock(); paintEMenu(); };
       m.appendChild(row);
       continue;
     }
     const row = document.createElement('button');
-    const isOpen = getFrame(id)?.visible;
-    row.className = 'mrow' + (isOpen ? ' open' : '');
+    row.className = 'mrow'; row.dataset.row = id;
     row.innerHTML = `${fsvg(icon, 15)}<span class="mname">${id}</span>`;
-    // selecting a row OPENS the window into the viewport (arranging follows);
-    // already open = flash it so the eye finds it. Closing is the frame's ✕.
     // click = toggle; the row's brightness IS the open state (R, 15:12 —
     // one less glyph to reason about; the eye experiment is retired)
     row.onclick = () => {
@@ -590,8 +615,7 @@ function paintEMenu() {
       paintDock(); paintEMenu();
     };
     const pin = document.createElement('button');
-    pin.className = 'mpin' + (pins.has(id) ? ' on' : '');
-    pin.title = pins.has(id) ? 'unpin from rail' : 'pin to rail';
+    pin.className = 'mpin'; pin.dataset.pin = id;
     pin.innerHTML = fsvg('push-pin', 13);
     pin.onclick = (e) => {
       e.stopPropagation();
@@ -603,8 +627,7 @@ function paintEMenu() {
   }
   const sep = document.createElement('div'); sep.className = 'msep'; m.appendChild(sep);
   const lock = document.createElement('button');
-  lock.className = 'mrow' + (isLocked() ? ' open' : '');
-  lock.innerHTML = `${fsvg(isLocked() ? 'lock' : 'lock-open', 15)}<span class="mname">${isLocked() ? 'layout locked' : 'layout unlocked'}</span>`;
+  lock.className = 'mrow'; lock.dataset.lock = '';
   lock.onclick = () => { setLocked(!isLocked()); paintEMenu(); };
   m.appendChild(lock);
   const reset = document.createElement('button');

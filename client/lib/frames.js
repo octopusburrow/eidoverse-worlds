@@ -174,7 +174,9 @@ document.addEventListener('pointerdown', (e) => {
   document.addEventListener('pointercancel', finish, true);
   addEventListener('blur', finish);
 }, true);
-let zTop = 30;
+// frames live in [Z_LO..Z_HI]; chrome starts at 27 (#dock) and must stay above
+const Z_LO = 10, Z_HI = 25;
+let zTop = Z_LO;
 let locked = localStorage.getItem('ew-ui-locked') === '1';
 
 const SNAP = 11;            // px — edge and frame-to-frame snapping distance
@@ -272,7 +274,15 @@ export function makeFrame(id, opts = {}) {
     },
   };
 
-  function raise() { root.style.zIndex = String(++zTop); }
+  function raise() {
+    if (zTop >= Z_HI) {
+      const order = [...frames.values()].filter((f) => f.el !== root)
+        .sort((a, b) => (+a.el.style.zIndex || 0) - (+b.el.style.zIndex || 0));
+      zTop = Z_LO - 1;
+      for (const f of order) f.el.style.zIndex = String(++zTop);
+    }
+    root.style.zIndex = String(++zTop);
+  }
   function save() {
     localStorage.setItem(LS(id), JSON.stringify(state));
   }

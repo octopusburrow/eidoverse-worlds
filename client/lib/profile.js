@@ -7,6 +7,7 @@
 import { CONFIG, bus, colorFor } from './core.js';
 import { makeFrame } from './frames.js';
 import { fsvg } from './icons.js';
+import { toast } from './ui.js';
 
 let frame = null;
 
@@ -47,8 +48,7 @@ function paint() {
   frame.body.querySelectorAll('.pf-tile').forEach((b) => {
     b.onclick = () => {
       const n = b.dataset.stub;
-      b.classList.add('flashless');
-      import('./ui.js').then(({ toast }) => toast(`${n}: not built yet — this tile reserves the spot`, 'info'));
+      toast(`${n}: not built yet — this tile reserves the spot`, 'info');
     };
   });
 }

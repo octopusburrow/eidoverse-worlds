@@ -27,6 +27,7 @@ import { getMe } from '../mybody.js';
 import { setMyReach, clearMyReach } from '../reachnet.js';
 import { canonicalPoint, CONTACT_POINTS } from '../../../shared/contact.js';
 import { TOUCH_GAP } from '../../../shared/reachwire.js';
+import { panelAlpha, setPanelAlpha } from '../stylepanel.js';
 
 register('help', () => toggleHelp());
 // Flight's own diagnostic, in the chat log where a person can read it and
@@ -39,14 +40,10 @@ register('flight', () => { for (const line of flightReport().split('\n')) logCha
 // this is our version of that lesson, one number, user-owned, persisted.
 register('panels', (arg) => {
   const v = parseFloat(arg);
-  if (!(v >= 0.3 && v <= 1)) return logChat('*', 'usage: /panels <0.3–1> — panel opacity (current ' +
-    (localStorage.getItem('ew-panel-a') || '0.58') + ')');
-  document.documentElement.style.setProperty('--panel-a', String(v));
-  try { localStorage.setItem('ew-panel-a', String(v)) } catch {}
+  if (!(v >= 0.3 && v <= 1)) return logChat('*', `usage: /panels <0.3–1> — panel opacity (current ${panelAlpha().toFixed(2)})`);
+  setPanelAlpha(v);
   logChat('*', `panels at ${Math.round(v * 100)}% opacity`);
 });
-{ const saved = parseFloat(localStorage.getItem('ew-panel-a'));
-  if (saved >= 0.3 && saved <= 1) document.documentElement.style.setProperty('--panel-a', String(saved)); }
 
 // Eyelids are BONES on rigs that have them (L_/R_Eyelid_Upper) — most VRMs
 // blink with a blendshape instead and have none, so this says so plainly

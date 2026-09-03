@@ -208,12 +208,10 @@ function ensure() {
   // setHud(innerHTML) which would erase a child, so we sit AFTER the hud text
   // as a sibling-styled inline element inside the same visual bar.
   micBtn = document.createElement('span');
-  micBtn.id = 'mictoggle';
   micBtn.id = 'micbtn'; micBtn.style.cssText = 'cursor:pointer;display:inline-block;line-height:0;position:fixed;z-index:45;';
   micBtn.onclick = flipMic;
   document.body.appendChild(micBtn);
   earBtn = document.createElement('span');
-  earBtn.id = 'eartoggle';
   earBtn.id = 'earbtn'; earBtn.style.cssText = 'cursor:pointer;display:inline-block;line-height:0;position:fixed;z-index:45;';
   earBtn.onclick = flipEar;
   document.body.appendChild(earBtn);

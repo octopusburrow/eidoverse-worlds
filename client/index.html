@@ -194,19 +194,10 @@ select {
 }
 /* hairline: the assembly carries the feel, the line carries the certainty —
    a bar affordance gives an unambiguous DONE (R's note, 08-30) */
-#splash .sp-bar { width: 260px; height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--brand) 12%, transparent); }
-#splash .sp-bar-fill { height: 100%; border-radius: 2px; background: color-mix(in srgb, var(--brand) 65%, transparent); transition: width .3s ease; }
+#splash .sp-bar { width: 260px; height: 3px; border-radius: 2px; overflow: hidden; background: color-mix(in srgb, var(--brand) 12%, transparent); }
+#splash .sp-bar-fill { width: 0%; height: 100%; border-radius: 2px; background: color-mix(in srgb, var(--brand) 65%, transparent); transition: width .3s ease; }
 .sp-sub { color: var(--dim); font-size: 15px; margin: -5px 0; text-align: center; }  /* equal air above + below (R, 16:01) */
 .sp-sub b { color: var(--fg); font-weight: 600; }
-.sp-bar {
-  width: min(430px, 84vw); height: 3px; border-radius: 2px;
-  background: rgba(255,255,255,.09); overflow: hidden;
-}
-.sp-bar-fill {
-  width: 0%; height: 100%; border-radius: 2px;
-  background: linear-gradient(90deg, #4fb79a, var(--brand));
-  transition: width .45s cubic-bezier(.22,.9,.3,1);
-}
 /* one centered breath under the bar — phase and bytes are a single quiet
    line, not furniture at opposite walls (R's note, 08-30 14:27) */
 .sp-status {
@@ -402,9 +393,11 @@ select {
 /* ------------------------------------------------------------ panel frames */
 .sec { display: flex; flex-direction: column; gap: 5px; }
 .sec > .head {
+  display: flex; align-items: center; gap: 9px;
   font-weight: 500; background: none; border: none; text-align: left;
-  padding: 6px 10px; border-radius: 6px; color: var(--fg);
+  padding: 6px 10px; border-radius: 6px; color: var(--dim);
 }
+.sec > .head svg { flex: none; opacity: .8; color: var(--icon); }
 .sec > .head:hover { background: var(--hov); }
 .sec.open > .head { background: rgb(255 255 255 / 0.05); font-weight: 600; color: color-mix(in srgb, var(--brand) 35%, var(--fg)); }
 .sec > .body {
@@ -421,8 +414,6 @@ select {
 .dbg-sec .dbg-arrow { font-size: 9px; width: 9px; color: var(--icon); flex: none; }
 /* panel content hierarchy (R, 17:18): heads = fg with brand-whisper glyphs,
    body copy = dim; outlined buttons hug their text, never stretch the column */
-.sec > .head { color: var(--dim); }
-.sec > .head svg { color: var(--icon); }
 .sec > .body { color: var(--dim); }
 .sec > .body button { align-self: flex-start; width: fit-content; }
 .stack { padding: 7px; gap: 6px; display: flex; flex-direction: column; overflow-y: auto; flex: 1; min-height: 0; }
@@ -550,7 +541,7 @@ select {
    a status bar.") The mic/ear glyphs auto-ride its right edge. */
 #hud.emark {
   /* lives INSIDE the rail now — one movable unit. Mic/ear ride its box. */
-  position: static; width: 42px; height: 42px; padding: 0;
+  position: relative; width: 42px; height: 42px; padding: 0;
   display: grid; place-items: center;
   color: var(--brand); border: none; cursor: pointer; background: none; box-shadow: none;
 }
@@ -592,13 +583,12 @@ body.arranging #dock #hud.emark {
 #emenu .fr-head .fr-btns { padding: 3px 5px; }
 #emenu .mrow {
   display: flex; align-items: center; gap: 9px; padding: 7px 9px;
-  background: none; border: none; border-radius: 6px; color: var(--fg);
+  background: none; border: none; border-radius: 6px; color: var(--dim);
   font-size: var(--fs-sm); text-align: left;
 }
 #emenu .mrow:hover { background: var(--hov); }
 #emenu .mrow svg:first-child { flex: none; opacity: .8; color: var(--icon); }
 #emenu .mrow .mname { flex: 1; }
-#emenu .mrow { color: var(--dim); }
 #emenu .mrow.open { color: color-mix(in srgb, var(--brand) 35%, var(--fg)); }
 #emenu .mrow.open svg:first-child { opacity: 1; }
 #emenu .mpin {
@@ -658,9 +648,6 @@ body.arranging .frame.st-l { --st-l-s: inset 2px 0 0 var(--sg); }
 body.arranging .frame.st-r { --st-r-s: inset -2px 0 0 var(--sg); }
 body.arranging .frame.st-t { --st-t-s: inset 0 2px 0 var(--sg); }
 body.arranging .frame.st-b { --st-b-s: inset 0 -2px 0 var(--sg); }
-#hud .ok  { color: var(--accent); }
-#hud .bad { color: var(--err); }
-#hud .edit { color: var(--warn); }
 /* Edit mode has to be legible without reading the HUD: the cursor changes and
    the viewport gets a thin warm frame, so it is obvious why a drag just moved
    a crate instead of the camera. */
@@ -734,7 +721,6 @@ body.arranging #dock .dock-grip { display: grid; }
   position: relative;
   color: color-mix(in srgb, var(--brand) 70%, white);
   background: none;
-  outline: none;
 }
 #dock button.on::before {
   content: ''; position: absolute; border-radius: 2px;
@@ -793,8 +779,6 @@ body.altgrab .frame:active { cursor: grabbing; }
 .sg-row.sel { background: rgb(255 255 255 / .06); }
 .sg-row.sel .n b { color: color-mix(in srgb, var(--brand) 45%, var(--fg)); }
 .sg-row.sel .d { color: color-mix(in srgb, var(--brand) 25%, var(--dim)); }
-.sec > .head { display: flex; align-items: center; gap: 9px; }
-.sec > .head svg { flex: none; opacity: .8; }
 
 /* --------------------------------------------------------------- overlays */
 .scrim {
@@ -956,8 +940,6 @@ body.touch #touch { display: block; }
 .perf-loupe .pl-verdict .pl-mode,
 .perf-loupe .pl-verdict .pl-rankrow { color: var(--dim); font-size: 10px; line-height: 1.3; }
 .perf-loupe .pl-verdict .pl-rankrow { font-variant-numeric: tabular-nums; }
-/* texlist tucks under "textures" as a clear sub-detail */
-.perf-loupe .pl-texlist { font-size: 9.5px; color: var(--dim); padding: 0 0 1px 12px; opacity: .85; }
 /* action hint right-justified — echoes the panel's right edge and reads as
    chrome/affordance, not data (R, 09-02; I agreed right beats left here) */
 .perf-loupe .pl-foot { color: var(--dim); font-size: 9.5px; margin-top: 4px; opacity: .75; border-top: 1px solid var(--edge); padding-top: 4px; text-align: right; }
@@ -1116,7 +1098,7 @@ try { const o = JSON.parse(localStorage.getItem('ew-style-tokens') || '{}');
 </head>
 <body>
 <!-- Static so it paints before any module loads. boot.js only fills it in. -->
-<div id="splash" data-build="b38">
+<div id="splash" data-build="b77">
   <div class="sp-ver"></div>
   <svg class="sp-logo" viewBox="-70 -40 1372 1372" aria-hidden="true" fill="currentColor">
     <path class="pc-top" d="M 92 82 Q 616 140 1072 78 Q 1024 290 1012 511 L 852 511 L 852 228 Q 440 218 68 232 Q 88 155 92 82 Z"/>

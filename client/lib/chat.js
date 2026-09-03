@@ -803,6 +803,7 @@ function applyChatPrefs() {
   if (log) log.style.fontSize = `${chatFs}px`;
   frame?.body.querySelector('.chat-cols')?.classList.toggle('side-left', sideSt.pos === 'left');
 }
+let gearToggle = null, gearAnchor = null;
 let chatFs = 14;
 try { chatFs = Math.min(20, Math.max(11, parseFloat(localStorage.getItem(CFS_LS)) || 14)) } catch {}
 function initChatGear() {
@@ -825,8 +826,10 @@ function initChatGear() {
     } else return;
     applyChatPrefs(); paintPop();
   };
-  window.__chatGearToggle = (anchor) => {
+  gearToggle = (anchor) => {
     pop.hidden = !pop.hidden;
+    anchor.setAttribute('aria-expanded', String(!pop.hidden));
+    gearAnchor = anchor;
     if (!pop.hidden) {
       paintPop();
       const a = anchor.getBoundingClientRect(), f = frame.el.getBoundingClientRect();
@@ -834,6 +837,11 @@ function initChatGear() {
       pop.style.top = `${a.bottom - f.top + 6}px`;
     }
   };
+  const closePop = () => { if (!pop.hidden && gearAnchor) gearToggle(gearAnchor); };
+  document.addEventListener('pointerdown', (e) => {
+    if (!pop.hidden && !pop.contains(e.target) && !gearAnchor?.contains(e.target)) closePop();
+  }, true);
+  addEventListener('keydown', (e) => { if (e.key === 'Escape') closePop(); });
   applyChatPrefs();
 }
 
@@ -1051,7 +1059,8 @@ function paintTabs() {
   gear.className = 'chat-gear';
   gear.title = 'chat options';
   gear.innerHTML = fsvg('gear-six', 13);
-  gear.onclick = (e) => { e.stopPropagation(); window.__chatGearToggle?.(gear); };
+  gear.setAttribute('aria-expanded', 'false');
+  gear.onclick = (e) => { e.stopPropagation(); gearToggle?.(gear); };
   bar.appendChild(gear);
 }
 
