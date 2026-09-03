@@ -30,6 +30,10 @@ pose([43,0,65],0); await settle(200);
 
 const PACE=Number(process.env.PACE||450);
 const pverb=async(v,a)=>{verb(v,a); await settle(PACE);};
+if(MODE==="dayfalse"){
+  for(const t of THINGS) await pverb("light",{id:t.id+"-light",day:false});
+  console.log("lights set day:false; errors:",errors.length?errors:"none"); process.exit(errors.length?3:0);
+}
 if(MODE==="unlock-lights"){
   for(const t of THINGS) await pverb("comp",{id:t.id+"-light",type:"lock",data:null});
   console.log("lights unlocked; errors:",errors.length?errors:"none");
@@ -58,7 +62,7 @@ if(MODE==="place"){
   const path=(await r.text()).trim(); console.log("upload:",r.status,path); if(!r.ok)process.exit(2);
   for(const t of THINGS){
     verb("spawn",{id:t.id,lib:t.lib,pos:t.pos,yaw:t.yaw,scale:t.scale});
-    verb("light",{id:t.id+"-light",pos:t.light.pos,color:t.light.color,intensity:0.6,range:t.light.range,keep:true});
+    verb("light",{id:t.id+"-light",pos:t.light.pos,color:t.light.color,intensity:0.6,range:t.light.range,keep:true,day:false});
   }
   await settle(600);
   for(const t of THINGS){
