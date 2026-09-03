@@ -325,8 +325,10 @@ function loupeHtml(rec) {
       ? b.rank - a.rank || b.tris - a.tris
       : lensMetric(b) - lensMetric(a));
   const pos = ordered.indexOf(rec) + 1, total = ordered.length;
-  const standing = total > 1 && pos > 0
-    ? `#${pos} of ${total} · ${lensLabel}` : lensLabel;
+  // split the two facts apart (R, 09-02 r10: the merged line got chunky) — the
+  // lens label rides row 2 next to 'placed by'; the rank '#N of M' gets its own
+  // right-justified row 3.
+  const rankStr = total > 1 && pos > 0 ? `#${pos} of ${total}` : '';
   // Maya channel-box layout (R, 09-02): a 3-column grid with a center seam.
   // label RIGHT-justified against the seam · value RIGHT-justified against the
   // pill column (with buffer) · tier pill. Everything lines up on two clean
@@ -360,19 +362,19 @@ function loupeHtml(rec) {
   const worstLabel = { tris: 'triangles', draws: 'draw calls', texMB: 'texture VRAM',
     bones: 'bones', mats: 'materials', alpha: 'transparency' }[rec.worst] || rec.worst;
   const why = `overall = worst category wins (VRChat model). this object's ${TIER_NAMES[rec.rank]} rank is set by ${worstLabel}. fix the red/orange rows to raise it.`;
-  // header (R, 09-02 r9): top row [ name (left, one line, ellipsised) | perf
-  // pill (right) ]; SECOND row is one left-justified meta strip that reads
-  // "placed by X · #N of M · <lens>" — placed-by (when present) then the scene
-  // standing, in that order. Full name in the title tooltip (her '…' idea).
+  // header (R, 09-02 r10 — the merged meta line got chunky, so decompose it):
+  //   row 1: name (left, ellipsised) | perf pill (right)
+  //   row 2: placed by X (left)  ·  perf-mode / lens label (left, after it)
+  //   row 3: rank "#N of M" — right-justified, sitting under the pill column.
   // placer field in real entityMeta is `actor` (NOT `by` — that key never
   // existed, so 'placed by' had silently never rendered on a real object).
   const placer = meta?.actor ?? meta?.by;
-  const meta2 = [placer ? `placed by ${placer}` : '', standing]
+  const line2 = [placer ? `placed by ${placer}` : '', lensLabel]
     .filter(Boolean).join(' · ');
   return `
   <div class="pl-head">
     <div class="pl-headtop"><b class="pl-name" title="${esc(rec.label)}">${rec.label}</b><span title="${esc(why)}" class="pl-rank">${badge(rec.rank, TIER_NAMES[rec.rank], true)}</span></div>
-    <div class="pl-sub pl-standing">${meta2}</div>
+    <div class="pl-sub pl-metarow">${line2}</div>${rankStr ? `<div class="pl-sub pl-rankrow">${rankStr}</div>` : ''}
   </div>
   <div class="pl-grid">${rows}</div>
   <div class="pl-foot">${pinned ? 'click elsewhere to unpin' : 'click to pin'}</div>`;

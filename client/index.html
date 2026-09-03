@@ -898,7 +898,10 @@ body.touch #touch { display: block; }
 }
 .perf-loupe .pl-head .pl-rank { flex: none; }
 .perf-loupe .pl-sub { color: var(--dim); font-size: 10px; }
-.perf-loupe .pl-standing { text-align: left; }
+/* row 2 left (placed by · lens); row 3 the rank, right-justified under the pill
+   (R, 09-02 r10 — split off the chunky merged line). */
+.perf-loupe .pl-metarow { text-align: left; }
+.perf-loupe .pl-rankrow { text-align: right; font-variant-numeric: tabular-nums; }
 /* texlist tucks under "textures" as a clear sub-detail */
 .perf-loupe .pl-texlist { font-size: 9.5px; color: var(--dim); padding: 0 0 1px 12px; opacity: .85; }
 /* action hint right-justified — echoes the panel's right edge and reads as
