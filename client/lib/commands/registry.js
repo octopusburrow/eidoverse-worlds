@@ -27,6 +27,7 @@ export const COMMANDS = [
   { name: 'kick', help: '/kick [thing] [power] — send an object flying (a person\'s name = moderation)' },
   { name: 'punt', aliases: ['boot'], help: '/punt [thing] [power] — the unambiguous physics kick' },
   { name: 'who', help: 'list everyone present' },
+  { name: 'panels', help: '/panels <0.3–1> — panel opacity, for when glass fails over a bright scene' },
   // Registered so it is DISCOVERABLE. It was added on 2026-08-16 to debug voice
   // on a phone with no console, and stayed unregistered for the rest of that
   // session — a diagnostic nobody can find is one nobody uses, and the next

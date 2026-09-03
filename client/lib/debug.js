@@ -20,6 +20,7 @@ import { closestParams, TUNING } from './ragdoll.js';
 import { JOINT_SPECS, HAIR_TUNING, WING_TUNING } from './ammodoll.js';
 import { BLINK, WING_IDLE, LIMP_SPRINGS } from './avatar.js';
 import { makeFrame } from './frames.js';
+import { toast } from './ui.js';
 
 // box = an OBB, walkable on top, solid on the sides between min.y and max.y
 // pillar = anything over 2.4m tall, collapsed to a slim centre column so you
@@ -414,7 +415,7 @@ function buildJointPanel(stack) {
   paint();
 
   const btns = document.createElement('div');
-  btns.className = 'row';
+  btns.className = 'row btn-row';
   const mk = (label, fn) => {
     const b = document.createElement('button');
     b.textContent = label; b.onclick = fn; btns.appendChild(b); return b;
@@ -568,7 +569,7 @@ function buildHairPanel(stack) {
   };
   mk();
   const btns = document.createElement('div');
-  btns.className = 'row';
+  btns.className = 'row btn-row';
   const b1 = document.createElement('button');
   b1.textContent = 'reset hair';
   b1.onclick = () => { Object.assign(HAIR_TUNING, defaults); mk(); apply(); };
@@ -658,7 +659,7 @@ function buildWingPanel(stack) {
     return h;
   };
   const btns = document.createElement('div');
-  btns.className = 'row';
+  btns.className = 'row btn-row';
   const b1 = document.createElement('button');
   b1.textContent = 'reset wings';
   b1.onclick = () => {
@@ -679,8 +680,7 @@ function buildWingPanel(stack) {
   stack.append(sub('flap (live)'), idle.rows, sub('limp (needs a ragdoll)'), sim.rows, btns);
 }
 
-// the panel has no toast of its own; keep the dependency to one line
-function toastLike(msg) { console.log(`[debug] ${msg}`); }
+const toastLike = (msg) => toast(msg);
 
 // ---- panel -----------------------------------------------------------------
 
@@ -706,8 +706,8 @@ export function initDebug(p = {}) {
   });
   const stack = document.createElement('div');
   stack.className = 'stack';
-  // The frame block is PINNED above everything (tel0s: the stats pre at the
-  // bottom rendered past the scroller's end) — its own element, flex:none,
+  // The frame block is PINNED above everything (the stats pre at the bottom
+  // used to render past the scroller's end) — its own element, flex:none,
   // so scrolling the settings never hides the one number the panel is
   // usually opened for.
   framePre = document.createElement('pre');
@@ -722,11 +722,10 @@ export function initDebug(p = {}) {
   for (const [k] of SWITCHES) DEFAULTS[k] = TUNING[k];
 
   const btns = document.createElement('div');
-  btns.className = 'row';
+  btns.className = 'row btn-row';   // unified equal-width action-button row
   const mk = (label, fn) => {
     const b = document.createElement('button');
     b.textContent = label; b.onclick = fn;
-    b.style.cssText = 'flex:1;font-size:var(--fs-sm);padding:3px 0';
     return b;
   };
   const pause = mk('pause', () => {
@@ -757,51 +756,45 @@ export function initDebug(p = {}) {
     stack.appendChild(d.wrap);
   }
 
-  // blink, live
-  const bhead = document.createElement('div');
-  bhead.className = 'row';
-  bhead.style.cssText = 'margin-top:6px;opacity:.75';
-  bhead.textContent = '— blink (live) —';
-  stack.appendChild(bhead);
-  buildBlinkPanel(stack);
-
-  // hair, live
-  const hhead = document.createElement('div');
-  hhead.className = 'row';
-  hhead.style.cssText = 'margin-top:6px;opacity:.75';
-  hhead.textContent = '— hair (live, while ragdolled) —';
-  stack.appendChild(hhead);
-  buildHairPanel(stack);
-
-  // limp springbones (remotes and post-dispose), live
-  const lhead = document.createElement('div');
-  lhead.className = 'row';
-  lhead.style.cssText = 'margin-top:6px;opacity:.75';
-  lhead.textContent = '— limp hair, no local sim —';
-  stack.appendChild(lhead);
-  buildLimpPanel(stack);
-
-  // wings, live
-  const whead = document.createElement('div');
-  whead.className = 'row';
-  whead.style.cssText = 'margin-top:6px;opacity:.75';
-  whead.textContent = '— wings —';
-  stack.appendChild(whead);
-  buildWingPanel(stack);
-
-  // joint limits, live
-  const jhead = document.createElement('div');
-  jhead.className = 'row';
-  jhead.style.cssText = 'margin-top:6px;opacity:.75';
-  jhead.textContent = '— joint limits (live) —';
-  stack.appendChild(jhead);
-  buildJointPanel(stack);
+  // The live-tuning groups become COLLAPSIBLE subsections (the debug menu
+  // splits into subareas with a dropdown arrow, matching World/Settings).
+  // These are looser than the panel sections, so an arrow (not an icon) marks
+  // each; they reuse the .sec grammar so open/hover styling matches the house.
+  dbgSection(stack, 'blink', (body) => buildBlinkPanel(body));
+  dbgSection(stack, 'hair (while ragdolled)', (body) => buildHairPanel(body));
+  dbgSection(stack, 'limp hair (no local sim)', (body) => buildLimpPanel(body));
+  dbgSection(stack, 'wings', (body) => buildWingPanel(body));
+  dbgSection(stack, 'joint limits', (body) => buildJointPanel(body));
+  // perfscope mounts itself when its module is present; without it this is a silent no-op
+  import('./perfscope.js').then((m) => m.mountPerfPanel(stack, { toast: toastLike, section: dbgSection })).catch(() => {});
 
   statsEl = document.createElement('pre');
   statsEl.className = 'dbg-stats';
   stack.appendChild(statsEl);
   frame.body.appendChild(stack);
   return frame;
+}
+
+// A collapsible debug subsection: reuses the .sec CSS (open/hover/body) with a
+// ▸/▾ dropdown arrow. `build(body)` populates it once, lazily, on first open —
+// so a closed section costs nothing and the panel opens light.
+function dbgSection(parent, title, build) {
+  const box = document.createElement('div');
+  box.className = 'sec dbg-sec';
+  const head = document.createElement('button');
+  head.className = 'head';
+  head.innerHTML = `<span class="dbg-arrow">▸</span><span>${title}</span>`;
+  const body = document.createElement('div');
+  body.className = 'body';
+  let built = false;
+  head.onclick = () => {
+    const open = box.classList.toggle('open');
+    head.querySelector('.dbg-arrow').textContent = open ? '▾' : '▸';
+    if (open && !built) { built = true; build(body); }
+  };
+  box.append(head, body);
+  parent.appendChild(box);
+  return box;
 }
 
 export function toggleDebug() { frame?.toggle(); }

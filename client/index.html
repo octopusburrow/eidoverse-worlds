@@ -6,26 +6,55 @@
 <title>eidoverse-worlds</title>
 <style>
 /* ===========================================================================
-   Design tokens. One place to change the client's whole look.
+   DESIGN TOKENS — the one block that owns the client's whole look.
+   Modding the UI's colors = editing (or live-overriding) THIS BLOCK ONLY;
+   every rule below and every JS-drawn glyph reads these, never raw hex.
+
+   ROLES:
+   · brand    = identity & liveness ONLY: the ∃, connection state, "this is
+                on/present". Never decoration.
+   · attn     = "needs YOUR attention": mentions, edit-mode, unsaved, mic-hot.
+                One warm amber — complements brand, colorblind-separable.
+   · ink ladder (fg/dim/icon) = content: primary text, labels/hints, glyphs.
+   · surfaces (panel/chip/well) = material. hover/active whites = interaction
+                feedback only.
+   · err      = failures only, never attention.
    =========================================================================== */
 :root {
-  --bg:        #0a1018;
-  --panel:     rgba(9, 20, 28, 0.84);
-  --edge:      rgba(120, 190, 170, 0.22);
-  --edge-hi:   rgba(143, 232, 200, 0.55);
-  --fg:        #e6f0ec;
-  --dim:       #8ba39c;
-  --accent:    #8fe8c8;
-  --accent-dk: #1d3a34;
-  --warn:      #e8c96a;
+  --bg:        #0c0c0d;
+  /* --panel-a is the opacity fallback dial (visionOS "Tinted" lesson):
+     glass legibility collapses over bright scenes, so the floor is one
+     user-ownable number away. /panels <0.3-1> sets it, persisted. */
+  --panel-a:   0.7;
+  --panel-rgb: 5 20 20;    /* deep-ocean teal — saturated dark that the brand seafoam sits IN, not ON */
+  --panel:     rgb(var(--panel-rgb) / var(--panel-a));
+  --chip:      rgb(0 0 0 / .62);       /* tabs & floating chips */
+  --well:      rgb(0 0 0 / .4);        /* inputs, pressed-in states */
+  --edge:      rgb(255 255 255 / 0.10);
+  --edge-hi:   rgb(255 255 255 / 0.32);
+  --rim:       inset 0 1px 0 rgb(255 255 255 / .09);  /* the top gleam */
+  --hov:       rgb(255 255 255 / .06);
+  --act:       rgb(255 255 255 / .10);
+  --fg:        #ebebe9;
+  --dim:       #97979b;
+  --icon:      color-mix(in srgb, var(--brand) 55%, #c2c2c6);  /* icons carry a whisper of the brand (derived: follows the picker); base kept light so idle dock icons don't read muddy next to the lit state */
+  --brand:     #8fe8c8;   /* THE seafoam — the only one; everything below derives */
+  --brand-deep: color-mix(in srgb, var(--brand) 84%, #1a2a28);  /* the ∃ at rest when live */
+  --attn:      #ffc46b;   /* THE attention amber — the only one */
   --err:       #ff8f8f;
-  --ping:      #ffd479;
+  /* legacy aliases — keep working, point at roles */
+  --accent:    var(--attn);
+  --accent-dk: #382a1a;
+  --control:   var(--brand);
+  --warn:      var(--attn);
+  --ping:      var(--attn);
 
-  --r:         7px;
-  --shadow:    0 6px 22px rgba(0, 0, 0, 0.45);
-  --font:      ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
-  --fs:        13px;
-  --fs-sm:     11.5px;
+  --r:         10px;
+  --shadow:    0 8px 28px var(--well);
+  --font:      ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-code: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  --fs:        14px;
+  --fs-sm:     12px;
   --speed:     .16s;
 }
 @media (prefers-reduced-motion: reduce) {
@@ -34,22 +63,50 @@
 }
 
 html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); }
+/* Cursors stay native except the loupe: ui.js generates an SVG loupe tinted
+   by the LIVE --brand (CSS url() can't read vars) and publishes it as
+   --cur-loupe; the rule falls back to the native cursor until then. */
+button, .btn, select, a, label, .mrow, .mpin, .dbg-row, .pf-row, .card,
+.ac-row, .chat-gear, .fr-btn, .sec > .head, .chat-tabs button, .pf-tile,
+.chat-side-tog, .sp-skip { cursor: pointer; }
+body.loupe-on canvas { cursor: var(--cur-loupe, crosshair); }
+/* ONE house scrollbar — the standard properties, nothing else. On Chromium,
+   scrollbar-width:thin DISABLES the ::-webkit-scrollbar pseudos, so what
+   renders is the NATIVE thin overlay bar reading scrollbar-color; pseudo
+   rules here would be dead code. */
+* { scrollbar-width: thin; scrollbar-color: var(--edge) transparent; }
 body { font: var(--fs)/1.5 var(--font); color: var(--fg); -webkit-font-smoothing: antialiased; }
 canvas { display: block; touch-action: none; }
 
 .panel {
   background: var(--panel);
-  border: 1px solid var(--edge);
+  border: none;
   border-radius: var(--r);
-  box-shadow: var(--shadow);
-  backdrop-filter: blur(9px);
-  -webkit-backdrop-filter: blur(9px);
+  /* rim-light: glass catching light on its top edge — surfaces separate by
+     elevation + gleam, never by outline (border study C) */
+  /* shadow is a STATE, not decoration: near-flat at rest — games
+     separate surfaces by fill + gleam, not by OS paper-stack shadows — and
+     the .lifting rule below restores real depth only while a frame is HELD */
+  box-shadow: 0 1px 5px rgb(0 0 0 / .28);
+  transition: box-shadow .25s ease;
+  backdrop-filter: blur(16px) saturate(1.15);
+  -webkit-backdrop-filter: blur(16px) saturate(1.15);
 }
+.frame.lifting { box-shadow: 0 12px 32px rgb(0 0 0 / .5); }
+/* the rim rides an overlay so it gleams OVER header chips too —
+   inset box-shadow paints under children, so light "behind" the title read
+   wrong; glass catches light on its whole top edge, contents included */
+.frame::after {
+  content: ''; position: absolute; inset: 0; border-radius: inherit;
+  box-shadow: var(--rim); pointer-events: none; z-index: 30;
+}
+/* code stays mono; prose is prose */
+textarea, code, pre { font-family: var(--font-code); }
 
 button, .btn {
   font: var(--fs-sm)/1.4 var(--font);
   color: var(--fg);
-  background: rgba(20, 40, 46, 0.7);
+  background: rgb(255 255 255 / 0.05);
   border: 1px solid var(--edge);
   border-radius: 5px;
   padding: 6px 9px;
@@ -57,24 +114,32 @@ button, .btn {
   text-align: left;
   transition: background var(--speed), border-color var(--speed);
 }
-button:hover, .btn:hover { background: rgba(32, 68, 62, 0.9); border-color: var(--edge-hi); }
+button:hover, .btn:hover { background: var(--act); border-color: var(--edge-hi); }
 button:active { transform: translateY(1px); }
-button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-button.on { background: var(--accent-dk); border-color: var(--edge-hi); color: var(--accent); }
+/* ONE unified pattern for a row of equal-width action buttons (reset/pause/copy
+   etc). Menus used to hand-roll `flex:1;padding:3px 0` inline per-panel, which
+   drifted (0 horizontal padding jammed the text to the edges) — this centers
+   the label with the base button's own padding and shares the row
+   (no per-menu handrolling; one fallback). Use `<div class="row btn-row">`. */
+.btn-row { display: flex; gap: 6px; }
+.btn-row > button { flex: 1; text-align: center; padding: 5px 8px; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+input:focus-visible, textarea:focus-visible { outline: 1px solid var(--edge-hi); }
+button.on { background: var(--hov); border-color: var(--edge-hi); color: var(--fg); }
 /* unshared local changes are pending until committed */
 button.dirty { border-color: var(--warn); color: var(--warn); }
 
 input[type=text], input[type=search], input:not([type]) {
   font: var(--fs-sm) var(--font);
   color: var(--fg);
-  background: rgba(4, 14, 20, 0.9);
+  background: var(--well);
   border: 1px solid var(--edge);
   border-radius: 5px;
   padding: 6px 8px;
 }
 input::placeholder { color: var(--dim); }
 select {
-  font: 11px var(--font); background: rgba(4,14,20,.9); color: var(--fg);
+  font: 11px var(--font); background: var(--well); color: var(--fg);
   border: 1px solid var(--edge); border-radius: 5px; padding: 5px;
 }
 
@@ -89,43 +154,64 @@ select {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 22px; padding: 28px; box-sizing: border-box;
   background:
-    radial-gradient(1100px 620px at 50% 34%, #16303a 0%, #0c1720 46%, var(--bg) 100%);
+    linear-gradient(to top, color-mix(in srgb, var(--brand) 10%, transparent), transparent 42%), var(--bg);
   transition: opacity .6s ease, visibility .6s;
   font: var(--fs)/1.6 var(--font); color: var(--fg);
 }
 #splash.gone { opacity: 0; visibility: hidden; pointer-events: none; }
+.sp-ver { position: absolute; right: 14px; bottom: 10px; font-size: 10px;
+  color: color-mix(in srgb, var(--brand) 30%, transparent); letter-spacing: .1em; }
+.sp-logo {
+  /* rendered 2x and scaled down: Chrome re-rasters animated svg children from
+     the layer cache, which pixelates at 1x — the classic fix, plus will-change */
+  width: 200px; height: 210px; transform: scale(.5); transform-origin: center;
+  margin: -52px 0; color: var(--brand); overflow: visible;
+}
+.sp-logo path { transition: transform .45s cubic-bezier(.22,.9,.3,1.04); will-change: transform; }
+#splash.gone .sp-logo { filter: drop-shadow(0 0 26px rgb(143 232 200 / .55)); transition: filter .3s ease-out; }
+#splash.gone .sp-mark { color: #d9fff1; }
+/* assembly driven by --spp (0..1): pieces drift apart when nothing has
+   arrived, settle into register as the world loads; the arm slides through
+   the parted spine last. The mark assembling IS the progress display. */
+.sp-logo .pc-top { transform: translate(calc((1 - var(--spp,0)) *  7%), calc((1 - var(--spp,0)) * -11%)); }
+.sp-logo .pc-arm { transform: translateX(calc((1 - var(--spp,0)) * -34%)); }  /* starts clear of the body — it SPEARS in */
+.sp-logo .pc-bot { transform: translate(calc((1 - var(--spp,0)) *  7%), calc((1 - var(--spp,0)) *  11%)); }
 .sp-mark {
-  font-size: 26px; letter-spacing: .18em; color: var(--accent);
-  text-transform: lowercase; font-weight: 600;
+  font-size: 26px; letter-spacing: .34em; color: var(--brand); opacity: .9;
+  text-transform: lowercase; font-weight: 500; margin-left: .34em; /* recenter over tracking */
 }
-.sp-sub { color: var(--dim); font-size: var(--fs-sm); margin-top: -14px; text-align: center; }
+.sp-mark-sub {
+  /* small, beneath, no fanfare: Technically Distinct while everyone gets
+     used to the idea */
+  font-size: 12px; letter-spacing: .58em; margin: -30px 0 0 .58em;
+  color: color-mix(in srgb, var(--brand) 45%, transparent); font-weight: 400; text-transform: lowercase;
+}
+/* hairline: the assembly carries the feel, the line carries the certainty —
+   a bar affordance gives an unambiguous DONE */
+#splash .sp-bar { width: 260px; height: 3px; border-radius: 2px; overflow: hidden; background: color-mix(in srgb, var(--brand) 12%, transparent); }
+#splash .sp-bar-fill { width: 0%; height: 100%; border-radius: 2px; background: color-mix(in srgb, var(--brand) 65%, transparent); transition: width .3s ease; }
+.sp-sub { color: var(--dim); font-size: 15px; margin: -5px 0; text-align: center; }  /* equal air above + below */
 .sp-sub b { color: var(--fg); font-weight: 600; }
-.sp-bar {
-  width: min(430px, 84vw); height: 3px; border-radius: 2px;
-  background: rgba(255,255,255,.09); overflow: hidden;
-}
-.sp-bar-fill {
-  width: 0%; height: 100%; border-radius: 2px;
-  background: linear-gradient(90deg, #4fb79a, var(--accent));
-  transition: width .45s cubic-bezier(.22,.9,.3,1);
-}
+/* one centered breath under the bar — phase and bytes are a single quiet
+   line, not furniture at opposite walls */
 .sp-status {
-  display: flex; justify-content: space-between; gap: 16px;
-  width: min(430px, 84vw); font-size: var(--fs-sm); margin-top: -14px;
+  display: flex; justify-content: center; align-items: baseline; gap: 10px;
+  font-size: 14px; margin-top: -10px;
 }
-.sp-phase { color: var(--accent); }
+.sp-phase { color: var(--brand); }
 .sp-phase::after { content: '…'; }
 .sp-detail { color: var(--dim); font-variant-numeric: tabular-nums; }
+.sp-detail:not(:empty)::before { content: '·'; margin-right: 10px; color: color-mix(in srgb, var(--brand) 30%, transparent); }
 .sp-tip {
-  display: flex; align-items: flex-start; gap: 11px;
+  display: flex; align-items: center; gap: 11px;   /* keycap centers on the tip line */
   max-width: min(500px, 88vw); font-size: var(--fs-sm); color: var(--dim);
   min-height: 44px; text-align: left;
 }
 .sp-tip b { color: var(--fg); font-weight: 600; }
 .sp-tip .tipk {
   flex: none; width: 26px; height: 26px; border-radius: 6px;
-  display: grid; place-items: center; color: var(--accent);
-  background: rgba(143,232,200,.1); border: 1px solid var(--edge);
+  display: grid; place-items: center; color: var(--brand);
+  background: color-mix(in srgb, var(--brand) 10%, transparent); border: 1px solid var(--edge);
 }
 .sp-skip {
   opacity: 0; pointer-events: none; transition: opacity .4s;
@@ -140,13 +226,13 @@ select {
    content, so the chrome has to get out of the way on the user's terms. */
 .frame {
   position: fixed; display: flex; flex-direction: column;
-  z-index: 20; min-width: 170px; overflow: hidden;
+  z-index: 10; /* must equal Z_LO in frames.js */ min-width: 170px; overflow: hidden;
 }
 .fr-head {
   display: flex; align-items: center; gap: 6px;
   padding: 5px 6px 5px 10px; cursor: grab;
   border-bottom: 1px solid var(--edge);
-  background: rgba(12, 28, 34, 0.6); flex: none;
+  background: rgb(0 0 0 / 0.30); flex: none;
   user-select: none; -webkit-user-select: none;
 }
 .fr-head:active { cursor: grabbing; }
@@ -167,14 +253,16 @@ select {
   padding: 1px 6px; font-size: 11px; line-height: 1.4;
   background: none; border: none; color: var(--dim);
 }
-.fr-btn:hover { background: rgba(255,255,255,.07); color: var(--fg); }
+.fr-btn:hover { background: var(--hov); color: var(--fg); }
 .ui-locked .fr-btn { display: none; }
-.fr-body { display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+.fr-body { display: flex; flex-direction: column; overflow: hidden; min-height: 0;
+  /* text never touches the pane's top or bottom edge */
+  padding-top: 5px; padding-bottom: 5px; }
 .frame.collapsed .fr-body { display: none; }
 .frame.collapsed { height: auto !important; }
 /* scrollbars sit a couple px in from the frame edge so the scroll thumb and
    the edge-resize band don't fight over the same column */
-.frame .fr-body { padding-right: 3px; }
+.frame .fr-body { padding-right: 6px; }
 .frame.flash { animation: flash 1.4s ease-out; }
 @keyframes flash {
   0%, 100% { border-color: var(--edge); }
@@ -183,26 +271,60 @@ select {
 
 /* ------------------------------------------------------------------- chat */
 .chat-frame .fr-body { padding: 0; }
-.chat-tabs { display: flex; gap: 2px; padding: 5px 6px 0; flex: none; }
-.chat-tabs button {
-  flex: 1; text-align: center; padding: 3px 4px; font-size: 10.5px;
-  background: none; border: none; border-bottom: 2px solid transparent; color: var(--dim);
-  border-radius: 0;
+.chat-cols { display: flex; flex: 1; min-height: 0; }
+.chat-main { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; position: relative; }
+.chat-side-tog {
+  flex: none; width: 14px; padding: 0; display: grid; place-items: center;
+  background: none; border: none; border-left: 1px solid var(--edge);
+  border-radius: 0; color: var(--dim); font-size: 12px;
 }
-.chat-tabs button.on { color: var(--accent); border-bottom-color: var(--accent); background: none; }
+.chat-side-tog:hover { color: var(--fg); background: rgb(255 255 255 / .05); }
+.chat-side { flex: none; display: flex; flex-direction: column; position: relative; min-height: 0; }
+.chat-side.closed { display: none; }
+.chat-side-grip { position: absolute; left: -4px; top: 0; bottom: 0; width: 8px; cursor: ew-resize; z-index: 2; }
+.chat-side-list { flex: 1; overflow-y: auto; padding: 6px 8px; }
+.chat-side-list .who-row { display: flex; justify-content: space-between; gap: 8px; padding: 1px 0; font-size: var(--fs-sm); }
+.chat-side-list .who-row .d { color: var(--dim); }
+.chat-side-list .who-empty { color: var(--dim); font-size: var(--fs-sm); }
+.chat-side-head { flex: none; padding: 6px 8px 2px; font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
+.chat-cols.side-left { flex-direction: row-reverse; }
+.chat-cols.side-left .chat-side-tog { border-left: none; border-right: 1px solid var(--edge); }
+.chat-cols.side-left .chat-side-grip { left: auto; right: -4px; }
+.chat-tabs .chat-gear {
+  flex: none; margin-left: 2px; padding: 3px 6px;
+  background: none; border: none; color: var(--dim); border-radius: 5px;
+  display: grid; place-items: center;
+}
+.chat-gear { opacity: .4; }   /* quieter than the tabs — it's furniture, not content */
+.chat-gear:hover { opacity: 1; color: var(--fg); background: var(--hov); }
+.chat-gearpop { position: absolute; z-index: 8; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; font-size: var(--fs-sm);
+  /* popovers float OVER content (the chat log), so glass at --panel-a made
+     them a legibility lottery — near-opaque, still following the panel hue */
+  background: rgb(var(--panel-rgb) / .94); }
+.chat-gearpop[hidden] { display: none; }
+.chat-gearpop .gp-row { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+.chat-gearpop .gp-row span { color: var(--dim); margin-right: 6px; }
+.chat-gearpop .gp-row b { min-width: 20px; text-align: center; }
+.chat-gearpop button { padding: 2px 8px; }
+.chat-tabs { display: flex; gap: 2px; padding: 7px 6px 0; flex: none; }
+.chat-tabs button {
+  flex: 1; padding: 3px 4px; font-size: 11.5px;
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  background: none; border: none; color: var(--dim); border-radius: 0;
+}
+.chat-tabs .tick { width: 1px; height: 10px; flex: none; background: var(--brand); opacity: 0; transition: opacity var(--speed); }
+.chat-tabs button.on { color: color-mix(in srgb, var(--brand) 35%, var(--fg)); background: none; }
+.chat-tabs button.on .tick { opacity: 1; }
 
 .chat-log {
   flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
-  padding: 6px 10px; display: flex; flex-direction: column;
-  scrollbar-width: thin; scrollbar-color: var(--edge) transparent;
+  padding: 9px 10px; display: flex; flex-direction: column;
   user-select: text; -webkit-user-select: text;
 }
-.chat-log::-webkit-scrollbar { width: 7px; }
-.chat-log::-webkit-scrollbar-thumb { background: var(--edge); border-radius: 4px; }
 .chat-log .line { padding: 1px 0; word-wrap: break-word; overflow-wrap: anywhere; }
 .chat-log .line.filtered { display: none; }
 .chat-log .line .t { color: var(--dim); font-size: 10px; margin-right: 6px; opacity: .6; }
-.chat-log .line .who { color: var(--accent); font-weight: 600; }
+.chat-log .line .who { color: var(--fg); font-weight: 600; }
 .chat-log .line .who::after { content: ':'; color: var(--dim); font-weight: 400; }
 .chat-log .line .body { margin-left: 5px; }
 /* Your own name now takes its participant colour like everyone else's (it must
@@ -221,11 +343,11 @@ select {
 .chat-log .line.cont .t { visibility: hidden; font-size: 10px; }
 .chat-log .line.cont .who { display: none; }
 .chat-log .line.ping {
-  background: rgba(255, 212, 121, .09);
+  background: color-mix(in srgb, var(--attn) 9%, transparent);
   border-left: 2px solid var(--ping); margin-left: -10px; padding-left: 8px;
 }
-.chat-log .mention { color: var(--accent); background: rgba(143,232,200,.12); border-radius: 3px; padding: 0 2px; }
-.chat-log .mention.me { color: var(--ping); background: rgba(255,212,121,.18); font-weight: 600; }
+.chat-log .mention { color: var(--accent); background: color-mix(in srgb, var(--attn) 13%, transparent); border-radius: 3px; padding: 0 2px; }
+.chat-log .mention.me { color: var(--ping); background: color-mix(in srgb, var(--attn) 18%, transparent); font-weight: 600; }
 .chat-log .lnk { color: var(--accent); }
 
 .chat-jump {
@@ -241,7 +363,6 @@ select {
 .ac {
   position: absolute; left: 6px; right: 6px; bottom: calc(100% - 4px);
   max-height: 168px; overflow-y: auto; z-index: 5; padding: 3px;
-  scrollbar-width: thin;
 }
 .ac-row {
   display: flex; justify-content: space-between; gap: 10px; align-items: baseline;
@@ -257,7 +378,7 @@ select {
 .chat-log .line.whisper .who { color: #c4b5f0; }
 .chat-log .line.whisper .who::before { content: '⤷ '; }
 .chat-log .line.whisper.me .who::before { content: '⤶ '; }
-.chat-tabs button.has-unread { color: var(--ping); }
+.chat-tabs button.has-unread { color: var(--fg); font-weight: 600; }
 .chat-typing {
   display: none; padding: 0 10px 3px; font-size: 10.5px; color: var(--dim);
   font-style: italic; flex: none;
@@ -265,17 +386,31 @@ select {
 
 /* ------------------------------------------------------------ panel frames */
 .sec { display: flex; flex-direction: column; gap: 5px; }
-.sec > .head { font-weight: 600; }
+.sec > .head {
+  display: flex; align-items: center; gap: 9px;
+  font-weight: 500; background: none; border: none; text-align: left;
+  padding: 6px 10px; border-radius: 6px; color: var(--dim);
+}
+.sec > .head svg { flex: none; opacity: .8; color: var(--icon); }
+.sec > .head:hover { background: var(--hov); }
+.sec.open > .head { background: rgb(255 255 255 / 0.05); font-weight: 600; color: color-mix(in srgb, var(--brand) 35%, var(--fg)); }
 .sec > .body {
   display: none; flex-direction: column; gap: 4px;
   padding: 6px; max-height: 44vh; overflow-y: auto;
-  scrollbar-width: thin; scrollbar-color: var(--edge) transparent;
   border: 1px solid var(--edge); border-radius: 5px;
 }
 .sec.open > .body { display: flex; }
+/* debug subsections: collapsible with a ▸/▾ arrow (Debug is split into
+   subareas). Looser than panel sections, so arrow not icon; tighter spacing. */
+.dbg-sec { margin-top: 4px; }
+.dbg-sec > .head { display: flex; align-items: center; gap: 7px; padding: 5px 8px; color: var(--dim); }
+.dbg-sec.open > .head { color: color-mix(in srgb, var(--brand) 35%, var(--fg)); }
+.dbg-sec .dbg-arrow { font-size: 9px; width: 9px; color: var(--icon); flex: none; }
+/* panel content hierarchy: heads = fg with brand-whisper glyphs,
+   body copy = dim; outlined buttons hug their text, never stretch the column */
+.sec > .body { color: var(--dim); }
+.sec > .body button { align-self: flex-start; width: fit-content; }
 .stack { padding: 7px; gap: 6px; display: flex; flex-direction: column; overflow-y: auto; flex: 1; min-height: 0; }
-.stack::-webkit-scrollbar, .sec > .body::-webkit-scrollbar { width: 6px; }
-.stack::-webkit-scrollbar-thumb, .sec > .body::-webkit-scrollbar-thumb { background: var(--edge); border-radius: 3px; }
 
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
 /* The body picker holds ~18 faces. Two columns made each card ~250px, so
@@ -306,18 +441,66 @@ select {
 
 .row { display: flex; align-items: center; gap: 7px; font-size: var(--fs-sm); color: var(--dim); }
 .row .nm { width: 42px; flex: none; color: var(--fg); }
-.row input[type=range] { flex: 1; accent-color: var(--accent); min-width: 0; }
+.row input[type=range] { flex: 1; accent-color: var(--control); min-width: 0;
+  appearance: none; -webkit-appearance: none; height: 14px; background: none; }
+/* the track joins the theme: bright-filled to the thumb, accent-flavored
+   dark well after it (the value must read at a glance). WebKit has no
+   native progress fill on custom tracks, so ui.js paints --p per input. */
+.row input[type=range] { --p: 50%; }
+.row input[type=range]::-webkit-slider-runnable-track {
+  height: 4px; border-radius: 2px;
+  background: linear-gradient(to right,
+    var(--control) 0 var(--p),
+    color-mix(in srgb, var(--control) 14%, rgb(255 255 255 / .07)) var(--p) 100%);
+  /* dark outline so the bar stays legible over a bright surface */
+  border: 1px solid rgb(0 0 0 / .55);
+  box-shadow: inset 0 1px 1px rgb(0 0 0 / .45);
+}
+.row input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--control); margin-top: -5px;
+  border: 1px solid rgb(0 0 0 / .55);
+  box-shadow: 0 1px 3px rgb(0 0 0 / .55);
+}
+.row input[type=range]:hover::-webkit-slider-thumb { background: color-mix(in srgb, var(--control) 78%, white); }
+.row input[type=range]:disabled::-webkit-slider-thumb { background: color-mix(in srgb, var(--control) 40%, #555); }
+.row input[type=range]::-moz-range-track {
+  height: 4px; border-radius: 2px;
+  background: color-mix(in srgb, var(--control) 14%, rgb(255 255 255 / .07));
+  border: 1px solid rgb(0 0 0 / .55);
+}
+.row input[type=range]::-moz-range-progress { height: 4px; border-radius: 2px; background: var(--control); }
+.row input[type=range]::-moz-range-thumb {
+  width: 12px; height: 12px; border: 1px solid rgb(0 0 0 / .55); border-radius: 50%; background: var(--control);
+}
+/* a YIELDED slider (sky time under real-clock, basic-only knobs under the
+   detailed sky) keeps the house hue, dimmed — the UA's disabled range
+   painted stark white against every teal sibling */
+.row input[type=range]:disabled { accent-color: color-mix(in srgb, var(--control) 40%, #555); opacity: .5; }
 /* Checkboxes take the same accent as the sliders — seafoam fill, UA-contrast
    (black) tick when checked. This existed via accent-color when the audio
    panel first spent the house palette, and fell out of the selector when the
-   checkbox rows moved to .row.wide markup (R, 2026-08-16: "I could have sworn
-   we did a styling for the checkboxes… seems to be gone now"). */
-.row input[type=checkbox] { accent-color: var(--accent); }
-.row .v { width: 34px; flex: none; text-align: right; color: var(--accent); }
+   checkbox rows moved to .row.wide markup. */
+.row input[type=checkbox] {
+  /* custom box: accent-color only paints the CHECKED state in
+     Chromium — unchecked fell back to UA white. */
+  appearance: none; -webkit-appearance: none;
+  width: 15px; height: 15px; margin: 0; border-radius: 4px;
+  background: var(--well);
+  border: 1px solid color-mix(in srgb, var(--brand) 45%, transparent);
+  display: inline-grid; place-items: center; cursor: pointer;
+}
+.row input[type=checkbox]:hover { border-color: color-mix(in srgb, var(--brand) 75%, transparent); }
+.row input[type=checkbox]:checked { background: var(--brand); border-color: var(--brand); }
+.row input[type=checkbox]:checked::before {
+  content: ''; width: 8px; height: 5px; margin-top: -2px;
+  border-left: 2px solid #0f2024; border-bottom: 2px solid #0f2024;
+  transform: rotate(-45deg);
+}
+.row .v { width: 34px; flex: none; text-align: right; color: var(--dim); }
 
 /* 🔴 .row.wide — the SAME row, for panels whose labels are sentences.
-   (R, 2026-08-16: "If there is an existing UI class we should 100% be using
-   it." She is right, and the audio panel was not: it carried 40 lines of
+   (Reuse the existing class: the audio panel once carried 40 lines of
    private CSS re-implementing .row under sp-* names, which is how its spacing
    drifted to gap:10px while the house row is 7px and nobody could see it
    without measuring.)
@@ -342,25 +525,128 @@ select {
 .who-row { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; }
 .who-row .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .who-row .d { color: var(--dim); flex: none; }
-.who-row.self .n { color: var(--accent); }
+.who-row.self .n { color: var(--fg); }
 
 /* --------------------------------------------------------------- fixed hud */
-#hud {
-  position: fixed; top: 10px; left: 10px; z-index: 5;
-  padding: 8px 11px; white-space: pre; pointer-events: none;
-  font-size: var(--fs-sm); color: var(--dim);
+/* the ∃ mark — anchor of the whole chrome. Carries connection truth: full
+   when live, dimmed + pulsing when the socket is down. (status without
+   a status bar.) The mic/ear glyphs auto-ride its right edge. */
+#hud.emark {
+  /* lives INSIDE the rail now — one movable unit. Mic/ear ride its box. */
+  position: relative;
+  display: grid; place-items: center;
+  color: var(--brand); border: none; cursor: pointer; background: none; box-shadow: none;
 }
-#hud b { color: var(--fg); font-weight: 600; }
-#hud .ok  { color: var(--accent); }
-#hud .bad { color: var(--err); }
-#hud .edit { color: var(--warn); }
+#dock #hud.emark { color: var(--dim); }                             /* local only */
+#dock #hud.emark.net-live { color: var(--brand-deep); }                        /* connected — subtle green-blue */
+#dock #hud.emark.net-live:hover { color: color-mix(in srgb, var(--brand) 70%, white); }
+#dock #hud.emark.net-wait { color: var(--dim); animation: netpulse 2.6s ease-in-out infinite; }  /* trying */
+body.arranging #dock #hud.emark {
+  color: #0f2024; background: var(--brand-deep); border-radius: 8px; animation: none;  /* inverted: you're holding the chrome */
+}
+#hud.emark.editing::after {
+  content: ''; position: absolute; right: 5px; top: 5px; width: 7px; height: 7px;
+  border-radius: 50%; background: var(--warn);
+}
+@keyframes netpulse { 50% { opacity: .35; } }
+#emenu {
+  position: fixed; top: 54px; left: 10px; z-index: 40;
+  display: flex; flex-direction: column; min-width: 168px; padding: 6px;
+  cursor: grab;   /* the menu itself is a panel: drag its empty parts */
+}
+#emenu:active { cursor: grabbing; }
+#emenu .mrow, #emenu .mpin { cursor: pointer; }
+#emenu[hidden] { display: none; }
+/* the menu wears the frames' own arrange chrome — one grammar to maintain */
+#emenu { overflow: visible; }
+#emenu .fr-head {
+  display: flex; position: absolute; bottom: 100%; left: calc(var(--r) + 2px); right: calc(var(--r) + 2px);
+  justify-content: space-between; align-items: flex-end; pointer-events: none;
+  padding: 0; background: none; border: none;   /* the base .fr-head strip bleeds in otherwise */
+}
+#emenu .fr-head .fr-title { flex: 0 1 auto; }
+#emenu .fr-head .fr-title, #emenu .fr-head .fr-btns {
+  pointer-events: auto;
+  background: var(--chip); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border-radius: 7px 7px 0 0; padding: 3px 10px; font-size: var(--fs-sm); color: var(--dim);
+  margin-bottom: -1px;
+}
+#emenu .fr-head .fr-title { cursor: grab; }
+#emenu .fr-head .fr-btns { padding: 3px 5px; }
+#emenu .mrow {
+  display: flex; align-items: center; gap: 9px; padding: 7px 9px;
+  background: none; border: none; border-radius: 6px; color: var(--dim);
+  font-size: var(--fs-sm); text-align: left;
+}
+#emenu .mrow:hover { background: var(--hov); }
+#emenu .mrow > svg:first-child { flex: none; opacity: .8; color: var(--icon); }
+#emenu .mrow .mname { flex: 1; }
+#emenu .mrow.open { color: color-mix(in srgb, var(--brand) 35%, var(--fg)); }
+#emenu .mrow.open svg:first-child { opacity: 1; }
+#emenu .mpin {
+  flex: none; display: grid; place-items: center; width: 22px; height: 22px; padding: 0; line-height: 0;
+  background: none; border: none; border-radius: 5px; color: var(--dim); opacity: .35;
+}
+#emenu .mpin:hover { opacity: 1; background: var(--hov); }
+#emenu .mpin.on { opacity: 1; color: var(--brand); }
+#emenu .msep { height: 1px; background: var(--edge); margin: 5px 4px; }
+/* headers exist only while arranging (the ∃ menu is open) — and they FLOAT
+   above the frame (below, when the frame hugs the top edge) so opening the
+   menu never shifts a single window's geometry. */
+.frame .fr-head { display: none; }
+body.arranging .frame { overflow: visible; }
+/* the dashed arrange border rides the ::after overlay (z-30): it paints OVER
+   the seated header chips — which used to darken the segment beneath them —
+   and follows the corner radius, which outline never did */
+body.arranging .frame::after { border: 1px dashed rgb(255 255 255 / .25); }
+body.arranging .frame > .fr-body { overflow: hidden; }
+/* the arrange chrome reads as TABS: name docked to the frame's top-left,
+   close/collapse docked top-right — corners, where hands expect them */
+body.arranging .frame .fr-head {
+  /* tabs start AFTER the corner radius (browser-tab convention): the curve
+     stays pristine, the rim-light unbroken, and no corner needs filling.
+     The simple one wins. */
+  display: flex; position: absolute; bottom: 100%; left: calc(var(--r) + 2px); right: calc(var(--r) + 2px);
+  justify-content: space-between; align-items: flex-end;
+  padding: 0; background: none; border: none; pointer-events: none;
+}
+body.arranging .frame .fr-head .fr-title,
+body.arranging .frame .fr-head .fr-btns {
+  pointer-events: auto;
+  background: var(--chip); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border-radius: 7px 7px 0 0; padding: 3px 10px;
+  margin-bottom: -1px;   /* seat onto the rim-light so the tab reads attached */
+}
+body.arranging .frame .fr-head .fr-title { flex: 0 1 auto; cursor: grab; }
+body.arranging .frame .fr-head .fr-btns { padding: 3px 5px; }
+body.arranging .frame.label-below .fr-head { bottom: auto; top: 100%; align-items: flex-start; }
+body.arranging .frame.label-below .fr-head .fr-title,
+body.arranging .frame.label-below .fr-head .fr-btns {
+  border-radius: 0 0 7px 7px;
+  margin-bottom: 0; margin-top: -1px;
+}
+/* sticky-edge glow: this frame is riding that edge and will follow it.
+   Composed from one custom property per edge so a CORNER frame shows BOTH
+   glows (the old per-class box-shadow rules overwrote each other — a frame
+   stuck to two sides only ever lit the last one). */
+body.arranging .frame {
+  --sg: color-mix(in srgb, var(--brand) 60%, transparent);
+  --nosh: 0 0 rgb(0 0 0 / 0);
+  box-shadow: var(--st-l-s, var(--nosh)), var(--st-r-s, var(--nosh)),
+              var(--st-t-s, var(--nosh)), var(--st-b-s, var(--nosh)),
+              0 1px 5px rgb(0 0 0 / .28);
+}
+body.arranging .frame.st-l { --st-l-s: inset 2px 0 0 var(--sg); }
+body.arranging .frame.st-r { --st-r-s: inset -2px 0 0 var(--sg); }
+body.arranging .frame.st-t { --st-t-s: inset 0 2px 0 var(--sg); }
+body.arranging .frame.st-b { --st-b-s: inset 0 -2px 0 var(--sg); }
 /* Edit mode has to be legible without reading the HUD: the cursor changes and
    the viewport gets a thin warm frame, so it is obvious why a drag just moved
    a crate instead of the camera. */
 body.edit-mode canvas { cursor: crosshair; }
 body.edit-mode::after {
   content: ''; position: fixed; inset: 0; z-index: 2; pointer-events: none;
-  border: 2px solid rgba(232, 201, 106, .5); border-radius: 3px;
+  border: 2px solid color-mix(in srgb, var(--attn) 50%, transparent); border-radius: 3px;
 }
 
 #trayzone {
@@ -394,10 +680,93 @@ body.edit-mode::after {
 
 /* dock: one row of toggles so a closed frame is never lost */
 #dock {
-  position: fixed; top: 10px; right: 10px; z-index: 27;
-  display: flex; gap: 4px; padding: 4px;
+  /* hotbar: ∃ + window glyphs, ONE movable unit. Grip appears only while
+     arranging, at the bottom. */
+  position: fixed; top: 10px; left: 10px; z-index: 27;
+  display: flex; flex-direction: column; gap: 2px; padding: 4px; align-items: center;
 }
-#dock button { padding: 4px 8px; font-size: 11px; }
+#dock .dock-grip {
+  height: 14px; width: 100%; cursor: grab; display: none; place-items: center;
+  color: var(--dim); opacity: .6; border: none; background: none; padding: 0;
+}
+body.arranging #dock .dock-grip { display: grid; }
+#dock .dock-grip:hover { opacity: 1; color: var(--fg); }
+#dock .dock-grip:active { cursor: grabbing; }
+#dock button:not(.dock-grip) {
+  display: grid; place-items: center; width: 34px; height: 34px; padding: 0;
+  font-size: 11px;   /* label-fallback buttons (entries with no fill icon) */
+  color: var(--icon); background: none; border: none; box-shadow: none; border-radius: 7px;
+}
+#dock button:not(.dock-grip):hover { color: var(--fg); background: var(--hov); }
+/* The ON look must not be loud or distracting, and quieting it moves OFF
+   too, so both are drawn together; the ∃ mark is untouched.
+   The dock is an ACTIVITY BAR, not a tool palette: each button opens a window,
+   and the rail knows which screen edge it is welded to. The reference for that
+   shape is VS Code's activity bar — a thin accent border on the content-facing
+   edge + the icon going dim→full; a filled background is explicitly optional
+   there and Figma/Blender's lit wells are for mode toggles. So:
+     OFF   dim icon, no fill (unchanged)            HOVER  faint --hov well (unchanged)
+     ON    full-brightness brand-tinted icon + a 2px brand bar on the edge that
+           faces the viewport (it points at the window it opened); no well, no ring
+     ON+HOVER  a whisper of well so about-to-close still differs from about-to-open */
+#dock button.on {
+  position: relative;
+  color: color-mix(in srgb, var(--brand) 70%, white);
+  background: none;
+}
+#dock button.on::before {
+  content: ''; position: absolute; border-radius: 2px;
+  background: var(--brand); opacity: .9;
+  /* default (rail welded left / floating top-left): bar on the RIGHT edge */
+  top: 7px; bottom: 7px; right: -3px; width: 2px;
+}
+#dock[data-edge="right"]  button.on::before { right: auto; left: -3px; }
+#dock[data-edge="top"]    button.on::before { top: auto; right: 7px; left: 7px; bottom: -3px; width: auto; height: 2px; }
+#dock[data-edge="bottom"] button.on::before { bottom: auto; right: 7px; left: 7px; top: -3px; width: auto; height: 2px; }
+#dock button.on:hover {
+  color: color-mix(in srgb, var(--brand) 45%, white);
+  background: color-mix(in srgb, var(--brand) 10%, var(--hov));
+}
+#dock button[hidden] { display: none; }
+/* keybtn: buttons that mirror physical KEYS read as key-caps — a darker well,
+   no outline (the doctrine: visible boxes only for key-mirrors and committal actions) */
+button.keybtn { background: var(--well); border: none; box-shadow: none; border-radius: 7px; }
+button.keybtn:hover { background: color-mix(in srgb, var(--well) 60%, var(--hov)); }
+button.keybtn:active { box-shadow: inset 0 1px 3px rgb(0 0 0 / .6); }
+/* the rail WELDS to its edge — it is part of the window frame, not a floating card */
+#dock[data-edge="left"]   { border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: none; }
+#dock[data-edge="right"]  { border-top-right-radius: 0; border-bottom-right-radius: 0; border-right: none; }
+#dock[data-edge="top"]    { border-top-left-radius: 0; border-top-right-radius: 0; border-top: none; }
+#dock[data-edge="bottom"] { border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom: none; }
+#dock.horizontal { flex-direction: row; }
+#dock.horizontal .dock-grip { width: 14px; height: 100%; }
+/* ------------------------------------------------------------- profile */
+.frame .profile-body { padding: 14px; gap: 12px; }
+.pf-id { display: flex; align-items: center; gap: 12px; }
+.pf-dot { width: 38px; height: 38px; border-radius: 50%; flex: none; opacity: .85; }
+.pf-who { display: flex; flex-direction: column; min-width: 0; }
+.pf-who > b { font-size: 17px; font-weight: 650; }
+.pf-who > span { color: var(--dim); font-size: var(--fs-sm); }
+.pf-who > span b { color: var(--fg); font-weight: 550; }
+.pf-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; flex: 1; min-height: 0; }
+.pf-tile {
+  display: flex; flex-direction: column; align-items: flex-start; justify-content: center;
+  gap: 3px; padding: 12px 14px; border-radius: 9px;
+  background: rgb(255 255 255 / .04); border: none;
+}
+.pf-tile:hover { background: rgb(255 255 255 / .09); }
+.pf-tile svg { opacity: .75; margin-bottom: 3px; }
+.pf-tile b { font-size: var(--fs); font-weight: 600; }
+.pf-tile span { color: var(--dim); font-size: 11px; }
+.pf-note { color: var(--dim); font-size: 11px; opacity: .7; }
+/* alt held = every frame is grabbable, and says so */
+body.altgrab .frame { cursor: grab; }
+body.altgrab .frame:active { cursor: grabbing; }
+/* scene-tree selection: text brightens toward the accent, same selected-
+   speaks-accent grammar as tabs/heads/dock */
+.sg-row.sel { background: rgb(255 255 255 / .06); }
+.sg-row.sel .n b { color: color-mix(in srgb, var(--brand) 45%, var(--fg)); }
+.sg-row.sel .d { color: color-mix(in srgb, var(--brand) 25%, var(--dim)); }
 
 /* --------------------------------------------------------------- overlays */
 .scrim {
@@ -414,7 +783,7 @@ body.edit-mode::after {
   width: min(560px, 100%); max-height: 100%; overflow-y: auto;
   padding: 20px 22px; box-sizing: border-box; position: relative;
 }
-.sheet h1 { font-size: 17px; margin: 0 0 3px; color: var(--accent); font-weight: 600; }
+.sheet h1 { font-size: 17px; margin: 0 0 3px; color: var(--fg); font-weight: 600; }
 .sheet h2 {
   font-size: var(--fs-sm); margin: 16px 0 7px; color: var(--dim);
   text-transform: uppercase; letter-spacing: .09em; font-weight: 600;
@@ -427,7 +796,7 @@ body.edit-mode::after {
   width: 100%; text-align: center; font-size: var(--fs); padding: 10px;
   background: var(--accent-dk); border-color: var(--edge-hi); color: var(--accent); font-weight: 600;
 }
-.sheet .go:hover { background: #2a5349; }
+.sheet .go:hover { background: #4a3620; }
 .keys {
   display: grid; grid-template-columns: max-content 1fr;
   gap: 7px 14px; align-items: baseline;
@@ -436,8 +805,8 @@ body.edit-mode::after {
 .keys dd { margin: 0; color: var(--fg); }
 kbd {
   display: inline-block; padding: 1px 6px; border-radius: 4px;
-  background: rgba(30, 60, 55, .8); border: 1px solid var(--edge);
-  font: 11px var(--font); color: var(--accent); white-space: nowrap;
+  background: rgb(0 0 0 / .35); border: 1px solid var(--edge);
+  font: 11px var(--font-code); color: var(--fg); white-space: nowrap;
 }
 .close-x {
   position: absolute; top: 12px; right: 14px; padding: 3px 8px;
@@ -457,18 +826,20 @@ body.touch #touch { display: block; }
 }
 #stick .nub {
   position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px;
-  border-radius: 50%; background: rgba(143,232,200,.28); border: 1px solid var(--edge-hi);
+  border-radius: 50%; background: color-mix(in srgb, var(--brand) 28%, transparent); border: 1px solid var(--edge-hi);
 }
 #touchbtns { position: absolute; right: 18px; bottom: 18px; display: flex; gap: 8px; pointer-events: auto; }
 #touchbtns button { padding: 13px 15px; font-size: var(--fs); border-radius: 50%; }
-.dbg-row { cursor: pointer; user-select: none; }
-.dbg-row input { accent-color: var(--accent); margin: 0; }
-.dbg-stats {
-  margin: 2px 0 0; padding: 6px 7px; font: 11px/1.45 ui-monospace, monospace;
-  color: var(--dim); background: rgba(0,0,0,0.25); border-radius: 5px;
-  white-space: pre; overflow-x: auto;
-}
 </style>
+<script>
+/* pre-paint token restore (the default accent flashed for a beat before
+   snapping) — same key stylepanel.js persists to; runs before any module so
+   first paint already wears the chosen tokens. Kept inline: modules are
+   deferred, and a FOUC fix that loads late isn't one. */
+try { const o = JSON.parse(localStorage.getItem('ew-style-tokens') || '{}');
+  for (const k in o) document.documentElement.style.setProperty(k, o[k]);
+} catch {}
+</script>
 <script type="importmap">
 {
   "imports": {
@@ -546,8 +917,15 @@ body.touch #touch { display: block; }
 </head>
 <body>
 <!-- Static so it paints before any module loads. boot.js only fills it in. -->
-<div id="splash">
+<div id="splash" data-build="b77">
+  <div class="sp-ver"></div>
+  <svg class="sp-logo" viewBox="-70 -40 1372 1372" aria-hidden="true" fill="currentColor">
+    <path class="pc-top" d="M 92 82 Q 616 140 1072 78 Q 1024 290 1012 511 L 852 511 L 852 228 Q 440 218 68 232 Q 88 155 92 82 Z"/>
+    <path class="pc-arm" d="M 420 522 C 490 562 565 585 700 588 L 1140 586 Q 1168 583 1178 576 Q 1186 572 1185 582 Q 1180 653 1185 724 Q 1186 734 1178 730 Q 1168 723 1140 720 L 700 718 C 565 721 490 744 420 784 Q 436 653 420 522 Z"/>
+    <path class="pc-bot" d="M 120 1212 Q 616 1152 1080 1216 Q 1024 1002 1012 796 L 852 796 L 852 1064 Q 440 1074 62 1062 Q 88 1137 120 1212 Z"/>
+  </svg>
   <div class="sp-mark">eidoverse</div>
+  <div class="sp-mark-sub">worlds</div>
   <div class="sp-sub">stepping into <b class="sp-world">a world</b> as <b class="sp-name">…</b></div>
   <div class="sp-bar"><div class="sp-bar-fill"></div></div>
   <div class="sp-status"><span class="sp-phase">waking the engine</span><span class="sp-detail"></span></div>
@@ -555,8 +933,22 @@ body.touch #touch { display: block; }
   <button class="sp-skip">go in anyway →</button>
 </div>
 
-<div id="hud" class="panel">connecting…</div>
+<!-- no .panel here: the mark lives INSIDE the dock's glass now, and a nested
+     panel's backdrop-filter (blur + saturate) re-processes the rail beneath
+     it — a subtly brighter square that read as a mistake -->
+<button id="hud" class="emark" title="eidoverse — menu">
+  <!-- ∃ drawn as geometry, not typed as a glyph: no font can vary it, and it
+       scales like a mark, not like text. Rounded caps, mid-arm a hair short. -->
+  <!-- the serifed mark (art/eido-logo/emark.svg): three cut pieces, the arm
+       passing through the parted spine. Filled geometry, still no font. -->
+  <svg viewBox="-60 -30 1352 1352" width="24" height="24" aria-hidden="true" fill="currentColor">
+    <path d="M 92 82 Q 616 140 1072 78 Q 1024 290 1012 511 L 852 511 L 852 228 Q 440 218 68 232 Q 88 155 92 82 Z"/>
+    <path d="M 420 522 C 490 562 565 585 700 588 L 1140 586 Q 1168 583 1178 576 Q 1186 572 1185 582 Q 1180 653 1185 724 Q 1186 734 1178 730 Q 1168 723 1140 720 L 700 718 C 565 721 490 744 420 784 Q 436 653 420 522 Z"/>
+    <path d="M 120 1212 Q 616 1152 1080 1216 Q 1024 1002 1012 796 L 852 796 L 852 1064 Q 440 1074 62 1062 Q 88 1137 120 1212 Z"/>
+  </svg>
+</button>
 <div id="dock" class="panel"></div>
+<div id="emenu" class="panel" hidden></div>
 
 <div id="trayzone">
   <div id="loading" class="panel"></div>

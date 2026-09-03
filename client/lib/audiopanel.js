@@ -447,7 +447,7 @@ function paint(body) {
 
 export function initAudioPanel() {
   ensureCss();
-  makeSection('🔊 audio', (body) => paint(body), { id: 'audio' });
+  makeSection('🔊 audio', (body) => paint(body), { id: 'audio', host: 'settings' });
   // Either control moving updates the other's row — one truth, two surfaces.
   // 🔴 syncRows(), NOT paint(): these fire on every toggle, and a full repaint
   // tears down and rebuilds all nine rows (see the comment above _sync). The
