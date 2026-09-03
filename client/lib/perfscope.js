@@ -384,18 +384,33 @@ function loupeHtml(rec) {
   // placer field in real entityMeta is `actor` (NOT `by` — that key never
   // existed, so 'placed by' had silently never rendered on a real object).
   const placer = meta?.actor ?? meta?.by;
-  // row 2 (R, 09-02 r11): perf-mode LEFT, 'placed by' RIGHT — split to opposite
-  // edges. row 3: rank right-justified. Tooltips explain each.
   const lensTip = { rank: 'overall rank — worst category wins (VRChat model)',
     tris: 'triangle count — GPU vertex/geometry load', draws: 'draw calls — CPU→GPU submit overhead, often the real cost',
     tex: 'texture memory — estimated VRAM the images occupy', mat: 'material cost — a categorical shader-complexity proxy',
     bones: 'skinning — bone count driving per-frame skeletal transforms', alpha: 'transparency — overdraw & sort cost from alpha materials' }[lensMode] ?? '';
-  const modeEl = `<span class="pl-mode" title="${esc(lensTip)}">${lensLabel}</span>`;
-  const placedEl = placer ? `<span class="pl-placer" title="the actor who placed this object into the world">placed by ${placer}</span>` : '';
+  // header (R, 09-02 r12) — two columns, three rows:
+  //   LEFT  (flows): name (wraps to ≤2 lines) then 'placed by' directly beneath
+  //          it — so placed-by rides row 2 when the name is one line, row 3 when
+  //          the name took two ("goes on the line above if overflow not used").
+  //   RIGHT (fixed 3-row stack, space-between): pill · perf-mode · rank.
+  // Smart wrap for spaceless titles: insert <wbr> break-opportunities after
+  // separators (_ . - / :) so a long identifier breaks on its punctuation; a
+  // soft-hyphen fallback lets an unbroken run split between characters.
+  const nameHtml = esc(rec.label)
+    .replace(/([_./:\-])/g, '$1<wbr>')          // break after separators
+    .replace(/([a-z0-9])([A-Z])/g, '$1<wbr>$2'); // and at camelCase humps
+  const placedEl = placer ? `<div class="pl-placer" title="the actor who placed this object into the world">placed by ${esc(placer)}</div>` : '';
   return `
   <div class="pl-head">
-    <div class="pl-headtop"><b class="pl-name" title="${esc(rec.label)}">${rec.label}</b><span title="${esc(why)}" class="pl-rank">${badge(rec.rank, TIER_NAMES[rec.rank], true)}</span></div>
-    <div class="pl-sub pl-metarow">${modeEl}${placedEl}</div>${rankStr ? `<div class="pl-sub pl-rankrow" title="this object's position among all ${total} subjects in the scene, ranked by the active lens">${rankStr}</div>` : ''}
+    <div class="pl-headL">
+      <b class="pl-name" title="${esc(rec.label)}">${nameHtml}</b>
+      ${placedEl}
+    </div>
+    <div class="pl-headR">
+      <span title="${esc(why)}" class="pl-rank">${badge(rec.rank, TIER_NAMES[rec.rank], true)}</span>
+      <span class="pl-mode" title="${esc(lensTip)}">${lensLabel}</span>
+      ${rankStr ? `<span class="pl-rankrow" title="this object's position among all ${total} subjects in the scene, ranked by the active lens">${rankStr}</span>` : '<span></span>'}
+    </div>
   </div>
   <div class="pl-grid">${rows}</div>
   <div class="pl-foot" title="${pinned ? 'click anywhere in the scene to unpin this card' : 'click an object to pin its card so you can hover its rows for detail'}">${pinned ? 'click elsewhere to unpin' : 'click to pin'}</div>`;

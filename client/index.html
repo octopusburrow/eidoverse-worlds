@@ -883,33 +883,29 @@ body.touch #touch { display: block; }
 .perf-loupe .pl-texd { text-align: right; }
 .perf-loupe .pl-texb { text-align: left; color: var(--fg); opacity: .8; font-variant-numeric: tabular-nums; }
 .perf-loupe .pl-texwrap em { font-style: normal; color: var(--attn); opacity: .85; }
-/* header: name/sub block on the left, rank pill pushed to the RIGHT and top-
-   aligned (R, 09-02: line the pill up with the data column, no empty space
-   below it). A separator divides header from data, matching the footer's. */
-/* header (R, 09-02 r8): a column — top row [name | pill], then the standing
-   line left-justified on its own row, then 'placed by'. */
+/* header (R, 09-02 r12): two columns, three rows.
+   LEFT flows: name (≤2 lines) then 'placed by' directly under it — so placed-by
+   rides row 2 for a 1-line name and row 3 for a 2-line name ("goes on the line
+   above if overflow not used"). RIGHT is a fixed 3-item stack spread top→bottom:
+   pill · perf-mode · rank, each aligning to the left column's rows. */
 .perf-loupe .pl-head {
-  display: flex; flex-direction: column; gap: 2px; color: var(--fg);
+  display: flex; align-items: stretch; gap: 12px; color: var(--fg);
   padding-bottom: 6px; margin-bottom: 6px; border-bottom: 1px solid var(--edge);
 }
-.perf-loupe .pl-headtop { display: flex; align-items: baseline; gap: 10px; }
-/* name: left, single line, ellipsised so it NEVER dictates panel width — the
-   data grid governs the width, killing the left gutter (R, 09-02 r8). Full name
-   lives in the title tooltip + is selectable when pinned. */
-/* name: left, wraps to at most TWO lines then ellipsises (R, 09-02 r11); capped
-   width so line 2 breaks before the pill column. Full name in the title tooltip. */
+.perf-loupe .pl-headL { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 auto; }
+.perf-loupe .pl-headR { display: flex; flex-direction: column; align-items: flex-end; justify-content: space-between; gap: 3px; flex: none; text-align: right; }
+/* name: left, wraps to ≤2 lines then ellipsises; capped width so it never
+   dictates panel width. <wbr>/soft breaks let a long identifier split on its
+   punctuation. Full name in the title tooltip. */
 .perf-loupe .pl-name {
-  flex: 1 1 auto; min-width: 0; max-width: 200px; line-height: 1.25;
-  overflow-wrap: anywhere;
+  min-width: 0; max-width: 210px; line-height: 1.25; overflow-wrap: anywhere; hyphens: auto;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
 }
 .perf-loupe .pl-head .pl-rank { flex: none; }
-.perf-loupe .pl-sub { color: var(--dim); font-size: 10px; }
-/* row 2: perf-mode LEFT, 'placed by' RIGHT — split to opposite edges (R r11).
-   row 3: rank right-justified under the pill column. */
-.perf-loupe .pl-metarow { display: flex; justify-content: space-between; gap: 12px; }
-.perf-loupe .pl-metarow .pl-placer { text-align: right; }
-.perf-loupe .pl-rankrow { text-align: right; font-variant-numeric: tabular-nums; }
+.perf-loupe .pl-sub, .perf-loupe .pl-mode, .perf-loupe .pl-placer, .perf-loupe .pl-rankrow {
+  color: var(--dim); font-size: 10px;
+}
+.perf-loupe .pl-rankrow { font-variant-numeric: tabular-nums; }
 /* texlist tucks under "textures" as a clear sub-detail */
 .perf-loupe .pl-texlist { font-size: 9.5px; color: var(--dim); padding: 0 0 1px 12px; opacity: .85; }
 /* action hint right-justified — echoes the panel's right edge and reads as
