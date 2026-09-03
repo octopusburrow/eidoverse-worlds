@@ -238,14 +238,17 @@ const tintMats = TIERS.map((c) => {
 // Silhouette hull width is screen-constant: local displacement = K · distance
 // to camera ÷ the object's world scale (a scale-3 cat and a scale-0.55 ruin get
 // the same pixel edge). K≈2px at 720p/70°. One material per (tier, scale).
-const HULL_K = 0.0045;
+// b74 (R, 09-03 10:43): thin by default, THICK only on the subject the loupe
+// is hovering or has pinned — the edge is a rank cue everywhere and a
+// spotlight on the thing you're actually asking about.
+const HULL_K = 0.0022, HULL_K_HOT = 0.0060;
 const hullMats = new Map();
-function hullMatFor(tier, worldScale) {
-  const key = `${tier}:${worldScale.toFixed(3)}`;
+function hullMatFor(tier, worldScale, k = HULL_K) {
+  const key = `${tier}:${worldScale.toFixed(3)}:${k}`;
   let m = hullMats.get(key);
   if (m) return m;
   m = new THREE.MeshBasicNodeMaterial({ color: new THREE.Color(TIERS[tier]), side: THREE.BackSide, toneMapped: false });
-  const w = cameraPosition.sub(positionWorld).length().mul(HULL_K).mul(uniform(1 / Math.max(worldScale, 1e-4)));
+  const w = cameraPosition.sub(positionWorld).length().mul(k).mul(uniform(1 / Math.max(worldScale, 1e-4)));
   m.positionNode = positionLocal.add(normalLocal.normalize().mul(w));
   m.name = `perfscope-hull-${tier}`;
   hullMats.set(key, m);
@@ -260,10 +263,23 @@ const _box = new THREE.Box3();
 function veilFor(mesh, mat) {
   return overlayFor(mesh, mat, 1);
 }
-function hullFor(mesh, tier) {
+const hullsByKey = new Map();   // subject key -> [{ ov, tier, ws }] for emphasis swaps
+let hotKey = null;
+function hullFor(mesh, tier, key) {
   mesh.getWorldScale(_ws);
   const ws = (Math.abs(_ws.x) + Math.abs(_ws.y) + Math.abs(_ws.z)) / 3;
-  return overlayFor(mesh, hullMatFor(tier, ws), 0);
+  const ov = overlayFor(mesh, hullMatFor(tier, ws, key === hotKey ? HULL_K_HOT : HULL_K), 0);
+  if (!hullsByKey.has(key)) hullsByKey.set(key, []);
+  hullsByKey.get(key).push({ ov, tier, ws });
+  return ov;
+}
+/** Thick hull on one subject (the loupe's hover/pin), thin on everything else. */
+function setEmphasis(rec) {
+  const next = rec?.key ?? null;
+  if (next === hotKey) return;
+  for (const h of hullsByKey.get(hotKey) ?? []) h.ov.material = hullMatFor(h.tier, h.ws, HULL_K);
+  hotKey = next;
+  for (const h of hullsByKey.get(hotKey) ?? []) h.ov.material = hullMatFor(h.tier, h.ws, HULL_K_HOT);
 }
 function overlayFor(mesh, mat, orderBump) {
   let ov = null;
@@ -295,7 +311,7 @@ function applyTint() {
     for (const mesh of rec.meshList) {
       if (!mesh.parent) continue;                    // churned out since collect
       veils.add(veilFor(mesh, solidOn ? solidMats[t] : tintMats[t]));
-      if (!fabric) veils.add(hullFor(mesh, t));      // never hull the meadow
+      if (!fabric) veils.add(hullFor(mesh, t, rec.key)); // never hull the meadow
       _box.expandByObject(mesh);
     }
     if (outlinesOn && !_box.isEmpty()) {
@@ -310,6 +326,7 @@ function applyTint() {
 function clearTint() {
   for (const v of veils) v.parent?.remove(v);
   veils.clear();
+  hullsByKey.clear();
   for (const o of outlines) { scene.remove(o); o.dispose?.(); }
   outlines.clear();
 }
@@ -525,6 +542,7 @@ function onMove(ev) {
   lastCast = now;
   if (!subjects.size) collect();
   const rec = castAt(ev);
+  setEmphasis(rec);
   if (!rec) { loupeEl.classList.remove('show'); return; }
   loupeEl.innerHTML = loupeHtml(rec);
   dressLoupeName();
@@ -543,10 +561,10 @@ function placeLoupe(ev) {
 
 function onClick(ev) {
   if (!loupeOn) return;
-  if (pinned) { pinned = null; loupeEl.classList.remove('show', 'pinned'); return; }
+  if (pinned) { pinned = null; setEmphasis(null); loupeEl.classList.remove('show', 'pinned'); return; }
   const rec = castAt(ev);
   if (rec) {
-    pinned = rec; loupeEl.innerHTML = loupeHtml(rec); dressLoupeName(); placeLoupe(ev);
+    pinned = rec; setEmphasis(rec); loupeEl.innerHTML = loupeHtml(rec); dressLoupeName(); placeLoupe(ev);
     // pinned → make the card hoverable so every `title` tooltip fires (R, 09-02
     // r11). Unpinned it stays pointer-events:none so it follows the cursor and
     // the raycast reaches the scene beneath it.
@@ -557,6 +575,7 @@ function onClick(ev) {
 export function setLoupe(onOff) {
   loupeOn = !!onOff;
   pinned = null;
+  setEmphasis(null);
   if (!loupeEl) {
     loupeEl = document.createElement('div');
     loupeEl.className = 'perf-loupe';
