@@ -96,8 +96,13 @@ document.body.prepend(canvas);
 // opt-out lever (the +10fps is one flag away; §22q bought the frames back
 // for the default look). The dPR-gated auto-off waits for a real settings
 // row alongside the other quality dials.
+// ?webgl=1 forces three's WebGL 2 backend — the path a browser without WebGPU
+// (Firefox stable, older Safari, most WebXR runtimes today) takes on its own.
 export const renderer = new THREE.WebGPURenderer({ canvas,
-  antialias: CONFIG.params.get('msaa') !== '0' });
+  antialias: CONFIG.params.get('msaa') !== '0',
+  forceWebGL: CONFIG.params.get('webgl') === '1' });
+/** 'webgpu' | 'webgl' — known once renderer.init() resolves. */
+export const backendName = () => (renderer.backend?.isWebGLBackend ? 'webgl' : 'webgpu');
 renderer.setSize(innerWidth, innerHeight);
 // Spectators start a notch lower — an audience laptop's job is 30fps for an
 // hour, not maximum sharpness. Adaptive scaling adjusts from here.
