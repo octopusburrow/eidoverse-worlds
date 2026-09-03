@@ -22,6 +22,7 @@
 // not "mesh #217").
 
 import { THREE, scene, camera, renderer, canvas } from './core.js';
+import { positionLocal, normalLocal, positionWorld, cameraPosition, uniform } from 'three/tsl';
 import { entities, entityMeta } from './world.js';
 import { fsvg } from './icons.js';
 
@@ -203,20 +204,52 @@ let mode = 'off';
 // own detail stays readable beneath the cost color — plus a bounds outline
 // per subject in its tier color. This also retires the material-swap/restore
 // hazard entirely: originals are never touched.
+// b72 (R, 09-03 10:14): "it should be maintaining all the original texture
+// data, just OVERLAYING a color and a colored outline on the silhouette." The
+// 50% veil was reading as semi-transparent flat objects — textures technically
+// beneath, effectively gone. Veil drops to 25%, and the outline becomes a true
+// SILHOUETTE: an inverted hull (back faces pushed out along normals, tier
+// color) that the mesh's own front faces hide everywhere except the edge.
+const VEIL_OPACITY = 0.25;
 const tintMats = TIERS.map((c) => {
   const m = new THREE.MeshBasicMaterial({
-    color: new THREE.Color(c), transparent: true, opacity: 0.5,
+    color: new THREE.Color(c), transparent: true, opacity: VEIL_OPACITY,
     depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
   });
   m.name = `perfscope-tint-${c}`;
   return m;
 });
-const veils = new Set();      // overlay meshes we added
+// Silhouette hull width is screen-constant: local displacement = K · distance
+// to camera ÷ the object's world scale (a scale-3 cat and a scale-0.55 ruin get
+// the same pixel edge). K≈2px at 720p/70°. One material per (tier, scale).
+const HULL_K = 0.0045;
+const hullMats = new Map();
+function hullMatFor(tier, worldScale) {
+  const key = `${tier}:${worldScale.toFixed(3)}`;
+  let m = hullMats.get(key);
+  if (m) return m;
+  m = new THREE.MeshBasicNodeMaterial({ color: new THREE.Color(TIERS[tier]), side: THREE.BackSide, toneMapped: false });
+  const w = cameraPosition.sub(positionWorld).length().mul(HULL_K).mul(uniform(1 / Math.max(worldScale, 1e-4)));
+  m.positionNode = positionLocal.add(normalLocal.normalize().mul(w));
+  m.name = `perfscope-hull-${tier}`;
+  hullMats.set(key, m);
+  return m;
+}
+const _ws = new THREE.Vector3();
+const veils = new Set();      // overlay meshes we added (veils + hulls)
 const outlines = new Set();   // per-subject Box3Helpers
 let outlinesOn = false;       // bounds boxes are opt-in (R, 09-02: 'a bit much' on by default)
 const _box = new THREE.Box3();
 
 function veilFor(mesh, mat) {
+  return overlayFor(mesh, mat, 1);
+}
+function hullFor(mesh, tier) {
+  mesh.getWorldScale(_ws);
+  const ws = (Math.abs(_ws.x) + Math.abs(_ws.y) + Math.abs(_ws.z)) / 3;
+  return overlayFor(mesh, hullMatFor(tier, ws), 0);
+}
+function overlayFor(mesh, mat, orderBump) {
   let ov = null;
   if (mesh.isSkinnedMesh) {
     ov = new THREE.SkinnedMesh(mesh.geometry, mat);
@@ -230,7 +263,7 @@ function veilFor(mesh, mat) {
     ov = new THREE.Mesh(mesh.geometry, mat);
   }
   ov.userData.perfscopeIgnore = true;
-  ov.renderOrder = (mesh.renderOrder || 0) + 1;
+  ov.renderOrder = (mesh.renderOrder || 0) + orderBump;
   ov.raycast = () => {};          // the loupe must hit the REAL mesh beneath
   mesh.add(ov);                   // rides the original's transform verbatim
   return ov;
@@ -244,6 +277,7 @@ function applyTint() {
     for (const mesh of rec.meshList) {
       if (!mesh.parent) continue;                    // churned out since collect
       veils.add(veilFor(mesh, tintMats[t]));
+      veils.add(hullFor(mesh, t));
       _box.expandByObject(mesh);
     }
     if (outlinesOn && !_box.isEmpty()) {
