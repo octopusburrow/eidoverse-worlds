@@ -360,16 +360,19 @@ function loupeHtml(rec) {
   const worstLabel = { tris: 'triangles', draws: 'draw calls', texMB: 'texture VRAM',
     bones: 'bones', mats: 'materials', alpha: 'transparency' }[rec.worst] || rec.worst;
   const why = `overall = worst category wins (VRChat model). this object's ${TIER_NAMES[rec.rank]} rank is set by ${worstLabel}. fix the red/orange rows to raise it.`;
-  // header (R, 09-02 r8 — her preferred shape, now that the grid no longer
-  // stretches): top row is [ name (left, wraps at a max width, ellipsis if it
-  // overflows even wrapped) | perf pill (right) ]; the scene-standing line sits
-  // LEFT-justified on its own second row. 'placed by' rides under the name.
-  // The full name is always in the title tooltip (her '…' idea).
-  const placed = meta?.by ? `<div class="pl-sub">placed by ${meta.by}</div>` : '';
+  // header (R, 09-02 r9): top row [ name (left, one line, ellipsised) | perf
+  // pill (right) ]; SECOND row is one left-justified meta strip that reads
+  // "placed by X · #N of M · <lens>" — placed-by (when present) then the scene
+  // standing, in that order. Full name in the title tooltip (her '…' idea).
+  // placer field in real entityMeta is `actor` (NOT `by` — that key never
+  // existed, so 'placed by' had silently never rendered on a real object).
+  const placer = meta?.actor ?? meta?.by;
+  const meta2 = [placer ? `placed by ${placer}` : '', standing]
+    .filter(Boolean).join(' · ');
   return `
   <div class="pl-head">
     <div class="pl-headtop"><b class="pl-name" title="${esc(rec.label)}">${rec.label}</b><span title="${esc(why)}" class="pl-rank">${badge(rec.rank, TIER_NAMES[rec.rank], true)}</span></div>
-    <div class="pl-sub pl-standing">${standing}</div>${placed}
+    <div class="pl-sub pl-standing">${meta2}</div>
   </div>
   <div class="pl-grid">${rows}</div>
   <div class="pl-foot">${pinned ? 'click elsewhere to unpin' : 'click to pin'}</div>`;
