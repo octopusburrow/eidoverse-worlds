@@ -469,9 +469,18 @@ function loupeHtml(rec) {
   // Smart wrap for spaceless titles: insert <wbr> break-opportunities after
   // separators (_ . - / :) so a long identifier breaks on its punctuation; a
   // soft-hyphen fallback lets an unbroken run split between characters.
-  const nameHtml = esc(rec.label)
+  // b75 (Fable, 09-03): the title was doing two jobs — the entity id is the
+  // NAME, the GLB filename is PROVENANCE, and it was the provenance that
+  // overflowed into the clamp. Split them: id bold on its own line(s), lib
+  // basename beneath in dim small type, extension dropped.
+  const paren = rec.label.indexOf('  (');
+  const nameOnly = paren > 0 ? rec.label.slice(0, paren) : rec.label;
+  const libOnly = paren > 0 ? rec.label.slice(paren + 3).replace(/\)$/, '').replace(/\.(glb|gltf|vrm)$/i, '') : '';
+  const wbr = (t) => esc(t)
     .replace(/([_./:\-])/g, '$1<wbr>')          // break after separators
     .replace(/([a-z0-9])([A-Z])/g, '$1<wbr>$2'); // and at camelCase humps
+  const nameHtml = wbr(nameOnly);
+  const libHtml = libOnly ? `<span class="pl-lib" title="${esc(libOnly)}">${wbr(libOnly)}</span>` : '';
   // ── header (R, 09-02): name (left) + a right-aligned VERDICT STACK (pill ·
   //    lens · rank). Those three are the tightly-coupled performance verdict —
   //    the grade, which lens produced it, and where it ranks under that lens — so
@@ -494,7 +503,7 @@ function loupeHtml(rec) {
         ${rankStr ? `<span class="pl-rankrow" title="this object's position among all ${total} subjects in the scene, ranked by the active lens">${rankStr}</span>` : ''}
       </div>
     </div>
-    <b class="pl-name" title="${esc(rec.label)}">${nameHtml}</b>
+    <b class="pl-name" title="${esc(nameOnly)}">${nameHtml}</b>${libHtml}
   </div>
   <div class="pl-grid">${rows}</div>
   <div class="pl-foot" title="${pinned ? 'click anywhere in the scene to unpin this card' : 'click an object to pin its card so you can hover its rows for detail'}">${pinned ? 'click elsewhere to unpin' : 'click to pin'}</div>`;

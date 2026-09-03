@@ -928,7 +928,16 @@ body.touch #touch { display: block; }
   display: block; position: relative;
   font-size: 12px; font-weight: 700; line-height: 1.3;
   overflow-wrap: anywhere; hyphens: auto;
-  max-height: calc(2 * 1.3em); clip-path: inset(0);
+  /* b75 (R, 09-03): three lines when the verdict stack leaves the room — the
+     stack is already three rows tall, so a third name line costs no height. */
+  max-height: calc(3 * 1.3em); clip-path: inset(0);
+}
+/* provenance under the name: the GLB basename, dim and small, flowing around the
+   same floats (b75 — the name stopped carrying the filename) */
+.perf-loupe .pl-lib {
+  display: block; font-size: 9.5px; font-weight: 400; line-height: 1.3;
+  color: var(--dim); opacity: .85; overflow-wrap: anywhere; margin-top: 1px;
+  max-height: calc(2 * 1.3em); clip-path: inset(0);   /* two dim lines have said everything a filename will */
 }
 /* hand-drawn truncation cue: perfscope.js measures the last visible line and
    pins this at its end (standard line-clamp is off the table here — see above —
