@@ -885,33 +885,43 @@ body.touch #touch { display: block; }
 .perf-loupe .pl-texwrap em { font-style: normal; color: var(--attn); opacity: .85; }
 /* header (R, 09-02): name (left) + a right-aligned VERDICT STACK (pill · lens ·
    rank) — the three tightly-coupled perf facts grouped under the pill. 'placed
-   by' dropped (provenance, not perf). Header is now just name | verdict. */
+   by' dropped (provenance, not perf). Header is now just name | verdict.
+   Fable, 09-02 ("fill the blank between the label and the pill"): the verdict
+   pieces are RIGHT-FLOATS — pill first, lens+rank cleared beneath it — and the
+   name is a plain block whose LINES flow around them. Floats are the one CSS
+   mechanism that gives each text line its own width: title line 1 wraps at the
+   pill's left edge (filling the old blank), line 2 wraps at the wider lens
+   label's edge (keeping its distance from 'texture memory'), and both widths
+   come from the real rendered pill/label — nothing hardcoded. flow-root
+   contains the floats; width:0 + min-width:100% keeps the header from
+   contributing to the pane's max-content width, so the data table still sets
+   pane width exactly as before. */
 .perf-loupe .pl-head {
-  display: flex; align-items: flex-start; gap: 8px; color: var(--fg);
+  display: flow-root; width: 0; min-width: 100%; color: var(--fg);
   padding-bottom: 4px; margin-bottom: 4px; border-bottom: 1px solid var(--edge);
 }
-/* name fills the row up to the pill, wrapping THERE (R, 09-02). flex-basis:0 +
-   grow makes the name box take ALL remaining row width (so it wraps at the pill,
-   not early); min-width:0 + wrap-anywhere keeps its MIN-content tiny so it never
-   forces the pane wider than the data table — the table sets pane width, the
-   title fills whatever that gives. line-clamp lives on an inner span (a flex
-   item that is itself a -webkit-box won't stretch; a block wrapper will). */
-/* name sits CLOSE to the perf pill and the pane stays narrow (R, 09-02). Measured
-   with tightened buffers: data grid ≈186px, verdict block ≈84px, so the name gets
-   ≈94px beside it — capped there, the name fills right up to the pill and the pane
-   is driven by the (now-narrow) data table, not the name. line-clamp:2 + hidden
-   ellipsises a long name so it never reaches the perf-mode line on the right. */
+.perf-loupe .pl-verdict { display: contents; }
+.perf-loupe .pl-rank { float: right; margin: 0 0 4px 8px; }
+.perf-loupe .pl-verdictsub {
+  float: right; clear: right; margin-left: 8px;
+  display: flex; flex-direction: column; align-items: flex-end; text-align: right;
+}
+/* name: plain block so its line boxes shorten beside the floats (any BFC-maker
+   — overflow, -webkit-box, flex — would dodge the floats as a whole rectangle
+   and give every line the same narrow width again). Clamped to 2 lines by
+   standard line-clamp where it exists; the fallback clips at 2 lines via
+   max-height + clip-path (clip-path clips at paint time without creating a
+   BFC — overflow:hidden would). */
 .perf-loupe .pl-name {
-  flex: 1 1 auto; min-width: 0; max-width: 94px;
+  display: block; position: relative;
   font-size: 12px; font-weight: 700; line-height: 1.3;
   overflow-wrap: anywhere; hyphens: auto;
-  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+  max-height: calc(2 * 1.3em); clip-path: inset(0);
 }
-/* verdict stack: pill alone up top (pairs with the name); lens+rank cluster as a
-   tight pair pushed DOWN, away from the pill (R, 09-02). The gap above the pair
-   separates the badge from the standing readout. */
-.perf-loupe .pl-verdict { flex: none; display: flex; flex-direction: column; align-items: flex-end; text-align: right; }
-.perf-loupe .pl-verdictsub { margin-top: 4px; display: flex; flex-direction: column; align-items: flex-end; }
+/* hand-drawn truncation cue: perfscope.js measures the last visible line and
+   pins this at its end (standard line-clamp is off the table here — see above —
+   and its support varies, so ONE deterministic path for every browser). */
+.perf-loupe .pl-ell { position: absolute; font-style: normal; }
 .perf-loupe .pl-verdict .pl-mode,
 .perf-loupe .pl-verdict .pl-rankrow { color: var(--dim); font-size: 10px; line-height: 1.3; }
 .perf-loupe .pl-verdict .pl-rankrow { font-variant-numeric: tabular-nums; }

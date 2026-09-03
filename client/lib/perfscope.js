@@ -407,9 +407,13 @@ function loupeHtml(rec) {
   //    call: "it's not really a perf thing" — a home in the inspector's history
   //    is the right follow-up). With attribution gone the header is just two
   //    things: what it is (name) and how it's doing (the verdict stack).
+  // Fable, 09-02: verdict comes FIRST in the DOM because pill and lens/rank are
+  //    now right-FLOATS and the name is a plain block flowing around them —
+  //    floats only shape lines that start at or after them. Per-line widths:
+  //    title line 1 wraps at the PILL's edge (fills the old blank), line 2 at
+  //    the wider lens label's edge — both derived from real rendered widths.
   return `
   <div class="pl-head">
-    <b class="pl-name" title="${esc(rec.label)}">${nameHtml}</b>
     <div class="pl-verdict">
       <span title="${esc(why)}" class="pl-rank">${badge(rec.rank, TIER_NAMES[rec.rank], true)}</span>
       <div class="pl-verdictsub">
@@ -417,6 +421,7 @@ function loupeHtml(rec) {
         ${rankStr ? `<span class="pl-rankrow" title="this object's position among all ${total} subjects in the scene, ranked by the active lens">${rankStr}</span>` : ''}
       </div>
     </div>
+    <b class="pl-name" title="${esc(rec.label)}">${nameHtml}</b>
   </div>
   <div class="pl-grid">${rows}</div>
   <div class="pl-foot" title="${pinned ? 'click anywhere in the scene to unpin this card' : 'click an object to pin its card so you can hover its rows for detail'}">${pinned ? 'click elsewhere to unpin' : 'click to pin'}</div>`;
@@ -435,6 +440,32 @@ function castAt(ev) {
   return null;
 }
 
+// Fable, 09-02: the title is clipped at 2 lines by max-height + clip-path (the
+// float-wrapped header can't use -webkit-box line-clamp — any BFC-maker stops
+// lines flowing around the floats), so the '…' truncation cue is drawn by hand:
+// measure the last VISIBLE line's end via Range rects and pin an absolutely-
+// positioned ellipsis there (absolute = out of flow, can't disturb the wrap).
+// Skipped entirely when the whole name fits.
+function dressLoupeName() {
+  const nm = loupeEl.querySelector('.pl-name');
+  if (!nm || nm.scrollHeight <= nm.clientHeight + 1) return;
+  const rng = document.createRange(); rng.selectNodeContents(nm);
+  const nb = nm.getBoundingClientRect();
+  let last = null;
+  for (const r of rng.getClientRects()) {
+    if (r.width <= 0) continue;
+    if (r.bottom - nb.top > nm.clientHeight + 1) continue;   // a clipped line
+    if (!last || r.bottom > last.bottom + 2 ||
+        (Math.abs(r.bottom - last.bottom) <= 2 && r.right > last.right)) last = r;
+  }
+  if (!last) return;
+  const e = document.createElement('i');
+  e.className = 'pl-ell'; e.textContent = '…';
+  e.style.left = `${Math.round(last.right - nb.left) + 1}px`;
+  e.style.top = `${Math.round(last.top - nb.top)}px`;
+  nm.appendChild(e);
+}
+
 function onMove(ev) {
   if (!loupeOn || pinned) return;
   const now = performance.now();
@@ -444,6 +475,7 @@ function onMove(ev) {
   const rec = castAt(ev);
   if (!rec) { loupeEl.classList.remove('show'); return; }
   loupeEl.innerHTML = loupeHtml(rec);
+  dressLoupeName();
   placeLoupe(ev);
   loupeEl.classList.add('show');
 }
@@ -462,7 +494,7 @@ function onClick(ev) {
   if (pinned) { pinned = null; loupeEl.classList.remove('show', 'pinned'); return; }
   const rec = castAt(ev);
   if (rec) {
-    pinned = rec; loupeEl.innerHTML = loupeHtml(rec); placeLoupe(ev);
+    pinned = rec; loupeEl.innerHTML = loupeHtml(rec); dressLoupeName(); placeLoupe(ev);
     // pinned → make the card hoverable so every `title` tooltip fires (R, 09-02
     // r11). Unpinned it stays pointer-events:none so it follows the cursor and
     // the raycast reaches the scene beneath it.
