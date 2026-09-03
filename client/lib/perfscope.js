@@ -1,11 +1,12 @@
 // perfscope — viewer-local perf instrumentation: false-color cost modes over
 // the viewport + a hover loupe of deep per-object stats + a heaviest table.
 //
-// Why the overlay keeps textures (R, 09-03): "it seems much easier to navigate
-// if you're going on an Easter egg hunt for perf violators in a big world."
+// Why the overlay keeps textures: it is much easier to navigate a big world
+// on an Easter-egg hunt for perf violators when the objects still look like
+// themselves.
 // The conventional replace-everything view is the `solid colors` checkbox.
 //
-// Doctrine (Mica's spec, 2026-09-01, + the prior-art survey):
+// Doctrine (the spec + the prior-art survey):
 // · VIEWER-LOCAL. No world verb is ever sent; nothing here mutates the log.
 // · MEASURED vs ESTIMATED stays explicit: renderer.info counts are measured;
 //   memory/cost numbers are estimates and say so. No GPU timers in v0 —
@@ -38,8 +39,8 @@ const esc = (v) => String(v ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<
 // (VRChat's five ranks). Deliberately literal — these mean the same thing in
 // every world and every theme, like a heatmap's, so they do NOT follow the
 // accent picker.
-// perceptually-separated ramp (R, 09-02: old ramp blurred — green≈lime, and
-// the top three were all one warm tone). Even hue walk + rising chroma:
+// perceptually-separated ramp (an earlier ramp blurred: green≈lime, and the
+// top three were all one warm tone). Even hue walk + rising chroma:
 // emerald → spring-green → amber → tangerine → hot-red. Each tier is its own
 // hue AND its own lightness, so they separate at a glance and for CVD eyes.
 export const TIERS = ['#2fd08a', '#9be04a', '#ffc23d', '#ff7a2f', '#f23b52'];
@@ -108,12 +109,14 @@ function texBytes(tex) {
 
 let subjects = new Map();   // key -> stat record
 let meshOwner = new WeakMap(); // mesh -> subject key (for the loupe raycast)
-let meshes = [];            // every censused mesh — the loupe raycasts this, not the whole scene
+let meshes = [];            // every censused mesh
+let visibleMeshes = [];     // the shown subset — the loupe raycasts this, not the whole scene
 
 function forget() {
   subjects = new Map();
   meshOwner = new WeakMap();
   meshes = [];
+  visibleMeshes = [];
 }
 
 function freshRec(key, kind, label) {
@@ -185,8 +188,8 @@ function collect() {
       if (m.transparent) rec.alpha += 1;
       // exhaustive texture sweep: any own value that IS a texture, plus
       // shader-style uniforms. Named-key lists missed everything MToon and
-      // node materials carry (R's read, 09-01: unoptimized textures are the
-      // real VRAM hit — so the census must not have blind spots).
+      // node materials carry (unoptimized textures are the real VRAM hit, so
+      // the census must not have blind spots).
       const seen = (t) => { if (t?.isTexture && !rec.texs.has(t)) { rec.texs.add(t); rec.texBytes += texBytes(t); } };
       for (const v of Object.values(m)) seen(v);
       if (m.uniforms) for (const u of Object.values(m.uniforms)) seen(u?.value);
@@ -197,6 +200,7 @@ function collect() {
     rec.meshList.push(o);
     meshOwner.set(o, rec.key);
     meshes.push(o);
+    if (vis) visibleMeshes.push(o);
   });
 
   for (const rec of subjects.values()) {
@@ -256,8 +260,8 @@ const tintMats = TIERS.map((c) => {
 // to camera ÷ the object's world scale (a scale-3 cat and a scale-0.55 ruin get
 // the same pixel edge). K≈2px at 720p/70°. The scale is read in-shader from the
 // model matrix, so there are exactly TIERS×2 hull materials (thin / hot).
-// b74 (R, 09-03 10:43): thin by default, THICK only on the subject the loupe
-// is hovering or has pinned — the edge is a rank cue everywhere and a
+// Thin by default, THICK only on the subject the loupe is hovering or has
+// pinned — the edge is a rank cue everywhere and a
 // spotlight on the thing you're actually asking about.
 const HULL_K = 0.0022, HULL_K_HOT = 0.0060;
 const hullMats = new Map();
@@ -273,9 +277,9 @@ function hullMatFor(tier, k = HULL_K) {
   hullMats.set(key, m);
   return m;
 }
-const overlays = new Map();   // mesh -> { veil, hull, tier, key } — diffed each cycle, never rebuilt wholesale
+const overlays = new Map();   // mesh -> { veil, hull, tier, key, geo, n, skel } — diffed each cycle, never rebuilt wholesale
 const outlines = new Set();   // per-subject Box3Helpers
-let outlinesOn = false;       // bounds boxes are opt-in (R, 09-02: 'a bit much' on by default)
+let outlinesOn = false;       // bounds boxes are opt-in ('a bit much' on by default)
 const _box = new THREE.Box3();
 
 let hotKey = null;
@@ -283,7 +287,7 @@ let hotKey = null;
 // solid shell where the object itself is see-through
 function hullable(mesh) {
   const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-  return mats.every((m) => !m || !(m.transparent || m.alphaTest > 0 || m.depthWrite === false));
+  return mats.every((m) => !m || !(m.transparent || m.alphaTest > 0 || m.alphaHash || m.alphaToCoverage || m.depthWrite === false));
 }
 /** Thick hull on one subject (the loupe's hover/pin), thin on everything else. */
 function setEmphasis(rec) {
@@ -335,9 +339,12 @@ function applyTint() {
       keep.add(mesh);
       const wantHull = !fabric && hullable(mesh);    // never hull the meadow
       let o = overlays.get(mesh);
-      if (o && (!!o.hull !== wantHull)) { dropOverlay(mesh); o = null; }
+      // the overlay shares the original's geometry / instance buffer / skeleton
+      // by reference at build time; a swap of any of them leaves a stale twin
+      if (o && (!!o.hull !== wantHull || o.geo !== mesh.geometry || o.n !== mesh.count || o.skel !== mesh.skeleton)) { dropOverlay(mesh); o = null; }
       if (!o) {
-        o = { veil: overlayFor(mesh, veilMat, 1), hull: null, tier: t, key: rec.key };
+        o = { veil: overlayFor(mesh, veilMat, 1), hull: null, tier: t, key: rec.key,
+          geo: mesh.geometry, n: mesh.count, skel: mesh.skeleton };
         if (wantHull) o.hull = overlayFor(mesh, hullMatFor(t, rec.key === hotKey ? HULL_K_HOT : HULL_K), 0);
         overlays.set(mesh, o);
       } else {
@@ -380,6 +387,7 @@ function syncCycle() {
     collect();
     if (mode !== 'off') applyTint();
     paintTable();
+    refreshPinned();
     timer = setTimeout(cycle, 3000);
   };
   cycle();
@@ -400,7 +408,7 @@ const ndc = new THREE.Vector2();
 let loupeEl = null, loupeOn = false, pinned = null, lastCast = 0;
 
 const fmtB = (b) => (b >= 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`);
-// short tier words for the chunky row pills (R wants labeled pills back, 09-02)
+// short tier words for the chunky row pills
 const TIER_SHORT = ['great', 'good', 'ok', 'poor', 'bad'];
 const badge = (t, txt, chunky) => `<b class="pf-badge${chunky ? ' pf-badge-lg' : ''}" style="background:${TIERS[Math.min(4, t)]}">${txt}</b>`;
 
@@ -438,8 +446,8 @@ function loupeHtml(rec) {
       i < th.length ? `${name} ≤${th[i].toLocaleString()}${u}` : `${name} >${th[th.length - 1].toLocaleString()}${u}`);
     return `${label} — ${parts.join(' · ')}`;
   };
-  // what each metric IMPACTS (R, 09-02 r11: data labels should describe which
-  // part of performance they affect). Hovering the label row shows this.
+  // what each metric IMPACTS (data labels should describe which part of
+  // performance they affect). Hovering the label row shows this.
   const LABEL_TIP = {
     triangles: 'geometry the GPU rasterizes each frame; high counts tax vertex processing & fill',
     'draw calls': 'separate GPU submissions (≈1 per material/group); high counts are CPU-bound overhead — often the true bottleneck',
@@ -511,8 +519,13 @@ function castAt(ev) {
   const r = canvas.getBoundingClientRect();
   ndc.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
   ray.setFromCamera(ndc, camera);
-  const hits = ray.intersectObjects(meshes, false);
+  const hits = ray.intersectObjects(visibleMeshes, false);
   for (const h of hits) {
+    // the census is up to 3 s stale: a mesh whose chain no longer reaches the
+    // scene (entity removed) or was hidden since must not answer a hover
+    let root = h.object, shown = true;
+    for (; root.parent; root = root.parent) if (!root.visible) shown = false;
+    if (root !== scene || !shown || !root.visible) continue;
     let key = null;
     for (let p = h.object; p && !key; p = p.parent) key = meshOwner.get(p) ?? null;
     if (key) return subjects.get(key);
@@ -520,7 +533,7 @@ function castAt(ev) {
   return null;
 }
 
-// Fable, 09-02: the title is clipped at 2 lines by max-height + clip-path (the
+// The title is clipped at 2 lines by max-height + clip-path (the
 // float-wrapped header can't use -webkit-box line-clamp — any BFC-maker stops
 // lines flowing around the floats), so the '…' truncation cue is drawn by hand:
 // measure the last VISIBLE line's end via Range rects and pin an absolutely-
@@ -569,14 +582,23 @@ function placeLoupe(ev) {
   loupeEl.style.top = `${Math.max(4, y)}px`;
 }
 
+// collect() rebuilds every record, so a pinned card holds a dead one: repoint
+// it at the fresh record, or drop the pin if the subject left the scene
+function refreshPinned() {
+  if (!pinned) return;
+  const rec = subjects.get(pinned.key);
+  if (rec) { pinned = rec; setEmphasis(rec); loupeEl.innerHTML = loupeHtml(rec); dressLoupeName(); }
+  else { pinned = null; setEmphasis(null); loupeEl.classList.remove('show', 'pinned'); }
+}
+
 function onClick(ev) {
   if (!loupeOn) return;
   if (pinned) { pinned = null; setEmphasis(null); loupeEl.classList.remove('show', 'pinned'); return; }
   const rec = castAt(ev);
   if (rec) {
     pinned = rec; setEmphasis(rec); loupeEl.innerHTML = loupeHtml(rec); dressLoupeName(); placeLoupe(ev);
-    // pinned → make the card hoverable so every `title` tooltip fires (R, 09-02
-    // r11). Unpinned it stays pointer-events:none so it follows the cursor and
+    // pinned → make the card hoverable so every `title` tooltip fires.
+    // Unpinned it stays pointer-events:none so it follows the cursor and
     // the raycast reaches the scene beneath it.
     loupeEl.classList.add('show', 'pinned');
   }
@@ -631,6 +653,11 @@ function paintTable() {
      </div>`).join('') || '<div class="pf-row"><span>nothing collected yet</span></div>';
 }
 
+// a one-shot census taken while nothing is watching must not outlive its use
+function releaseIfIdle() {
+  if (!loupeOn && mode === 'off') { forget(); paintTable(); }
+}
+
 function flashSubject(key) {
   const rec = subjects.get(key);
   const target = rec?.meshList[0];
@@ -673,18 +700,15 @@ async function copyReceipt() {
   };
   const text = JSON.stringify(receipt, null, 1);
   try { await navigator.clipboard.writeText(text); } catch { console.log(text); }
-  return receipt.subjects.length;
+  const n = receipt.subjects.length;
+  releaseIfIdle();
+  return n;
 }
 
 // ---- panel section ----------------------------------------------------------
 
 /** Mounts the perf section into the debug panel's stack. */
 export function buildPerfPanel(stack, { toast = console.log } = {}) {
-  const head = document.createElement('div');
-  head.className = 'row';
-  head.style.cssText = 'margin-top:6px;opacity:.75';
-  head.textContent = '— perf (viewer-local) —';
-
   const modeRow = document.createElement('div');
   modeRow.className = 'row';
   const lbl = document.createElement('span');
@@ -696,12 +720,12 @@ export function buildPerfPanel(stack, { toast = console.log } = {}) {
     o.value = k; o.textContent = m.label;
     sel.appendChild(o);
   }
-  sel.value = mode;                         // b73: the section builds lazily — read the live mode, don't assume 'off'
+  sel.value = mode;                         // the section builds lazily — read the live mode, don't assume 'off'
   sel.onchange = () => setMode(sel.value);
   onModeChange = () => { sel.value = mode; };
   modeRow.append(lbl, sel);
 
-  // the loupe gets a proper TOOL button (R, 09-01): key-mirror styling,
+  // the loupe gets a proper TOOL button: key-mirror styling,
   // its own glyph, pressed-in while armed; the cursor changes with it
   const loupeRow = document.createElement('div');
   loupeRow.className = 'row';
@@ -738,6 +762,7 @@ export function buildPerfPanel(stack, { toast = console.log } = {}) {
 
   const legend = document.createElement('div');
   legend.className = 'pf-legend';
+  legend.title = 'viewer-local: nothing here is sent to the world or written to the log';
   legend.innerHTML = TIERS.map((c, i) => `<i style="background:${c}" title="${TIER_NAMES[i]}"></i>`).join('')
     + '<span>cheap → costly · fixed thresholds</span>';
 
@@ -752,13 +777,13 @@ export function buildPerfPanel(stack, { toast = console.log } = {}) {
   btns.className = 'row btn-row';
   const rescan = document.createElement('button');
   rescan.textContent = 'rescan';
-  rescan.onclick = () => { collect(); if (mode !== 'off') applyTint(); paintTable(); toast('perfscope: rescanned'); };
+  rescan.onclick = () => { collect(); if (mode !== 'off') applyTint(); paintTable(); toast(`perfscope: rescanned (${subjects.size} subjects)`); releaseIfIdle(); };
   const rcpt = document.createElement('button');
   rcpt.textContent = 'copy receipt';
   rcpt.onclick = async () => toast(`perfscope: receipt copied (${await copyReceipt()} subjects)`);
   btns.append(rescan, rcpt);
 
-  stack.append(head, modeRow, loupeRow, olRow, solRow, legend, tableEl, btns);
+  stack.append(modeRow, loupeRow, olRow, solRow, legend, tableEl, btns);
 }
 
 /** Full teardown: overlays removed (originals were never touched), loupe

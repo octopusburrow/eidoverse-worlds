@@ -707,8 +707,8 @@ export function initDebug(p = {}) {
   });
   const stack = document.createElement('div');
   stack.className = 'stack';
-  // The frame block is PINNED above everything (tel0s: the stats pre at the
-  // bottom rendered past the scroller's end) — its own element, flex:none,
+  // The frame block is PINNED above everything (the stats pre at the bottom
+  // used to render past the scroller's end) — its own element, flex:none,
   // so scrolling the settings never hides the one number the panel is
   // usually opened for.
   framePre = document.createElement('pre');
@@ -757,8 +757,8 @@ export function initDebug(p = {}) {
     stack.appendChild(d.wrap);
   }
 
-  // The live-tuning groups become COLLAPSIBLE subsections (R, 09-02: split the
-  // debug menu into subareas with a dropdown arrow, matching World/Settings).
+  // The live-tuning groups become COLLAPSIBLE subsections (the debug menu
+  // splits into subareas with a dropdown arrow, matching World/Settings).
   // These are looser than the panel sections, so an arrow (not an icon) marks
   // each; they reuse the .sec grammar so open/hover styling matches the house.
   dbgSection(stack, 'blink', (body) => buildBlinkPanel(body));
