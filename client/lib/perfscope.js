@@ -26,7 +26,7 @@
 // not "mesh #217").
 
 import { THREE, scene, camera, renderer, canvas } from './core.js';
-import { positionLocal, normalLocal, positionWorld, cameraPosition, uniform } from 'three/tsl';
+import { positionLocal, normalLocal, positionWorld, cameraPosition, modelScale } from 'three/tsl';
 import { entities, entityMeta } from './world.js';
 import { fsvg } from './icons.js';
 
@@ -83,10 +83,20 @@ const bppOf = (tex) => {
 function texBytes(tex) {
   const img = tex.image;
   if (!img) return 0;
-  if (tex.isCompressedTexture && Array.isArray(tex.mipmaps) && tex.mipmaps.length) {
-    return tex.mipmaps.reduce((s, m) => s + (m.data?.byteLength ?? 0), 0);
+  const mipSum = (mips) => mips.reduce((s, m) => s + (m.data?.byteLength ?? 0), 0);
+  if (tex.isCompressedTexture) {
+    // cube / array compressed textures keep their mip chains per face
+    if (Array.isArray(img)) return img.reduce((s, f) => s + (Array.isArray(f?.mipmaps) ? mipSum(f.mipmaps) : 0), 0);
+    if (Array.isArray(tex.mipmaps) && tex.mipmaps.length) return mipSum(tex.mipmaps);
   }
-  const w = img.width ?? img.videoWidth ?? 0, h = img.height ?? img.videoHeight ?? 0;
+  if (Array.isArray(img)) {
+    const f = img[0];
+    if (!f) return 0;
+    const w = f.width || f.videoWidth || 0, h = f.height || f.videoHeight || 0;
+    return Math.round(w * h * bppOf(tex) * img.length * (tex.generateMipmaps ? 4 / 3 : 1));
+  }
+  // `||`, not `??`: a <video> has width 0, not undefined
+  const w = img.width || img.videoWidth || 0, h = img.height || img.videoHeight || 0;
   // mip chain adds exactly 1/3 (geometric series 1+¼+1/16+… = 4/3) IF mips exist:
   // real uploaded mipmaps, or the auto-generate flag on a power-of-two-ish image.
   const hasMips = (Array.isArray(tex.mipmaps) && tex.mipmaps.length > 1) ||
@@ -98,6 +108,13 @@ function texBytes(tex) {
 
 let subjects = new Map();   // key -> stat record
 let meshOwner = new WeakMap(); // mesh -> subject key (for the loupe raycast)
+let meshes = [];            // every censused mesh — the loupe raycasts this, not the whole scene
+
+function forget() {
+  subjects = new Map();
+  meshOwner = new WeakMap();
+  meshes = [];
+}
 
 function freshRec(key, kind, label) {
   return { key, kind, label, tris: 0, verts: 0, draws: 0, meshes: 0,
@@ -111,17 +128,21 @@ function collect() {
   const nodeToId = new Map();
   for (const [id, node] of entities) nodeToId.set(node, id);
 
-  subjects = new Map();
-  meshOwner = new WeakMap();
+  forget();
   const worldRec = freshRec('~world', 'fabric', 'world fabric (terrain · sky · grass …)');
 
   scene.traverse((o) => {
     if (!o.isMesh && !o.isSkinnedMesh) return;
     if (o.userData?.perfscopeIgnore) return;          // our own helpers etc.
 
-    // walk up: entity? a named remote/local body? else the fabric bucket
-    let rec = null;
+    // walk up: entity? a named remote/local body? else the fabric bucket.
+    // Also learn whether the mesh is actually shown: hidden LOD levels /
+    // outfits keep their VRAM but draw nothing, so tris/draws bill only the
+    // visible chain while textures count regardless.
+    let rec = null, vis = true;
     for (let p = o; p; p = p.parent) {
+      if (!p.visible) vis = false;
+      if (rec) continue;
       const id = nodeToId.get(p);
       if (id !== undefined) {
         rec = subjects.get(`e:${id}`);
@@ -130,19 +151,19 @@ function collect() {
           rec = freshRec(`e:${id}`, 'entity', id + (meta?.lib ? `  (${String(meta.lib).split('/').pop()})` : ''));
           subjects.set(rec.key, rec);
         }
-        break;
+        continue;
       }
       if (p.userData?.perfscopeSubject) {              // bodies tag themselves (below)
         rec = subjects.get(`p:${p.userData.perfscopeSubject}`);
         if (!rec) { rec = freshRec(`p:${p.userData.perfscopeSubject}`, 'person', p.userData.perfscopeSubject); subjects.set(rec.key, rec); }
-        break;
+        continue;
       }
-      // avatar roots stamp themselves (avatar.js: userData.who on every body)
-      if (p.userData?.isBody || p.userData?.who) {
-        const who = p.userData.who ?? 'someone';
+      // avatar roots stamp themselves (avatar.js: userData.who on every body).
+      // isBody alone is not enough — gaze / drag-nail meshes wear it too.
+      if (p.userData?.who) {
+        const who = p.userData.who;
         rec = subjects.get(`p:${who}`);
         if (!rec) { rec = freshRec(`p:${who}`, 'person', who); subjects.set(rec.key, rec); }
-        break;
       }
     }
     if (!rec) { rec = worldRec; if (!subjects.has(rec.key)) subjects.set(rec.key, rec); }
@@ -150,12 +171,14 @@ function collect() {
     const g = o.geometry;
     const inst = o.isInstancedMesh ? o.count : 1;
     const idx = g?.index ? g.index.count : (g?.attributes?.position?.count ?? 0);
-    rec.tris += Math.round(idx / 3) * inst;
-    rec.verts += (g?.attributes?.position?.count ?? 0) * inst;
-    rec.meshes += 1;
-    rec.instances += inst > 1 ? inst : 0;
     const mats = Array.isArray(o.material) ? o.material : [o.material];
-    rec.draws += Math.max(1, g?.groups?.length || mats.length);
+    if (vis) {
+      rec.tris += Math.round(idx / 3) * inst;
+      rec.verts += (g?.attributes?.position?.count ?? 0) * inst;
+      rec.instances += inst > 1 ? inst : 0;
+      rec.draws += Math.max(1, g?.groups?.length || mats.length);
+    }
+    rec.meshes += 1;
     for (const m of mats) {
       if (!m) continue;
       rec.mats.add(m);
@@ -173,6 +196,7 @@ function collect() {
     if (g?.morphAttributes?.position) rec.morphs = Math.max(rec.morphs, g.morphAttributes.position.length);
     rec.meshList.push(o);
     meshOwner.set(o, rec.key);
+    meshes.push(o);
   });
 
   for (const rec of subjects.values()) {
@@ -203,25 +227,14 @@ export const MODES = {
 };
 
 let mode = 'off';
-// Tint is an OVERLAY, not a replacement (R, 09-01 23:05): a translucent
-// veil mesh sharing the original's geometry draws over it, so the object's
-// own detail stays readable beneath the cost color — plus a bounds outline
-// per subject in its tier color. This also retires the material-swap/restore
-// hazard entirely: originals are never touched.
-// b72 (R, 09-03 10:14): "it should be maintaining all the original texture
-// data, just OVERLAYING a color and a colored outline on the silhouette." The
-// 50% veil was reading as semi-transparent flat objects — textures technically
-// beneath, effectively gone. Veil drops to 25%, and the outline becomes a true
-// SILHOUETTE: an inverted hull (back faces pushed out along normals, tier
-// color) that the mesh's own front faces hide everywhere except the edge.
-// b73 (research, 09-03): the industry cost views — UE Shader Complexity, Unity
-// and Godot Overdraw — are global material OVERRIDES: flat tier color replaces
-// every texture, sky and landscape included; only editor gizmos are exempt.
-// That reading answers "where are the pixels dear?". Our default answers "WHAT
-// is heavy?" and keeps the object recognisable. Both are offered: `solid`
-// flips to the conventional override (fabric included); overlay leaves the
-// world fabric (terrain · sky · grass) untinted and un-hulled — a hull on
-// instanced grass would double the grass draw, a perf tool costing perf.
+// Tint is an OVERLAY, never a replacement: a 25% veil sharing the original's
+// geometry plus an inverted-hull silhouette in the tier color, so the object's
+// own textures stay readable and originals are never touched. The industry
+// cost views (UE Shader Complexity, Unity/Godot Overdraw) are flat material
+// OVERRIDES answering "where are the pixels dear?"; ours answers "WHAT is
+// heavy?". `solid` flips to the conventional override (fabric included);
+// overlay leaves the world fabric untinted and un-hulled — a hull on instanced
+// grass would double the grass draw, a perf tool costing perf.
 let solidOn = false;
 export function setSolid(on) { solidOn = !!on; if (mode !== 'off') applyTint(); onSolidChange?.(); }
 let onSolidChange = null;
@@ -241,49 +254,45 @@ const tintMats = TIERS.map((c) => {
 });
 // Silhouette hull width is screen-constant: local displacement = K · distance
 // to camera ÷ the object's world scale (a scale-3 cat and a scale-0.55 ruin get
-// the same pixel edge). K≈2px at 720p/70°. One material per (tier, scale).
+// the same pixel edge). K≈2px at 720p/70°. The scale is read in-shader from the
+// model matrix, so there are exactly TIERS×2 hull materials (thin / hot).
 // b74 (R, 09-03 10:43): thin by default, THICK only on the subject the loupe
 // is hovering or has pinned — the edge is a rank cue everywhere and a
 // spotlight on the thing you're actually asking about.
 const HULL_K = 0.0022, HULL_K_HOT = 0.0060;
 const hullMats = new Map();
-function hullMatFor(tier, worldScale, k = HULL_K) {
-  const key = `${tier}:${worldScale.toFixed(3)}:${k}`;
+function hullMatFor(tier, k = HULL_K) {
+  const key = `${tier}:${k}`;
   let m = hullMats.get(key);
   if (m) return m;
   m = new THREE.MeshBasicNodeMaterial({ color: new THREE.Color(TIERS[tier]), side: THREE.BackSide, toneMapped: false });
-  const w = cameraPosition.sub(positionWorld).length().mul(k).mul(uniform(1 / Math.max(worldScale, 1e-4)));
+  const ws = modelScale.x.abs().add(modelScale.y.abs()).add(modelScale.z.abs()).div(3).max(1e-4);
+  const w = cameraPosition.sub(positionWorld).length().mul(k).div(ws);
   m.positionNode = positionLocal.add(normalLocal.normalize().mul(w));
   m.name = `perfscope-hull-${tier}`;
   hullMats.set(key, m);
   return m;
 }
-const _ws = new THREE.Vector3();
-const veils = new Set();      // overlay meshes we added (veils + hulls)
+const overlays = new Map();   // mesh -> { veil, hull, tier, key } — diffed each cycle, never rebuilt wholesale
 const outlines = new Set();   // per-subject Box3Helpers
 let outlinesOn = false;       // bounds boxes are opt-in (R, 09-02: 'a bit much' on by default)
 const _box = new THREE.Box3();
 
-function veilFor(mesh, mat) {
-  return overlayFor(mesh, mat, 1);
-}
-const hullsByKey = new Map();   // subject key -> [{ ov, tier, ws }] for emphasis swaps
 let hotKey = null;
-function hullFor(mesh, tier, key) {
-  mesh.getWorldScale(_ws);
-  const ws = (Math.abs(_ws.x) + Math.abs(_ws.y) + Math.abs(_ws.z)) / 3;
-  const ov = overlayFor(mesh, hullMatFor(tier, ws, key === hotKey ? HULL_K_HOT : HULL_K), 0);
-  if (!hullsByKey.has(key)) hullsByKey.set(key, []);
-  hullsByKey.get(key).push({ ov, tier, ws });
-  return ov;
+// an inverted hull over a transparent / cut-out / no-depth surface draws a
+// solid shell where the object itself is see-through
+function hullable(mesh) {
+  const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+  return mats.every((m) => !m || !(m.transparent || m.alphaTest > 0 || m.depthWrite === false));
 }
 /** Thick hull on one subject (the loupe's hover/pin), thin on everything else. */
 function setEmphasis(rec) {
   const next = rec?.key ?? null;
   if (next === hotKey) return;
-  for (const h of hullsByKey.get(hotKey) ?? []) h.ov.material = hullMatFor(h.tier, h.ws, HULL_K);
   hotKey = next;
-  for (const h of hullsByKey.get(hotKey) ?? []) h.ov.material = hullMatFor(h.tier, h.ws, HULL_K_HOT);
+  for (const o of overlays.values()) {
+    if (o.hull) o.hull.material = hullMatFor(o.tier, o.key === hotKey ? HULL_K_HOT : HULL_K);
+  }
 }
 function overlayFor(mesh, mat, orderBump) {
   let ov = null;
@@ -304,47 +313,81 @@ function overlayFor(mesh, mat, orderBump) {
   mesh.add(ov);                   // rides the original's transform verbatim
   return ov;
 }
+function dropOverlay(mesh) {
+  const o = overlays.get(mesh);
+  if (!o) return;
+  o.veil.parent?.remove(o.veil);
+  o.hull?.parent?.remove(o.hull);
+  overlays.delete(mesh);
+}
 
 function applyTint() {
-  clearTint();
+  clearOutlines();                 // bounds boxes are cheap root helpers; rebuilt per cycle
+  const keep = new Set();
   for (const rec of subjects.values()) {
     const t = Math.min(4, MODES[mode].tier?.(rec) ?? 0);
     const fabric = rec.kind === 'fabric';
     if (fabric && !solidOn) continue;               // overlay: the ground stays the ground
+    const veilMat = solidOn ? solidMats[t] : tintMats[t];
     _box.makeEmpty();
     for (const mesh of rec.meshList) {
       if (!mesh.parent) continue;                    // churned out since collect
-      veils.add(veilFor(mesh, solidOn ? solidMats[t] : tintMats[t]));
-      if (!fabric) veils.add(hullFor(mesh, t, rec.key)); // never hull the meadow
+      keep.add(mesh);
+      const wantHull = !fabric && hullable(mesh);    // never hull the meadow
+      let o = overlays.get(mesh);
+      if (o && (!!o.hull !== wantHull)) { dropOverlay(mesh); o = null; }
+      if (!o) {
+        o = { veil: overlayFor(mesh, veilMat, 1), hull: null, tier: t, key: rec.key };
+        if (wantHull) o.hull = overlayFor(mesh, hullMatFor(t, rec.key === hotKey ? HULL_K_HOT : HULL_K), 0);
+        overlays.set(mesh, o);
+      } else {
+        o.key = rec.key;
+        if (o.veil.material !== veilMat) o.veil.material = veilMat;
+        if (o.hull && o.tier !== t) o.hull.material = hullMatFor(t, rec.key === hotKey ? HULL_K_HOT : HULL_K);
+        o.tier = t;
+      }
       _box.expandByObject(mesh);
     }
     if (outlinesOn && !_box.isEmpty()) {
       const o = new THREE.Box3Helper(_box.clone(), new THREE.Color(TIERS[t]));
       o.userData.perfscopeIgnore = true;
+      o.userData.isDebug = true;                     // sky.js adopts unmarked root children
       outlines.add(o);
       scene.add(o);
     }
   }
+  for (const mesh of [...overlays.keys()]) if (!keep.has(mesh) || !mesh.parent) dropOverlay(mesh);
 }
 
-function clearTint() {
-  for (const v of veils) v.parent?.remove(v);
-  veils.clear();
-  hullsByKey.clear();
+function clearOutlines() {
   for (const o of outlines) { scene.remove(o); o.dispose?.(); }
   outlines.clear();
 }
+function clearTint() {
+  for (const mesh of [...overlays.keys()]) dropOverlay(mesh);
+  clearOutlines();
+}
 
 let timer = null;
-export function setMode(next) {
-  mode = next in MODES ? next : 'off';
+// one census loop serves both the tint and the loupe: while either is on the
+// scene is re-walked every 3 s (churn survival); tints are diffed only when a
+// mode is active. Both off → timer cleared and the census dropped, so this
+// module holds no references into a scene it isn't watching.
+function syncCycle() {
   clearTimeout(timer); timer = null;
-  if (mode === 'off') { clearTint(); onModeChange?.(); return; }
+  if (!loupeOn && mode === 'off') { forget(); return; }
   const cycle = () => {
-    collect(); applyTint(); paintTable();
-    timer = setTimeout(cycle, 3000);      // churn survival: re-walk, re-paint
+    collect();
+    if (mode !== 'off') applyTint();
+    paintTable();
+    timer = setTimeout(cycle, 3000);
   };
   cycle();
+}
+export function setMode(next) {
+  mode = next in MODES ? next : 'off';
+  if (mode === 'off') clearTint();
+  syncCycle();
   onModeChange?.();
 }
 export const activeMode = () => mode;
@@ -362,27 +405,15 @@ const TIER_SHORT = ['great', 'good', 'ok', 'poor', 'bad'];
 const badge = (t, txt, chunky) => `<b class="pf-badge${chunky ? ' pf-badge-lg' : ''}" style="background:${TIERS[Math.min(4, t)]}">${txt}</b>`;
 
 function loupeHtml(rec) {
-  // worst textures first, each with its estimated resident bytes; `raw`
-  // flags an uncompressed image (the usual VRAM crime — a 4096² RGBA8
-  // costs ~89 MB with mips where the same KTX2 costs ~11)
-  // textures STACK vertically (R, 09-02), each on ONE line with its dims and
-  // size TOGETHER (not split across the row). biggest first. `raw` = an
-  // uncompressed image sitting in VRAM at full w·h·4 bytes — the usual VRAM
-  // crime; a KTX2/compressed version of the same image costs ~4-8× less.
-  // textures as their own inner table with a center break: dims (+ raw flag)
-  // right-justified against the seam, size left-justified after it — the same
-  // channel-box grammar as the main grid, nested (R, 09-02).
+  // biggest textures first as an inner table: dims (+ `raw` = uncompressed,
+  // the usual VRAM crime — KTX2 costs ~4-8× less) against the seam, size after
   const texRows = [...rec.texs]
     .map((t) => ({ t, b: texBytes(t) }))
     .sort((a, b) => b.b - a.b).slice(0, 4)
     .map(({ t, b }) => `<div class="pl-texd">${t.image?.width ?? '?'}×${t.image?.height ?? '?'}${t.isCompressedTexture ? '' : ' <em title="uncompressed — sits in VRAM at full size; a compressed (KTX2) version costs ~4-8× less">raw</em>'}</div><div class="pl-texb">${fmtB(b)}</div>`)
     .join('');
-  const meta = rec.kind === 'entity' ? entityMeta.get(rec.key.slice(2)) : null;
-  // scene standing (R, 09-02): "poor" is the tier; "#2 of 17 by draw calls" is
-  // the actionable number — where this subject sits among all subjects under the
-  // lens you're currently looking through. Mirrors paintTable's sort so the
-  // card agrees with the false-color overlay and the heaviest table. When no
-  // overlay is active we fall back to overall rank (worst-wins) as the ordering.
+  // "#2 of 17" under the active lens — mirrors paintTable's sort; with no
+  // overlay active the ordering falls back to overall rank.
   const lensMode = mode === 'off' ? 'rank' : mode;
   // compact lens label for the tight header standing-line (the dropdown keeps
   // the fuller MODES labels with their (est)/(proxy) qualifiers).
@@ -398,14 +429,8 @@ function loupeHtml(rec) {
       ? b.rank - a.rank || b.tris - a.tris
       : lensMetric(b) - lensMetric(a));
   const pos = ordered.indexOf(rec) + 1, total = ordered.length;
-  // split the two facts apart (R, 09-02 r10: the merged line got chunky) — the
-  // lens label rides row 2 next to 'placed by'; the rank '#N of M' gets its own
-  // right-justified row 3.
   const rankStr = total > 1 && pos > 0 ? `#${pos} of ${total}` : '';
-  // Maya channel-box layout (R, 09-02): a 3-column grid with a center seam.
-  // label RIGHT-justified against the seam · value RIGHT-justified against the
-  // pill column (with buffer) · tier pill. Everything lines up on two clean
-  // vertical rules instead of floating apart.
+  // channel-box grid: label | value | tier pill, aligned on two vertical rules
   const boundsTip = (label, key) => {
     const th = T[key]; if (!th) return '';
     const u = key === 'texMB' ? ' MB' : '';
@@ -450,29 +475,12 @@ function loupeHtml(rec) {
   const worstLabel = { tris: 'triangles', draws: 'draw calls', texMB: 'texture VRAM',
     bones: 'bones', mats: 'materials', alpha: 'transparency' }[rec.worst] || rec.worst;
   const why = `overall = worst category wins (VRChat model). this object's ${TIER_NAMES[rec.rank]} rank is set by ${worstLabel}. fix the red/orange rows to raise it.`;
-  // header (R, 09-02 r10 — the merged meta line got chunky, so decompose it):
-  //   row 1: name (left, ellipsised) | perf pill (right)
-  //   row 2: placed by X (left)  ·  perf-mode / lens label (left, after it)
-  //   row 3: rank "#N of M" — right-justified, sitting under the pill column.
-  // placer field in real entityMeta is `actor` (NOT `by` — that key never
-  // existed, so 'placed by' had silently never rendered on a real object).
-  const placer = meta?.actor ?? meta?.by;
   const lensTip = { rank: 'overall rank — worst category wins (VRChat model)',
     tris: 'triangle count — GPU vertex/geometry load', draws: 'draw calls — CPU→GPU submit overhead, often the real cost',
     tex: 'texture memory — estimated VRAM the images occupy', mat: 'material cost — a categorical shader-complexity proxy',
     bones: 'skinning — bone count driving per-frame skeletal transforms', alpha: 'transparency — overdraw & sort cost from alpha materials' }[lensMode] ?? '';
-  // header (R, 09-02 r12) — two columns, three rows:
-  //   LEFT  (flows): name (wraps to ≤2 lines) then 'placed by' directly beneath
-  //          it — so placed-by rides row 2 when the name is one line, row 3 when
-  //          the name took two ("goes on the line above if overflow not used").
-  //   RIGHT (fixed 3-row stack, space-between): pill · perf-mode · rank.
-  // Smart wrap for spaceless titles: insert <wbr> break-opportunities after
-  // separators (_ . - / :) so a long identifier breaks on its punctuation; a
-  // soft-hyphen fallback lets an unbroken run split between characters.
-  // b75 (Fable, 09-03): the title was doing two jobs — the entity id is the
-  // NAME, the GLB filename is PROVENANCE, and it was the provenance that
-  // overflowed into the clamp. Split them: id bold on its own line(s), lib
-  // basename beneath in dim small type, extension dropped.
+  // title = the entity id; the GLB basename is provenance, shown dim beneath.
+  // <wbr> after separators / camelCase humps lets long identifiers wrap.
   const paren = rec.label.indexOf('  (');
   const nameOnly = paren > 0 ? rec.label.slice(0, paren) : rec.label;
   const libOnly = paren > 0 ? rec.label.slice(paren + 3).replace(/\)$/, '').replace(/\.(glb|gltf|vrm)$/i, '') : '';
@@ -481,19 +489,9 @@ function loupeHtml(rec) {
     .replace(/([a-z0-9])([A-Z])/g, '$1<wbr>$2'); // and at camelCase humps
   const nameHtml = wbr(nameOnly);
   const libHtml = libOnly ? `<span class="pl-lib" title="${esc(libOnly)}">${wbr(libOnly)}</span>` : '';
-  // ── header (R, 09-02): name (left) + a right-aligned VERDICT STACK (pill ·
-  //    lens · rank). Those three are the tightly-coupled performance verdict —
-  //    the grade, which lens produced it, and where it ranks under that lens — so
-  //    they belong together on the right, stacked under the pill. 'placed by' is
-  //    provenance, not a perf fact, so it's DROPPED from the loupe entirely (R's
-  //    call: "it's not really a perf thing" — a home in the inspector's history
-  //    is the right follow-up). With attribution gone the header is just two
-  //    things: what it is (name) and how it's doing (the verdict stack).
-  // Fable, 09-02: verdict comes FIRST in the DOM because pill and lens/rank are
-  //    now right-FLOATS and the name is a plain block flowing around them —
-  //    floats only shape lines that start at or after them. Per-line widths:
-  //    title line 1 wraps at the PILL's edge (fills the old blank), line 2 at
-  //    the wider lens label's edge — both derived from real rendered widths.
+  // header: verdict stack (pill · lens · rank) is a right float and comes
+  // first in the DOM so the name flows around it; 'placed by' is provenance,
+  // not a perf fact, and lives in the inspector instead.
   return `
   <div class="pl-head">
     <div class="pl-verdict">
@@ -513,7 +511,7 @@ function castAt(ev) {
   const r = canvas.getBoundingClientRect();
   ndc.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
   ray.setFromCamera(ndc, camera);
-  const hits = ray.intersectObjects(scene.children, true);
+  const hits = ray.intersectObjects(meshes, false);
   for (const h of hits) {
     let key = null;
     for (let p = h.object; p && !key; p = p.parent) key = meshOwner.get(p) ?? null;
@@ -553,7 +551,6 @@ function onMove(ev) {
   const now = performance.now();
   if (now - lastCast < 90) return;
   lastCast = now;
-  if (!subjects.size) collect();
   const rec = castAt(ev);
   setEmphasis(rec);
   if (!rec) { loupeEl.classList.remove('show'); return; }
@@ -596,7 +593,6 @@ export function setLoupe(onOff) {
   }
   document.body.classList.toggle('loupe-on', loupeOn);  // the loupe cursor (ui.js bakes it)
   if (loupeOn) {
-    if (!subjects.size) collect();
     canvas.addEventListener('pointermove', onMove);
     canvas.addEventListener('click', onClick);
   } else {
@@ -604,6 +600,7 @@ export function setLoupe(onOff) {
     canvas.removeEventListener('click', onClick);
     loupeEl.classList.remove('show', 'pinned');
   }
+  syncCycle();
   onLoupeChange?.(loupeOn);
 }
 let onLoupeChange = null;
@@ -612,22 +609,25 @@ let onLoupeChange = null;
 
 let tableEl = null;
 
-const metricOf = (r) => mode === 'tex' ? r.texBytes : mode === 'draws' ? r.draws
-  : mode === 'bones' ? r.bones : mode === 'mat' ? r.matCost
-  : mode === 'alpha' ? r.alpha : r.tris;
-const metricFmt = (r) => mode === 'tex' ? fmtB(r.texBytes) : mode === 'draws' ? `${r.draws} dc`
-  : mode === 'bones' ? `${r.bones} bones` : mode === 'alpha' ? `${r.alpha} α`
+// mode 'off' orders by overall rank — the same fallback the loupe card uses
+const lensOf = () => (mode === 'off' ? 'rank' : mode);
+const metricOf = (r, lens) => lens === 'tex' ? r.texBytes : lens === 'draws' ? r.draws
+  : lens === 'bones' ? r.bones : lens === 'mat' ? r.matCost
+  : lens === 'alpha' ? r.alpha : r.tris;
+const metricFmt = (r, lens) => lens === 'tex' ? fmtB(r.texBytes) : lens === 'draws' ? `${r.draws} dc`
+  : lens === 'bones' ? `${r.bones} bones` : lens === 'alpha' ? `${r.alpha} α`
   : `${(r.tris / 1000).toFixed(r.tris > 9999 ? 0 : 1)}k tri`;
 
 function paintTable() {
   if (!tableEl) return;
+  const lens = lensOf();
   const rows = [...subjects.values()]
-    .sort((a, b) => (mode === 'rank' ? b.rank - a.rank || b.tris - a.tris : metricOf(b) - metricOf(a)))
+    .sort((a, b) => (lens === 'rank' ? b.rank - a.rank || b.tris - a.tris : metricOf(b, lens) - metricOf(a, lens)))
     .slice(0, 6);
   tableEl.innerHTML = rows.map((r) =>
-    `<div class="pf-row" data-key="${r.key}">
-       <i style="background:${TIERS[MODES[mode].tier?.(r) ?? r.rank]}"></i>
-       <span>${r.label}</span><em>${metricFmt(r)}</em>
+    `<div class="pf-row" data-key="${esc(r.key)}">
+       <i style="background:${TIERS[MODES[lens].tier?.(r) ?? r.rank]}"></i>
+       <span>${esc(r.label)}</span><em>${metricFmt(r, lens)}</em>
      </div>`).join('') || '<div class="pf-row"><span>nothing collected yet</span></div>';
 }
 
@@ -637,6 +637,7 @@ function flashSubject(key) {
   if (!target) return;
   const box = new THREE.BoxHelper(rec.kind === 'entity' ? entities.get(key.slice(2)) ?? target : target, 0xffffff);
   box.userData.perfscopeIgnore = true;
+  box.userData.isDebug = true;      // sky.js adopts unmarked root children
   scene.add(box);
   setTimeout(() => { scene.remove(box); box.dispose?.(); }, 1800);
 }
@@ -656,7 +657,7 @@ async function copyReceipt() {
   const info = renderer.info;
   const receipt = {
     kind: 'perfscope-receipt', v: 1, at: new Date().toISOString(),
-    page: location.href.replace(/key=[^&]*/, 'key=…'),
+    page: location.origin + location.pathname,   // never the query: it carries the join key
     ua: navigator.userAgent, gpu,
     measured: { calls: info?.render?.calls, triangles: info?.render?.triangles,
       geometries: info?.memory?.geometries, textures: info?.memory?.textures },
@@ -709,6 +710,7 @@ export function buildPerfPanel(stack, { toast = console.log } = {}) {
   lb.title = 'loupe — hover an object for its cost card; click pins';
   lb.innerHTML = `${fsvg('magnifying-glass', 15)}<span>loupe</span>`;
   lb.onclick = () => setLoupe(!loupeOn);
+  lb.classList.toggle('on', loupeOn);       // lazily built: reflect the live state
   onLoupeChange = (on) => lb.classList.toggle('on', on);
   loupeRow.append(lb);
 
@@ -759,7 +761,8 @@ export function buildPerfPanel(stack, { toast = console.log } = {}) {
   stack.append(head, modeRow, loupeRow, olRow, solRow, legend, tableEl, btns);
 }
 
-/** Full teardown — restore every material, drop listeners, stop timers. */
+/** Full teardown: overlays removed (originals were never touched), loupe
+ *  listeners dropped, the census timer stopped and its references released. */
 export function perfscopeOff() {
   setMode('off');
   setLoupe(false);

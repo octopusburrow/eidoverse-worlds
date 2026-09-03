@@ -21,6 +21,7 @@ import { JOINT_SPECS, HAIR_TUNING, WING_TUNING } from './ammodoll.js';
 import { BLINK, WING_IDLE, LIMP_SPRINGS } from './avatar.js';
 import { makeFrame } from './frames.js';
 import { buildPerfPanel } from './perfscope.js';
+import { toast } from './ui.js';
 
 // box = an OBB, walkable on top, solid on the sides between min.y and max.y
 // pillar = anything over 2.4m tall, collapsed to a slim centre column so you
@@ -680,8 +681,7 @@ function buildWingPanel(stack) {
   stack.append(sub('flap (live)'), idle.rows, sub('limp (needs a ragdoll)'), sim.rows, btns);
 }
 
-// the panel has no toast of its own; keep the dependency to one line
-function toastLike(msg) { console.log(`[debug] ${msg}`); }
+const toastLike = (msg) => toast(msg);
 
 // ---- panel -----------------------------------------------------------------
 
