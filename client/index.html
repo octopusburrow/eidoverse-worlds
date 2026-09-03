@@ -843,7 +843,7 @@ body.touch #touch { display: block; }
      min-width floor + the grid's 1fr stretch column dumped all slack as empty
      space on the left; width:max-content lets the card hug its rows, still
      bounded by max-width for pathological long names. */
-  width: max-content; max-width: 320px; padding: 9px 11px 7px; border-radius: 8px;
+  width: max-content; max-width: 320px; padding: 9px 8px 7px; border-radius: 8px;
   font: 11.5px/1.5 var(--font-code); color: var(--fg);
   background: rgb(var(--panel-rgb) / .94);   /* floats over content: near-opaque */
   box-shadow: 0 6px 20px rgb(0 0 0 / .45), var(--rim);
@@ -864,7 +864,7 @@ body.touch #touch { display: block; }
      as wide as label+value+pill actually need (R, 09-02 r8: no left gutter). */
   grid-template-columns: auto auto auto;
   align-items: center;
-  column-gap: 14px; row-gap: 3px;
+  column-gap: 8px; row-gap: 3px;
 }
 .perf-loupe .pll { color: var(--dim); text-align: right; }
 .perf-loupe .plv { color: var(--fg); text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
@@ -887,7 +887,7 @@ body.touch #touch { display: block; }
    rank) — the three tightly-coupled perf facts grouped under the pill. 'placed
    by' dropped (provenance, not perf). Header is now just name | verdict. */
 .perf-loupe .pl-head {
-  display: flex; align-items: flex-start; gap: 12px; color: var(--fg);
+  display: flex; align-items: flex-start; gap: 8px; color: var(--fg);
   padding-bottom: 4px; margin-bottom: 4px; border-bottom: 1px solid var(--edge);
 }
 /* name fills the row up to the pill, wrapping THERE (R, 09-02). flex-basis:0 +
@@ -896,13 +896,13 @@ body.touch #touch { display: block; }
    forces the pane wider than the data table — the table sets pane width, the
    title fills whatever that gives. line-clamp lives on an inner span (a flex
    item that is itself a -webkit-box won't stretch; a block wrapper will). */
-/* name wraps against the pill without driving the pane wider than the data table
-   (R, 09-02). Measured: the data grid's true width is ~232px, leaving ~155px for
-   the name beside the pill; capping there keeps the pane data-driven and lets the
-   title fill right up to the pill. A heavier object with a wider data table just
-   gives the pane more width; the name uses up to this cap. */
+/* name sits CLOSE to the perf pill and the pane stays narrow (R, 09-02). Measured
+   with tightened buffers: data grid ≈186px, verdict block ≈84px, so the name gets
+   ≈94px beside it — capped there, the name fills right up to the pill and the pane
+   is driven by the (now-narrow) data table, not the name. line-clamp:2 + hidden
+   ellipsises a long name so it never reaches the perf-mode line on the right. */
 .perf-loupe .pl-name {
-  flex: 1 1 auto; min-width: 0; max-width: 155px;
+  flex: 1 1 auto; min-width: 0; max-width: 94px;
   font-size: 12px; font-weight: 700; line-height: 1.3;
   overflow-wrap: anywhere; hyphens: auto;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
