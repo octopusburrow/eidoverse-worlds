@@ -910,6 +910,9 @@ body.touch #touch { display: block; }
   color: var(--dim); font-size: 10px;
 }
 .perf-loupe .pl-rankrow { font-variant-numeric: tabular-nums; }
+/* 'placed by' label stays dim; the actor NAME brightens (dim-label/bright-value,
+   R, 09-02) — brighter, not bolder, so it reads as the meaningful token. */
+.perf-loupe .pl-placer b { color: var(--fg); font-weight: 600; }
 /* texlist tucks under "textures" as a clear sub-detail */
 .perf-loupe .pl-texlist { font-size: 9.5px; color: var(--dim); padding: 0 0 1px 12px; opacity: .85; }
 /* action hint right-justified — echoes the panel's right edge and reads as

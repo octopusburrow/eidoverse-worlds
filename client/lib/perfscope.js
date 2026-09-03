@@ -399,7 +399,9 @@ function loupeHtml(rec) {
   const nameHtml = esc(rec.label)
     .replace(/([_./:\-])/g, '$1<wbr>')          // break after separators
     .replace(/([a-z0-9])([A-Z])/g, '$1<wbr>$2'); // and at camelCase humps
-  const placedEl = placer ? `<div class="pl-placer" title="the actor who placed this object into the world">placed by ${esc(placer)}</div>` : '';
+  // dim label + bright value (R, 09-02): 'placed by' stays dim, the actor NAME
+  // brightens — same emphasis grammar as the data rows (dim label, bright value).
+  const placedEl = placer ? `<div class="pl-placer" title="the actor who placed this object into the world">placed by <b>${esc(placer)}</b></div>` : '';
   // header (R, 09-02 layout "C"): a 2×2 grid.
   //   row 1: name (left) | perf pill (right-justified)
   //   row 2: placed by (left) | mode+rank stacked as a tight pair (right)
