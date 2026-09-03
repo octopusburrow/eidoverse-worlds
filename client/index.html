@@ -883,25 +883,22 @@ body.touch #touch { display: block; }
 .perf-loupe .pl-texd { text-align: right; }
 .perf-loupe .pl-texb { text-align: left; color: var(--fg); opacity: .8; font-variant-numeric: tabular-nums; }
 .perf-loupe .pl-texwrap em { font-style: normal; color: var(--attn); opacity: .85; }
-/* header (R, 09-02 r12): two columns, three rows.
-   LEFT flows: name (≤2 lines) then 'placed by' directly under it — so placed-by
-   rides row 2 for a 1-line name and row 3 for a 2-line name ("goes on the line
-   above if overflow not used"). RIGHT is a fixed 3-item stack spread top→bottom:
-   pill · perf-mode · rank, each aligning to the left column's rows. */
+/* header (R, 09-02 layout "C"): a 2×2 grid.
+     row 1: name (left) | perf pill (right-justified)
+     row 2: placed by (left) | mode+rank stacked as a tight pair (right)
+   The pill pairs with the name up top; the mode+rank pair drops to the placed-by
+   line, clear of the pill. Name wraps to ≤2 lines inside row 1 (long-name case
+   just makes row 1 taller; the pairing holds). */
+.perf-loupe .pl-head { --hrow: 17px; }
 .perf-loupe .pl-head {
-  display: flex; align-items: flex-start; gap: 12px; color: var(--fg);
+  display: grid; grid-template-columns: 1fr auto; column-gap: 12px; row-gap: 3px;
+  align-items: start; color: var(--fg);
   padding-bottom: 6px; margin-bottom: 6px; border-bottom: 1px solid var(--edge);
 }
-/* BOTH columns share ONE vertical rhythm (R, 09-02 r13: uneven pill/mode/rank
-   gaps itched). Each is a top-aligned flex column with the SAME per-row line box
-   (--hrow) and NO inter-item gap, so pill↔name-l1, mode↔name-l2, rank↔placed-by
-   land on identical baselines and the gaps can't drift. */
-.perf-loupe .pl-head { --hrow: 17px; }
-.perf-loupe .pl-headL { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
-.perf-loupe .pl-headR { display: flex; flex-direction: column; align-items: flex-end; flex: none; text-align: right; }
-.perf-loupe .pl-headR > * { min-height: var(--hrow); display: flex; align-items: center; }
-/* name: left, wraps to ≤2 lines; each visual line is one --hrow tall so it steps
-   in lockstep with the right column. Capped width; <wbr>/soft breaks split long
+.perf-loupe .pl-head .pl-rank { justify-self: end; }   /* pill right-justified 😜 */
+.perf-loupe .pl-headRfoot { display: flex; flex-direction: column; align-items: flex-end; text-align: right; }
+.perf-loupe .pl-headRfoot > * { line-height: var(--hrow); }
+/* name: left, wraps to ≤2 lines; capped width; <wbr>/soft breaks split long
    identifiers on punctuation. Full name in the title tooltip. */
 .perf-loupe .pl-name {
   min-width: 0; max-width: 210px; line-height: var(--hrow); overflow-wrap: anywhere; hyphens: auto;

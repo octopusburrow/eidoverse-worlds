@@ -400,16 +400,21 @@ function loupeHtml(rec) {
     .replace(/([_./:\-])/g, '$1<wbr>')          // break after separators
     .replace(/([a-z0-9])([A-Z])/g, '$1<wbr>$2'); // and at camelCase humps
   const placedEl = placer ? `<div class="pl-placer" title="the actor who placed this object into the world">placed by ${esc(placer)}</div>` : '';
+  // header (R, 09-02 layout "C"): a 2×2 grid.
+  //   row 1: name (left) | perf pill (right-justified)
+  //   row 2: placed by (left) | mode+rank stacked as a tight pair (right)
+  // The pill pairs with the object name up top; the mode+rank pair drops down to
+  // the placed-by line, clear of the pill — mode near rank, away from the pill,
+  // anchored to a real line on the left. Name wraps to ≤2 lines within row 1, so
+  // the long-name case just makes row 1 taller while the pairing holds.
   return `
   <div class="pl-head">
-    <div class="pl-headL">
-      <b class="pl-name" title="${esc(rec.label)}">${nameHtml}</b>
-      ${placedEl}
-    </div>
-    <div class="pl-headR">
-      <span title="${esc(why)}" class="pl-rank">${badge(rec.rank, TIER_NAMES[rec.rank], true)}</span>
+    <b class="pl-name" title="${esc(rec.label)}">${nameHtml}</b>
+    <span title="${esc(why)}" class="pl-rank">${badge(rec.rank, TIER_NAMES[rec.rank], true)}</span>
+    ${placedEl || '<span></span>'}
+    <div class="pl-headRfoot">
       <span class="pl-mode" title="${esc(lensTip)}">${lensLabel}</span>
-      ${rankStr ? `<span class="pl-rankrow" title="this object's position among all ${total} subjects in the scene, ranked by the active lens">${rankStr}</span>` : '<span></span>'}
+      ${rankStr ? `<span class="pl-rankrow" title="this object's position among all ${total} subjects in the scene, ranked by the active lens">${rankStr}</span>` : ''}
     </div>
   </div>
   <div class="pl-grid">${rows}</div>
