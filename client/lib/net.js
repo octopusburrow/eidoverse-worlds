@@ -16,6 +16,7 @@ import { pending, P } from './scheduler.js';
 // the net → chat → net cycle). One writer per verb, always.
 import { remotes, ensureRemote, dropRemote, pushPose, noteServerTime, noteSpeaking } from './remotes.js';
 import { myReachBag } from './reachnet.js';
+import { wingFoldPresence } from '../../shared/wingpresence.js';
 import { logChat, logWhisper, noteTyping, noteHistoryContext } from './chat.js';
 import { composeFirstPerson } from './fp_view.js';
 import { markPhase } from './boot.js';
@@ -187,6 +188,7 @@ export function sendPose(now) {
     p: [s.pos.x, s.pos.y, s.pos.z],
     yaw: s.yaw, speed: s.speed, clip: s.clip,
     pitch: Math.round((s.pitch ?? 0) * 100) / 100,
+    ...wingFoldPresence(s.wingsFolded),
   };
   if (s.emote) { pose.emote = s.emote; s.emote = null; } // one-shot: send once
   // A held custom pose rides the presence packet (and therefore lastPose, so
@@ -440,6 +442,17 @@ function noteStalePresence(id) {
 async function handle(msg) {
   switch (msg.type) {
     case 'snapshot': return onSnapshot(msg);
+
+    case 'your-rights': {
+      // Personalized effective rights, folded by the authority after every
+      // grant. This is the live answer for wildcard/sub/name precedence; the
+      // browser never has to approximate it from one partial delta.
+      if (msg.rights) {
+        net.myRights = msg.rights;
+        bus.emit('your-rights', net.myRights);
+      }
+      break;
+    }
 
     case 'arrive':
       // `authority: true` — an arrive is the world SAYING this person exists.
