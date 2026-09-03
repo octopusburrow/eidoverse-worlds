@@ -399,24 +399,29 @@ function loupeHtml(rec) {
   const nameHtml = esc(rec.label)
     .replace(/([_./:\-])/g, '$1<wbr>')          // break after separators
     .replace(/([a-z0-9])([A-Z])/g, '$1<wbr>$2'); // and at camelCase humps
-  // dim label + bright value (R, 09-02): 'placed by' stays dim, the actor NAME
-  // brightens — same emphasis grammar as the data rows (dim label, bright value).
-  const placedEl = placer ? `<div class="pl-placer" title="the actor who placed this object into the world">placed by <b>${esc(placer)}</b></div>` : '';
-  // header (R, 09-02 layout "C"): a 2×2 grid.
-  //   row 1: name (left) | perf pill (right-justified)
-  //   row 2: placed by (left) | mode+rank stacked as a tight pair (right)
-  // The pill pairs with the object name up top; the mode+rank pair drops down to
-  // the placed-by line, clear of the pill — mode near rank, away from the pill,
-  // anchored to a real line on the left. Name wraps to ≤2 lines within row 1, so
-  // the long-name case just makes row 1 taller while the pairing holds.
+  // ── header, redesigned from first principles (R, 09-02: "arrange these in a
+  //    way that feels good to you"). It's a TITLE BLOCK, not a table. The job of
+  //    a pinned card's head is one glance: WHAT is this (name) and HOW is it
+  //    doing (grade). Everything else is a quiet caption. So:
+  //      TITLE ROW — name (the star, left, wraps) + pill (the badge, top-right).
+  //                  the pill is the single spot of color and it earns the top.
+  //      CAPTION   — one dim line, read as a sentence: "#N of M in <lens>",
+  //                  then a faint separator, then "placed by <name>". Attribution
+  //                  is provenance, so it trails; the actor name still brightens.
+  //    Stopping the grid pretense (heterogeneous items forced into matching rows)
+  //    is the whole move — a masthead lets each element be its own kind of thing.
+  const standingPhrase = rankStr ? `${rankStr} in ${lensLabel}` : lensLabel;
+  const placedTail = placer
+    ? `<span class="pl-capsep">·</span><span class="pl-placer" title="the actor who placed this object into the world">placed by <b>${esc(placer)}</b></span>`
+    : '';
   return `
   <div class="pl-head">
-    <b class="pl-name" title="${esc(rec.label)}">${nameHtml}</b>
-    <span title="${esc(why)}" class="pl-rank">${badge(rec.rank, TIER_NAMES[rec.rank], true)}</span>
-    ${placedEl || '<span></span>'}
-    <div class="pl-headRfoot">
-      <span class="pl-mode" title="${esc(lensTip)}">${lensLabel}</span>
-      ${rankStr ? `<span class="pl-rankrow" title="this object's position among all ${total} subjects in the scene, ranked by the active lens">${rankStr}</span>` : ''}
+    <div class="pl-title">
+      <b class="pl-name" title="${esc(rec.label)}">${nameHtml}</b>
+      <span title="${esc(why)}" class="pl-rank">${badge(rec.rank, TIER_NAMES[rec.rank], true)}</span>
+    </div>
+    <div class="pl-caption">
+      <span class="pl-standing" title="this object's position among all ${total} subjects in the scene, ranked by the active lens · ${esc(lensTip)}">${standingPhrase}</span>${placedTail}
     </div>
   </div>
   <div class="pl-grid">${rows}</div>

@@ -883,35 +883,28 @@ body.touch #touch { display: block; }
 .perf-loupe .pl-texd { text-align: right; }
 .perf-loupe .pl-texb { text-align: left; color: var(--fg); opacity: .8; font-variant-numeric: tabular-nums; }
 .perf-loupe .pl-texwrap em { font-style: normal; color: var(--attn); opacity: .85; }
-/* header (R, 09-02 layout "C"): a 2×2 grid.
-     row 1: name (left) | perf pill (right-justified)
-     row 2: placed by (left) | mode+rank stacked as a tight pair (right)
-   The pill pairs with the name up top; the mode+rank pair drops to the placed-by
-   line, clear of the pill. Name wraps to ≤2 lines inside row 1 (long-name case
-   just makes row 1 taller; the pairing holds). */
-.perf-loupe .pl-head { --hrow: 17px; }
+/* header redesigned as a TITLE BLOCK, not a table (R, 09-02: design from vibes).
+   TITLE row: name (star, left, wraps ≤2 lines) + pill (badge, top-right).
+   CAPTION:   one dim line — "#N of M in <lens>" · "placed by <name>". */
 .perf-loupe .pl-head {
-  display: grid; grid-template-columns: 1fr auto; column-gap: 12px; row-gap: 3px;
-  align-items: start; color: var(--fg);
+  color: var(--fg);
   padding-bottom: 6px; margin-bottom: 6px; border-bottom: 1px solid var(--edge);
 }
-.perf-loupe .pl-head .pl-rank { justify-self: end; }   /* pill right-justified 😜 */
-.perf-loupe .pl-headRfoot { display: flex; flex-direction: column; align-items: flex-end; text-align: right; }
-.perf-loupe .pl-headRfoot > * { line-height: var(--hrow); }
-/* name: left, wraps to ≤2 lines; capped width; <wbr>/soft breaks split long
-   identifiers on punctuation. Full name in the title tooltip. */
+.perf-loupe .pl-title { display: flex; align-items: flex-start; gap: 10px; }
 .perf-loupe .pl-name {
-  min-width: 0; max-width: 210px; line-height: var(--hrow); overflow-wrap: anywhere; hyphens: auto;
+  flex: 1 1 auto; min-width: 0; max-width: 240px;
+  font-size: 12px; font-weight: 700; line-height: 1.3;
+  overflow-wrap: anywhere; hyphens: auto;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
 }
-.perf-loupe .pl-placer { line-height: var(--hrow); }
-.perf-loupe .pl-head .pl-rank { flex: none; }
-.perf-loupe .pl-sub, .perf-loupe .pl-mode, .perf-loupe .pl-placer, .perf-loupe .pl-rankrow {
-  color: var(--dim); font-size: 10px;
+.perf-loupe .pl-title .pl-rank { flex: none; margin-top: 1px; }   /* badge, top-right */
+/* caption: one quiet line, wraps gracefully; the standing phrase reads as a
+   sentence, 'placed by' trails after a faint dot, the actor name brightens. */
+.perf-loupe .pl-caption {
+  margin-top: 3px; color: var(--dim); font-size: 10px; line-height: 1.4;
 }
-.perf-loupe .pl-rankrow { font-variant-numeric: tabular-nums; }
-/* 'placed by' label stays dim; the actor NAME brightens (dim-label/bright-value,
-   R, 09-02) — brighter, not bolder, so it reads as the meaningful token. */
+.perf-loupe .pl-standing { font-variant-numeric: tabular-nums; }
+.perf-loupe .pl-capsep { opacity: .5; margin: 0 5px; }
 .perf-loupe .pl-placer b { color: var(--fg); font-weight: 600; }
 /* texlist tucks under "textures" as a clear sub-detail */
 .perf-loupe .pl-texlist { font-size: 9.5px; color: var(--dim); padding: 0 0 1px 12px; opacity: .85; }
