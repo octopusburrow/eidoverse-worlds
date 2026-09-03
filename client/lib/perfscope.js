@@ -1,6 +1,10 @@
 // perfscope — viewer-local perf instrumentation: false-color cost modes over
 // the viewport + a hover loupe of deep per-object stats + a heaviest table.
 //
+// Why the overlay keeps textures (R, 09-03): "it seems much easier to navigate
+// if you're going on an Easter egg hunt for perf violators in a big world."
+// The conventional replace-everything view is the `solid colors` checkbox.
+//
 // Doctrine (Mica's spec, 2026-09-01, + the prior-art survey):
 // · VIEWER-LOCAL. No world verb is ever sent; nothing here mutates the log.
 // · MEASURED vs ESTIMATED stays explicit: renderer.info counts are measured;

@@ -52,7 +52,8 @@ world.on("use", (e) => {
     world.emit("place", { id: world.self, pos: side === "B" ? DESK_B : DESK_A });
     world.emit("comp", { id: world.self, type: "state",
       data: { where: "desk-" + side, takenBy: e.by } });
-    world.emit("say", { text: e.by + " takes the slip from the door and carries it to " + (side === "B" ? "the far desk" : "the dear desk") + ". Read it; give it again." });
+    var ln = world.kv.get("line");
+    world.emit("say", { text: e.by + " takes the slip from the door and carries it to " + (side === "B" ? "the far desk" : "the dear desk") + (ln ? ". It reads, in " + ln.by + "'s hand: \u201c" + ln.text + "\u201d" : ". Read it; give it again.") });
     world.log("taken by", e.by);
     return;
   }
@@ -81,9 +82,45 @@ world.on("use", (e) => {
     const where = w ? "It waits at the door." : "It rests on the table.";
     const tally = g === 0 ? "No one has given it yet."
       : g + " hand" + (g === 1 ? " has" : "s have") + " given it; it has come back " + r + " time" + (r === 1 ? "" : "s") + ".";
-    world.emit("say", { text: "The slip reads: 'it is and it endures.' " + where + " " + tally });
+    var ln3 = world.kv.get("line");
+    world.emit("say", { text: "The slip reads: " + (ln3 ? "\u201c" + ln3.text + "\u201d (" + ln3.by + "'s hand)" : "'it is and it endures.'") + " " + where + " " + tally });
     return;
   }
+});
+
+// WRITE by speaking at a desk: "slip: <your line>" while standing near either
+// desk (and the slip at rest) inscribes the line — the slip then carries YOUR
+// words to whoever takes it, and back to you at your seam. (use-args carry no
+// data to behaviors — dispatch forwards only {entity, action, by} — so the
+// say lane is the honest path; words enter this world as words.)
+world.on("say", (e) => {
+  var m = /^\s*slip:\s*(.+)$/i.exec(e.text || "");
+  if (!m) return;
+  if (e.by.indexOf("bhv:") === 0) return;
+  if (world.kv.get("waiting")) {
+    world.emit("say", { text: "The slip is at the door just now — take it back to a desk to write on it." });
+    return;
+  }
+  // proximity is FLAVOR, not security: a speaker whose position is unknown
+  // (odd client, edge tier) gets the benefit of the doubt; only the
+  // known-far are sent to a desk
+  var near = true, ppl = world.people();
+  for (var i = 0; i < ppl.length; i++) {
+    var q = ppl[i];
+    if (q.id === e.by && q.pos) {
+      var dzA = Math.abs(q.pos[2] - DESK_A[2]) + Math.abs(q.pos[0] - DESK_A[0]);
+      var dzB = Math.abs(q.pos[2] - DESK_B[2]) + Math.abs(q.pos[0] - DESK_B[0]);
+      near = Math.min(dzA, dzB) < 7;
+    }
+  }
+  if (!near) {
+    world.emit("say", { text: "Come to one of the desks to write on the slip." });
+    return;
+  }
+  var line = m[1].slice(0, 140);
+  world.kv.set("line", { by: e.by, text: line });
+  world.emit("say", { text: "Written on the slip, in " + e.by + "'s hand: \u201c" + line + "\u201d \u2014 now give it." });
+  world.log("written by", e.by);
 });
 
 world.on("leave", (e) => {
@@ -97,7 +134,8 @@ world.on("leave", (e) => {
     data: { preset: "magic", origin: [0, 0.15, 0], count: 60, lifetime: 2.5 } });
   world.emit("comp", { id: world.self, type: "state",
     data: { where: "desk", returnedFor: e.id } });
-  world.emit("say", { text: e.id + " has gone through the door — and the slip they once gave comes back to the table, carrying it. It is and it endures." });
+  var ln2 = world.kv.get("line");
+  world.emit("say", { text: e.id + " has gone through the door — and the slip they once gave comes back to the table" + (ln2 && ln2.by === e.id ? ", carrying their own line: \u201c" + ln2.text + "\u201d" : ", carrying it") + ". It is and it endures." });
   world.log("returned for", e.id);
 });
 
