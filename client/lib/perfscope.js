@@ -6,7 +6,7 @@
 // themselves.
 // The conventional replace-everything view is the `solid colors` checkbox.
 //
-// Doctrine (the spec + the prior-art survey):
+// Doctrine:
 // · VIEWER-LOCAL. No world verb is ever sent; nothing here mutates the log.
 // · MEASURED vs ESTIMATED stays explicit: renderer.info counts are measured;
 //   memory/cost numbers are estimates and say so. No GPU timers in v0 —
@@ -16,9 +16,8 @@
 // · Fixed absolute thresholds (UE/VRChat convention), not percentiles — a
 //   scene of all-cheap objects must not invent red, and numbers stay
 //   comparable across worlds. Rank = worst category wins (VRChat).
-// · Survives scene churn: stats rebuild on a timer while active; tints are
-//   restored only if the mesh still wears OUR material (an avatar swap that
-//   replaced materials mid-tint is left alone).
+// · Survives scene churn: stats rebuild on a timer while active; tint
+//   overlays are diffed against the census each cycle (originals untouched).
 //
 // Cost attribution is per SUBJECT, not per mesh: a subject is a world entity
 // (nearest ancestor in `entities`), a person (remotes / the local body), or
@@ -109,13 +108,11 @@ function texBytes(tex) {
 
 let subjects = new Map();   // key -> stat record
 let meshOwner = new WeakMap(); // mesh -> subject key (for the loupe raycast)
-let meshes = [];            // every censused mesh
 let visibleMeshes = [];     // the shown subset — the loupe raycasts this, not the whole scene
 
 function forget() {
   subjects = new Map();
   meshOwner = new WeakMap();
-  meshes = [];
   visibleMeshes = [];
 }
 
@@ -199,7 +196,6 @@ function collect() {
     if (g?.morphAttributes?.position) rec.morphs = Math.max(rec.morphs, g.morphAttributes.position.length);
     rec.meshList.push(o);
     meshOwner.set(o, rec.key);
-    meshes.push(o);
     if (vis) visibleMeshes.push(o);
   });
 
@@ -348,9 +344,11 @@ function applyTint() {
         if (wantHull) o.hull = overlayFor(mesh, hullMatFor(t, rec.key === hotKey ? HULL_K_HOT : HULL_K), 0);
         overlays.set(mesh, o);
       } else {
+        const migrated = o.key !== rec.key;
         o.key = rec.key;
         if (o.veil.material !== veilMat) o.veil.material = veilMat;
-        if (o.hull && o.tier !== t) o.hull.material = hullMatFor(t, rec.key === hotKey ? HULL_K_HOT : HULL_K);
+        // a mesh that migrated subjects may have gained or lost the hot edge
+        if (o.hull && (o.tier !== t || migrated)) o.hull.material = hullMatFor(t, rec.key === hotKey ? HULL_K_HOT : HULL_K);
         o.tier = t;
       }
       _box.expandByObject(mesh);
@@ -375,14 +373,15 @@ function clearTint() {
   clearOutlines();
 }
 
-let timer = null;
+let timer = null, idleRelease = null;
 // one census loop serves both the tint and the loupe: while either is on the
 // scene is re-walked every 3 s (churn survival); tints are diffed only when a
 // mode is active. Both off → timer cleared and the census dropped, so this
 // module holds no references into a scene it isn't watching.
 function syncCycle() {
   clearTimeout(timer); timer = null;
-  if (!loupeOn && mode === 'off') { forget(); return; }
+  clearTimeout(idleRelease); idleRelease = null;
+  if (!loupeOn && mode === 'off') { forget(); paintTable(); return; }
   const cycle = () => {
     collect();
     if (mode !== 'off') applyTint();
@@ -405,7 +404,7 @@ let onModeChange = null;
 
 const ray = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
-let loupeEl = null, loupeOn = false, pinned = null, lastCast = 0;
+let loupeEl = null, loupeOn = false, pinned = null, pinnedHtml = '', lastCast = 0;
 
 const fmtB = (b) => (b >= 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`);
 // short tier words for the chunky row pills
@@ -587,7 +586,13 @@ function placeLoupe(ev) {
 function refreshPinned() {
   if (!pinned) return;
   const rec = subjects.get(pinned.key);
-  if (rec) { pinned = rec; setEmphasis(rec); loupeEl.innerHTML = loupeHtml(rec); dressLoupeName(); }
+  if (rec) {
+    pinned = rec; setEmphasis(rec);
+    // a re-render kills the tooltip being read; never swap under the pointer
+    if (loupeEl.matches(':hover')) return;
+    const html = loupeHtml(rec);
+    if (html !== pinnedHtml) { pinnedHtml = html; loupeEl.innerHTML = html; dressLoupeName(); }
+  }
   else { pinned = null; setEmphasis(null); loupeEl.classList.remove('show', 'pinned'); }
 }
 
@@ -596,7 +601,7 @@ function onClick(ev) {
   if (pinned) { pinned = null; setEmphasis(null); loupeEl.classList.remove('show', 'pinned'); return; }
   const rec = castAt(ev);
   if (rec) {
-    pinned = rec; setEmphasis(rec); loupeEl.innerHTML = loupeHtml(rec); dressLoupeName(); placeLoupe(ev);
+    pinned = rec; setEmphasis(rec); pinnedHtml = loupeHtml(rec); loupeEl.innerHTML = pinnedHtml; dressLoupeName(); placeLoupe(ev);
     // pinned → make the card hoverable so every `title` tooltip fires.
     // Unpinned it stays pointer-events:none so it follows the cursor and
     // the raycast reaches the scene beneath it.
@@ -653,9 +658,14 @@ function paintTable() {
      </div>`).join('') || '<div class="pf-row"><span>nothing collected yet</span></div>';
 }
 
-// a one-shot census taken while nothing is watching must not outlive its use
+// a one-shot census taken while nothing is watching must not outlive its use —
+// but the table it just painted should stay readable for a while
 function releaseIfIdle() {
-  if (!loupeOn && mode === 'off') { forget(); paintTable(); }
+  clearTimeout(idleRelease);
+  idleRelease = setTimeout(() => {
+    idleRelease = null;
+    if (!loupeOn && mode === 'off') { forget(); paintTable(); }
+  }, 30_000);
 }
 
 function flashSubject(key) {
@@ -777,7 +787,7 @@ export function buildPerfPanel(stack, { toast = console.log } = {}) {
   btns.className = 'row btn-row';
   const rescan = document.createElement('button');
   rescan.textContent = 'rescan';
-  rescan.onclick = () => { collect(); if (mode !== 'off') applyTint(); paintTable(); toast(`perfscope: rescanned (${subjects.size} subjects)`); releaseIfIdle(); };
+  rescan.onclick = () => { collect(); if (mode !== 'off') applyTint(); paintTable(); refreshPinned(); toast(`perfscope: rescanned (${subjects.size} subjects)`); releaseIfIdle(); };
   const rcpt = document.createElement('button');
   rcpt.textContent = 'copy receipt';
   rcpt.onclick = async () => toast(`perfscope: receipt copied (${await copyReceipt()} subjects)`);

@@ -226,7 +226,7 @@ select {
    content, so the chrome has to get out of the way on the user's terms. */
 .frame {
   position: fixed; display: flex; flex-direction: column;
-  z-index: 10; min-width: 170px; overflow: hidden;
+  z-index: 10; /* must equal Z_LO in frames.js */ min-width: 170px; overflow: hidden;
 }
 .fr-head {
   display: flex; align-items: center; gap: 6px;
@@ -579,7 +579,7 @@ body.arranging #dock #hud.emark {
   font-size: var(--fs-sm); text-align: left;
 }
 #emenu .mrow:hover { background: var(--hov); }
-#emenu .mrow svg:first-child { flex: none; opacity: .8; color: var(--icon); }
+#emenu .mrow > svg:first-child { flex: none; opacity: .8; color: var(--icon); }
 #emenu .mrow .mname { flex: 1; }
 #emenu .mrow.open { color: color-mix(in srgb, var(--brand) 35%, var(--fg)); }
 #emenu .mrow.open svg:first-child { opacity: 1; }

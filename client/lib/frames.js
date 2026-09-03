@@ -177,6 +177,7 @@ document.addEventListener('pointerdown', (e) => {
 // frames live in [Z_LO..Z_HI]; chrome starts at 27 (#dock) and must stay above
 const Z_LO = 10, Z_HI = 25;
 let zTop = Z_LO;
+let warnedZ = false;
 let locked = localStorage.getItem('ew-ui-locked') === '1';
 
 const SNAP = 11;            // px — edge and frame-to-frame snapping distance
@@ -270,6 +271,7 @@ export function makeFrame(id, opts = {}) {
         w, h, collapsed: false, hidden,
       });
       paint();
+      if (!state.hidden) raise();
       return api;
     },
   };
@@ -280,8 +282,15 @@ export function makeFrame(id, opts = {}) {
         .sort((a, b) => (+a.el.style.zIndex || 0) - (+b.el.style.zIndex || 0));
       zTop = Z_LO - 1;
       for (const f of order) f.el.style.zIndex = String(++zTop);
+      // more frames than the band holds: the overflow ties at Z_HI rather
+      // than climbing under the dock
+      if (zTop > Z_HI) {
+        if (!warnedZ) { warnedZ = true; console.warn(`frames: ${order.length} frames exceed the z band [${Z_LO}..${Z_HI}]; clamping`); }
+        for (const f of order) f.el.style.zIndex = String(Math.min(+f.el.style.zIndex, Z_HI));
+        zTop = Z_HI;
+      }
     }
-    root.style.zIndex = String(++zTop);
+    root.style.zIndex = String(Math.min(++zTop, Z_HI));
   }
   function save() {
     localStorage.setItem(LS(id), JSON.stringify(state));

@@ -107,7 +107,7 @@ export function flashHint(html, ms = 2600) {
 // panel writes a new accent.
 
 let _cursorBrand = null;
-export function buildCursors() {
+function buildCursors() {
   const brand = (getComputedStyle(document.documentElement).getPropertyValue('--brand') || '#8fe8c8').trim();
   if (brand === _cursorBrand) return;
   _cursorBrand = brand;
