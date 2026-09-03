@@ -17,6 +17,9 @@ export const UPLOAD_CAP = Number(process.env.UPLOAD_CAP_MB ?? 20) * 1_000_000;
 // enough to re-render the whole performance offline, at production quality,
 // forever. Clients are told at join — recording is never invisible.
 export const RECORD = process.env.RECORD_FRAMES === "1";
+// SKIP_OPT_SWEEP=1 skips both boot optimize sweeps (encode pump + ktx2/lod);
+// serving worlds must be startable without shouldering the optimizer.
+export const SKIP_OPT_SWEEP = process.env.SKIP_OPT_SWEEP === "1";
 export const ROOT = resolve(import.meta.dir, "..");
 // Dev instances point this elsewhere so a scratch sequencer can't append to the
 // live worlds' logs (they are append-only and forever — a stray dev spawn is

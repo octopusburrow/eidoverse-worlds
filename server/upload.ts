@@ -8,7 +8,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, readdirSync, statSync, rmSync } from "node:fs";
 import { join, basename, dirname, relative } from "node:path";
-import { JOIN_TOKEN, UPLOAD_CAP, ROOT, OPT_DIR, STORE_MIN, LIBRARY_DIR } from "./config.ts";
+import { JOIN_TOKEN, UPLOAD_CAP, ROOT, OPT_DIR, STORE_MIN, LIBRARY_DIR, SKIP_OPT_SWEEP } from "./config.ts";
 // merge 2026-09-01 (anima a468cba, geometry LOD): upstream's LOD names ride
 // in; the door stays on R1's aid1JoinIdentity (the HN_*/verifyToken form is
 // what it replaced — the merged body references neither)
@@ -149,7 +149,10 @@ async function pumpOptimize() {
 }
 // Boot sweep: whatever accumulated before this shipped (or failed mid-queue
 // last run) gets its shadow now. Deferred so boot stays about serving worlds.
+// SKIP_OPT_SWEEP: see config.ts — a memory-tight host must be able to serve
+// worlds without shouldering the optimizer.
 setTimeout(() => {
+  if (SKIP_OPT_SWEEP) return;
   const dir = join(OPT_DIR, "store");
   if (!existsSync(dir)) return;
   // isStoreOriginal, not endsWith(".glb"): the KTX2 variants live in this
@@ -178,6 +181,7 @@ setTimeout(() => {
 // overlay (assets/opt/...) — and serving prefers the overlay, so the sweep
 // sources each rel from the base that actually wins.
 setTimeout(() => {
+  if (SKIP_OPT_SWEEP) return;
   if (ktx2Skip) return;
   const items: OptItem[] = [];
   const seen = new Set<string>();
