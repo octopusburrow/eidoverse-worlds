@@ -802,3 +802,26 @@ export function perfscopeOff() {
   setMode('off');
   setLoupe(false);
 }
+
+/** Mount the panel into a debug stack. Idempotent per stack: a plain mount
+ *  upgrades in place when a collapsible `section(parent, title, build)` is
+ *  offered later; a section mount is never duplicated. */
+export function mountPerfPanel(stack, { toast = console.log, section = null } = {}) {
+  const cur = stack.__perfMount;
+  if (cur?.kind === 'section') return;
+  if (section) {
+    cur?.el?.remove();
+    const box = section(stack, 'perf', (body) => buildPerfPanel(body, { toast })) ?? stack.lastElementChild;
+    stack.__perfMount = { kind: 'section', el: box };
+    return;
+  }
+  if (cur) return;
+  const el = document.createElement('div');
+  const head = document.createElement('div');
+  head.className = 'row'; head.style.cssText = 'margin-top:10px;opacity:.75';
+  head.textContent = '— perf (viewer-local) —';
+  const body = document.createElement('div');
+  el.append(head, body); stack.appendChild(el);
+  buildPerfPanel(body, { toast });
+  stack.__perfMount = { kind: 'plain', el };
+}
