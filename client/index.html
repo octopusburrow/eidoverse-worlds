@@ -719,25 +719,35 @@ body.arranging #dock .dock-grip { display: grid; }
   color: var(--icon); background: none; border: none; box-shadow: none; border-radius: 7px;
 }
 #dock button:not(.dock-grip):hover { color: var(--fg); background: var(--hov); }
-/* selected = the accent speaks, not white (R, 09-01 23:43). Fable, 09-03 audit
-   (R: "something a little off"): the old treatment was FOUR devices each too
-   weak to read on the dark rail — 7% fill, 22% outline, an invisible inset
-   shadow saying 'pressed' against the house 'selected-speaks-accent' grammar,
-   and a barely-brighter icon — so open vs pinned-closed looked near-identical.
-   Now two devices that actually carry: a visible brand-tinted well (20%) and a
-   45% brand outline, same grammar, no mixed metaphor. */
+/* b76 (R, 09-03 11:18: the ON look is "too loud and distracting" — and quieting
+   it moves OFF too, so both are redrawn together; the ∃ mark is untouched).
+   The dock is an ACTIVITY BAR, not a tool palette: each button opens a window,
+   and the rail knows which screen edge it is welded to. The reference for that
+   shape is VS Code's activity bar — a thin accent border on the content-facing
+   edge + the icon going dim→full; a filled background is explicitly optional
+   there and Figma/Blender's lit wells are for mode toggles. So:
+     OFF   dim icon, no fill (unchanged)            HOVER  faint --hov well (unchanged)
+     ON    full-brightness brand-tinted icon + a 2px brand bar on the edge that
+           faces the viewport (it points at the window it opened); no well, no ring
+     ON+HOVER  a whisper of well so about-to-close still differs from about-to-open */
 #dock button.on {
-  color: color-mix(in srgb, var(--brand) 80%, white);
-  background: color-mix(in srgb, var(--brand) 20%, var(--well));
-  outline: 1px solid color-mix(in srgb, var(--brand) 45%, transparent);
-  outline-offset: -1px;
+  position: relative;
+  color: color-mix(in srgb, var(--brand) 70%, white);
+  background: none;
+  outline: none;
 }
-/* hovering an OPEN button must stay in the accent family — the plain hover
-   rule used to win the cascade and flip it white + --hov, making about-to-
-   close look identical to about-to-open (Fable, 09-03). */
+#dock button.on::before {
+  content: ''; position: absolute; border-radius: 2px;
+  background: var(--brand); opacity: .9;
+  /* default (rail welded left / floating top-left): bar on the RIGHT edge */
+  top: 7px; bottom: 7px; right: -3px; width: 2px;
+}
+#dock[data-edge="right"]  button.on::before { right: auto; left: -3px; }
+#dock[data-edge="top"]    button.on::before { top: auto; right: 7px; left: 7px; bottom: -3px; width: auto; height: 2px; }
+#dock[data-edge="bottom"] button.on::before { bottom: auto; right: 7px; left: 7px; top: -3px; width: auto; height: 2px; }
 #dock button.on:hover {
-  color: color-mix(in srgb, var(--brand) 55%, white);
-  background: color-mix(in srgb, var(--brand) 28%, var(--well));
+  color: color-mix(in srgb, var(--brand) 45%, white);
+  background: color-mix(in srgb, var(--brand) 10%, var(--hov));
 }
 #dock button[hidden] { display: none; }
 /* keybtn: buttons that mirror physical KEYS read as key-caps — a darker well,
