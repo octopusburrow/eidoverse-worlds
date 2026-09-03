@@ -60,10 +60,16 @@ function paint() {
   if (!el || done) return;
   const pct = Math.round(progress() * 100);
   bar.style.width = `${pct}%`;
+  el.style.setProperty('--spp', String(progress()));   // drives the mark's assembly
   phaseEl.textContent = currentLabel();
   const b = bootBytes();
+  // ALWAYS show the expected total (R, 16:01 — people deserve to know how
+  // much they're in for, in case they want to bail). done can overrun the
+  // manifest total when late discoveries join; display total grows with it
+  // so the fraction stays honest instead of reading 117%.
+  const shownTotal = Math.max(b.total, b.done);
   detailEl.textContent = b.total > 0
-    ? `${(b.done / 1048576).toFixed(1)} / ${(b.total / 1048576).toFixed(1)} MB`
+    ? `${(b.done / 1048576).toFixed(1)} / ${(shownTotal / 1048576).toFixed(1)} MB`
     : '';
 }
 
@@ -95,6 +101,7 @@ export function initBoot({ world, name }) {
   detailEl = el.querySelector('.sp-detail');
   tipEl = el.querySelector('.sp-tip');
   el.querySelector('.sp-world').textContent = world;
+  const v = el.querySelector('.sp-ver'); if (v) v.textContent = el.dataset.build || '';
   el.querySelector('.sp-name').textContent = name;
   startedAt = performance.now();
 
@@ -129,6 +136,7 @@ export function finishBoot(reason = 'ready') {
   done = true;
   clearInterval(tipTimer);
   bar.style.width = '100%';
+  el.style.setProperty('--spp', '1');
   phaseEl.textContent = 'welcome';
   el.classList.add('gone');
   setTimeout(() => { el.style.display = 'none'; }, 620);

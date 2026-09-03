@@ -19,13 +19,23 @@ const frames = new Map();
 // pixels belong to content — scrollbars and buttons always win (we test the
 // real element under the pointer, not geometry alone).
 const _resizables = [];
-const _BAND = 4, _REACH = 6;   // band R-tuned 17:23 at 2, widened to 4 after
-                               // antra's live receipt (edge target was ~8px
-                               // total and half of that hung in the air)
+const _BAND = 4, _REACH = 6;   // band was 2, widened to 4 after a live
+                               // report (edge target was ~8px total and
+                               // half of that hung in the air)
 const _CORNER = 15;            // the corner is the hardest 2D target on the
                                // frame and USED to be the intersection of two
                                // 2px bands — invisible in practice. It gets
                                // its own square, sized like the old SE grip.
+/** Would the edge-resize hit-tester claim this point? (for ui.js's
+ *  arrange-exit guard — the grab band extends _REACH px OUTSIDE frames) */
+export function resizeZoneAt(x, y) {
+  const fake = { clientX: x, clientY: y };
+  for (const f of _resizables) {
+    if (f.root.style.display === 'none' || !f.active()) continue;
+    if (_zoneFor(f, fake)) return true;
+  }
+  return false;
+}
 const _CURSORS = { n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize',
   ne: 'nesw-resize', sw: 'nesw-resize', nw: 'nwse-resize', se: 'nwse-resize' };
 function _zoneFor(f, e) {
@@ -64,6 +74,23 @@ function _contentClaims(e) {
   }
   return false;
 }
+/** Is this pointer over DRAGGABLE frame chrome — i.e. none of: interactive
+ *  content (_contentClaims), a click-styled row (computed cursor:pointer —
+ *  the house convention for every clickable), a label (clicks toggle its
+ *  input), or selectable text (the chat log — a grab there would eat copy)?
+ *  The SL Build-window/WoW convention: empty pane pixels move the
+ *  pane; everything that DOES something keeps doing it. */
+function _grabbableAt(e) {
+  if (_contentClaims(e)) return false;
+  for (let t = e.target; t instanceof HTMLElement; t = t.parentElement) {
+    if (t.tagName === 'LABEL') return false;
+    const cs = getComputedStyle(t);
+    if (cs.cursor === 'pointer') return false;
+    if ((cs.userSelect || cs.webkitUserSelect) === 'text') return false;
+    if (t.classList?.contains('frame')) return true;   // reached bare chrome
+  }
+  return false;
+}
 function _hit(e) {
   const cands = _resizables.filter((f) => f.active());
   cands.sort((a, b) => (+b.root.style.zIndex || 0) - (+a.root.style.zIndex || 0));
@@ -91,14 +118,18 @@ document.addEventListener('pointerdown', (e) => {
   const s0 = { x: f.state.x, y: f.state.y, w: f.state.w, h: f.state.h };
   const move = (ev) => {
     const dx = ev.clientX - sx, dy = ev.clientY - sy;
-    if (z.includes('e')) f.state.w = clamp(s0.w + dx, f.minW, innerWidth - 20);
-    if (z.includes('s')) f.state.h = clamp(s0.h + dy, f.minH, innerHeight - 60);
+    // grows are clamped so no edge ever leaves the viewport
+    // (windows stay inside the active area, full stop)
+    if (z.includes('e')) f.state.w = clamp(s0.w + dx, f.minW, innerWidth - s0.x - 8);
+    if (z.includes('s')) f.state.h = clamp(s0.h + dy, f.minH, innerHeight - s0.y - 40);
     if (z.includes('w')) {
-      f.state.w = clamp(s0.w - dx, f.minW, innerWidth - 20);
+      const maxW = s0.x + s0.w - 8;                // west edge stops at x=8
+      f.state.w = clamp(s0.w - dx, f.minW, maxW);
       f.state.x = s0.x + (s0.w - f.state.w);       // east side stays planted
     }
     if (z.includes('n')) {
-      f.state.h = clamp(s0.h - dy, f.minH, innerHeight - 60);
+      const maxH = s0.y + s0.h - 8;                // north edge stops at y=8
+      f.state.h = clamp(s0.h - dy, f.minH, maxH);
       f.state.y = s0.y + (s0.h - f.state.h);       // south side stays planted
     }
     f.paint();
@@ -143,7 +174,10 @@ document.addEventListener('pointerdown', (e) => {
   document.addEventListener('pointercancel', finish, true);
   addEventListener('blur', finish);
 }, true);
-let zTop = 30;
+// frames live in [Z_LO..Z_HI]; chrome starts at 27 (#dock) and must stay above
+const Z_LO = 10, Z_HI = 25;
+let zTop = Z_LO;
+let warnedZ = false;
 let locked = localStorage.getItem('ew-ui-locked') === '1';
 
 const SNAP = 11;            // px — edge and frame-to-frame snapping distance
@@ -204,6 +238,7 @@ export function makeFrame(id, opts = {}) {
 
   const api = {
     id, el: root, body, head,
+    _state: state, _paint: () => paint(),      // live refs for the edge-rider
     get state() { return { ...state }; },
     show() {
       state.hidden = false;
@@ -236,11 +271,27 @@ export function makeFrame(id, opts = {}) {
         w, h, collapsed: false, hidden,
       });
       paint();
+      if (!state.hidden) raise();
       return api;
     },
   };
 
-  function raise() { root.style.zIndex = String(++zTop); }
+  function raise() {
+    if (zTop >= Z_HI) {
+      const order = [...frames.values()].filter((f) => f.el !== root)
+        .sort((a, b) => (+a.el.style.zIndex || 0) - (+b.el.style.zIndex || 0));
+      zTop = Z_LO - 1;
+      for (const f of order) f.el.style.zIndex = String(++zTop);
+      // more frames than the band holds: the overflow ties at Z_HI rather
+      // than climbing under the dock
+      if (zTop > Z_HI) {
+        if (!warnedZ) { warnedZ = true; console.warn(`frames: ${order.length} frames exceed the z band [${Z_LO}..${Z_HI}]; clamping`); }
+        for (const f of order) f.el.style.zIndex = String(Math.min(+f.el.style.zIndex, Z_HI));
+        zTop = Z_HI;
+      }
+    }
+    root.style.zIndex = String(Math.min(++zTop, Z_HI));
+  }
   function save() {
     localStorage.setItem(LS(id), JSON.stringify(state));
   }
@@ -251,18 +302,18 @@ export function makeFrame(id, opts = {}) {
     root.style.width = `${state.w}px`;
     root.classList.toggle('collapsed', state.collapsed);
     body.style.height = state.collapsed ? '0' : `${state.h}px`;
+    // arrange-mode affordances: which viewport edges hold this frame (glow),
+    // and whether the floating label must sit below (frame hugs the top)
+    const hgt = root.offsetHeight || state.h;
+    const st = stickyEdges(state, hgt);
+    root.classList.toggle('st-l', st.l); root.classList.toggle('st-r', st.r);
+    root.classList.toggle('st-t', st.t); root.classList.toggle('st-b', st.b);
+    root.classList.toggle('label-below', state.y < 46);
     if (!state.collapsed) onResize?.(state.w, state.h);
   }
 
-  // ---- buttons
-  if (collapsible) {
-    const b = document.createElement('button');
-    b.className = 'fr-btn';
-    b.title = 'collapse';
-    b.textContent = '–';
-    b.onclick = (e) => { e.stopPropagation(); api.collapse(); };
-    btns.appendChild(b);
-  }
+  // ---- buttons: name + ✕ only — the collapse chip retired;
+  // api.collapse() survives for code callers, the chrome just doesn't offer it
   if (closable) {
     const b = document.createElement('button');
     b.className = 'fr-btn';
@@ -277,6 +328,7 @@ export function makeFrame(id, opts = {}) {
     if (locked || e.target.closest('.fr-btn')) return;
     e.preventDefault();
     raise();
+    root.classList.add('lifting');   // depth returns only while held
     const ox = e.clientX - state.x, oy = e.clientY - state.y;
     // capture can throw for a pointer id the browser doesn't know (synthetic
     // events, some touch stacks) — losing capture is survivable, aborting the
@@ -291,15 +343,27 @@ export function makeFrame(id, opts = {}) {
     const up = () => {
       head.removeEventListener('pointermove', move);
       head.removeEventListener('pointerup', up);
+      root.classList.remove('lifting');
       save();
     };
     head.addEventListener('pointermove', move);
     head.addEventListener('pointerup', up);
   });
   // Alt+drag anywhere on the frame — the MMO habit, and it rescues a frame
-  // whose title bar has been dragged off-screen.
+  // whose title bar has been dragged off-screen. Without Alt, EMPTY frame
+  // pixels drag too when the layout is unlocked (grab-by-empty-space)
+  // — interactive content, pointer-cursor rows, labels,
+  // selectable text and the edge-resize band all still win.
+  root.addEventListener('pointermove', (e) => {
+    if (locked || _resizing) { root.style.cursor = ''; return; }
+    root.style.cursor = (!_hit(e) && _grabbableAt(e)) ? 'grab' : '';
+  });
   root.addEventListener('pointerdown', (e) => {
-    if (locked || !e.altKey) return;
+    if (locked || !e.isTrusted) return;                // isTrusted: our own
+    if (!e.altKey && (_hit(e) || !_grabbableAt(e))) return;
+    // re-dispatch below bubbles back through this capture handler — without
+    // the guard it recurses to stack overflow (exposed when heads went
+    // display:none and alt-drag became the only rest-state move).
     e.preventDefault(); e.stopPropagation();
     head.dispatchEvent(new PointerEvent('pointerdown', e));
   }, true);
@@ -307,7 +371,7 @@ export function makeFrame(id, opts = {}) {
   // ---- resizing: registered with the module-level edge hit-tester (below) —
   // one document listener serves every frame, which is the only way to grab
   // OUTSIDE a frame's border without an overlay stealing its content's events
-  // (the ::before halo painted over scrollbars and buttons — R, 17:20).
+  // (the ::before halo painted over scrollbars and buttons).
   if (resizable) _resizables.push({ root, state, minW, minH, paint, save, raise,
     active: () => !locked && !state.collapsed && !state.hidden });
 
@@ -316,6 +380,9 @@ export function makeFrame(id, opts = {}) {
 
   frames.set(id, api);
   paint();
+  // restored frames enter through raise() too, so boot order becomes z order
+  // and the first click on any of them lands above the rest
+  if (!state.hidden) raise();
   // The anchor was computed from the BODY height, but a frame is also a title
   // bar and whatever padding its content carries — so a bottom-anchored frame
   // hung its composer off the screen. Measure once it exists and pull it back.
@@ -358,19 +425,43 @@ function snapPosition(id, state, height) {
     if (e.x != null && Math.abs(state.x - e.x) < SNAP) state.x = e.x;
     if (e.y != null && Math.abs(state.y - e.y) < SNAP) state.y = e.y;
   }
-  state.x = clamp(state.x, -state.w + 60, innerWidth - 60);
-  state.y = clamp(state.y, 0, innerHeight - 32);
+  // fully inside the viewport, always (no more parking a window half off-screen)
+  state.x = clamp(state.x, 8, Math.max(8, innerWidth - state.w - 8));
+  state.y = clamp(state.y, 8, Math.max(8, innerHeight - height - 8));
 }
 
-// Keep frames reachable when the window shrinks.
+// ---- viewport-edge stickiness ----------------------------------------------
+// A frame resting against a pane edge belongs to that edge: when the window
+// resizes, it rides the edge instead of being stranded mid-air. Sticky edges
+// glow in arrangement mode so the behavior is legible before it fires.
+const STICKY = 16;
+function stickyEdges(state, height) {
+  return {
+    l: state.x <= 8 + STICKY,
+    r: innerWidth - (state.x + state.w) <= 8 + STICKY,
+    t: state.y <= 8 + STICKY,
+    b: innerHeight - (state.y + height) <= 8 + STICKY,
+  };
+}
+let _lastVW = innerWidth, _lastVH = innerHeight;
+
+// Ride the edges: frames sticky to right/bottom keep their edge gap when the
+// window resizes; everything is then clamped back inside regardless.
 addEventListener('resize', () => {
+  const dw = innerWidth - _lastVW, dh = innerHeight - _lastVH;
   for (const f of frames.values()) {
-    const s = f.state;
-    if (s.x > innerWidth - 60 || s.y > innerHeight - 32) {
-      f.el.style.left = `${clamp(s.x, 8, innerWidth - 80)}px`;
-      f.el.style.top = `${clamp(s.y, 8, innerHeight - 60)}px`;
-    }
+    const st = f._state; if (!st) continue;
+    const hgt = f.el.offsetHeight || st.h;
+    // stickiness judged against the OLD viewport (pre-resize geometry)
+    const wasR = _lastVW - (st.x + st.w) <= 8 + STICKY;
+    const wasB = _lastVH - (st.y + hgt) <= 8 + STICKY;
+    if (wasR && !(st.x <= 8 + STICKY)) st.x += dw;
+    if (wasB && !(st.y <= 8 + STICKY)) st.y += dh;
+    st.x = clamp(st.x, 8, Math.max(8, innerWidth - st.w - 8));
+    st.y = clamp(st.y, 8, Math.max(8, innerHeight - hgt - 8));
+    f._paint?.();
   }
+  _lastVW = innerWidth; _lastVH = innerHeight;
 });
 
 export function getFrame(id) { return frames.get(id); }

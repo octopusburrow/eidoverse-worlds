@@ -11,7 +11,9 @@ import { THREE, scene, camera, renderer } from './lib/core.js';
 import { CONFIG, bus, report } from './lib/base.js';
 import { contributeThumbnail, makeAvatar, EMOTE_ORDER } from './lib/avatar.js';
 import { updateSky, updateAutoSystems, skyArgs, setCloudQuality } from './lib/sky.js';
-import { setSkyArgsSource, entities, buildsPending, avatarMounts } from './lib/world.js';
+import { setSkyArgsSource, entities, buildsPending, avatarMounts, roleOf, worldHasOwner } from './lib/world.js';
+import { initProfile } from './lib/profile.js';
+import { initStylePanel } from './lib/stylepanel.js';
 import { foldParity } from './lib/parity.js';
 import { initModelsRealizer, reconcileModels, residencyDebug, setResidencyFocus, drainPromoteTail } from './lib/realize/models.js';
 import { initEnvironmentRealizer } from './lib/realize/environment.js';
@@ -41,13 +43,13 @@ import { initAudioPanel } from './lib/audiopanel.js';
 import { initSceneGraph } from './lib/scenegraph.js';
 import {
   toast, setHint, flashHint, buildHelp, toggleHelp,
-  openDoor, toggleRoster, initRoster, initDock, panelFrame,
+  openDoor, toggleRoster, initRoster, initDock, panelFrame, settingsFrame,
 } from './lib/ui.js';
 import { initDebug, updateDebug, toggleDebug } from './lib/debug.js';
 
 // Which build is this world running? One console line at boot, so "what's
-// deployed here" is a glance instead of an inference (the 2026-08-07 audio
-// mystery). Server route: GET /version — same answer, one curl away, for
+// deployed here" is a glance instead of an inference (the audio
+// mystery that turned out to be a stale deploy). Server route: GET /version — same answer, one curl away, for
 // anyone without a browser console.
 fetch('/version').then((r) => r.json())
   .then(({ sha, commitTime, dirty, startedAt }) => console.log(`[eidoverse] server build ${sha}${dirty === true ? ' (DIRTY TREE)' : dirty === false ? '' : ' (dirty: unknown)'} (code from ${commitTime}), up since ${startedAt}`))
@@ -136,12 +138,24 @@ initChat({
 });
 initRoster(people);
 initEmoteBar();
+initProfile();
+initStylePanel();
+settingsFrame();               // exists (hidden) so the ∃ menu can open it
 initDock([
-  { id: 'chat', label: '💬' },
-  { id: 'world', label: '🧱' },
-  { id: 'who', label: '👥' },
-  { id: 'emotes', label: '👋' },
-  { id: 'debug', label: '🐞' },
+  // order: profile right under ∃, then world, chat, emotes, debug;
+  // the wrench appears when this world grants you build rights.
+  { id: 'profile', icon: 'user-circle' },   // pinnable like the rest
+  { id: 'world', icon: 'planet' },
+  { id: 'chat', icon: 'chat-circle' },
+  { id: 'emotes', icon: 'hand-waving' },
+  { id: 'debug', icon: 'bug' },
+  { id: 'settings', icon: 'gear-six' },
+  { id: 'edit', icon: 'wrench', action: toggleEditMode,
+    active: () => isEditing(),
+    gate: () => {
+      const r = roleOf(CONFIG.name);
+      return ['builder', 'owner'].includes(r?.role ?? r) || !worldHasOwner();
+    } },
 ]);
 initDebug({
   // the body in your HAND wins over your own — that is the one being worked on
@@ -203,8 +217,8 @@ function start() {
   // 🔴 ONE TRANSPORT, EXACTLY ONE PLAYBACK OWNER (#104 amendment 6, the #132
   // cutover). The P2P mesh is deleted; the in-process SFU is not a flag or a
   // URL param, it is the only voice path the client has. That is deliberate —
-  // when transports selected by flag coexisted, a dropped ?sfu=1 served R the
-  // mesh for an hour while every result was reported as "SFU" (2026-08-15),
+  // when transports selected by flag coexisted, a dropped ?sfu=1 served the
+  // mesh for an hour while every result was reported as "SFU",
   // and amendment 6's "exactly one playback owner must be visible at all
   // times" is only IMPOSSIBLE to violate when a second owner cannot
   // initialise. The requirement is that the wrong path be impossible, not
@@ -219,9 +233,8 @@ function start() {
   // selected voice — used to be installed ONLY inside the `?tts=PORT` block, so
   // it existed exclusively for bodies launched with a URL parameter. A human who
   // picked a voice in the panel loaded a 63 MB model, saw "ready", typed, and
-  // heard nothing, because nothing was listening for their says (R, 2026-08-09:
-  // "I don't hear anything when I type into the chat box. Hearing yourself as a
-  // human using TTS is half the fun").
+  // heard nothing, because nothing was listening for their says — and hearing yourself as a
+  // human using TTS is half the fun.
   //
   // It belongs at boot, with everyone: it is a no-op until a voice exists and
   // the checkbox is on, and speakOwnSays() already gates on both.
@@ -462,12 +475,11 @@ startPrefetch().catch((e) => report('prefetch', e));
 // setVoice(name) — POINT AT A MODEL ON DISK, at any time, same function a human's
 // picker uses.
 //
-// R: "why does it need to be restarted? I don't have to restart my client to use
-// a voice, that's a weird asymmetry." She is right and I built the asymmetry: a
+// Why should an agent need a restart to change voice when a human doesn't?
+// The asymmetry was built in: a
 // URL param is a BOOT-TIME decision, so a human got a live control and an agent
 // got a restart. Restarting a body is also the single most expensive thing in
-// this system — it drops the door, and I have broken her world doing it twice
-// today.
+// this system — it drops the door, and doing it has broken a live world twice.
 //
 // So this is a function, callable whenever, and ?voice= merely calls it once at
 // boot. The picker only produces File objects and a File is constructible from
@@ -515,9 +527,8 @@ if (typeof window !== 'undefined') window.setVoice = setVoice;
         console.log(ok ? `[voice] synthesized voice ready on :${port}`
                        : `[voice] no synthesizer on :${port} — falling back to browser speech`);
         if (!ok) {
-          // R, 2026-08-09: "The TTS endpoint should probably default to the
-          // browser default if it can't resolve your TTS endpoint so you don't
-          // get crazy beeping." An unreachable endpoint used to mean NO voice —
+          // An unreachable TTS endpoint should fall back to the browser's own
+          // voice rather than produce beeping. An unreachable endpoint used to mean NO voice —
           // the body joined, asked to speak, and produced nothing (or, with a
           // tone generator installed, beeped). browservoice.js already existed
           // and was never imported anywhere: the fallback was written and dead.
@@ -560,7 +571,7 @@ if (typeof window !== 'undefined') window.setVoice = setVoice;
         // the fix deleted the definition and left the call. toggleMic wants the
         // actor NAME, which is CONFIG.name — the same value every other caller
         // passes.
-        // 🔴 OPEN THE LANE THE TRANSPORT ACTUALLY OWNS (2026-08-15). This read
+        // 🔴 OPEN THE LANE THE TRANSPORT ACTUALLY OWNS. This read
         // the mesh's own mic-state getter and toggle unconditionally — so a
         // ?tts= body on an SFU server opened the MESH mic lane, published to a
         // transport nobody was on, and reported success. Same defect as the
@@ -576,7 +587,7 @@ if (typeof window !== 'undefined') window.setVoice = setVoice;
       })
       // 🔴 NEVER SWALLOW THIS. It was `.catch(() => {})`, so anything after the
       // "voice ready" line could throw and vanish while the log still claimed
-      // success — the exact shape of a check that did not run (2026-08-08).
+      // success — the exact shape of a check that did not run.
       .catch((e) => console.error('[voice] TTS wiring failed:', e?.message || e));
   }
 }
@@ -605,14 +616,14 @@ globalThis.__bodies = () => [
   springbonesRunning: !av.__simHair && !!av.vrm?.springBoneManager,
   avatar: av,
 }));
-// One command R can paste to answer "why is it silent?" from her own console:
+// One command anyone can paste to answer "why is it silent?" from their console:
 // context state, how many sources exist, whether the gesture hook is waiting.
 globalThis.__audioState = () => audioState();
 // THE ISOLATION TEST, INSIDE THE WORLD PAGE. A separate probe page meant a new
 // URL to type, and the URL was its own obstacle course: /audio-probe 404s,
 // /audio-probe.html works, an extensionless copy downloads instead of
-// rendering. None of that is the bug we are chasing. This runs where she
-// already is. Call it from the console; it needs a click first for the
+// rendering. None of that is the bug we are chasing. This runs where the
+// person already is. Call it from the console; it needs a click first for the
 // context, which console interaction does not provide — so it reports the
 // context state rather than pretending.
 globalThis.testAudioLayers = async () => {
