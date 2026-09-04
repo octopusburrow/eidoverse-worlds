@@ -768,9 +768,12 @@ export function initDebug(p = {}) {
   // perfscope mounts itself when its module is present; without it this is a silent no-op
   import('./perfscope.js').then((m) => m.mountPerfPanel(stack, { toast: toastLike, section: dbgSection })).catch(() => {});
 
+  // the live bone readout gets its own collapsible section: loose in the stack
+  // it sat between 'joint limits' and 'performance' as a scrollable sliver
+  // that no section's open/close could account for (R, 09-04)
   statsEl = document.createElement('pre');
   statsEl.className = 'dbg-stats';
-  stack.appendChild(statsEl);
+  dbgSection(stack, 'ragdoll readout', (body) => body.appendChild(statsEl));
   frame.body.appendChild(stack);
   return frame;
 }

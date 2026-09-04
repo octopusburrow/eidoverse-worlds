@@ -144,7 +144,14 @@ select {
   font: 11px var(--font); background: var(--well); color: var(--fg);
   border: 1px solid var(--edge); border-radius: 5px; padding: 5px;
   max-width: 100%; min-width: 0;   /* never wider than its row (video panel clipped at the frame edge, R 09-04) */
+  /* the popup list is the OS's: color-scheme dark makes Chrome/Edge draw it dark
+     instead of white-with-a-blue-bar; option colors follow the panel. The hover
+     bar inside a native popup stays the OS's — a house dropdown would need a
+     custom control (R, 09-04) */
+  color-scheme: dark;
 }
+select option { background: rgb(var(--panel-rgb)); color: var(--fg); }
+select option:checked { background: color-mix(in srgb, var(--brand) 22%, rgb(var(--panel-rgb))); color: var(--fg); }
 input[type=checkbox] { accent-color: var(--control); }
 input[type=color] {
   width: 26px; height: 20px; padding: 0; cursor: pointer; background: none;
@@ -551,8 +558,9 @@ input[type=range]:disabled { accent-color: color-mix(in srgb, var(--control) 40%
    than 45% of the row; the control column takes the rest and starts at the left
    of its cell. .row = short label (42px) + slider + readout; .row.wide = a
    sentence label + one control; .btn-row = buttons. No private layout rules. */
-.row.wide { display: grid; grid-template-columns: var(--row-label-col, minmax(auto, 45%)) minmax(0, 1fr); }
-.row.wide > .nm { width: auto; text-align: left; line-height: 1.25; white-space: nowrap; }
+.row.wide { display: grid; grid-template-columns: var(--row-label-col, minmax(auto, 60%)) minmax(0, 1fr); }
+/* the sentence label is never clipped: undo .row .nm's ellipsis clamp here */
+.row.wide > .nm { width: auto; max-width: none; overflow: visible; text-align: left; line-height: 1.25; white-space: nowrap; }
 /* a label + a bare control still lines up: the control owns the whole second
    column, left-justified against the centre line */
 .row.wide > input[type=checkbox] { justify-self: start; }

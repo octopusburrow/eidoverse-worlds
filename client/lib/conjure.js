@@ -252,7 +252,7 @@ async function paint(body) {
     <div class="cj-new">
       <input id="cj-prompt" type="text" maxlength="400" spellcheck="false"
         placeholder="describe a thing… e.g. a rusted brass lighthouse" ${genOk ? '' : 'disabled'}>
-      <button id="cj-go" ${genOk ? '' : 'disabled'}>✨ conjure</button>
+      <button id="cj-go" ${genOk ? '' : 'disabled'}>${fsvg('sparkle', 12)} conjure</button>
     </div>
     ${genOk ? '' : '<p class="sub">bringing new objects into this world needs the <b>gen</b> capability — ask its owner (<b>/grant you +gen</b>)</p>'}
     <div id="cj-jobs">${rows || '<p class="sub">nothing cooking — your conjures queue here with progress, and pause for your pick of the image candidates before any mesh is spent.</p>'}</div>

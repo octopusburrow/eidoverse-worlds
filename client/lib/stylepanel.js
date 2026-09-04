@@ -60,7 +60,8 @@ export function initStylePanel() {
       const sw = document.createElement('input');
       sw.type = 'color';
       sw.value = currentHex(f);
-      sw.style.cssText = 'width:26px;height:20px;padding:0;border:none;background:none;cursor:pointer;';
+      // no inline styling: input[type=color] is the house swatch (outlined — the
+      // 'panel' swatch vanished on the panel without it; R, 09-04)
       sw.oninput = () => {
         const v = f.kind === 'rgbTriplet' ? hexToTriplet(sw.value) : sw.value;
         rootStyle().setProperty(f.key, v);
