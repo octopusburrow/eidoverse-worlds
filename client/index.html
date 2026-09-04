@@ -185,16 +185,18 @@ a:hover { color: var(--fg); text-decoration-color: var(--brand); }
 .sp-logo path { transition: transform .55s cubic-bezier(.22,.9,.3,1.04), opacity .55s ease; will-change: transform, opacity; }
 #splash.gone .sp-logo { filter: drop-shadow(0 0 26px rgb(143 232 200 / .55)); transition: filter .3s ease-out; }
 #splash.gone .sp-mark { color: #d9fff1; }
-/* assembly driven by --spp (0..1), in two beats so every frame reads as a
+/* all three parts hold ONE tint throughout — the dimmed-while-apart read as an
+   error, not a gesture (R, 09-04); the motion alone carries the assembly.
+   assembly driven by --spp (0..1), in two beats so every frame reads as a
    gesture, not a glitch: the brackets settle first (0→.6) — tilted and a
    little dim while apart, upright and full when in register — and only then
    does the arm spear through the parted spine (.6→1). Before, all three
    moved together over a few percent and the arm's half-way frames poked out
    past the spine. The mark assembling IS the progress display. */
 .sp-logo { --br: clamp(0, calc(var(--spp, 0) / .6), 1); --ar: clamp(0, calc((var(--spp, 0) - .6) / .4), 1); }
-.sp-logo .pc-top { transform: translate(calc((1 - var(--br)) * 12%), calc((1 - var(--br)) * -18%)) rotate(calc((1 - var(--br)) * -6deg)); opacity: calc(.55 + .45 * var(--br)); transform-origin: 50% 50%; }
-.sp-logo .pc-bot { transform: translate(calc((1 - var(--br)) * 12%), calc((1 - var(--br)) *  18%)) rotate(calc((1 - var(--br)) *  6deg)); opacity: calc(.55 + .45 * var(--br)); transform-origin: 50% 50%; }
-.sp-logo .pc-arm { transform: translateX(calc((1 - var(--ar)) * -46%)); opacity: calc(.35 + .65 * var(--ar)); }
+.sp-logo .pc-top { transform: translate(calc((1 - var(--br)) * 12%), calc((1 - var(--br)) * -18%)) rotate(calc((1 - var(--br)) * -6deg)); transform-origin: 50% 50%; }
+.sp-logo .pc-bot { transform: translate(calc((1 - var(--br)) * 12%), calc((1 - var(--br)) *  18%)) rotate(calc((1 - var(--br)) *  6deg)); transform-origin: 50% 50%; }
+.sp-logo .pc-arm { transform: translateX(calc((1 - var(--ar)) * -46%)); }
 /* a slow breath while we wait: a stalled load must still look alive. It used
    to be a radial glow under the mark ("a little 2005" — R, 09-04); now the
    mark itself breathes, faintly, in opacity alone. Stops the moment the splash goes. */
