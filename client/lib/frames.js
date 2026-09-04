@@ -85,7 +85,7 @@ function _grabbableAt(e) {
   for (let t = e.target; t instanceof HTMLElement; t = t.parentElement) {
     if (t.tagName === 'LABEL') return false;
     const cs = getComputedStyle(t);
-    if (cs.cursor === 'pointer') return false;
+    if (cs.cursor === 'pointer' || cs.cursor.endsWith('resize')) return false;   // a resize-cursor element is a HANDLE, not a grab surface (chat's pane grip moved the whole frame; R 09-04)
     if ((cs.userSelect || cs.webkitUserSelect) === 'text') return false;
     if (t.classList?.contains('frame')) return true;   // reached bare chrome
   }

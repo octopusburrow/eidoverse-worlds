@@ -759,6 +759,7 @@ function initSidePane() {
   grip.addEventListener('pointerdown', (e) => {
     if (!sideSt.open) return;
     e.preventDefault();
+    e.stopPropagation();   // the frame's root drags on body pointerdown; the grip owns this one (R, 09-04: it moved the whole window)
     const x0 = e.clientX, w0 = sideSt.w;
     const move = (ev) => {
       const d = sideSt.pos === 'left' ? ev.clientX - x0 : x0 - ev.clientX;   // grip side flips with the pane

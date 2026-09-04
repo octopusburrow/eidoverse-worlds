@@ -319,7 +319,9 @@ a:hover { color: var(--fg); text-decoration-color: var(--brand); }
 /* the grip straddles the LINE you can see (the toggler's border, between the log
    and the 14px strip) — it used to sit on the strip's far side, invisible (R, 09-04) */
 .chat-side-grip { position: absolute; left: calc(-14px - 4px); top: 0; bottom: 0; width: 8px; cursor: ew-resize; z-index: 3; }
-.chat-side-grip:hover, .chat-side-grip:active { background: color-mix(in srgb, var(--brand) 30%, transparent); }
+/* the affordance is the LINE itself, not a band: a 1px stroke that turns brand under the pointer */
+.chat-side-grip::before { content: ''; position: absolute; left: 4px; top: 0; bottom: 0; width: 1px; background: transparent; }
+.chat-side-grip:hover::before, .chat-side-grip:active::before { background: var(--brand); }
 .chat-side-list { flex: 1; overflow-y: auto; padding: 6px 8px; }
 .chat-side-list .who-row { display: flex; justify-content: space-between; gap: 8px; padding: 1px 0; font-size: var(--fs-sm); }
 .chat-side-list .who-row .d { color: var(--dim); }
@@ -598,7 +600,7 @@ input[type=range]:disabled { accent-color: color-mix(in srgb, var(--control) 40%
   color: var(--brand); border: none; cursor: pointer; background: none; box-shadow: none;
 }
 #dock #hud.emark { color: var(--dim); }                             /* local only */
-#dock #hud.emark.net-live { color: var(--brand-deep); }                        /* connected — subtle green-blue */
+#dock #hud.emark.net-live { color: var(--brand); }   /* connected — FULL accent at rest: it is the logo, not a menu item (R, 09-04) */
 #dock #hud.emark:hover, #dock #hud.emark.net-live:hover { color: var(--fg); }   /* hover = white, like the rail's buttons (R, 09-04) */
 #dock #hud.emark.net-wait { color: var(--dim); animation: netpulse 2.6s ease-in-out infinite; }  /* trying */
 /* arranging (menu-edit) mode: hovering the E or a button still goes white —
@@ -828,7 +830,7 @@ button.keybtn:active { box-shadow: inset 0 1px 3px rgb(0 0 0 / .6); }
 .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; flex: 1; min-height: 0; }
 /* emote tiles are FIXED width and flow: widen the frame and they go to one
    line; the frame snaps to whole tiles on release (emotebar.js). Even gutters. */
-.tiles.fixed { grid-template-columns: repeat(auto-fill, 40px); gap: 5px; justify-content: center; padding: 0; }   /* centred: any remainder splits evenly left/right */
+.tiles.fixed { grid-template-columns: repeat(auto-fill, 40px); grid-auto-rows: 40px; gap: 5px; justify-content: center; align-content: start; flex: none; padding: 0; }   /* centred: any remainder splits evenly left/right; rows never stretch */
 .tile {
   position: relative; display: flex; flex-direction: column; align-items: flex-start; justify-content: center;
   gap: 3px; padding: 12px 14px; border-radius: 9px;
