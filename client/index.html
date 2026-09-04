@@ -180,16 +180,12 @@ select {
 .sp-logo .pc-top { transform: translate(calc((1 - var(--br)) * 12%), calc((1 - var(--br)) * -18%)) rotate(calc((1 - var(--br)) * -6deg)); opacity: calc(.55 + .45 * var(--br)); transform-origin: 50% 50%; }
 .sp-logo .pc-bot { transform: translate(calc((1 - var(--br)) * 12%), calc((1 - var(--br)) *  18%)) rotate(calc((1 - var(--br)) *  6deg)); opacity: calc(.55 + .45 * var(--br)); transform-origin: 50% 50%; }
 .sp-logo .pc-arm { transform: translateX(calc((1 - var(--ar)) * -46%)); opacity: calc(.35 + .65 * var(--ar)); }
-/* a slow breath behind the mark while we wait: a stalled load must still look
-   alive. Stops the moment the splash goes. */
+/* a slow breath while we wait: a stalled load must still look alive. It used
+   to be a radial glow under the mark ("a little 2005" — R, 09-04); now the
+   mark itself breathes, faintly, in opacity alone. Stops the moment the splash goes. */
 .sp-logo-wrap { position: relative; display: grid; place-items: center; }
-.sp-logo-wrap::before {
-  content: ''; position: absolute; width: 260px; height: 260px; border-radius: 50%;
-  background: radial-gradient(circle, color-mix(in srgb, var(--brand) 16%, transparent), transparent 62%);
-  animation: sp-breathe 3.4s ease-in-out infinite; pointer-events: none;
-}
-#splash.gone .sp-logo-wrap::before { animation: none; opacity: 0; }
-@keyframes sp-breathe { 0%, 100% { opacity: .45; transform: scale(.92); } 50% { opacity: 1; transform: scale(1.06); } }
+#splash:not(.gone) .sp-logo-wrap { animation: sp-breathe 3.4s ease-in-out infinite; }
+@keyframes sp-breathe { 0%, 100% { opacity: .82; } 50% { opacity: 1; } }
 .sp-mark {
   font-size: 26px; letter-spacing: .34em; color: var(--brand); opacity: .9;
   text-transform: lowercase; font-weight: 500; margin-left: .34em; /* recenter over tracking */
@@ -673,7 +669,11 @@ body.edit-mode::after {
 #toasts { display: flex; flex-direction: column; gap: 5px; align-items: flex-end; }
 /* floating chrome carries a thin outline so it separates from whatever the
    world is drawing behind it (R, 09-04): toasts, hint bar, chat gear pop, hud pops */
-.toast, #hintbar, .chat-gearpop, .hud-pop { outline: 1px solid var(--edge-hi); outline-offset: -1px; }
+.toast, #hintbar, .chat-gearpop, .hud-pop {
+  outline: 1px solid var(--edge-hi); outline-offset: -1px;
+  /* and fully OPAQUE — readable over anything the world draws (R, 09-04) */
+  background: rgb(var(--panel-rgb)); backdrop-filter: none; -webkit-backdrop-filter: none;
+}
 .toast {
   padding: 7px 10px; font-size: var(--fs-sm); max-width: 100%;
   border-left: 3px solid var(--dim); white-space: pre-wrap; word-break: break-word;
@@ -774,7 +774,7 @@ button.keybtn:active { box-shadow: inset 0 1px 3px rgb(0 0 0 / .6); }
   background: rgb(255 255 255 / .04); border: none;
 }
 .pf-tile:hover { background: rgb(255 255 255 / .09); }
-.pf-tile svg { opacity: .75; margin-bottom: 3px; }
+.pf-tile svg { opacity: .9; margin-bottom: 3px; color: var(--icon); }   /* icons carry the brand whisper everywhere, stubs included (R, 09-04) */
 .pf-tile b { font-size: var(--fs); font-weight: 600; }
 .pf-tile span { color: var(--dim); font-size: 11px; }
 .pf-note { color: var(--dim); font-size: 11px; opacity: .7; }
@@ -802,7 +802,8 @@ body.altgrab .frame:active { cursor: grabbing; }
   width: min(560px, 100%); max-height: 100%; overflow-y: auto;
   padding: 20px 22px; box-sizing: border-box; position: relative;
 }
-.sheet h1 { font-size: 17px; margin: 0 0 3px; color: var(--fg); font-weight: 600; }
+/* the door is a frame like the others: its title follows .fr-title (R, 09-04: the card read as the old menu styling) */
+.sheet h1 { font-size: var(--fs-sm); margin: 0 0 6px; color: var(--dim); font-weight: 600; text-transform: uppercase; letter-spacing: .085em; }
 .sheet h2 {
   font-size: var(--fs-sm); margin: 16px 0 7px; color: var(--dim);
   text-transform: uppercase; letter-spacing: .09em; font-weight: 600;
@@ -815,7 +816,7 @@ body.altgrab .frame:active { cursor: grabbing; }
   width: 100%; text-align: center; font-size: var(--fs); padding: 10px;
   background: var(--accent-dk); border-color: var(--edge-hi); color: var(--accent); font-weight: 600;
 }
-.sheet .go:hover { background: #4a3620; }
+.sheet .go:hover { background: color-mix(in srgb, var(--accent-dk) 78%, var(--accent)); }
 .keys {
   display: grid; grid-template-columns: max-content 1fr;
   gap: 7px 14px; align-items: baseline;

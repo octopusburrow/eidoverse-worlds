@@ -774,9 +774,12 @@ export function openDoor({ roster = [], needsKey = false, login = null, onEnter 
       c.className = `card panel ${a.name === chosen ? 'on' : ''}`;
       // Bodies nobody has worn yet have no portrait — say so with a placeholder
       // rather than an empty box that reads as a broken image.
-      c.innerHTML = `<img alt="" loading="lazy" src="/thumb/${encodeURIComponent(a.name)}.png"
-           onerror="this.style.display='none';this.nextElementSibling.style.display='grid'">
+      c.innerHTML = `<img alt="" loading="lazy" src="/thumb/${encodeURIComponent(a.name)}.png">
          <div class="ph">🧍</div><span>${escapeHtml(a.name)}</span>`;
+      // a JS listener, not an inline onerror= — inline handlers never ran here,
+      // so a body with no portrait showed the browser's broken-image glyph (R, 09-04)
+      const img = c.querySelector('img');
+      img.addEventListener('error', () => { img.style.display = 'none'; c.querySelector('.ph').style.display = 'grid'; });
       c.onclick = () => { chosen = a.name; paint(); };
       grid.appendChild(c);
     }
