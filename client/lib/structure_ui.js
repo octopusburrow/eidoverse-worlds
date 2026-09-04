@@ -284,7 +284,7 @@ export function initStructureUI() {
   mk('↶ undo', 'undo the last edit', () => undo());
   const paint = () => {
     for (const [k, btn] of btns) {
-      btn.style.background = tool === k ? '#1d4a5c' : '#111a20';
+      btn.style.background = tool === k ? 'var(--act)' : 'var(--well)';
       btn.style.borderColor = tool === k ? '#4fb3d9' : '#2c3a44';
     }
   };
