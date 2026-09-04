@@ -485,26 +485,25 @@ input[type=range] { --p: 50%; }
    fading the dark half up and back for a beat (R, 09-04). Chunkier + round ends. */
 input[type=range], input[type=range]::-webkit-slider-runnable-track, input[type=range]::-webkit-slider-thumb { transition: none; }
 input[type=range]::-webkit-slider-runnable-track {
-  height: 6px; border-radius: 3px;
+  height: 6px; border-radius: 999px;
   background: linear-gradient(to right,
     var(--control) 0 var(--p),
     color-mix(in srgb, var(--control) 14%, rgb(255 255 255 / .07)) var(--p) 100%);
-  /* dark outline so the bar stays legible over a bright surface */
-  border: 1px solid rgb(0 0 0 / .55);
-  box-shadow: inset 0 1px 1px rgb(0 0 0 / .45);
+  /* no border: the 'legibility' ring read as a gray outline on our dark panels
+     (R, 09-04); the well after the thumb is the contrast */
+  border: none; box-shadow: none;
 }
 input[type=range]::-webkit-slider-thumb {
   -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%;
-  background: var(--control); margin-top: -5px;
-  border: 1px solid rgb(0 0 0 / .55);
-  box-shadow: 0 1px 3px rgb(0 0 0 / .55);
+  background: var(--control); margin-top: -4px;
+  border: none;
+  box-shadow: 0 1px 3px rgb(0 0 0 / .45);
 }
 input[type=range]:hover::-webkit-slider-thumb { background: color-mix(in srgb, var(--control) 78%, white); }
 input[type=range]:disabled::-webkit-slider-thumb { background: color-mix(in srgb, var(--control) 40%, #555); }
 input[type=range]::-moz-range-track {
-  height: 6px; border-radius: 3px;
+  height: 6px; border-radius: 999px;
   background: color-mix(in srgb, var(--control) 14%, rgb(255 255 255 / .07));
-  border: 1px solid rgb(0 0 0 / .55);
 }
 input[type=range]::-moz-range-progress { height: 6px; border-radius: 3px; background: var(--control); }
 input[type=range]::-moz-range-thumb {
