@@ -553,7 +553,7 @@ select {
 }
 #dock #hud.emark { color: var(--dim); }                             /* local only */
 #dock #hud.emark.net-live { color: var(--brand-deep); }                        /* connected — subtle green-blue */
-#dock #hud.emark.net-live:hover { color: color-mix(in srgb, var(--brand) 70%, white); }
+#dock #hud.emark:hover, #dock #hud.emark.net-live:hover { color: var(--fg); }   /* hover = white, like the rail's buttons (R, 09-04) */
 #dock #hud.emark.net-wait { color: var(--dim); animation: netpulse 2.6s ease-in-out infinite; }  /* trying */
 body.arranging #dock #hud.emark {
   color: #0f2024; background: var(--brand-deep); border-radius: 8px; animation: none;  /* inverted: you're holding the chrome */
@@ -671,6 +671,9 @@ body.edit-mode::after {
 #loading { padding: 7px 10px; font-size: var(--fs-sm); color: var(--warn); white-space: pre; display: none; }
 #loading.on { display: block; }
 #toasts { display: flex; flex-direction: column; gap: 5px; align-items: flex-end; }
+/* floating chrome carries a thin outline so it separates from whatever the
+   world is drawing behind it (R, 09-04): toasts, hint bar, chat gear pop, hud pops */
+.toast, #hintbar, .chat-gearpop, .hud-pop { outline: 1px solid var(--edge-hi); outline-offset: -1px; }
 .toast {
   padding: 7px 10px; font-size: var(--fs-sm); max-width: 100%;
   border-left: 3px solid var(--dim); white-space: pre-wrap; word-break: break-word;
@@ -709,7 +712,9 @@ body.arranging #dock .dock-grip { display: grid; }
 #dock button:not(.dock-grip) {
   display: grid; place-items: center; width: 34px; height: 34px; padding: 0;
   font-size: 11px;   /* label-fallback buttons (entries with no fill icon) */
-  color: var(--icon); background: none; border: none; box-shadow: none; border-radius: 7px;
+  /* OFF is the E-menu's unpinned gray (--dim), not the brand-tinted --icon:
+     open-vs-not must read at a glance on the rail (R, 09-04) */
+  color: var(--dim); background: none; border: none; box-shadow: none; border-radius: 7px;
 }
 #dock button:not(.dock-grip):hover { color: var(--fg); background: var(--hov); }
 /* The ON look must not be loud or distracting, and quieting it moves OFF
