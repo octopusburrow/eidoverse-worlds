@@ -24,7 +24,7 @@ if(MODE==="place"){
   await pverb("comp",{id:GATE.id,type:"inscription",data:INSCR});
   await pverb("comp",{id:GATE.id,type:"lock",data:true});
 }
-await pverb("behavior",{id:"threshold-gate",src:path,attach:GATE.id,caps:{verbs:["say"]}});
+await pverb("behavior",{id:"threshold-gate",src:path,attach:GATE.id,caps:{verbs:["say"]},knobs:{heart:"grove-heart"}});
 await settle(1500);
 console.log("FOLD:",JSON.stringify(await eye()));
 const r=await req({type:"debug",behaviors:true},"r1"); console.log("roster:",JSON.stringify((r.events||[]).filter(e=>/threshold/.test(e.id))));

@@ -79,7 +79,14 @@ world.every(TICK_S, () => {
     const stayed = (now - Number(here[id])) / 1000 >= STAY_S;
     const n = Number(world.kv.get("sent") || 0);
     if (stayed) {
-      const line = SENDOFFS[n % SENDOFFS.length](names[id] || id, words[id] || "");
+      // said nothing inside? a neighbouring keeper of relation-names (knob
+      // `heart`, as the grove uses it) can lend the newest kept name to carry.
+      let word = words[id] || "";
+      if (!word && world.knobs.heart) {
+        try { const kept = world.entity(world.knobs.heart)?.comp?.names; if (Array.isArray(kept) && kept.length) word = String(kept[kept.length - 1]); }
+        catch (err) { world.log("no heart to read", String(err)); }
+      }
+      const line = SENDOFFS[n % SENDOFFS.length](names[id] || id, word);
       world.emit("say", { text: `[${LABEL}] ${line}` });
       world.kv.set("sent", n + 1);
       world.log("sent off", id, "carrying", words[id] || "(nothing)");
