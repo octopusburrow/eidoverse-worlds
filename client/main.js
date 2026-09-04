@@ -15,6 +15,7 @@ import { updateSky, updateAutoSystems, skyArgs, setCloudQuality } from './lib/sk
 import { setSkyArgsSource, entities, buildsPending, avatarMounts, roleOf, worldHasOwner } from './lib/world.js';
 import { initProfile } from './lib/profile.js';
 import { initStylePanel } from './lib/stylepanel.js';
+import { initCapNotice } from './lib/capnotice.js';
 import { foldParity } from './lib/parity.js';
 import { initModelsRealizer, reconcileModels, residencyDebug, setResidencyFocus, drainPromoteTail } from './lib/realize/models.js';
 import { initEnvironmentRealizer } from './lib/realize/environment.js';
@@ -135,6 +136,7 @@ initRoster(people);
 initEmoteBar();
 initProfile();
 initStylePanel();
+  initCapNotice();
 settingsFrame();               // exists (hidden) so the ∃ menu can open it
 initDock([
   // order: profile right under ∃, then world, chat, emotes, debug;

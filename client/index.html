@@ -813,6 +813,16 @@ kbd {
   font-size: var(--fs); background: none; border: none; color: var(--dim);
 }
 
+/* capability notice: a persistent card, bottom-centre, until dismissed */
+.capnotice {
+  position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 60;
+  max-width: 460px; padding: 12px 14px 10px; font-size: 13px; line-height: 1.45;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.capnotice b { display: block; margin-bottom: 4px; }
+.capnotice p { margin: 0 0 8px; color: var(--dim); }
+.capnotice .cn-btns { display: flex; gap: 8px; justify-content: flex-end; }
+.capnotice .cn-btns button { padding: 4px 10px; }
 /* photo mode hides every chrome layer but keeps the canvas */
 body.photo .frame, body.photo #hud, body.photo #trayzone,
 body.photo #hintbar, body.photo #dock { display: none !important; }
