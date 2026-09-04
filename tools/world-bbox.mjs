@@ -14,9 +14,12 @@ await page.goto(`http://127.0.0.1:${PORT}/?world=${WORLD}&name=bbox&key=${T}&spe
 await page.waitForFunction(() => globalThis.__ewEngineUp === true, { timeout: 90000 });
 await page.waitForTimeout(35000);
 const r = await page.evaluate((RX) => {
-  const { scene } = globalThis.EW; const re = new RegExp(RX, 'i'); const hits = [];
+  const { scene, entities } = globalThis.EW; const re = new RegExp(RX, 'i'); const hits = [];
+  // only the world's entities, not their glTF child nodes (Cube000, Mesh10…)
+  const known = new Set(Object.keys(entities || {}));
   scene.traverse((o) => {
     const id = o.userData?.id || o.userData?.entityId || o.name; if (!re.test(String(id))) return;
+    if (known.size && !known.has(String(id))) return;
     const min = [1e9, 1e9, 1e9], max = [-1e9, -1e9, -1e9]; let tris = 0; o.updateWorldMatrix(true, true);
     o.traverse((m) => {
       if (!m.isMesh) return; m.geometry.computeBoundingBox(); const bb = m.geometry.boundingBox; const e = m.matrixWorld.elements;
