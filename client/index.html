@@ -146,6 +146,13 @@ select {
   max-width: 100%; min-width: 0;   /* never wider than its row (video panel clipped at the frame edge, R 09-04) */
 }
 input[type=checkbox] { accent-color: var(--control); }
+input[type=color] {
+  width: 26px; height: 20px; padding: 0; cursor: pointer; background: none;
+  border: 1px solid var(--edge-hi); border-radius: 4px;
+}
+input[type=color]::-webkit-color-swatch-wrapper { padding: 0; }
+input[type=color]::-webkit-color-swatch { border: none; border-radius: 3px; }
+input[type=color]::-moz-color-swatch { border: none; border-radius: 3px; }
 /* links: brand ink, quiet underline — the browser's blue was the one thing on
    screen outside the scheme (R, 09-04: "open orrery" in Conjure) */
 a { color: var(--brand); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--brand) 40%, transparent); text-underline-offset: 2px; }
@@ -474,8 +481,11 @@ input[type=range] { flex: 1; accent-color: var(--control); min-width: 0;
    native progress fill on custom tracks, so ui.js paints --p per input.
    Un-scoped from .row on 09-04: Scene's sliders live outside a .row and were browser-default (R). */
 input[type=range] { --p: 50%; }
+/* no transition on the track: its --p gradient stop would ANIMATE on release,
+   fading the dark half up and back for a beat (R, 09-04). Chunkier + round ends. */
+input[type=range], input[type=range]::-webkit-slider-runnable-track, input[type=range]::-webkit-slider-thumb { transition: none; }
 input[type=range]::-webkit-slider-runnable-track {
-  height: 4px; border-radius: 2px;
+  height: 6px; border-radius: 3px;
   background: linear-gradient(to right,
     var(--control) 0 var(--p),
     color-mix(in srgb, var(--control) 14%, rgb(255 255 255 / .07)) var(--p) 100%);
@@ -484,7 +494,7 @@ input[type=range]::-webkit-slider-runnable-track {
   box-shadow: inset 0 1px 1px rgb(0 0 0 / .45);
 }
 input[type=range]::-webkit-slider-thumb {
-  -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%;
+  -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%;
   background: var(--control); margin-top: -5px;
   border: 1px solid rgb(0 0 0 / .55);
   box-shadow: 0 1px 3px rgb(0 0 0 / .55);
@@ -492,11 +502,11 @@ input[type=range]::-webkit-slider-thumb {
 input[type=range]:hover::-webkit-slider-thumb { background: color-mix(in srgb, var(--control) 78%, white); }
 input[type=range]:disabled::-webkit-slider-thumb { background: color-mix(in srgb, var(--control) 40%, #555); }
 input[type=range]::-moz-range-track {
-  height: 4px; border-radius: 2px;
+  height: 6px; border-radius: 3px;
   background: color-mix(in srgb, var(--control) 14%, rgb(255 255 255 / .07));
   border: 1px solid rgb(0 0 0 / .55);
 }
-input[type=range]::-moz-range-progress { height: 4px; border-radius: 2px; background: var(--control); }
+input[type=range]::-moz-range-progress { height: 6px; border-radius: 3px; background: var(--control); }
 input[type=range]::-moz-range-thumb {
   width: 12px; height: 12px; border: 1px solid rgb(0 0 0 / .55); border-radius: 50%; background: var(--control);
 }
