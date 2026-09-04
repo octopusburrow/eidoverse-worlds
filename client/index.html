@@ -42,6 +42,8 @@
   --brand-deep: color-mix(in srgb, var(--brand) 84%, #1a2a28);  /* the ∃ at rest when live */
   --attn:      #ffc46b;   /* THE attention amber — the only one */
   --err:       #ff8f8f;
+  --ok:        var(--brand);            /* 'running / fine' — the brand, never a third green */
+  --ink-on-brand: #0f2024;               /* dark ink for text/edges drawn ON a brand-filled chip */
   /* legacy aliases — keep working, point at roles */
   --accent:    var(--attn);
   --accent-dk: #382a1a;
@@ -371,7 +373,7 @@ a:hover { color: var(--fg); text-decoration-color: var(--brand); }
   z-index: 3; font-size: 10.5px; padding: 3px 10px; border-radius: 11px;
   background: var(--accent-dk); border-color: var(--edge-hi); color: var(--accent);
 }
-.chat-jump.ping { background: #4a3a18; border-color: var(--ping); color: var(--ping); }
+.chat-jump.ping { background: var(--accent-dk); border-color: var(--ping); color: var(--ping); }
 
 .chat-compose { position: relative; padding: 6px; flex: none; }
 .chat-compose input { width: 100%; box-sizing: border-box; font-size: var(--fs); }
@@ -519,7 +521,7 @@ input[type=range]:disabled { accent-color: color-mix(in srgb, var(--control) 40%
 .row input[type=checkbox]:checked { background: var(--brand); border-color: var(--brand); }
 .row input[type=checkbox]:checked::before {
   content: ''; width: 8px; height: 5px; margin-top: -2px;
-  border-left: 2px solid #0f2024; border-bottom: 2px solid #0f2024;
+  border-left: 2px solid var(--ink-on-brand); border-bottom: 2px solid var(--ink-on-brand);
   transform: rotate(-45deg);
 }
 .row .v { width: 34px; flex: none; text-align: right; color: var(--dim); }
@@ -570,7 +572,7 @@ input[type=range]:disabled { accent-color: color-mix(in srgb, var(--control) 40%
    the affordance must survive the mode (R, 09-04) */
 body.arranging #dock #hud.emark:hover, body.arranging #dock button:not(.dock-grip):hover { color: var(--fg) !important; }
 body.arranging #dock #hud.emark {
-  color: #0f2024; background: var(--brand-deep); border-radius: 8px; animation: none;  /* inverted: you're holding the chrome */
+  color: var(--ink-on-brand); background: var(--brand-deep); border-radius: 8px; animation: none;  /* inverted: you're holding the chrome */
 }
 #hud.emark.editing::after {
   content: ''; position: absolute; right: 5px; top: 5px; width: 7px; height: 7px;
@@ -983,7 +985,7 @@ body.touch #touch { display: block; }
 .perf-loupe .pl-foot { color: var(--dim); font-size: 9.5px; margin-top: 4px; opacity: .75; border-top: 1px solid var(--edge); padding-top: 4px; text-align: right; }
 .pf-badge {
   display: inline-block; min-width: 8px; height: 8px; border-radius: 4px;
-  color: #0c1412; font-size: 9px; font-weight: 700; line-height: 1;
+  color: var(--ink-on-brand); font-size: 9px; font-weight: 700; line-height: 1;
   padding: 1px 4px; vertical-align: 1px;
 }
 /* chunky labeled pills (readable performance pills):

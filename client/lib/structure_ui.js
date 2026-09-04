@@ -273,7 +273,7 @@ export function initStructureUI() {
     const btn = document.createElement('button');
     btn.textContent = label; btn.title = title;
     btn.style.cssText = 'padding:4px 8px;border-radius:6px;border:1px solid #2c3a44;'
-      + 'background:#111a20;color:#cfe3ee;cursor:pointer';
+      + 'background:var(--well);color:var(--fg);cursor:pointer';
     btn.onclick = (e) => { e.stopPropagation(); fn(e, btn); paint(); };
     bar.appendChild(btn);
     return btn;
