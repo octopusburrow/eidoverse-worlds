@@ -22,7 +22,7 @@ import { verifyToken } from "./aid1.ts";
 import { resolveLibFile } from "./lint.ts";
 import { summarizeGlb } from "./geometry.ts";
 import { worlds, getWorld, type World } from "./world.ts";
-import { handleUpload } from "./upload.ts";
+import { handleUpload, optStatus } from "./upload.ts";
 
 /** What the routes need from Bun's server object, structurally: the WS
  *  upgrade and the socket address (X-Real-IP's fallback). */
@@ -456,6 +456,8 @@ const ROUTES: Route[] = [
         ...BUILD,
         ktx2Key: KTX2_KEY,
         lodRecipe: LOD_RECIPE,
+        // what the optimizer is doing / could not afford (config.ts OPT_MEM_BUDGET_MB)
+        opt: optStatus(),
         ...(process.env.WORLD_INSTANCE_NONCE ? { instance: process.env.WORLD_INSTANCE_NONCE } : {}),
       }),
       { headers: { "content-type": "application/json", "cache-control": "no-store" } }),
