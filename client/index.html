@@ -297,6 +297,7 @@ a:hover { color: var(--fg); text-decoration-color: var(--brand); }
 /* scrollbars sit a couple px in from the frame edge so the scroll thumb and
    the edge-resize band don't fight over the same column */
 .frame .fr-body { padding-right: 6px; }
+.frame .fr-body:has(> .tiles.fixed) { padding: 8px; }   /* tile bodies pad EVENLY — the right-only scrollbar room read as a lopsided gutter (R, 09-04) */
 .frame.flash { animation: flash 1.4s ease-out; }
 @keyframes flash {
   0%, 100% { border-color: var(--edge); }
@@ -818,7 +819,9 @@ button.keybtn:active { box-shadow: inset 0 1px 3px rgb(0 0 0 / .6); }
    A tile is a quiet well with an icon/glyph, a name, and an optional note or key.
    .on = lit (the playing emote, the chosen thing). No private tile rules. */
 .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; flex: 1; min-height: 0; }
-.tiles.cols-3 { grid-template-columns: repeat(3, 1fr); }
+/* emote tiles are FIXED width and flow: widen the frame and they go to one
+   line; the frame snaps to whole tiles on release (emotebar.js). Even gutters. */
+.tiles.fixed { grid-template-columns: repeat(auto-fill, 68px); gap: 6px; justify-content: start; padding: 0; }
 .tile {
   position: relative; display: flex; flex-direction: column; align-items: flex-start; justify-content: center;
   gap: 3px; padding: 12px 14px; border-radius: 9px;
@@ -831,8 +834,8 @@ button.keybtn:active { box-shadow: inset 0 1px 3px rgb(0 0 0 / .6); }
 .tile span { color: var(--dim); font-size: 11px; }
 .tile .tile-glyph { font-size: 22px; line-height: 1; color: inherit; }   /* the gesture is content, drawn large */
 .tile kbd { position: absolute; top: 6px; right: 7px; font-size: 9px; opacity: .6; }
-.tiles.cols-3 .tile { padding: 10px 10px 8px; align-items: center; }
-.tiles.cols-3 .tile b { font-size: var(--fs-sm); font-weight: 500; }
+.tiles.fixed .tile { width: 68px; box-sizing: border-box; padding: 9px 6px 7px; align-items: center; }
+.tiles.fixed .tile b { font-size: var(--fs-sm); font-weight: 500; }
 .pf-note { color: var(--dim); font-size: 11px; opacity: .7; }
 /* alt held = every frame is grabbable, and says so */
 body.altgrab .frame { cursor: grab; }

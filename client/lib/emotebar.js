@@ -14,11 +14,29 @@ import { getMe } from './mybody.js';
 const GLYPH = { wave: '👋', cheer: '🙌', dance: '💃', point: '👉', salute: '🫡', clap: '👏' };
 
 export function initEmoteBar() {
+  // geometry the CSS owns too: .tiles.fixed → 68px tiles, 6px gap, 8px body pad
+  const TILE = 68, GAP = 6, PAD = 8, ROW_H = 74;
+  const widthFor = (cols) => cols * TILE + (cols - 1) * GAP + PAD * 2 + 2;   // +2: frame edges
+  const rowsFor = (cols) => Math.ceil(EMOTE_ORDER.length / cols);
+  const heightFor = (cols) => 30 + rowsFor(cols) * ROW_H + (rowsFor(cols) - 1) * GAP + PAD * 2;   // 30: head
+  let snapT = null;
   const f = makeFrame('emotes', {
-    title: 'emotes', x: -252, y: -10, w: 246, h: 190, minW: 180, minH: 120, hidden: true,
+    title: 'emotes', x: -(widthFor(3) + 6), y: -10, w: widthFor(3), h: heightFor(3),
+    minW: widthFor(2), minH: heightFor(6), hidden: true,
+    // SNAP TO WHOLE TILES on release: drag the frame to any width, and when the
+    // drag settles it fits itself to the tiles that row holds (R, 09-04). The
+    // frame owns its size, so we write its state and repaint through the refs it
+    // exposes for exactly this kind of rider.
+    onResize: (w) => {
+      clearTimeout(snapT);
+      snapT = setTimeout(() => {
+        const cols = Math.max(2, Math.min(EMOTE_ORDER.length, Math.floor((w - PAD * 2 - 2 + GAP) / (TILE + GAP))));
+        f._state.w = widthFor(cols); f._state.h = heightFor(cols); f._paint();
+      }, 180);
+    },
   });
   const grid = document.createElement('div');
-  grid.className = 'tiles cols-3';
+  grid.className = 'tiles fixed';
   const tiles = new Map();
   EMOTE_ORDER.forEach((name, i) => {
     const b = document.createElement('button');
