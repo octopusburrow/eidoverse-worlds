@@ -786,9 +786,12 @@ export function buildPerfPanel(stack, { toast = console.log } = {}) {
   const rcpt = document.createElement('button');
   rcpt.textContent = 'copy receipt';
   rcpt.onclick = async () => toast(`perfscope: receipt copied (${await copyReceipt()} subjects)`);
-  btns.append(lb, rescan, rcpt);
+  btns.append(rescan, rcpt);
 
-  stack.append(modeRow, olRow, solRow, legend, tableEl, btns);
+  // the loupe is the tool; it sits under the overlay lens, not among the
+  // housekeeping buttons (R, 09-04)
+  const loupeRow = document.createElement('div'); loupeRow.className = 'row btn-row'; loupeRow.appendChild(lb);
+  stack.append(modeRow, loupeRow, olRow, solRow, legend, tableEl, btns);
 }
 
 /** Full teardown: overlays removed (originals were never touched), loupe

@@ -101,14 +101,14 @@ export function flashHint(html, ms = 2600) {
 }
 
 // ============================================================ cursors
-// The loupe cursor is tinted by the live --brand. CSS url() cursors can't read
+// The loupe cursor is inked with --fg (white — R 09-04: 'non-accent for now'). CSS url() cursors can't read
 // custom properties, so the tint is baked here and published as --cur-loupe
 // (index.html holds the rule and the native fallback). Rebuilt when the style
 // panel writes a new accent.
 
 let _cursorBrand = null;
 function buildCursors() {
-  const brand = (getComputedStyle(document.documentElement).getPropertyValue('--brand') || '#8fe8c8').trim();
+  const brand = (getComputedStyle(document.documentElement).getPropertyValue('--fg') || '#ebebe9').trim();
   if (brand === _cursorBrand) return;
   _cursorBrand = brand;
   const ink = '#101b1a';

@@ -804,16 +804,25 @@ button.keybtn:active { box-shadow: inset 0 1px 3px rgb(0 0 0 / .6); }
 .pf-who > b { font-size: 17px; font-weight: 650; }
 .pf-who > span { color: var(--dim); font-size: var(--fs-sm); }
 .pf-who > span b { color: var(--fg); font-weight: 550; }
-.pf-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; flex: 1; min-height: 0; }
-.pf-tile {
-  display: flex; flex-direction: column; align-items: flex-start; justify-content: center;
+ /* 🔴 TILES — the one tile, shared: profile's stubs and the emote menu both use it.
+   A tile is a quiet well with an icon/glyph, a name, and an optional note or key.
+   .on = lit (the playing emote, the chosen thing). No private tile rules. */
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; flex: 1; min-height: 0; }
+.tiles.cols-3 { grid-template-columns: repeat(3, 1fr); }
+.tile {
+  position: relative; display: flex; flex-direction: column; align-items: flex-start; justify-content: center;
   gap: 3px; padding: 12px 14px; border-radius: 9px;
-  background: rgb(255 255 255 / .04); border: none;
+  background: rgb(255 255 255 / .04); border: none; color: var(--fg);
 }
-.pf-tile:hover { background: rgb(255 255 255 / .09); }
-.pf-tile svg { opacity: .9; margin-bottom: 3px; color: var(--icon); }   /* icons carry the brand whisper everywhere, stubs included (R, 09-04) */
-.pf-tile b { font-size: var(--fs); font-weight: 600; }
-.pf-tile span { color: var(--dim); font-size: 11px; }
+.tile:hover { background: rgb(255 255 255 / .09); }
+.tile.on { background: color-mix(in srgb, var(--brand) 16%, rgb(255 255 255 / .04)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand) 45%, transparent); }
+.tile svg { opacity: .9; margin-bottom: 3px; color: var(--icon); }   /* icons carry the brand whisper everywhere, stubs included (R, 09-04) */
+.tile b { font-size: var(--fs); font-weight: 600; }
+.tile span { color: var(--dim); font-size: 11px; }
+.tile .tile-glyph { font-size: 22px; line-height: 1; color: inherit; }   /* the gesture is content, drawn large */
+.tile kbd { position: absolute; top: 6px; right: 7px; font-size: 9px; opacity: .6; }
+.tiles.cols-3 .tile { padding: 10px 10px 8px; align-items: center; }
+.tiles.cols-3 .tile b { font-size: var(--fs-sm); font-weight: 500; }
 .pf-note { color: var(--dim); font-size: 11px; opacity: .7; }
 /* alt held = every frame is grabbable, and says so */
 body.altgrab .frame { cursor: grab; }
