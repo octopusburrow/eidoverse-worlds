@@ -20,7 +20,7 @@ import { closestParams, TUNING } from './ragdoll.js';
 import { JOINT_SPECS, HAIR_TUNING, WING_TUNING } from './ammodoll.js';
 import { BLINK, WING_IDLE, LIMP_SPRINGS } from './avatar.js';
 import { makeFrame } from './frames.js';
-import { toast } from './ui.js';
+import { toast, paintRangesIn } from './ui.js';
 
 // box = an OBB, walkable on top, solid on the sides between min.y and max.y
 // pillar = anything over 2.4m tall, collapsed to a slim centre column so you
@@ -336,7 +336,7 @@ function dialRow(key, lo, hi, step) {
   sl.oninput = () => { TUNING[key] = Number(sl.value); paint(); };
   paint();
   wrap.append(nm, sl, val);
-  return { wrap, reset: () => { TUNING[key] = DEFAULTS[key]; sl.value = DEFAULTS[key]; paint(); } };
+  return { wrap, reset: () => { TUNING[key] = DEFAULTS[key]; sl.value = DEFAULTS[key]; paint(); paintRangesIn(wrap); } };
 }
 
 // ---- joint limits ----------------------------------------------------------
@@ -572,7 +572,8 @@ function buildHairPanel(stack) {
   btns.className = 'row btn-row';
   const b1 = document.createElement('button');
   b1.textContent = 'reset hair';
-  b1.onclick = () => { Object.assign(HAIR_TUNING, defaults); mk(); apply(); };
+  b1.onclick = () => { Object.assign(HAIR_TUNING, defaults); mk(); apply();   paintRangesIn(stack);   // code-set values: repaint fills now (R, 09-04)
+  };
   const b2 = document.createElement('button');
   b2.textContent = 'copy hair';
   b2.onclick = async () => {
@@ -666,6 +667,7 @@ function buildWingPanel(stack) {
     Object.assign(WING_IDLE, idleDefaults);
     Object.assign(WING_TUNING, simDefaults);
     idle.mk(); sim.mk(); apply();
+    paintRangesIn(stack);   // code-set values: repaint fills now (R, 09-04)
   };
   const b2 = document.createElement('button');
   b2.textContent = 'copy wings';

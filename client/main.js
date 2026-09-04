@@ -147,6 +147,7 @@ initDock([
   { id: 'world', icon: 'planet' },
   { id: 'chat', icon: 'chat-circle' },
   { id: 'emotes', icon: 'hand-waving' },
+  { id: 'who', icon: 'users' },        // 'present' — the roster had no dock entry at all (R's sweep, 09-04)
   { id: 'debug', icon: 'bug' },
   { id: 'settings', icon: 'gear-six' },
   { id: 'edit', icon: 'wrench', action: toggleEditMode,

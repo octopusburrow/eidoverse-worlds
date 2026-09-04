@@ -140,9 +140,14 @@ function paintRange(i) {
 document.addEventListener('input', (e) => {
   if (e.target.matches?.('input[type=range]')) paintRange(e.target);
 }, true);
-setInterval(() => {
-  for (const i of document.querySelectorAll('input[type=range]')) paintRange(i);
-}, 1000);
+/** Repaint every slider fill under `root` NOW — call after setting .value from
+ *  code (a reset, a sync). The sweep below also catches it, but a code-driven
+ *  reset showed stale fills for up to a second (R, 09-04: 'half the sliders
+ *  highlight oddly' after Reset Hair). */
+export function paintRangesIn(root = document) {
+  for (const i of root.querySelectorAll('input[type=range]')) paintRange(i);
+}
+setInterval(() => paintRangesIn(document), 200);
 
 // ============================================================ tooltips
 // Every hover hint in the client is a native title= attribute, which browsers
