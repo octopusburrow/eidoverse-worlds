@@ -15,13 +15,13 @@ const GLYPH = { wave: '👋', cheer: '🙌', dance: '💃', point: '👉', salut
 
 export function initEmoteBar() {
   // geometry the CSS owns too: .tiles.fixed → 68px tiles, 6px gap, 8px body pad
-  const TILE = 68, GAP = 6, PAD = 8, ROW_H = 74;
+  const TILE = 40, GAP = 5, PAD = 7, ROW_H = 40;   // glyph-only tiles; name + key are the tooltip (R, 09-04)
   const widthFor = (cols) => cols * TILE + (cols - 1) * GAP + PAD * 2 + 2;   // +2: frame edges
   const rowsFor = (cols) => Math.ceil(EMOTE_ORDER.length / cols);
-  const heightFor = (cols) => 30 + rowsFor(cols) * ROW_H + (rowsFor(cols) - 1) * GAP + PAD * 2;   // 30: head
+  const heightFor = (cols) => rowsFor(cols) * ROW_H + (rowsFor(cols) - 1) * GAP + PAD * 2;   // no head term: the frame head measures 0 (hidden until hover)
   let snapT = null;
   const f = makeFrame('emotes', {
-    title: 'emotes', x: -(widthFor(3) + 6), y: -10, w: widthFor(3), h: heightFor(3),
+    title: 'emotes', x: -(widthFor(6) + 6), y: -10, w: widthFor(6), h: heightFor(6),   // one row of six by default
     minW: widthFor(2), minH: heightFor(6), hidden: true,
     // SNAP TO WHOLE TILES on release: drag the frame to any width, and when the
     // drag settles it fits itself to the tiles that row holds (R, 09-04). The
@@ -43,7 +43,7 @@ export function initEmoteBar() {
     b.className = 'tile';
     b.dataset.emote = name;
     b.title = `${name} — key ${i + 1}`;
-    b.innerHTML = `<span class="tile-glyph">${GLYPH[name] ?? '✨'}</span><b>${name}</b><kbd>${i + 1}</kbd>`;
+    b.innerHTML = `<span class="tile-glyph">${GLYPH[name] ?? '✨'}</span>`;
     b.onclick = () => { getMe()?.playEmote(name); myState.emote = name; paint(); };
     grid.appendChild(b);
     tiles.set(name, b);
