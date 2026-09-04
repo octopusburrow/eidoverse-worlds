@@ -138,10 +138,10 @@ function paintRange(i) {
   i.style.setProperty('--p', `${(((+i.value || 0) - min) / (max - min || 1)) * 100}%`);
 }
 document.addEventListener('input', (e) => {
-  if (e.target.matches?.('.row input[type=range]')) paintRange(e.target);
+  if (e.target.matches?.('input[type=range]')) paintRange(e.target);
 }, true);
 setInterval(() => {
-  for (const i of document.querySelectorAll('.row input[type=range]')) paintRange(i);
+  for (const i of document.querySelectorAll('input[type=range]')) paintRange(i);
 }, 1000);
 
 // ============================================================ tooltips
@@ -406,7 +406,9 @@ function applyDockEdge({ edge, along }) {
   d.style.left = d.style.right = d.style.top = d.style.bottom = 'auto';
   const r = d.getBoundingClientRect();
   const max = horiz ? innerWidth - r.width - 4 : innerHeight - r.height - 4;
-  const a = Math.max(4, Math.min(max, along));
+  // whole pixels: the rail sits on a blur layer, and a fractional offset (drag
+  // coords on a 125% display) rasterizes every glyph on it soft (R, 09-04)
+  const a = Math.round(Math.max(4, Math.min(max, along)));
   if (edge === 'left') { d.style.left = '0'; d.style.top = `${a}px`; }
   if (edge === 'right') { d.style.right = '0'; d.style.top = `${a}px`; }
   if (edge === 'top') { d.style.top = '0'; d.style.left = `${a}px`; }
