@@ -10,6 +10,7 @@ const FIELDS = [
   { key: '--panel-rgb', label: 'panel',     kind: 'rgbTriplet' },
   { key: '--brand',     label: 'accent',    kind: 'hex' },
   { key: '--attn',      label: 'attention', kind: 'hex' },
+  { key: '--fg',        label: 'text',      kind: 'hex' },
 ];
 
 const rootStyle = () => document.documentElement.style;
