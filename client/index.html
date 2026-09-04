@@ -316,7 +316,10 @@ a:hover { color: var(--fg); text-decoration-color: var(--brand); }
 .chat-side-tog:hover { color: var(--fg); background: rgb(255 255 255 / .05); }
 .chat-side { flex: none; display: flex; flex-direction: column; position: relative; min-height: 0; }
 .chat-side.closed { display: none; }
-.chat-side-grip { position: absolute; left: -4px; top: 0; bottom: 0; width: 8px; cursor: ew-resize; z-index: 2; }
+/* the grip straddles the LINE you can see (the toggler's border, between the log
+   and the 14px strip) — it used to sit on the strip's far side, invisible (R, 09-04) */
+.chat-side-grip { position: absolute; left: calc(-14px - 4px); top: 0; bottom: 0; width: 8px; cursor: ew-resize; z-index: 3; }
+.chat-side-grip:hover, .chat-side-grip:active { background: color-mix(in srgb, var(--brand) 30%, transparent); }
 .chat-side-list { flex: 1; overflow-y: auto; padding: 6px 8px; }
 .chat-side-list .who-row { display: flex; justify-content: space-between; gap: 8px; padding: 1px 0; font-size: var(--fs-sm); }
 .chat-side-list .who-row .d { color: var(--dim); }
@@ -324,6 +327,7 @@ a:hover { color: var(--fg); text-decoration-color: var(--brand); }
 .chat-side-head { flex: none; padding: 6px 8px 2px; font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
 .chat-cols.side-left { flex-direction: row-reverse; }
 .chat-cols.side-left .chat-side-tog { border-left: none; border-right: 1px solid var(--edge); }
+.chat-cols.side-left .chat-side-grip { left: auto; right: calc(-14px - 4px); }
 .chat-cols.side-left .chat-side-grip { left: auto; right: -4px; }
 .chat-tabs .chat-gear {
   flex: none; margin-left: 2px; padding: 3px 6px;
