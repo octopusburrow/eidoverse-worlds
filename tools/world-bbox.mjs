@@ -16,7 +16,7 @@ await page.waitForTimeout(35000);
 const r = await page.evaluate((RX) => {
   const { scene, entities } = globalThis.EW; const re = new RegExp(RX, 'i'); const hits = [];
   // only the world's entities, not their glTF child nodes (Cube000, Mesh10…)
-  const known = new Set(Object.keys(entities || {}));
+  const known = new Set(entities instanceof Map ? [...entities.keys()] : Object.keys(entities || {}));
   scene.traverse((o) => {
     const id = o.userData?.id || o.userData?.entityId || o.name; if (!re.test(String(id))) return;
     if (known.size && !known.has(String(id))) return;
