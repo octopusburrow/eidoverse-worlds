@@ -3,7 +3,7 @@
 import { bus, backendName } from './core.js';
 
 const LS = 'ew-capnotice-dismissed';
-const WEBGL = {
+export const WEBGL = {
   title: 'Running on WebGL 2',
   body: 'This browser has no WebGPU (or it is switched off), so three.js is using its WebGL 2 backend. ' +
         'The world works. Expect the sky’s cached lighting to be off, heavier scenes to run slower, and shadows to filter a little differently. ' +

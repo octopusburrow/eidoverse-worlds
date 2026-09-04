@@ -80,9 +80,19 @@ scene.add(rigGroup);
 // the camera extents are uniform-level — the governor may move mapSize both
 // ways, and the frustum follows the camera below. (This block lived in
 // main.js; the rig owns the caster, so it owns the caster's terms.)
-renderer.shadowMap.enabled = true;
+// The resident's shadow switch (persisted; the video settings row). Read here
+// so the first compile already knows — shadowMap.enabled is pipeline-shape,
+// and a live flip recompiles once; castShadow alone is free (§12.1).
+const SH_KEY = 'ew-shadows';
+export const shadowsOn = () => localStorage.getItem(SH_KEY) !== 'off';
+export function setShadows(on) {
+  localStorage.setItem(SH_KEY, on ? 'on' : 'off');
+  renderer.shadowMap.enabled = on;
+  sun.castShadow = on;
+}
+renderer.shadowMap.enabled = shadowsOn();
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-sun.castShadow = true;
+sun.castShadow = shadowsOn();
 sun.shadow.mapSize.set(2048, 2048);
 sun.shadow.bias = -0.0006;
 sun.shadow.normalBias = 0.02;

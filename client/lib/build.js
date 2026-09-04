@@ -23,7 +23,6 @@ import { makeSection, toast, flashHint, collapseAll, panelFrame } from './ui.js'
 import { sceneSelect } from './scenegraph.js';
 import { previewSky, skyArgs, skyImpl, WEATHERS, CLOUDS, SKY_WORLDS,
   CLOUD_QUALITY, getCloudQuality, setCloudQuality } from './sky.js';
-import { RENDER_SCALES, getRenderScale, setRenderScale } from './governor.js';
 
 const raycaster = new THREE.Raycaster();
 const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -1152,23 +1151,6 @@ function paintSky(body) {
   syncGrassRow();
   bus.on('grass-budget', syncGrassRow);   // governor sheds repaint immediately
   body.appendChild(gqRow);
-
-  // Render scale is YOURS too (§22k) — the whole frame's pixel budget, the
-  // one lever a pixel-bound machine actually answers to (§22j's tables).
-  // 'auto' lets the governor's cruise drive; a pinned % is the resident's
-  // word and turns the cruise off. Persisted like the other two dials.
-  const rs = document.createElement('select');
-  rs.style.cssText = wx.style.cssText;
-  rs.setAttribute('aria-label', 'render scale — local only, never shared with the world');
-  for (const v of RENDER_SCALES) rs.appendChild(new Option(v === 'auto' ? 'auto' : `${Math.round(v * 100)}%`, v));
-  rs.value = getRenderScale();
-  rs.onchange = () => {
-    setRenderScale(rs.value);
-    flashHint(`render scale: ${rs.value === 'auto' ? 'auto' : `${Math.round(rs.value * 100)}%`} (yours only)`);
-  };
-  const rsRow = mkRow('scale⚙', rs);
-  rsRow.title = 'local performance setting — not shared with the world';
-  body.appendChild(rsRow);
 
   // Sliders that only the BASIC sky answers. On the real sky the engine owns
   // sun direction and supplies its own bounce fill (sky.js documents the
