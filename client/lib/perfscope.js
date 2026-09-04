@@ -411,7 +411,7 @@ let loupeEl = null, loupeOn = false, pinned = null, pinnedHtml = '', lastCast = 
 const fmtB = (b) => (b >= 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`);
 // short tier words for the chunky row pills
 const TIER_SHORT = ['great', 'good', 'ok', 'poor', 'bad'];
-const badge = (t, txt, chunky) => `<b class="ps-badge${chunky ? ' ps-badge-lg' : ''}" style="background:${TIERS[Math.min(4, t)]}">${txt}</b>`;
+const badge = (t, txt, chunky, title = '') => `<b class="ps-badge${chunky ? ' ps-badge-lg' : ''}" style="background:${TIERS[Math.min(4, t)]}"${title ? ` title="${esc(title)}"` : ''}>${txt}</b>`;
 
 function loupeHtml(rec) {
   // biggest textures first as an inner table: dims (+ `raw` = uncompressed,
@@ -493,7 +493,8 @@ function loupeHtml(rec) {
   // <wbr> after separators / camelCase humps lets long identifiers wrap.
   const paren = rec.label.indexOf('  (');
   const nameOnly = paren > 0 ? rec.label.slice(0, paren) : rec.label;
-  const libOnly = paren > 0 ? rec.label.slice(paren + 3).replace(/\)$/, '').replace(/\.(glb|gltf|vrm)$/i, '') : '';
+  // keep the .glb/.gltf/.vrm: the second line is the FILE, and the extension is what says so (R, 09-04)
+  const libOnly = paren > 0 ? rec.label.slice(paren + 3).replace(/\)$/, '') : '';
   const wbr = (t) => esc(t)
     .replace(/([_./:\-])/g, '$1<wbr>')          // break after separators
     .replace(/([a-z0-9])([A-Z])/g, '$1<wbr>$2'); // and at camelCase humps
@@ -505,7 +506,7 @@ function loupeHtml(rec) {
   return `
   <div class="pl-head">
     <div class="pl-verdict">
-      <span title="${esc(why)}" class="pl-rank">${badge(rec.rank, TIER_NAMES[rec.rank], true)}</span>
+      <span title="${esc(why)}" class="pl-rank">${badge(rec.rank, TIER_NAMES[rec.rank], true, why)}</span>
       <div class="pl-verdictsub">
         <span class="pl-mode" title="${esc(lensTip)}">${lensLabel}</span>
         ${rankStr ? `<span class="pl-rankrow" title="this object's position among all ${total} subjects in the scene, ranked by the active lens">${rankStr}</span>` : ''}
