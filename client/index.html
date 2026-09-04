@@ -124,7 +124,7 @@ button:active { transform: translateY(1px); }
    the label with the base button's own padding and shares the row
    (no per-menu handrolling; one fallback). Use `<div class="row btn-row">`. */
 .btn-row { display: flex; gap: 6px; }
-.btn-row > button { flex: 1; text-align: center; padding: 5px 8px; }
+.btn-row > button { flex: 1; max-width: 12rem; text-align: center; padding: 5px 8px; }   /* capped: a wide frame must not stretch buttons out of proportion (R, 09-04) */
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 input:focus-visible, textarea:focus-visible { outline: 1px solid var(--edge-hi); }
 button.on { background: var(--hov); border-color: var(--edge-hi); color: var(--fg); }
@@ -554,13 +554,15 @@ input[type=range]:disabled { accent-color: color-mix(in srgb, var(--control) 40%
    CANNOT drift again. Everything else (range accent, .v readout, .nm colour)
    already comes from the rules above and needs no duplicate. */
 /* 🔴 THE ROW RULE (R, 09-04: "stop making people guess"). Labels are LEFT-aligned
-   everywhere; the label column is as wide as its longest label and never more
-   than 45% of the row; the control column takes the rest and starts at the left
-   of its cell. .row = short label (42px) + slider + readout; .row.wide = a
-   sentence label + one control; .btn-row = buttons. No private layout rules. */
-.row.wide { display: grid; grid-template-columns: var(--row-label-col, minmax(auto, 60%)) minmax(0, 1fr); }
-/* the sentence label is never clipped: undo .row .nm's ellipsis clamp here */
-.row.wide > .nm { width: auto; max-width: none; overflow: visible; text-align: left; line-height: 1.25; white-space: nowrap; }
+   everywhere in a FIXED, not-very-wide column (7rem) and WRAP if they must; the
+   control sits right beside the label (start of its cell), never pushed to the
+   far edge of a wide frame. .row = short label (42px) + slider + readout;
+   .row.wide = label + one control; .btn-row = buttons, each capped at 12rem.
+   No private layout rules anywhere. */
+.row.wide { display: grid; grid-template-columns: var(--row-label-col, 7rem) minmax(0, 1fr); align-items: center; }
+.row.wide > .nm { width: auto; max-width: none; overflow: visible; text-align: left; line-height: 1.25; white-space: normal; }
+.row.wide > .ctl, .row.wide > select, /* (checkbox start-alignment lives in the row rule above) */
+.row.wide select { max-width: 12rem; }
 /* a label + a bare control still lines up: the control owns the whole second
    column, left-justified against the centre line */
 .row.wide > input[type=checkbox] { justify-self: start; }
