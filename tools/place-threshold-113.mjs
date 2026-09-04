@@ -18,6 +18,13 @@ send({type:"pose",pose:{p:[43,0,65],yaw:0,speed:0,clip:"idle",pitch:0}}); await 
 const req=(msg,id)=>{send({...msg,reqId:id}); return new Promise(res=>{const iv=setInterval(()=>{const m=msgs.find(x=>x.reqId===id); if(m){clearInterval(iv);res(m);}},50);});};
 const eye=async()=>{const w=new WebSocket(URL); return await new Promise(res=>{w.onopen=()=>w.send(JSON.stringify({type:"join",token:T,id:"eye-113",world:WORLD,spectate:true})); w.onmessage=ev=>{const m=JSON.parse(String(ev.data)); if(m.type==="snapshot"){w.close(); const e=((m.state&&m.state.entities)||m.entities||{})[GATE.id]; res({there:!!e,lib:e?.lib?.split("/").pop(),pos:e?.pos,locked:!!e?.comp?.lock,inscr:!!e?.comp?.inscription});}};});};
 if(MODE==="inspect"){ console.log("FOLD:",JSON.stringify(await eye())); const r=await req({type:"debug",behaviors:true},"r1"); console.log("roster:",JSON.stringify(r.events?.filter(e=>/threshold/.test(e.id)))); process.exit(0); }
+if(MODE==="resize"){  // the model is a 24 m wall segment with its origin at one end (measured 09-04 by world bbox): scale it to ~8 m and lay it east-west along the clearing's south edge
+  const P={pos:[40.5,0,59],yaw:Math.PI/2,scale:0.35};  // yaw is RADIANS (client: obj.rotation.y = yaw) — undocumented; 90 folded as 90 rad ≡ 117°
+  await pverb("comp",{id:GATE.id,type:"lock",data:null});
+  await pverb("place",{id:GATE.id,...P});
+  await pverb("comp",{id:GATE.id,type:"lock",data:true});
+  await settle(800); console.log("placed:",JSON.stringify(P),"FOLD:",JSON.stringify(await eye()),"errors:",errors.length?errors:"none"); process.exit(errors.length?3:0);
+}
 const up=await fetch(`${HTTP}/upload?as=script&token=${T}&by=${ME}`,{method:"POST",body:SRC}); const path=JSON.parse(await up.text()).path; console.log("upload:",up.status,path);
 if(MODE==="place"){
   await pverb("spawn",{id:GATE.id,lib:GATE.lib,pos:GATE.pos,yaw:GATE.yaw,scale:GATE.scale});
