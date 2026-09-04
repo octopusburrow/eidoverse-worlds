@@ -399,11 +399,11 @@ function buildJointPanel(stack) {
       const wrap = document.createElement('div');
       wrap.className = 'row';
       const nm = document.createElement('span');
-      nm.className = 'nm'; nm.style.width = '42px'; nm.textContent = f;
+      nm.className = 'nm'; nm.textContent = f;
       const sl = document.createElement('input');
       sl.type = 'range'; sl.min = lo; sl.max = hi; sl.step = st; sl.value = getF(S, f);
       const val = document.createElement('span');
-      val.className = 'v'; val.style.width = '34px';
+      val.className = 'v';
       const show = () => { val.textContent = `${getF(S, f)}°`; };
       sl.oninput = () => { setF(S, f, Number(sl.value)); show(); apply(); };
       show();
@@ -443,7 +443,7 @@ function buildJointPanel(stack) {
   const head = document.createElement('div');
   head.className = 'row';
   const hl = document.createElement('span');
-  hl.className = 'nm'; hl.style.width = '42px'; hl.textContent = 'joint';
+  hl.className = 'nm'; hl.textContent = 'joint';
   head.append(hl, pick);
   stack.append(head, rows, btns);
 }
@@ -646,7 +646,7 @@ function buildWingPanel(stack) {
   };
   const idle = table(WING_IDLE_FIELDS, WING_IDLE, false, (f) => (
     f === 'deg' || f === 'bias' || f === 'sweep' ? `${WING_IDLE[f]}°`
-      : f === 'hz' ? `${WING_IDLE[f]}Hz`
+      : f === 'hz' ? `${Number(WING_IDLE[f]).toFixed(2)}Hz`
         : f === 'recover' ? `${(WING_IDLE[f] * 1000).toFixed(0)}ms`
           : String(WING_IDLE[f])));
   const sim = table(WING_SIM_FIELDS, WING_TUNING, true, (f) => (

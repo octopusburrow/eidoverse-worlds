@@ -473,7 +473,8 @@ a:hover { color: var(--fg); text-decoration-color: var(--brand); }
 .card.on { background: var(--accent-dk); border-color: var(--edge-hi); }
 
 .row { display: flex; align-items: center; gap: 7px; font-size: var(--fs-sm); color: var(--dim); }
-.row .nm { width: 42px; flex: none; color: var(--fg); }
+/* min-widths, not fixed: 'sweepPhase' overran a 42px label and '0.29411' a 34px readout (R, 09-04) */
+.row .nm { min-width: 42px; max-width: 40%; flex: none; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 input[type=range] { flex: 1; accent-color: var(--control); min-width: 0;
   appearance: none; -webkit-appearance: none; height: 14px; background: none; }
 /* the track joins the theme: bright-filled to the thumb, accent-flavored
@@ -533,7 +534,7 @@ input[type=range]:disabled { accent-color: color-mix(in srgb, var(--control) 40%
   border-left: 2px solid var(--ink-on-brand); border-bottom: 2px solid var(--ink-on-brand);
   transform: rotate(-45deg);
 }
-.row .v { width: 34px; flex: none; text-align: right; color: var(--dim); }
+.row .v { min-width: 34px; flex: none; text-align: right; color: var(--dim); font-variant-numeric: tabular-nums; }
 
 /* 🔴 .row.wide — the SAME row, for panels whose labels are sentences.
    (Reuse the existing class: the audio panel once carried 40 lines of
@@ -545,8 +546,13 @@ input[type=range]:disabled { accent-color: color-mix(in srgb, var(--control) 40%
    a sentence — and inherits gap, font-size and colour from .row itself, so it
    CANNOT drift again. Everything else (range accent, .v readout, .nm colour)
    already comes from the rules above and needs no duplicate. */
-.row.wide { display: grid; grid-template-columns: var(--row-label-col, 8.5rem) minmax(0, 1fr); }
-.row.wide > .nm { width: auto; text-align: right; line-height: 1.25; }
+/* 🔴 THE ROW RULE (R, 09-04: "stop making people guess"). Labels are LEFT-aligned
+   everywhere; the label column is as wide as its longest label and never more
+   than 45% of the row; the control column takes the rest and starts at the left
+   of its cell. .row = short label (42px) + slider + readout; .row.wide = a
+   sentence label + one control; .btn-row = buttons. No private layout rules. */
+.row.wide { display: grid; grid-template-columns: var(--row-label-col, minmax(auto, 45%)) minmax(0, 1fr); }
+.row.wide > .nm { width: auto; text-align: left; line-height: 1.25; white-space: nowrap; }
 /* a label + a bare control still lines up: the control owns the whole second
    column, left-justified against the centre line */
 .row.wide > input[type=checkbox] { justify-self: start; }

@@ -20,6 +20,7 @@
 // dev — a MOCK_APIS Orrery instance makes the whole flow testable offline.
 
 import { CONFIG, bus, report } from './core.js';
+import { fsvg } from './icons.js';
 import { makeSection, toast, flashHint } from './ui.js';
 import { sendVerb, net } from './net.js';
 import { holdGhost } from './build.js';
@@ -230,7 +231,7 @@ async function paint(body) {
         || '<span class="sub">candidates finished but none readable — open orrery</span>'}</div>`;
     } else if (j.status === 'completed') {
       inner = `<div class="cj-done">
-        <button data-place="${idx}">⚡ into the world</button>
+        <button data-place="${idx}">${fsvg('sparkle', 12)} into the world</button>
         <button data-avatar="${idx}" title="rigged results only">as avatar</button>
       </div>`;
     } else if (j.status === 'failed') {
