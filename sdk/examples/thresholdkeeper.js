@@ -62,6 +62,7 @@ world.every(TICK_S, () => {
   const me = world.entity(world.self); if (!me || !me.pos) return;
   const now = Date.now();
   const here = read("here"), words = read("words"), names = read("names");
+  const before = JSON.stringify([here, words, names]);
   const people = world.people();
   const byId = Object.fromEntries(people.map((p) => [p.id, p]));
 
@@ -85,5 +86,7 @@ world.every(TICK_S, () => {
     } else world.log("passed through, no visit", id);
     delete here[id]; delete words[id]; delete names[id];
   }
-  write("here", here); write("words", words); write("names", names);
+  // write only on change: every kv.set is a bstate entry in the world's replay
+  // log, and a quiet tick must cost the fold nothing.
+  if (JSON.stringify([here, words, names]) !== before) { write("here", here); write("words", words); write("names", names); }
 });
