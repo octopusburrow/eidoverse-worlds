@@ -167,15 +167,29 @@ select {
   width: 200px; height: 210px; transform: scale(.5); transform-origin: center;
   margin: -52px 0; color: var(--brand); overflow: visible;
 }
-.sp-logo path { transition: transform .45s cubic-bezier(.22,.9,.3,1.04); will-change: transform; }
+.sp-logo path { transition: transform .55s cubic-bezier(.22,.9,.3,1.04), opacity .55s ease; will-change: transform, opacity; }
 #splash.gone .sp-logo { filter: drop-shadow(0 0 26px rgb(143 232 200 / .55)); transition: filter .3s ease-out; }
 #splash.gone .sp-mark { color: #d9fff1; }
-/* assembly driven by --spp (0..1): pieces drift apart when nothing has
-   arrived, settle into register as the world loads; the arm slides through
-   the parted spine last. The mark assembling IS the progress display. */
-.sp-logo .pc-top { transform: translate(calc((1 - var(--spp,0)) *  7%), calc((1 - var(--spp,0)) * -11%)); }
-.sp-logo .pc-arm { transform: translateX(calc((1 - var(--spp,0)) * -34%)); }  /* starts clear of the body — it SPEARS in */
-.sp-logo .pc-bot { transform: translate(calc((1 - var(--spp,0)) *  7%), calc((1 - var(--spp,0)) *  11%)); }
+/* assembly driven by --spp (0..1), in two beats so every frame reads as a
+   gesture, not a glitch: the brackets settle first (0→.6) — tilted and a
+   little dim while apart, upright and full when in register — and only then
+   does the arm spear through the parted spine (.6→1). Before, all three
+   moved together over a few percent and the arm's half-way frames poked out
+   past the spine. The mark assembling IS the progress display. */
+.sp-logo { --br: clamp(0, calc(var(--spp, 0) / .6), 1); --ar: clamp(0, calc((var(--spp, 0) - .6) / .4), 1); }
+.sp-logo .pc-top { transform: translate(calc((1 - var(--br)) * 12%), calc((1 - var(--br)) * -18%)) rotate(calc((1 - var(--br)) * -6deg)); opacity: calc(.55 + .45 * var(--br)); transform-origin: 50% 50%; }
+.sp-logo .pc-bot { transform: translate(calc((1 - var(--br)) * 12%), calc((1 - var(--br)) *  18%)) rotate(calc((1 - var(--br)) *  6deg)); opacity: calc(.55 + .45 * var(--br)); transform-origin: 50% 50%; }
+.sp-logo .pc-arm { transform: translateX(calc((1 - var(--ar)) * -46%)); opacity: calc(.35 + .65 * var(--ar)); }
+/* a slow breath behind the mark while we wait: a stalled load must still look
+   alive. Stops the moment the splash goes. */
+.sp-logo-wrap { position: relative; display: grid; place-items: center; }
+.sp-logo-wrap::before {
+  content: ''; position: absolute; width: 260px; height: 260px; border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--brand) 16%, transparent), transparent 62%);
+  animation: sp-breathe 3.4s ease-in-out infinite; pointer-events: none;
+}
+#splash.gone .sp-logo-wrap::before { animation: none; opacity: 0; }
+@keyframes sp-breathe { 0%, 100% { opacity: .45; transform: scale(.92); } 50% { opacity: 1; transform: scale(1.06); } }
 .sp-mark {
   font-size: 26px; letter-spacing: .34em; color: var(--brand); opacity: .9;
   text-transform: lowercase; font-weight: 500; margin-left: .34em; /* recenter over tracking */
@@ -1095,11 +1109,11 @@ try { const o = JSON.parse(localStorage.getItem('ew-style-tokens') || '{}');
 <!-- Static so it paints before any module loads. boot.js only fills it in. -->
 <div id="splash" data-build="b77">
   <div class="sp-ver"></div>
-  <svg class="sp-logo" viewBox="-70 -40 1372 1372" aria-hidden="true" fill="currentColor">
+  <div class="sp-logo-wrap"><svg class="sp-logo" viewBox="-70 -40 1372 1372" aria-hidden="true" fill="currentColor">
     <path class="pc-top" d="M 92 82 Q 616 140 1072 78 Q 1024 290 1012 511 L 852 511 L 852 228 Q 440 218 68 232 Q 88 155 92 82 Z"/>
     <path class="pc-arm" d="M 420 522 C 490 562 565 585 700 588 L 1140 586 Q 1168 583 1178 576 Q 1186 572 1185 582 Q 1180 653 1185 724 Q 1186 734 1178 730 Q 1168 723 1140 720 L 700 718 C 565 721 490 744 420 784 Q 436 653 420 522 Z"/>
     <path class="pc-bot" d="M 120 1212 Q 616 1152 1080 1216 Q 1024 1002 1012 796 L 852 796 L 852 1064 Q 440 1074 62 1062 Q 88 1137 120 1212 Z"/>
-  </svg>
+  </svg></div>
   <div class="sp-mark">eidoverse</div>
   <div class="sp-mark-sub">worlds</div>
   <div class="sp-sub">stepping into <b class="sp-world">a world</b> as <b class="sp-name">…</b></div>
