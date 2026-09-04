@@ -445,7 +445,8 @@ function loupeHtml(rec) {
     const u = key === 'texMB' ? ' MB' : '';
     const parts = TIER_SHORT.map((name, i) =>
       i < th.length ? `${name} ≤${th[i].toLocaleString()}${u}` : `${name} >${th[th.length - 1].toLocaleString()}${u}`);
-    return `${label} — ${parts.join(' · ')}`;
+    // one tier per line: #tipchip renders titles pre-line (R, 09-04: easier to read)
+    return `${label}\n${parts.join('\n')}`;
   };
   // what each metric IMPACTS (data labels should describe which part of
   // performance they affect). Hovering the label row shows this.
@@ -483,7 +484,7 @@ function loupeHtml(rec) {
   // (worst category wins, VRChat model) and which metric set THIS rank.
   const worstLabel = { tris: 'triangles', draws: 'draw calls', texMB: 'texture VRAM',
     bones: 'bones', mats: 'materials', alpha: 'transparency' }[rec.worst] || rec.worst;
-  const why = `overall = worst category wins (VRChat model). this object's ${TIER_NAMES[rec.rank]} rank is set by ${worstLabel}. fix the red/orange rows to raise it.`;
+  const why = `overall = worst category wins (VRChat model)\nthis object's ${TIER_NAMES[rec.rank]} rank is set by ${worstLabel}\nfix the red/orange rows to raise it`;
   const lensTip = { rank: 'overall rank — worst category wins (VRChat model)',
     tris: 'triangle count — GPU vertex/geometry load', draws: 'draw calls — CPU→GPU submit overhead, often the real cost',
     tex: 'texture memory — estimated VRAM the images occupy', mat: 'material cost — a categorical shader-complexity proxy',
