@@ -152,6 +152,11 @@ initDock([
   { id: 'edit', icon: 'wrench', action: toggleEditMode,
     active: () => isEditing(),
     gate: () => {
+      // the SERVER's answer first: operators (WORLD_ADMIN) are owner everywhere
+      // but never appear in the fold's roles map, so roleOf() alone hid the
+      // wrench from R while every build verb was already accepted (09-04)
+      const mine = net.myRights?.role;
+      if (['builder', 'owner'].includes(mine)) return true;
       const r = roleOf(CONFIG.name);
       return ['builder', 'owner'].includes(r?.role ?? r) || !worldHasOwner();
     } },
