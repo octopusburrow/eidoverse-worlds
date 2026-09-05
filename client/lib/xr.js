@@ -28,6 +28,7 @@ import { flashHint, toast } from './ui.js';
 import { registerXrGlyph } from './mictoggle.js';
 import { pushUndo } from './build.js';
 import { perf } from './perf.js';
+import { warm, P_AMBIENT } from './warmqueue.js';
 
 // ---- self-body in first person ---------------------------------------------
 // R's first headset session (23:22): own body invisible (she stood INSIDE it,
@@ -443,6 +444,20 @@ export async function initXR() {
   // the third glyph of the mic/ear trio — the same ink, the same slot
   // layout, the same pin row in the ∃ menu (R, 09-04). Exists only here,
   // where the browser answered that a headset can present.
+  // PRE-WARM the hand meshes: their first draw compiled two materials on the
+  // frame the controllers arrived — a 0.5 s spike (R's recorder 09-04 23:50)
+  // that is exactly the kind of frame whose camera matrix comes back NaN.
+  // Build the hands now (controller groups exist without a session), park
+  // them under the rig, and let the conductor compile them off-screen.
+  hands.left ??= makeHand(0);
+  hands.right ??= makeHand(1);
+  warm('xr hands', async () => {
+    // the avatar warm's form: object + camera + the lit scene, frustumCulled
+    // off so a parked (stale-matrix) mesh isn't culled out of the compile walk
+    const meshes = []; rig.traverse((o) => { if (o.isMesh) meshes.push(o); });
+    for (const m of meshes) { m.frustumCulled = false; try { await renderer.compileAsync(m, camera, scene); } catch { /* fine */ } }
+  }, { p: P_AMBIENT });
+
   registerXrGlyph({
     onclick: () => { if (presenting) session?.end?.(); else if (XR_BOOT) enterVR(); else { const u = new URL(location.href); u.searchParams.set('xr', '1'); location.href = u; } },
     live: () => presenting,
