@@ -120,6 +120,7 @@ export function xrPanelsPick(handRay, click = false) {
 
 /** harness window */
 export const xrPanelsDebug = () => ({
+  dispatch: (id, k, v) => registry.find((d) => d.id === id)?.dispatch(k, v),   // harness only
   fields: Object.fromEntries(registry.map((d) => [d.id, d.fields().map((f) => f.k ?? f.t)])),
   registered: xrPanelIds(), live: panels?.length ?? 0, shown,
   regions: panels?.map((p) => ({ id: p.def.id, n: p.regions.length, w: p.canvas.width, h: p.canvas.height })) ?? [],
