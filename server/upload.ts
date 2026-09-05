@@ -9,10 +9,13 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, readdirSync, statSync, rmSync } from "node:fs";
 import { join, basename, dirname, relative } from "node:path";
 import { JOIN_TOKEN, UPLOAD_CAP, ROOT, OPT_DIR, STORE_MIN, LIBRARY_DIR, SKIP_OPT_SWEEP, OPT_MEM_BUDGET_MB, OPT_COST_FACTOR } from "./config.ts";
+// merge 2026-09-01 (anima a468cba, geometry LOD): upstream's LOD names ride
+// in; the door stays on R1's aid1JoinIdentity (the HN_*/verifyToken form is
+// what it replaced — the merged body references neither)
 import { isStoreOriginal, ktx2VariantPath, lodVariantPath, storeShadowsMissing, verdictStands, KTX2_RECIPE, LOD_RECIPE } from "./store-variants.ts";
-import { agentTokens, HN_ISSUER_KEY, HN_ISS, HN_AUD } from "./auth.ts";
-import { verifyToken } from "./aid1.ts";
+import { agentTokens, aid1JoinIdentity } from "./auth.ts";
 import { worlds } from "./world.ts";
+import { atomicWrite } from "./fsutil.ts";
 
 /** What the handler needs from Bun's server object, structurally (the
  *  VerbWorld precedent): the socket address behind the nginx front. */
@@ -315,10 +318,7 @@ export async function handleUpload(req: Request, url: URL, srv: UploadSrv): Prom
   // must be landable by the same identity, or the tier is half-open.
   // Same audience/scope/slug derivation as the two doors, no jti burn
   // (an aid1 credential is reusable until expiry at every door).
-  if (!upAgent && HN_ISSUER_KEY && upTok.startsWith("aid1.")) {
-    const v = verifyToken(upTok, { issuerId: HN_ISSUER_KEY, iss: HN_ISS, aud: HN_AUD, requireScopes: ["worlds:join"] });
-    if (v.ok) upAgent = v.payload.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || v.payload.sub;
-  }
+  if (!upAgent) upAgent = aid1JoinIdentity(upTok)?.slug;
   if (JOIN_TOKEN && upTok !== JOIN_TOKEN && !upAgent)
     return new Response("token required", { status: 401 });
   const upBy = (url.searchParams.get("by") ?? upAgent ?? "?").slice(0, 64);
@@ -430,8 +430,7 @@ export async function handleUpload(req: Request, url: URL, srv: UploadSrv): Prom
     let man: Record<string, { name?: string; by: string; ts: number }> = {};
     try { if (existsSync(mp)) man = JSON.parse(readFileSync(mp, "utf8")); } catch { /* fresh */ }
     man[hash] = { ...(upName ? { name: upName } : {}), by: upBy, ts: Date.now() };
-    writeFileSync(`${mp}.tmp`, JSON.stringify(man));
-    renameSync(`${mp}.tmp`, mp);
+    atomicWrite(mp, JSON.stringify(man));
   }
   console.log(`[upload] model ${rel}${upName ? ` ("${upName}")` : ""} (${(body.length / 1e6).toFixed(1)}MB) by ${upBy}`);
   return new Response(JSON.stringify({ path: rel }), { headers: { "content-type": "application/json" } });

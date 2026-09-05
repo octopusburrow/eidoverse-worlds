@@ -4,7 +4,7 @@
 // surfaces that don't exist yet; this stakes out the shape, VRChat-ish —
 // a bigger panel, identity up top, destination tiles below.
 
-import { CONFIG, bus, colorFor } from './core.js';
+import { CONFIG, bus, colorFor } from './base.js';
 import { makeFrame } from './frames.js';
 import { fsvg } from './icons.js';
 import { toast } from './ui.js';

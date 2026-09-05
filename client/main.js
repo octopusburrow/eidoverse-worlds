@@ -7,9 +7,8 @@
 // handle in mybody.js, my body's physics in localbody.js, consent in
 // consent.js, voice mouths in voicemouths.js, /commands in lib/commands/.
 
-import {
-  THREE, scene, camera, renderer, CONFIG, bus, report,
-} from './lib/core.js';
+import { THREE, scene, camera, renderer } from './lib/core.js';
+import { CONFIG, bus, report } from './lib/base.js';
 import { contributeThumbnail, makeAvatar, EMOTE_ORDER } from './lib/avatar.js';
 import { updateSky, updateAutoSystems, skyArgs, setCloudQuality } from './lib/sky.js';
 import { setSkyArgsSource, entities, buildsPending, avatarMounts, roleOf, worldHasOwner } from './lib/world.js';
@@ -22,6 +21,7 @@ import { initModelsRealizer, reconcileModels, residencyDebug, setResidencyFocus,
 import { initEnvironmentRealizer } from './lib/realize/environment.js';
 import { initSocialRealizer } from './lib/realize/social.js';
 import { initStructureRealizer } from './lib/realize/structure.js';
+import { initSimWorld, simState } from './lib/simworld.js';
 import { initStructureUI } from './lib/structure_ui.js';
 import { initCauses } from './lib/realize/causes.js';
 // side-effecting: the `particles` component's host wires itself to the comp
@@ -36,8 +36,9 @@ import { remotes, updateRemotes, updateGaze } from './lib/remotes.js';
 import {
   net, connect, initIdentity, loginUrl, wireNet, sendVerb, sendPose, sendWhisper, sendTyping,
 } from './lib/net.js';
+import { updateBuild, toggleEditMode, isEditing } from './lib/build.js';
+import { initPalette } from './lib/palette.js';
 import { setRightsSink } from './lib/state.js';
-import { initPalette, updateBuild, toggleEditMode, isEditing } from './lib/build.js';
 import { initConjure } from './lib/conjure.js';
 import './lib/mictoggle.js'; // mic + headphone toggles beside the HUD, both off by default
 import { initAudioPanel } from './lib/audiopanel.js';
@@ -73,6 +74,7 @@ import { colliderCacheStats } from './lib/colliders.js';
 import { governPerformance, governorDebug, whenCalm } from './lib/governor.js';
 import { registerSystem, startFrame, frameDebug } from './lib/frame.js';
 import { perf } from './lib/perf.js';
+import { renderWorld, drawStats, setDrawBatching } from './lib/render.js';
 import { paintHud } from './lib/hud.js';
 import { updateMaterials, materialsDebug } from './lib/materials.js';
 import { updateRig, rigDebug } from './lib/lightrig.js';
@@ -124,6 +126,9 @@ initSocialRealizer();
 initStructureRealizer();
 initStructureUI();
 initCauses();
+// the deterministic sim's applier (PROTOCOL_v2 dialect 3): advances the
+// shadow sim fold to now and moves sim-owned bodies — inert pre-epoch
+initSimWorld();
 
 // ---------------------------------------------------------------- boot
 
@@ -347,10 +352,13 @@ bus.on('key', (e) => {
   if (isDowned() && ['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) getUp();
   // emotes on the number row — the world is a performance space and there was
   // no way to wave at anyone
-  const n = /^Digit([1-6])$/.exec(e.code);
+  // the range follows the def-hydrated bar order (§24l) — a ninth listed
+  // emote in _emotes.json gets a key with no code change
+  const n = /^Digit([1-9])$/.exec(e.code);
   const me = getMe();
   if (n && me) {
     const name = EMOTE_ORDER[Number(n[1]) - 1];
+    if (!name) return;
     me.playEmote(name);
     myState.emote = name;
     flashHint(name);
@@ -460,7 +468,7 @@ registerSystem('debug', (dt, t, now) => updateDebug(now));       // F3 wireframe
 registerSystem('send-pose', (dt, t, now) => sendPose(now));
 // XR: read hands → fill intent (updateMe already moved the body) → rig follows
 registerSystem('xr', () => updateXR());
-registerSystem('render', () => renderer.render(scene, camera));
+registerSystem('render', renderWorld);
 // radial-menu actions: the ring speaks through the same flows the keyboard does
 bus.on('xr:sit', () => { if (!xrTrySitOn(null)) setPosture('sit'); });
 bus.on('xr:stand', () => xrDismountMe());
@@ -843,8 +851,11 @@ const EW = globalThis.EW = {
   governor: governorDebug,     // the two-way lever ladder (§12.6)
   residency: residencyDebug,   // real/stand-in/loading counts + sweep stats (§13.3)
   gpu: () => ({ ...renderer.info.memory, ...protoStats() }),   // bytes + proto/byte tiers
+  draws: drawStats,
+  setDrawBatching,
   frame: frameDebug,           // per-system rolling ms + strides (§14.2 6b)
   grass: grassTiles,           // tile-level draw truth (§13.2, landed 8e)
+  simFold: simState,           // the deterministic sim's shadow cut (PROTOCOL_v2)
   grassDiag,                   // §22: `await EW.grassDiag()` — the meadow's GPU cost, attributed by difference
   setCloudQuality,             // §22b: the sky pane's tier knob, console-reachable for diagnosis
   warm: warmStats,             // the conductor's queue (§16.2.A)

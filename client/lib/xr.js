@@ -17,7 +17,8 @@
 // 'layers' dropped from optionalFeatures (MSAA via classic XRWebGLLayer),
 // foveation 0, local-floor, and the settled law: NEVER navigate mid-session.
 
-import { THREE, renderer, camera, scene, CONFIG, XR_BOOT, report, bus } from './core.js';
+import { THREE, renderer, camera, scene, XR_BOOT } from './core.js';
+import { CONFIG, report, bus } from './base.js';
 import { stroke, svg } from './icons.js';
 import { xrPanelsEnter, xrPanelsExit, xrPanelsPick } from './xrpanels.js';
 import { myState, xrIntent, setCamYaw, setXrProbe } from './controller.js';

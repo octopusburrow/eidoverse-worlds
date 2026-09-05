@@ -67,6 +67,10 @@ import { foldSkyEntry } from './forecast.js';
  *   yaw?: number }>} [mounts]
  *   Attachments of non-entity bodies (avatars) — a sitter on a swing seat, a
  *   passenger on a deck. Same shape as entity.parent, keyed by principal.
+ * @property {{ sim: string, tickMs: number, ts: number, seq: number }} [epoch]
+ *   The active deterministic-sim epoch (dialect 3, PROTOCOL_v2 §3). `ts` is
+ *   the tick-0 anchor — preserved through snapshot rehydration, or every
+ *   joiner would disagree about what tick it is.
  * @property {Record<string, unknown> | null} terrain
  * @property {Record<string, unknown> | null} grass
  * @property {(Record<string, unknown> & { ts?: number }) | null} sky
@@ -179,7 +183,11 @@ export function foldEntry(st, e) {
     case "place": {
       const ent = st.entities[a?.id];
       if (!ent) return;
-      if (a.pos) ent.pos = a.pos;
+      // finite-vec3 or nothing (§24k, upstreamed from the agent's #88 fix,
+      // where a malformed raw packet's pos walked into a support transform
+      // and crash-looped the door): a place with an unusable pos KEEPS the
+      // prior position — malformed shapes nothing, per §1's totality rule.
+      if (Array.isArray(a.pos) && a.pos.length === 3 && a.pos.every(Number.isFinite)) ent.pos = a.pos;
       if (a.yaw != null) ent.yaw = a.yaw;
       if (a.scale != null) ent.scale = a.scale;
       return;
@@ -245,6 +253,21 @@ export function foldEntry(st, e) {
         }
       }
       delete st.entities[a?.id];
+      return;
+    }
+    case "epoch": {
+      // Dialect 3 (PROTOCOL_v2 §3): the world enters — or upgrades — its
+      // deterministic-sim epoch. The instant fold records WHICH epoch is
+      // active (joiners and validators need it); the sim fold (shared/
+      // sim.js, run beside this one) owns everything the epoch means.
+      // Leaving (PROTOCOL_v2 §3, ruling 2026-09-01): an explicit `sim: null`
+      // ends the epoch — joiners and validators see none. Additive: no log
+      // written before this rule carries such an entry (the sequencer
+      // refused it), so every old fold is byte-identical. A MISSING sim is
+      // still no entry at all.
+      if (a && a.sim === null) { st.epoch = null; return; }
+      if (typeof a?.sim !== "string" || !Number.isInteger(a?.tickMs)) return;
+      st.epoch = { sim: a.sim, tickMs: a.tickMs, ts: e.ts, seq: e.seq };
       return;
     }
     case "terrain": st.terrain = a; return;
@@ -363,8 +386,9 @@ export function foldEntry(st, e) {
       if (ent) {
         delete ent.parent;
         // Plane-transition invariant: the verb STAMPS absolute pose. The log
-        // must never depend on reconstructing where the parent was.
-        if (Array.isArray(a.pos)) ent.pos = a.pos;
+        // must never depend on reconstructing where the parent was. Finite
+        // or nothing, same rule as place (§24k).
+        if (Array.isArray(a.pos) && a.pos.length === 3 && a.pos.every(Number.isFinite)) ent.pos = a.pos;
         if (a.yaw != null) ent.yaw = a.yaw;
       }
       if (st.mounts) {
@@ -452,6 +476,8 @@ export function stateToEntries(state, {
       add('grant', { id, role: r.role, ...(r.gen ? { gen: true } : {}), ...(r.fly ? { fly: true } : {}) });
     }
   }
+  if (state.epoch) add('epoch', { sim: state.epoch.sim, tickMs: state.epoch.tickMs },
+    'world', state.epoch.ts ?? now);
   if (state.terrain) add('terrain', state.terrain);
   if (state.grass) add('grass', state.grass);
   if (state.sky) add('sky', state.sky, 'world', state.sky.ts ?? now);

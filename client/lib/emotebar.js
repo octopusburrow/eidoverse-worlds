@@ -5,13 +5,15 @@
 // only — no private layout here (R, 09-04: this file had been hand-rolled).
 
 import { makeFrame } from './frames.js';
-import { EMOTE_ORDER } from './avatar.js';
+import { EMOTE_ORDER, EMOTE_ICONS } from './avatar.js';
 import { myState } from './controller.js';
 import { getMe } from './mybody.js';
 import { registerXRPanel } from './xrpanels.js';
+import { bus } from './base.js';
 
 // emoji here are CONTENT (the gesture itself), not chrome — the fill-icon set
-// has no gesture glyphs beyond a wave, and a drawn set is still an open question.
+// has no gesture glyphs beyond a wave; the def-hydrated EMOTE_ICONS table wins,
+// this map is the fallback for a vocabulary that ships no icon.
 const GLYPH = { wave: '👋', cheer: '🙌', dance: '💃', point: '👉', salute: '🫡', clap: '👏' };
 
 export function initEmoteBar() {
@@ -42,17 +44,25 @@ export function initEmoteBar() {
   const grid = document.createElement('div');
   grid.className = 'tiles fixed';
   const tiles = new Map();
-  EMOTE_ORDER.forEach((name, i) => {
-    const b = document.createElement('button');
-    b.className = 'tile';
-    b.dataset.emote = name;
-    b.title = `${name} — key ${i + 1}`;
-    b.innerHTML = `<span class="tile-glyph">${GLYPH[name] ?? '✨'}</span>`;
-    b.onclick = () => { getMe()?.playEmote(name); myState.emote = name; paint(); };
-    grid.appendChild(b);
-    tiles.set(name, b);
-  });
+  // built from the def-hydrated vocabulary (§24l) and rebuilt when a defs
+  // push re-hydrates it — icons ride the same table as the names now
+  const fill = () => {
+    grid.innerHTML = ''; tiles.clear();
+    EMOTE_ORDER.forEach((name, i) => {
+      const b = document.createElement('button');
+      b.className = 'tile';
+      b.dataset.emote = name;
+      b.title = `${name} — key ${i + 1}`;
+      b.innerHTML = `<span class="tile-glyph">${EMOTE_ICONS[name] ?? GLYPH[name] ?? '✨'}</span>`;
+      b.onclick = () => { getMe()?.playEmote(name); myState.emote = name; paint(); };
+      grid.appendChild(b);
+      tiles.set(name, b);
+    });
+    if (f._state) snapTo(f._state.w);
+  };
   const paint = () => { for (const [n, b] of tiles) b.classList.toggle('on', myState.emote === n); };
+  fill();
+  bus.on('emotes-updated', fill);
   setInterval(paint, 500);   // number keys set myState.emote elsewhere; the lit tile follows
   f.body.appendChild(grid);
   // the same six gestures as a VR quad — one button per emote, the same call

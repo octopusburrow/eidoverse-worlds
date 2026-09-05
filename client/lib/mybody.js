@@ -4,10 +4,10 @@
 // sites; now there is one owner and everyone else holds the getter. Nothing
 // here may import main.js.
 
-import { CONFIG, bus, report } from './core.js';
+import { CONFIG, bus, report } from './base.js';
 import { armFlight, folded } from './controller.js';
 import { makeAvatar, contributeThumbnail } from './avatar.js';
-import { setMyAvatarPath, wireAvatarSwitch } from './build.js';
+import { setMyAvatarPath, wireAvatarSwitch } from './palette.js';
 import { toast } from './ui.js';
 import { net } from './net.js';
 
