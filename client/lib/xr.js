@@ -235,15 +235,26 @@ let radialOpen = false, stickPressWas = false;
 // ---- session ---------------------------------------------------------------
 async function enterVR() {
   try {
-    session = await navigator.xr.requestSession('immersive-vr', {
-      // 'webgpu' OPTIONAL, not required: on a WebGPU backend three refuses a
-      // session without it (XRManager._validateWebGPUSession), and a browser
-      // that can't grant it (no XRGPUBinding) simply drops it — the WebGL
-      // backend path then works unchanged. 'layers' deliberately absent on
-      // that path: classic XRWebGLLayer keeps MSAA (the porch A/B's finding);
-      // WebGPU XR has no MSAA yet, three disables it per-session and says so.
-      optionalFeatures: ['webgpu', 'local-floor', 'bounded-floor', 'hand-tracking'],
-    });
+    // THE LADDER (R's first tee line, 09-04 23:20: Chrome 152 granted the
+    // session WITHOUT the optional 'webgpu' feature and three refused it —
+    // "WebGPU XR sessions require the webgpu session feature"). On a WebGPU
+    // backend the feature is REQUIRED: a browser that can't grant it rejects
+    // the request, and we reload onto the WebGL backend (?webgl=1), where
+    // three's classic XRWebGLLayer path runs (and keeps MSAA — the porch A/B).
+    // 'layers' deliberately absent on that path.
+    const gpu = !!renderer.backend?.isWebGPUBackend;
+    const optionalFeatures = ['local-floor', 'bounded-floor', 'hand-tracking'];
+    try {
+      session = await navigator.xr.requestSession('immersive-vr',
+        gpu ? { requiredFeatures: ['webgpu'], optionalFeatures } : { optionalFeatures });
+    } catch (e) {
+      if (!gpu) throw e;
+      tee(`[xr] webgpu session refused (${e?.name ?? ''} ${e?.message ?? e}) — reloading on the WebGL backend`);
+      toast('this browser can\'t do WebGPU VR yet — switching to WebGL and reloading', 'info', 8000);
+      const u = new URL(location.href); u.searchParams.set('webgl', '1'); u.searchParams.set('xr', '1');
+      setTimeout(() => { location.href = u; }, 1200);
+      return;
+    }
     renderer.xr.enabled = true;
     await renderer.xr.setSession(session);
     const onLine = `[xr] session on ${renderer.backend?.isWebGPUBackend ? 'WebGPU' : 'WebGL'} features=${JSON.stringify(session.enabledFeatures ?? [])}`;
