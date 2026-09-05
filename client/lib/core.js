@@ -138,12 +138,13 @@ if (XR_BOOT) {
 
 export const renderer = new THREE.WebGPURenderer({ canvas,
   antialias: CONFIG.params.get('msaa') !== '0' });
-// STILL SHIPPING in 0.185.1 (read the source, not the changelog):
-// XRManager.onAnimationFrame calls foveateBoundTexture(_getFrameBufferTarget())
-// and Renderer.js:1432 returns NULL when no tonemap/colorspace pass is needed;
-// XRManager.js:655 then reads .isPostProcessingRenderTarget off null → EVERY
-// XR frame throws inside three BEFORE the app callback; the world freezes
-// while head tracking stays live. Null-guard shim; re-check at every bump.
+// Still in 0.185.1; FIXED on three dev (db1daf163, 2026-07-24, #34088 —
+// after the r185 tag, so it ships with r186): XRManager.onAnimationFrame
+// calls foveateBoundTexture(_getFrameBufferTarget()); Renderer.js:1432
+// returns NULL when no tonemap/colorspace pass is needed and XRManager:655
+// reads .isPostProcessingRenderTarget off it → every XR frame throws inside
+// three before the app callback (world freezes, head tracking stays live).
+// Same one-line guard as dev's; DELETE at the r186 bump.
 if (XR_BOOT) {
   renderer.xr.enabled = true;   // must precede init(): xrCompatible adapter
   const fov = renderer.xr.foveateBoundTexture?.bind(renderer.xr);
