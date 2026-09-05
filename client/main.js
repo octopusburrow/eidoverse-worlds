@@ -15,6 +15,7 @@ import { updateSky, updateAutoSystems, skyArgs, setCloudQuality } from './lib/sk
 import { setSkyArgsSource, entities, buildsPending, avatarMounts, roleOf, worldHasOwner } from './lib/world.js';
 import { initProfile } from './lib/profile.js';
 import { initBodies } from './lib/bodies.js';
+import { initWorldQuad } from './lib/worldquad.js';
 import { initStylePanel } from './lib/stylepanel.js';
 import { initVideoPanel } from './lib/videopanel.js';
 import { initCapNotice } from './lib/capnotice.js';
@@ -146,6 +147,7 @@ initRoster(people);
 initEmoteBar();
 initProfile();
 initBodies();
+initWorldQuad();
 initStylePanel();
 initVideoPanel();
 initCapNotice();

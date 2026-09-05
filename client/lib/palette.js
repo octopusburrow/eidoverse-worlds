@@ -24,6 +24,9 @@ const STARTER = [
   ['barrels', 'eidoverse/assets/models/scifi_barrels_group_of_four.glb'],
 ];
 
+/** The curated starters, as rows — the same list the palette opens on. */
+export const starterModels = () => STARTER.map(([name, path]) => ({ name, path }));
+
 export function initPalette() {
   makeSection('🧱 build', async (body) => { if (!body.dataset.init) await paintBuild(body); },
     { id: 'build' });
