@@ -7,14 +7,12 @@
 // Painted at 1Hz by the pulse system.
 
 import { net } from './net.js';
-import { isEditing } from './build.js';
 
 export function paintHud() {
   const hud = document.getElementById('hud');
   if (!hud) return;
   hud.classList.toggle('net-live', net.status === 'live');
   hud.classList.toggle('net-wait', net.status === 'connecting' || net.status === 'retrying');
-  hud.classList.toggle('editing', isEditing());
   hud.title = net.status === 'live'
     ? 'eidoverse — menu'
     : `eidoverse — ${net.status}…`;

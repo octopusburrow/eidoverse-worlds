@@ -277,52 +277,7 @@ export function collapseAll() {
 
 // ============================================================ who's here
 
-let whoFrame = null, whoSource = () => [];
-export function initRoster(source) {
-  whoSource = source;
-  whoFrame = makeFrame('who', {
-    title: 'present', x: -10, y: 392, w: 232, h: 150, minW: 160, hidden: true,
-  });
-  const stack = document.createElement('div');
-  stack.className = 'stack';
-  whoFrame.body.appendChild(stack);
-  whoFrame.list = stack;
-  bus.on('roster', () => { paintRoster(); bus.emit('xr:repaint'); });
-  // the VR quad reads the SAME source and offers the SAME action (go to);
-  // the desk keeps its own look (names in their colours) — one data source,
-  // one action set, two renderers
-  registerXRPanel({
-    id: 'who', title: 'present',
-    fields: () => [{ t: 'list', label: 'present', empty: 'nobody else yet',
-      rows: whoSource().map((p) => ({
-        id: p.id, label: p.me ? `${p.id} (you)` : p.id,
-        sub: p.dist == null ? undefined : `${p.dist.toFixed(0)} m`,
-        active: !!p.me,
-        actions: p.me ? [] : [{ k: 'goto', label: 'go to' }],
-      })) }],
-    dispatch: (k, id) => { if ((k === 'goto' || k === 'row') && id) bus.emit('command', { cmd: 'goto', arg: id }); },
-  });
-  return whoFrame;
-}
-export function paintRoster() {
-  if (!whoFrame?.visible) return;
-  const people = whoSource();
-  whoFrame.setTitle(`present · ${people.length}`);
-  whoFrame.list.innerHTML = people.length
-    ? people.map((p) => `<div class="who-row ${p.me ? 'self' : ''}" data-id="${escapeHtml(p.id)}" title="${p.me ? '' : 'go to'}">
-        <span class="n" style="color:${colorFor(p.id)}">${escapeHtml(p.id)}${p.me ? ' (you)' : ''}</span>
-        <span class="d">${p.dist == null ? '' : p.dist.toFixed(0) + 'm'}</span></div>`).join('')
-    : '<div style="color:var(--dim)">nobody else yet</div>';
-  // a row is an action on the desk too (parity with the quad's 'go to')
-  for (const row of whoFrame.list.querySelectorAll('.who-row:not(.self)')) {
-    row.style.cursor = 'pointer';
-    row.onclick = () => bus.emit('command', { cmd: 'goto', arg: row.dataset.id });
-  }
-}
-export function toggleRoster() {
-  whoFrame?.toggle();
-  paintRoster();
-}
+// (the roster frame is gone — 'present' lives in Chat's side pane, R 09-05)
 export const escapeHtml = (v) => String(v).replace(/[&<>"]/g, (c) => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -364,6 +319,14 @@ if (typeof window !== 'undefined') {
 /** The rail as DATA, for the VR ring (R, 09-04 22:02: the radial IS the dock
  *  rendered radially — same pins). Open ∪ pinned, in dock order; action
  *  entries (the wrench) are not frames and stay out. */
+/** The profile button wears a presence dot in its bottom-right corner. */
+export function paintPresence(state) {
+  const b = el.dock.querySelector('button[data-toggles="profile"]');
+  if (!b) return;
+  b.dataset.presence = state;
+  b.title = `profile · ${state}`;
+}
+
 export function dockPins() {
   return dockEntries
     .filter((e) => !e.action && (pins.has(e.id) || !!getFrame(e.id)?.visible))
@@ -387,7 +350,10 @@ function addDockButton(entry) {
     paintDock();
   };
   b.dataset.toggles = id;   // NOT data-frame — that belongs to the window itself
-  el.dock.insertBefore(b, el.dock.querySelector('.dock-grip'));   // the grip stays last
+  if (entry.last) b.dataset.last = '1';
+  // before the first `last` button if there is one, else before the grip — so
+  // the wrench keeps the end and the grip stays after it
+  el.dock.insertBefore(b, (!entry.last && el.dock.querySelector('button[data-last]')) || el.dock.querySelector('.dock-grip'));
   return b;
 }
 
@@ -395,6 +361,10 @@ export function initDock(entries) {
   // built-ins lead; a mod registered before boot keeps its entry, once
   const seen = new Set();
   dockEntries = [...entries, ...dockEntries].filter((e) => !seen.has(e.id) && seen.add(e.id));
+  // `last: true` entries (the edit wrench) ALWAYS close the list: edit is a
+  // MODE, not a window, and it reads as one only when it sits apart at the end
+  // (R, 09-05). Mods registering later insert ahead of them (addDockButton).
+  dockEntries.sort((a, b) => (a.last ? 1 : 0) - (b.last ? 1 : 0));
   el.dock.innerHTML = '';
   // ∃ leads the rail — one unit. (Mic/ear are separate fixed elements that
   // anchor to the ∃'s live box, so they ride along without being "in" it.)
@@ -487,7 +457,7 @@ function paintDock() {
     const id = b.dataset.toggles;
     const entry = dockEntries.find((x) => x.id === id);
     if (entry?.action) {                          // action buttons (edit wrench)
-      b.hidden = entry.gate ? !entry.gate() : false;
+      b.hidden = (entry.gate ? !entry.gate() : false) || (!entry.active?.() && !pins.has(id));
       b.classList.toggle('on', !!entry.active?.());
       continue;
     }
@@ -644,6 +614,12 @@ function buildEMenu(m) {
       row.className = 'mrow'; row.dataset.row = id;
       row.innerHTML = `${fsvg(icon, 15) || fsvg('puzzle-piece', 15)}<span class="mname">${id}</span>`;
       row.onclick = () => { action(); paintDock(); paintEMenu(); };
+      // a pin, like any window: pinned = the wrench stays on the rail (R, 09-05)
+      const pin = document.createElement('button');
+      pin.className = 'mpin'; pin.dataset.pin = id;
+      pin.innerHTML = fsvg('push-pin', 13);
+      pin.onclick = (e) => { e.stopPropagation(); pins.has(id) ? pins.delete(id) : pins.add(id); savePins(); paintDock(); paintEMenu(); };
+      row.appendChild(pin);
       m.appendChild(row);
       continue;
     }
@@ -655,7 +631,6 @@ function buildEMenu(m) {
     row.onclick = () => {
       const f = getFrame(id); if (!f) return;
       f.toggle();
-      if (id === 'who' && f.visible) paintRoster();
       paintDock(); paintEMenu();
     };
     const pin = document.createElement('button');
