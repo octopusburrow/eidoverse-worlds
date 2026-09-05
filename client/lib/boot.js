@@ -174,9 +174,10 @@ bus.on('booted', () => releaseBoot?.());
 // alpha over 1.5 s — it can never pop in. rAF-driven on purpose: a frozen
 // page freezes it; a CSS animation would keep going on the compositor and lie.
 let raysRaf = 0;
+const RAYS_ON = new URLSearchParams(location.search).get('rays') === '1';   // OFF by default (R, 13:37: grain + banding); ?rays=1 to see the canvas version
 function startLights(el) {
   const cv = el.querySelector('.sp-rays');
-  if (!cv) return;
+  if (!cv || !RAYS_ON) return;
   const calm = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0.3 : 1;
   const g = cv.getContext('2d');
   const off = document.createElement('canvas'); const og = off.getContext('2d');
