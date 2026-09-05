@@ -155,6 +155,19 @@ select {
 }
 select option { background: rgb(var(--panel-rgb)); color: var(--fg); }
 select option:checked { background: var(--well); color: var(--brand); font-weight: 600; }   /* the chosen row: dark well + brand ink — the brand FILL read as a gross green against the browser's blue hover (R, 09-05) */   /* pale highlight → DARK text (R, 09-04) */
+/* house dropdowns (dropdown.js): the native select stays as the value store, hidden */
+select.dd-native { position: absolute !important; opacity: 0; pointer-events: none; width: 1px; height: 1px; margin: 0; }
+.dd { display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 88px; max-width: 100%;
+  padding: 3px 8px 3px 9px; background: var(--well); border: 1px solid var(--edge); border-radius: 6px; color: var(--fg); font-size: var(--fs-sm); cursor: pointer; text-align: left; }
+.dd:hover { border-color: color-mix(in srgb, var(--brand) 45%, var(--edge)); }
+.dd[aria-expanded="true"] { border-color: var(--brand); }
+.dd svg, .dd-caret { flex: none; color: var(--dim); }
+.dd-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dd-pop { position: fixed; z-index: 200; display: flex; flex-direction: column; padding: 4px; gap: 1px; max-height: 260px; overflow-y: auto;
+  background: rgb(var(--panel-rgb) / .96); border: 1px solid var(--edge); border-radius: 8px; box-shadow: var(--shadow); }
+.dd-opt { text-align: left; padding: 5px 10px; border: none; border-radius: 5px; background: none; color: var(--fg); font-size: var(--fs-sm); cursor: pointer; }
+.dd-opt:hover, .dd-opt:focus-visible { background: var(--hov, rgb(255 255 255 / .06)); outline: none; }
+.dd-opt.on { background: var(--well); color: var(--brand); font-weight: 600; }
 input[type=checkbox] { accent-color: var(--control); }
 input[type=color] {
   width: 26px; height: 20px; padding: 0; cursor: pointer; background: none;
@@ -178,16 +191,18 @@ a:hover { color: var(--fg); text-decoration-color: var(--brand); }
   position: fixed; inset: 0; z-index: 100;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 22px; padding: 28px; box-sizing: border-box;
-  /* a quiet gradient. Two canvas experiments (drifting glows, aurora curtains)
-     were a HARD no (R, 09-05: banding, a hard pop from black). The liveness
-     signal lives in the status line's ellipsis instead — JS-driven, so a
-     frozen page freezes it; a CSS animation would keep going and lie. */
+  /* the ground light is .sp-rays (boot.js): soft vertical rays in the SteamVR
+     key-art manner — drawn small and upscaled so nothing has an edge, the whole
+     layer ramping from 0 alpha over 1.5 s so it never pops in, rAF-driven so a
+     frozen page freezes it. The static gradient stays UNDER it as the floor. */
   background:
-    linear-gradient(to top, color-mix(in srgb, var(--brand) 10%, transparent), transparent 42%), var(--bg);
+    linear-gradient(to top, color-mix(in srgb, var(--brand) 8%, transparent), transparent 40%), var(--bg);
   transition: opacity .6s ease, visibility .6s;
   font: var(--fs)/1.6 var(--font); color: var(--fg);
 }
 #splash.gone { opacity: 0; visibility: hidden; pointer-events: none; }
+.sp-rays { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; display: block; z-index: 0; }
+#splash > :not(.sp-rays) { position: relative; z-index: 1; }
 .sp-ver { position: absolute; right: 14px; bottom: 10px; font-size: var(--fs-xs);
   color: color-mix(in srgb, var(--brand) 30%, transparent); letter-spacing: .1em; }
 .sp-logo {
@@ -354,6 +369,11 @@ a:hover { color: var(--fg); text-decoration-color: var(--brand); }
 .chat-gearpop .gp-row { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
 .chat-gearpop .gp-row span { color: var(--dim); margin-right: 6px; }
 .chat-gearpop .gp-row b { min-width: 20px; text-align: center; }
+/* on/off pairs in the gear pop: on = a brand chip with dark ink, off = the well — the same
+   live/idle grammar as the dock's lit icon and .sp-btn (R, 09-05: more contrast) */
+.chat-gearpop .gp-row button { background: var(--well); color: var(--dim); border: 1px solid transparent; }
+.chat-gearpop .gp-row button:hover { color: var(--fg); border-color: var(--edge); }
+.chat-gearpop .gp-row button.on { background: var(--brand); color: var(--ink-on-brand); font-weight: 600; }
 .chat-gearpop button { padding: 2px 8px; }
 .chat-tabs { display: flex; gap: 2px; padding: 7px 6px 0; flex: none; }
 .chat-tabs button {
@@ -1260,7 +1280,8 @@ try { const o = JSON.parse(localStorage.getItem('ew-style-tokens') || '{}');
 </head>
 <body>
 <!-- Static so it paints before any module loads. boot.js only fills it in. -->
-<div id="splash" data-build="b79">
+<div id="splash" data-build="b80">
+  <canvas class="sp-rays" aria-hidden="true"></canvas>
   <div class="sp-ver"></div>
   <div class="sp-logo-wrap"><svg class="sp-logo" viewBox="-70 -40 1372 1372" aria-hidden="true" fill="currentColor">
     <path class="pc-top" d="M 92 82 Q 616 140 1072 78 Q 1024 290 1012 511 L 852 511 L 852 228 Q 440 218 68 232 Q 88 155 92 82 Z"/>

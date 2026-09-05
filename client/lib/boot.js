@@ -166,24 +166,56 @@ export const whenBooted = () => (done
   : Promise.race([bootGate, new Promise((r) => setTimeout(r, BOOT_GATE_MAX))]));
 bus.on('booted', () => releaseBoot?.());
 
-// ---- the pulse: the status line's ellipsis is drawn by requestAnimationFrame,
-// not CSS — so it is the page's liveness signal: if the main thread freezes,
-// the dots freeze with it. (R, 09-05: the shader experiments were a hard no;
-// this is the honest, quiet version she suggested first.)
-let pulseRaf = 0;
+// ---- the rays: soft vertical light in the SteamVR key-art manner (R, 09-05).
+// Drawn at 1/6 resolution into a scratch canvas and upscaled with smoothing,
+// so nothing in it can have an edge; ~14 wide overlapping rays, each a soft
+// horizontal bell × a vertical fade from the ground; two tints (brand and
+// brand-deep) so the field has depth; slow sway. The WHOLE layer ramps from 0
+// alpha over 1.5 s — it can never pop in. rAF-driven on purpose: a frozen
+// page freezes it; a CSS animation would keep going on the compositor and lie.
+let raysRaf = 0;
 function startLights(el) {
-  const phase = el.querySelector('.sp-phase');
-  if (!phase) return;
-  const t0 = performance.now();
+  const cv = el.querySelector('.sp-rays');
+  if (!cv) return;
+  const calm = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0.3 : 1;
+  const g = cv.getContext('2d');
+  const off = document.createElement('canvas'); const og = off.getContext('2d');
+  const css = getComputedStyle(document.documentElement);
+  const tints = [css.getPropertyValue('--brand').trim() || '#8fe8c8', css.getPropertyValue('--brand-deep').trim() || '#6fb8a4'];
+  const N = 14, t0 = performance.now(), SCALE = 6;
+  const R = Array.from({ length: N }, (_, i) => ({
+    x0: (i + 0.5) / N + 0.02 * Math.sin(i * 2.3), w: 0.10 + 0.08 * ((i * 7) % 4) / 3, h: 0.45 + 0.25 * ((i * 5) % 3) / 2,
+    sway: 0.02 + 0.015 * ((i * 3) % 3), ws: (0.12 + 0.05 * ((i * 11) % 4)) * calm, ph: i * 1.31, tint: tints[i % 2], a: 0.5 + 0.5 * ((i * 13) % 3) / 2,
+  }));
   const frame = (now) => {
-    const n = 1 + Math.floor(((now - t0) / 450) % 3);
-    // read the base FRESH each frame: the phase writer changes the words
-    // ('waking the engine' → 'folding the world log…'); we only own the dots
-    const base = phase.textContent.replace(/[….\s]+$/, '');
-    const next = base + '.'.repeat(n);
-    if (phase.textContent !== next) phase.textContent = next;
-    pulseRaf = requestAnimationFrame(frame);
+    const W = cv.clientWidth, H = cv.clientHeight;
+    if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+    const w = Math.max(8, Math.round(W / SCALE)), h = Math.max(8, Math.round(H / SCALE));
+    if (off.width !== w || off.height !== h) { off.width = w; off.height = h; }
+    const t = (now - t0) / 1000;
+    og.clearRect(0, 0, w, h);
+    og.globalCompositeOperation = 'lighter';
+    for (const r of R) {
+      const x = (r.x0 + Math.sin(t * r.ws + r.ph) * r.sway) * w;
+      const hw = r.w * w, hh = r.h * h * (1 + 0.06 * Math.sin(t * r.ws * 1.7 + r.ph));
+      // horizontal bell: a radial gradient stretched tall — soft sides, no seams
+      const gr = og.createRadialGradient(x, h, 0, x, h, hw);
+      gr.addColorStop(0, r.tint); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      og.save(); og.translate(x, h); og.scale(1, hh / hw); og.translate(-x, -h);
+      og.globalAlpha = 0.16 * r.a;
+      og.fillStyle = gr; og.beginPath(); og.arc(x, h, hw, 0, Math.PI * 2); og.fill();
+      og.restore();
+    }
+    og.globalCompositeOperation = 'source-over';
+    // the ramp: 0 → 1 over 1.5 s, eased — the layer arrives, it never pops
+    const ramp = Math.min(1, t / 1.5); const ease = ramp * ramp * (3 - 2 * ramp);
+    g.clearRect(0, 0, W, H);
+    g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+    g.globalAlpha = ease;
+    g.drawImage(off, 0, 0, w, h, 0, 0, W, H);
+    g.globalAlpha = 1;
+    raysRaf = requestAnimationFrame(frame);
   };
-  pulseRaf = requestAnimationFrame(frame);
+  raysRaf = requestAnimationFrame(frame);
 }
-function stopLights() { if (pulseRaf) cancelAnimationFrame(pulseRaf); pulseRaf = 0; }
+function stopLights() { if (raysRaf) cancelAnimationFrame(raysRaf); raysRaf = 0; }
