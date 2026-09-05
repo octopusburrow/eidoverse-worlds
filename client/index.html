@@ -42,6 +42,17 @@
   --brand-deep: color-mix(in srgb, var(--brand) 84%, #1a2a28);  /* the ∃ at rest when live */
   --attn:      #ffc46b;   /* THE attention amber — the only one */
   --err:       #ff8f8f;
+  /* in-world affordance PILLS (nameplate, speaking mic, typing dots, bubbles):
+     light-on-dark, derived from the accent by default so a restyle carries
+     them — but their own names, so a light menu mode could leave them dark
+     (R, 09-05 16:41). Read by the sprite painters (tokv) and repainted on
+     'style' events. */
+  --pill-bg:   rgb(8 20 28 / .86);
+  --pill-edge: color-mix(in srgb, var(--brand) 25%, transparent);
+  --pill-fg:   #e8f4ef;
+  --pill-dim:  #8ba39c;
+  --pill-dot:  color-mix(in srgb, var(--brand) 85%, white);
+  --pill-name: var(--brand);
   --ok:        var(--brand);            /* 'running / fine' — the brand, never a third green */
   --ink-on-brand: #0f2024;               /* dark ink for text/edges drawn ON a brand-filled chip */
   /* legacy aliases — keep working, point at roles */
@@ -645,16 +656,22 @@ body.arranging #dock #hud.emark {
   content: ''; position: absolute; right: 4px; bottom: 4px; width: 8px; height: 8px; border-radius: 50%;
   background: var(--ok); box-shadow: 0 0 0 2px rgb(var(--panel-rgb));
 }
-#dock button[data-toggles="profile"][data-presence="away"]::after { background: var(--attn); }
-#dock button[data-toggles="profile"][data-presence="busy"]::after { background: var(--err); }
+#dock button[data-toggles="profile"][data-presence="away"]::after { background: #f5b83d; border-radius: 2px; transform: rotate(45deg) scale(.85); }   /* fixed colours + shapes, as on the profile (R, 09-05) */
+#dock button[data-toggles="profile"][data-presence="busy"]::after { background: #ef5b5b; border-radius: 2px; }
 /* profile (09-05 redesign): portrait = presence control; top tabs; one pane */
 .pf-portrait { position: relative; width: 40px; height: 40px; border-radius: 50%; flex: none; display: grid; place-items: center; padding: 0;
   background: color-mix(in srgb, var(--who) 55%, rgb(var(--panel-rgb))); color: var(--fg); border: 1px solid transparent; cursor: pointer; }
 .pf-portrait:hover, .pf-portrait[aria-expanded="true"] { border-color: var(--brand); }
 .pf-portrait svg { opacity: .85; }
-.pf-portrait-dot { position: absolute; right: -1px; bottom: -1px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid rgb(var(--panel-rgb)); background: var(--brand); }
-[data-presence="away"] > .pf-portrait-dot, .pf-pop-dot[data-presence="away"] { background: var(--attn); }
-[data-presence="busy"] > .pf-portrait-dot, .pf-pop-dot[data-presence="busy"] { background: var(--err); }
+/* presence marks are FIXED colours and distinct SHAPES, never the accent (R,
+   09-05 16:47: standard green/amber/red, shapes for colourblind readers):
+   present = green circle · away = amber diamond · busy = red square-with-bar */
+.pf-portrait-dot { position: absolute; right: -1px; bottom: -1px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid rgb(var(--panel-rgb)); background: #3ddc84; }
+.pf-pop-dot { width: 10px; height: 10px; border-radius: 50%; background: #3ddc84; flex: none; }
+[data-presence="away"] > .pf-portrait-dot, .pf-pop-dot[data-presence="away"] { background: #f5b83d; border-radius: 2px; transform: rotate(45deg) scale(.85); }
+[data-presence="busy"] > .pf-portrait-dot, .pf-pop-dot[data-presence="busy"] { background: #ef5b5b; border-radius: 2px; }
+[data-presence="busy"] > .pf-portrait-dot::after, .pf-pop-dot[data-presence="busy"]::after { content: ''; position: absolute; left: 20%; right: 20%; top: 40%; bottom: 40%; background: rgb(var(--panel-rgb)); border-radius: 1px; }
+.pf-pop-dot { position: relative; }
 .pf-who .pf-state { font-style: normal; color: var(--brand); }
 .pf-id { position: relative; }
 .pf-pop { position: absolute; left: 0; top: 46px; z-index: 5; display: flex; flex-direction: column; gap: 2px; padding: 5px; min-width: 240px;
@@ -662,7 +679,6 @@ body.arranging #dock #hud.emark {
 .pf-pop-row { display: flex; align-items: center; gap: 10px; text-align: left; padding: 6px 10px; border: none; border-radius: 6px; background: none; color: var(--fg); font-size: var(--fs-sm); cursor: pointer; }
 .pf-pop-row:hover { background: rgb(255 255 255 / .06); }
 .pf-pop-row.on { background: var(--well); color: var(--brand); font-weight: 600; }
-.pf-pop-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--brand); flex: none; }
 .pf-tabs { display: flex; gap: 2px; margin: 10px 0 8px; border-bottom: 1px solid var(--edge); }
 .pf-tab { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px 7px; border: none; border-bottom: 1px solid transparent; margin-bottom: -1px; background: none; color: var(--dim); font-size: var(--fs-sm); cursor: pointer; border-radius: 6px 6px 0 0; }
 .pf-tab svg { opacity: .8; color: var(--icon); }          /* the section-head recipe: desaturated brand at .8 when idle (R, 09-05) */
