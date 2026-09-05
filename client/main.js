@@ -43,6 +43,7 @@ import { initConjure } from './lib/conjure.js';
 import './lib/mictoggle.js'; // mic + headphone toggles beside the HUD, both off by default
 import { initAudioPanel } from './lib/audiopanel.js';
 import { initSceneGraph, sceneSelect } from './lib/scenegraph.js';
+import { initEditPanels } from './lib/editpanels.js';
 import { initXR, updateXR, bindXRSelf } from './lib/xr.js';
 import { trySitOn as xrTrySitOn, dismountMe as xrDismountMe } from './lib/localbody.js';
 import {
@@ -262,7 +263,10 @@ function start() {
     // the join completes.
     .then((vs) => vs.speakOwnSays(bus, () => net.myId || CONFIG.name))
     .catch((e) => console.warn('[voice] own-say hook not installed:', e));
-  initSceneGraph();   // 🌳 the world as a tree + 📜 the scripts that animate it
+  initSceneGraph();
+// hierarchy + inspector as fields: desktop frames now, VR quads through the same declaration
+const editPanels = initEditPanels();
+bus.on('edit-mode', (on) => editPanels.show(!!on));   // 🌳 the world as a tree + 📜 the scripts that animate it
   setHint('<kbd>WASD</kbd> move · <kbd>Enter</kbd> chat · <kbd>B</kbd> build · <kbd>?</kbd> help');
 
   if (!isViewer) {

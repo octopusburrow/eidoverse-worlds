@@ -22,6 +22,17 @@
 //   { t:'btn',    k, label, danger? }                             → edit(k)
 //   { t:'list',   label, empty?, rows:[{ id, label, sub?, active?,
 //                 actions:[{k, label, danger?}] }] }              → edit(k, rowId) / edit('row', rowId)
+//   { t:'check',  k, label, value }                               → edit(k, bool)
+//   { t:'enum',   k, label, value, options:[{v,label}] }          → edit(k, v)
+//   { t:'color',  k, label, value:0xRRGGBB }                      → edit(k, int)
+//   { t:'group',  k, label, open? }   marker: rows until the next marker belong to it;
+//                 collapsed groups skip their rows                → edit('fold', k)
+//   { t:'tree',   k, rows:[{ id, label, sub?, depth, active?, badges?:[], locked? }] }
+//                                                                 → edit(k, id) / edit('lock', id)
+// num also takes { unit?, deg? } (deg: value is radians on the wire, degrees
+// on the face); vec3 also takes { link? } (one stepper drives all three) and
+// reports edit(k, [x,y,z], axisIndex|null) — the third arg is Godot's `field`:
+// multi-select assigns one component without clobbering the others.
 
 import { makeFrame } from './frames.js';
 
@@ -59,7 +70,12 @@ export function makeSchemaFrame(key, opts) {
 
 export function renderDOM(body, fields, edit) {
   body.innerHTML = '';
-  for (const f of fields) body.append(fieldDOM(f, edit));
+  let folded = false;
+  for (const f of fields) {
+    if (f.t === 'group') { folded = f.open === false; body.append(fieldDOM(f, edit)); continue; }
+    if (folded) continue;
+    body.append(fieldDOM(f, edit));
+  }
 }
 
 function el(tag, cls, text) {
@@ -69,24 +85,27 @@ function el(tag, cls, text) {
   return e;
 }
 
-function stepper(value, { step = 0.1, dp = 2, min, max }, commit) {
+const R2D = 180 / Math.PI;
+function stepper(value, { step = 0.1, dp = 2, min, max, unit, deg }, commit) {
   const wrap = el('span', 'sp-step');
   const minus = el('button', 'sp-bump', '−');
   const num = el('input', 'sp-num');
-  num.value = (+value).toFixed(dp);
+  const face = deg ? +value * R2D : +value;
+  num.value = face.toFixed(deg ? 0 : dp);
   const plus = el('button', 'sp-bump', '+');
   const clamp = (v) => Math.min(max ?? Infinity, Math.max(min ?? -Infinity, v));
-  const send = (v) => commit(clamp(v));
+  const send = (v) => commit(deg ? clamp(v) / R2D : clamp(v));
   minus.onclick = () => send(+num.value - step);
   plus.onclick = () => send(+num.value + step);
   num.onchange = () => { const v = parseFloat(num.value); if (Number.isFinite(v)) send(v); };
   wrap.append(minus, num, plus);
+  if (unit || deg) wrap.append(el('span', 'sp-unit', deg ? '°' : unit));
   return wrap;
 }
 
 function fieldDOM(f, edit) {
   const row = el('div', `sp-row sp-f-${f.t}`);   // sp-f- prefix: never collide with element classes
-  if (f.label != null && f.t !== 'btn') row.append(el('label', 'sp-label', f.label));
+  if (f.label != null && f.t !== 'btn' && f.t !== 'group') row.append(el('label', 'sp-label', f.label));
   switch (f.t) {
     case 'info': row.append(el('span', 'sp-info', String(f.value ?? ''))); break;
     case 'num':  row.append(stepper(f.value ?? 0, f, (v) => edit(f.k, v))); break;
@@ -94,8 +113,55 @@ function fieldDOM(f, edit) {
       const box = el('span', 'sp-vec');
       const cur = [...(f.value ?? [0, 0, 0])];
       cur.forEach((c, i) => box.append(stepper(c, f, (v) => {
-        const next = [...cur]; next[i] = v; edit(f.k, next);
+        if (f.link) { edit(f.k, [v, v, v], null); return; }
+        const next = [...cur]; next[i] = v; edit(f.k, next, i);
       })));
+      row.append(box);
+      break;
+    }
+    case 'enum': {
+      const sel = el('select', 'sp-enum');
+      for (const o of f.options ?? []) {
+        const op = new Option(o.label ?? String(o.v), String(o.v));
+        op.selected = o.v === f.value;
+        sel.append(op);
+      }
+      sel.onchange = () => { const o = (f.options ?? []).find((x) => String(x.v) === sel.value); edit(f.k, o ? o.v : sel.value); };
+      row.append(sel);
+      break;
+    }
+    case 'color': {
+      const inp = el('input', 'sp-color');
+      inp.type = 'color';
+      inp.value = '#' + (f.value ?? 0xffffff).toString(16).padStart(6, '0');
+      inp.onchange = () => edit(f.k, parseInt(inp.value.slice(1), 16));
+      row.append(inp);
+      break;
+    }
+    case 'group': {
+      row.classList.add(f.open === false ? 'closed' : 'open');
+      const h = el('button', 'sp-group', `${f.open === false ? '▸' : '▾'} ${f.label}`);
+      h.onclick = () => edit('fold', f.k);
+      row.innerHTML = ''; row.append(h);
+      break;
+    }
+    case 'tree': {
+      const box = el('div', 'sp-tree');
+      if (!f.rows?.length) box.append(el('div', 'sp-empty', f.empty ?? 'nothing here'));
+      for (const r of f.rows ?? []) {
+        const line = el('div', `sp-item sp-tree-row${r.active ? ' active' : ''}`);
+        line.style.paddingLeft = `${7 + (r.depth ?? 0) * 14}px`;
+        const main = el('span', 'sp-item-main');
+        main.append(el('span', 'sp-item-label', `${r.depth ? '└ ' : ''}${r.label}`));
+        if (r.sub || r.badges?.length) main.append(el('span', 'sp-item-sub', [r.sub, ...(r.badges ?? [])].filter(Boolean).join(' · ')));
+        main.onclick = () => edit(f.k, r.id);
+        line.append(main);
+        const lock = el('button', `sp-mini${r.locked ? ' on' : ''}`, r.locked ? '🔒' : '🔓');
+        lock.title = r.locked ? 'locked — click to unlock' : 'click to lock in place';
+        lock.onclick = (e) => { e.stopPropagation(); edit('lock', r.id); };
+        line.append(lock);
+        box.append(line);
+      }
       row.append(box);
       break;
     }
@@ -157,7 +223,12 @@ const C = {
 
 export function renderCanvas(canvas, fields, { width = 512, rowH = 44, pad = 12, title = '' } = {}) {
   const rows = [];
-  for (const f of fields) rows.push(f, ...(f.t === 'list' ? (f.rows ?? []).map((r) => ({ _row: r, parent: f })) : []));
+  let folded = false;
+  for (const f of fields) {
+    if (f.t === 'group') { folded = f.open === false; rows.push(f); continue; }
+    if (folded) continue;
+    rows.push(f, ...(f.t === 'list' || f.t === 'tree' ? (f.rows ?? []).map((r) => ({ _row: r, parent: f })) : []));
+  }
   const H = (title ? rowH : 0) + rows.length * rowH + pad * 2;
   canvas.width = width; canvas.height = H;
   const g = canvas.getContext('2d');
@@ -172,13 +243,27 @@ export function renderCanvas(canvas, fields, { width = 512, rowH = 44, pad = 12,
     y += rowH;
   }
   for (const f of rows) {
-    if (f._row) { // a list row
-      const r = f._row;
+    if (f._row) { // a list or tree row
+      const r = f._row; const tree = f.parent.t === 'tree';
+      const ind = tree ? (r.depth ?? 0) * 18 : 0;
       g.fillStyle = r.active ? '#1d2634' : C.row;
       g.fillRect(pad, y + 2, width - pad * 2, rowH - 4);
       font(15, r.active ? 600 : 400); g.fillStyle = C.text;
-      g.fillText(r.label.slice(0, 34), pad + 10, y + rowH * 0.62);
-      regions.push({ x: pad, y, w: width * 0.6, h: rowH, action: 'row', payload: r.id });
+      g.fillText(`${tree && r.depth ? '└ ' : ''}${r.label}`.slice(0, 34), pad + 10 + ind, y + rowH * 0.62);
+      if (tree && (r.sub || r.badges?.length)) {
+        font(11); g.fillStyle = C.label;
+        g.fillText([r.sub, ...(r.badges ?? [])].filter(Boolean).join(' · ').slice(0, 40), pad + 10 + ind + Math.min(220, r.label.length * 9 + 14), y + rowH * 0.62);
+      }
+      regions.push({ x: pad, y, w: width * 0.6, h: rowH, action: tree ? f.parent.k : 'row', payload: r.id });
+      if (tree) {
+        const bw = 34, bx = width - pad - bw;
+        g.fillStyle = r.locked ? C.accent : '#2a3342';
+        g.fillRect(bx, y + 7, bw, rowH - 14);
+        font(13, 600); g.fillStyle = r.locked ? '#14100c' : C.text;
+        g.fillText(r.locked ? 'L' : 'l', bx + 12, y + rowH * 0.62);
+        regions.push({ x: bx, y: y + 7, w: bw, h: rowH - 14, action: 'lock', payload: r.id });
+        y += rowH; continue;
+      }
       let bx = width - pad;
       for (const a of [...(r.actions ?? [])].reverse()) {
         const bw = Math.max(52, a.label.length * 9 + 18);
@@ -191,9 +276,47 @@ export function renderCanvas(canvas, fields, { width = 512, rowH = 44, pad = 12,
       }
       y += rowH; continue;
     }
+    if (f.t === 'group') {
+      g.fillStyle = C.line; g.fillRect(pad, y + rowH - 6, width - pad * 2, 1);
+      font(14, 600); g.fillStyle = C.accent;
+      g.fillText(`${f.open === false ? '▸' : '▾'} ${f.label}`, pad, y + rowH * 0.62);
+      regions.push({ x: pad, y, w: width - pad * 2, h: rowH, action: 'fold', payload: f.k });
+      y += rowH; continue;
+    }
     if (f.label != null) { font(13); g.fillStyle = C.label; g.fillText(f.label, pad, y + rowH * 0.6); }
     const vx = width * 0.34;
     switch (f.t) {
+      case 'enum': {
+        let bx = vx;
+        for (const o of f.options ?? []) {
+          const lab = String(o.label ?? o.v); const bw = Math.max(40, lab.length * 8 + 16);
+          const on = o.v === f.value;
+          g.fillStyle = on ? C.accent : '#2a3342';
+          g.fillRect(bx, y + 7, bw, rowH - 14);
+          font(13, on ? 600 : 400); g.fillStyle = on ? '#14100c' : C.text;
+          g.fillText(lab, bx + 8, y + rowH * 0.62);
+          regions.push({ x: bx, y: y + 7, w: bw, h: rowH - 14, action: f.k, payload: o.v });
+          bx += bw + 4;
+          if (bx > width - pad - 40) break;
+        }
+        break;
+      }
+      case 'color': {
+        const s = rowH - 14;
+        g.fillStyle = '#' + (f.value ?? 0xffffff).toString(16).padStart(6, '0');
+        g.fillRect(vx, y + 7, s * 1.6, s);
+        g.strokeStyle = C.label; g.lineWidth = 1; g.strokeRect(vx, y + 7, s * 1.6, s);
+        // an 8-swatch palette: the keyboard-free way to pick a color
+        const PAL = [0xffffff, 0xffd9a0, 0xff8a5c, 0xe05a5a, 0x7cc47c, 0x5fa8ff, 0xb48cff, 0x202020];
+        let bx = vx + s * 1.6 + 8;
+        for (const c of PAL) {
+          g.fillStyle = '#' + c.toString(16).padStart(6, '0');
+          g.fillRect(bx, y + 9, s - 4, s - 4);
+          regions.push({ x: bx, y: y + 9, w: s - 4, h: s - 4, action: f.k, payload: c });
+          bx += s;
+        }
+        break;
+      }
       case 'info': font(15); g.fillStyle = C.text; g.fillText(String(f.value ?? '').slice(0, 30), vx, y + rowH * 0.6); break;
       case 'text': font(15); g.fillStyle = C.label; g.fillText(String(f.value ?? '—').slice(0, 26), vx, y + rowH * 0.6); break;
       case 'btn': {
@@ -224,7 +347,7 @@ export function renderCanvas(canvas, fields, { width = 512, rowH = 44, pad = 12,
       case 'vec3': {
         const seg = (width - vx - pad) / 3;
         (f.value ?? [0, 0, 0]).forEach((c, i) =>
-          paintStepper(g, regions, f, +c, vx + seg * i, y, rowH, f.k, i, f.dp, seg - 8));
+          paintStepper(g, regions, f, +c, vx + seg * i, y, rowH, f.k, f.link ? null : i, f.dp, seg - 8));
         break;
       }
     }
@@ -243,9 +366,13 @@ function paintStepper(g, regions, f, val, x, y, rowH, k, axis, dp = 2, w = 150) 
   g.fillText('−', x + 8, y + rowH * 0.62);
   g.fillText('+', x + bump + mid + 7, y + rowH * 0.62);
   g.font = '500 14px system-ui';
-  g.fillText(val.toFixed(dp), x + bump + 8, y + rowH * 0.62);
-  regions.push({ x, y: y + 7, w: bump, h: rowH - 14, action: k, payload: { axis, delta: -(f.step ?? 0.1) } });
-  regions.push({ x: x + bump + mid, y: y + 7, w: bump, h: rowH - 14, action: k, payload: { axis, delta: +(f.step ?? 0.1) } });
+  const face = f.deg ? `${Math.round(val * R2D)}°` : val.toFixed(dp) + (f.unit ? ` ${f.unit}` : '');
+  g.fillText(face, x + bump + 8, y + rowH * 0.62);
+  // deltas are on the WIRE scale (radians for deg fields): the dispatcher adds
+  // them to the current value and never has to know what the face showed
+  const d = f.deg ? (f.step ?? 1) / R2D : (f.step ?? 0.1);
+  regions.push({ x, y: y + 7, w: bump, h: rowH - 14, action: k, payload: { axis, delta: -d } });
+  regions.push({ x: x + bump + mid, y: y + 7, w: bump, h: rowH - 14, action: k, payload: { axis, delta: +d } });
 }
 
 /** Resolve a UV hit (0..1, v measured from the top) against regions. */
