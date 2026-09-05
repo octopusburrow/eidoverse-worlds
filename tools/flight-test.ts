@@ -712,7 +712,10 @@ console.log('\nDEFAULT-DENY -- a compatible rig is evidence, never permission');
 // -------------------------------------------- rehearsal, and a climb that flies
 console.log('\nREVIEW cea3c3c -- blockers 4 and 6');
 {
-  const ns = readFileSync('mcpl/net-server.ts', 'utf8');
+  // rimward (merged 2026-09-02): the door's tool table + dispatcher live in
+  // mcpl/tools.ts (TEL0S_NOTES §24r — one table, one dispatcher, a load-time
+  // advertise⇔handle assertion); net-server.ts is a pure transport.
+  const ns = readFileSync('mcpl/tools.ts', 'utf8');
   // B4: DOWN is involuntary; a pilot must not be able to cry wolf. Naming a
   // tool "REHEARSAL ONLY" in its description did not stop it being callable.
   check('rehearsal is env-gated and DEFAULT OFF',
@@ -1114,10 +1117,12 @@ console.log('\nISOLATION -- nothing in the running world reaches flight yet');
   //    description, because the state was only reachable from a devtools
   //    probe. /flight puts it in the chat log, where the person is.
   const reg = readFileSync('client/lib/commands/registry.js', 'utf8');
-  const cht = readFileSync('client/lib/chat.js', 'utf8');
+  // rimward: chat.js dispatches every registered row through the registry
+  // (§14 6c) — the "dispatched" evidence is the handler registration
+  const hnd = readFileSync('client/lib/commands/handlers.js', 'utf8');
   check("/flight is discoverable, dispatched, and answered",
         /name: 'flight'/.test(reg) &&
-        /case 'flight':/.test(cht) &&
+        /register\('flight'/.test(hnd) &&
         /export function flightReport\(/.test(ctl));
 }
 
@@ -1219,6 +1224,9 @@ console.log('\nFLOWN -- four faults a human found that no assertion had');
       const e = { seq: ++seq, ts: Date.now(), actor, verb, args };
       foldEntry(st, e); return e;
     },
+    // rimward's runVerb commits through the entry bus (commit = append +
+    // publish, TEL0S_NOTES §24); a bench world answers both the same way
+    commit(actor: string, verb: string, args: any) { return this.append(actor, verb, args); },
     broadcast() {}, debug() {},
   };
   const client = (id: string, out: any[]) => ({ id, spectator: false, world: w, lastPose: null,

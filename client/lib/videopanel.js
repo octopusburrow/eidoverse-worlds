@@ -12,7 +12,8 @@ import { RENDER_SCALES, getRenderScale, setRenderScale,
   PARTICLE_TIERS, getParticleTier, setParticleTier,
   AVATAR_DETAILS, getAvatarDetail, setAvatarDetail } from './governor.js';
 import { shadowsOn, setShadows } from './lightrig.js';
-import { backendName, PREF_MSAA, PREF_BACKEND, CONFIG } from './core.js';
+import { backendName, PREF_MSAA, PREF_BACKEND } from './core.js';
+import { CONFIG } from './base.js';
 import { WEBGL } from './capnotice.js';
 
 // same markup contract as the audio section (label right of centre, control

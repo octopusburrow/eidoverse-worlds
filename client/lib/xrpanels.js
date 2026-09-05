@@ -8,7 +8,8 @@
 // at desk height. Frames that never register (chat's free text, the debug
 // log) simply have no VR body yet, and say nothing rather than pretend.
 
-import { THREE, bus } from './core.js';
+import { THREE } from './core.js';
+import { bus } from './base.js';
 import { renderCanvas, hitRegion } from './panels.js';
 
 const PX_PER_M = 900;              // canvas pixels per world metre of quad

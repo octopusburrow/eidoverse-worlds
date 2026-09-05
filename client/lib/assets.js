@@ -9,7 +9,8 @@
 //              for a bound rig, so released bodies are reworn intact)
 
 import { keyFromVersion, negotiate } from '../../shared/ktx2.js';
-import { THREE, renderer, camera, scene, report, bus } from './core.js';
+import { THREE, renderer, camera, scene } from './core.js';
+import { report, bus } from './base.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
@@ -21,6 +22,7 @@ import { clone as skeletonClone } from 'three/addons/utils/SkeletonUtils.js';
 import { beginWork, enqueue, nextFrame, loadNote } from './loadwork.js';
 import { warm } from './warmqueue.js';
 import { prepareObject } from './materials.js';
+import { markDrawBatchSource } from './draw_batches.js';
 
 // ---- loading tray -----------------------------------------------------------
 // Every in-flight asset (downloads with byte progress, builds as spinners) is
@@ -507,6 +509,7 @@ export async function loadGLB(libPath) {
           // the PROTOTYPE goes through the factory once; every skeletonClone
           // shares its wrapped materials and copies its mesh markers
           prepareObject(gltf.scene, { kind: 'model' });
+          markDrawBatchSource(gltf.scene);
           await work.yield();
           work.phase('textures');
           await primeTextures(gltf.scene, work);

@@ -1,6 +1,7 @@
 // capnotice — one persistent, dismissible card when this browser is on a reduced
 // path. Toasts fade in seconds; a capability is for the whole visit.
-import { bus, backendName } from './core.js';
+import { backendName } from './core.js';
+import { bus } from './base.js';
 
 const LS = 'ew-capnotice-dismissed';
 export const WEBGL = {

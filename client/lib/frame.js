@@ -21,7 +21,8 @@
 // the identity RTT resolves — a module that self-started on import would
 // change boot ordering silently (§14.1).
 
-import { report, renderer, XR_BOOT } from './core.js';
+import { report } from './base.js';
+import { renderer, XR_BOOT } from './core.js';
 import { BC } from './bc.js';
 import { perf } from './perf.js';
 

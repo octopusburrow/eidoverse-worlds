@@ -1,7 +1,8 @@
 // net — the wire. One socket carrying two planes: the world log (ordered,
 // persisted, replayed on join) and presence (batched, lossy, never persisted).
 
-import { THREE, CONFIG, camera, scene, renderer, report, bus } from './core.js';
+import { THREE, camera } from './core.js';
+import { CONFIG, report, bus } from './base.js';
 import { forgetBytes } from './assets.js';
 // The world as data (TEL0S_NOTES §11.2): every snapshot and live entry
 // folds here — synchronously, through the same shared/fold.js the
@@ -19,6 +20,7 @@ import { myReachBag } from './reachnet.js';
 import { wingFoldPresence } from '../../shared/wingpresence.js';
 import { logChat, logWhisper, noteTyping, noteHistoryContext } from './chat.js';
 import { composeFirstPerson } from './fp_view.js';
+import { captureFrame, captureFrom } from './capture.js';
 import { markPhase } from './boot.js';
 import { toast } from './ui.js';
 
@@ -625,6 +627,13 @@ async function handle(msg) {
       break;
     }
 
+    case 'defs-updated': {
+      // a def changed on disk (§24 hot reload) — wire → bus hop; world.js
+      // re-fetches the registry and regrows what the changed content shapes
+      bus.emit('defs-updated', msg);
+      break;
+    }
+
     case 'world-forked': {
       // The link stands alone at the end of the line, never inside brackets —
       // naive linkifiers (ours included, once) swallow closing punctuation
@@ -738,7 +747,7 @@ async function onSnapshot(msg) {
   shadowHydrate(msg.state, [], Math.max(
     typeof msg.throughSeq === 'number' ? msg.throughSeq : -1,
     ...(msg.entries?.length ? msg.entries.map((e) => e.seq ?? -1) : [-1]),
-  ));
+  ), msg.sim ?? null);
 
   // Warm the bytes for every still-live spawn in parallel BEFORE the ordered
   // replay — join time becomes the slowest asset, not the sum of all of them.
@@ -805,22 +814,13 @@ async function onSnapRequest(msg) {
     const root = r.avatar.root;
     const fwd = new THREE.Vector3(Math.sin(root.rotation.y), 0, Math.cos(root.rotation.y));
     let dataUrl;
-    const shoot = () => {
-      renderer.render(scene, camera);   // completed frame, then read it
-      const url = renderer.domElement.toDataURL('image/png');
-      if (url.length < 2000) throw new Error('empty frame readback');
-      return url;
-    };
     if (msg.view === 'third') {
       const eye = root.position.clone().add(new THREE.Vector3(0, 2.1, 0)).addScaledVector(fwd, -3.4);
-      camera.position.copy(eye);
-      camera.lookAt(root.position.clone().add(new THREE.Vector3(0, 1.2, 0)).addScaledVector(fwd, 4));
-      dataUrl = shoot();
+      dataUrl = captureFrom(eye,
+        root.position.clone().add(new THREE.Vector3(0, 1.2, 0)).addScaledVector(fwd, 4));
     } else if (msg.view === 'selfie') {
       const eye = root.position.clone().add(new THREE.Vector3(0, 1.6, 0)).addScaledVector(fwd, 2.6);
-      camera.position.copy(eye);
-      camera.lookAt(root.position.clone().add(new THREE.Vector3(0, 1.25, 0)));
-      dataUrl = shoot();
+      dataUrl = captureFrom(eye, root.position.clone().add(new THREE.Vector3(0, 1.25, 0)));
     } else {
       const head = r.avatar.headWorldPosition(_snapHead);
       const box = head ? null : r.avatar.visualBounds(_snapBox);
@@ -831,7 +831,7 @@ async function onSnapRequest(msg) {
         bounds: box ? { min: box.min.toArray(), max: box.max.toArray() } : null,
         name: msg.follow,
         setOwnVisible: (v) => { root.visible = v; },
-        render: shoot,
+        render: captureFrame,
       });
     }
     net.ws.send(JSON.stringify({ type: 'snap-result', id: msg.id, dataUrl }));
