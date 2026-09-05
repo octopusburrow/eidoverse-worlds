@@ -103,6 +103,8 @@ bus.on('asset', ({ name, path }) => {
 
 let onSwitchAvatar = null;
 export function wireAvatarSwitch(fn) { onSwitchAvatar = fn; }
+/** The one body-switch, for every surface (the desktop cards, the bodies panel, its quad). */
+export function switchAvatar(path, name) { return onSwitchAvatar?.(path, name); }
 let myAvatarPath = '';
 export function setMyAvatarPath(p) { myAvatarPath = p; }
 

@@ -92,6 +92,7 @@ export function getMe() { return me; }
 export function setMe(av) {
   me = av;
   if (me) { releaseBodyGate('body on screen'); tee(`[body] on screen +${(performance.now() / 1000).toFixed(1)}s`); }
+  bus.emit('avatar-worn', me ? getMyAvatarName() : null);
   if (me) me.wingsFolded = folded();
   armFlightFor(av);
 }

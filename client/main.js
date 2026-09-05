@@ -14,6 +14,7 @@ import { contributeThumbnail, makeAvatar, EMOTE_ORDER } from './lib/avatar.js';
 import { updateSky, updateAutoSystems, skyArgs, setCloudQuality } from './lib/sky.js';
 import { setSkyArgsSource, entities, buildsPending, avatarMounts, roleOf, worldHasOwner } from './lib/world.js';
 import { initProfile } from './lib/profile.js';
+import { initBodies } from './lib/bodies.js';
 import { initStylePanel } from './lib/stylepanel.js';
 import { initVideoPanel } from './lib/videopanel.js';
 import { initCapNotice } from './lib/capnotice.js';
@@ -144,6 +145,7 @@ initChat({
 initRoster(people);
 initEmoteBar();
 initProfile();
+initBodies();
 initStylePanel();
 initVideoPanel();
 initCapNotice();
