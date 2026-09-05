@@ -545,7 +545,7 @@ const viewRow = (label, key, onChange) => checkRow(label,
 export function initDebug(p = {}) {
   providers = p;
   frame = makeFrame('debug', {
-    title: 'debug', x: -10, y: 300, w: 250, h: 460, minW: 210, hidden: true,
+    title: 'debug', x: -270, y: -120, w: 250, h: 460   // second right column, bottom-anchored ABOVE the emote row: emotes own the corner, world/settings the top, minW: 210, hidden: true,
   });
   const stack = document.createElement('div');
   stack.className = 'stack';

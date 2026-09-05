@@ -9,6 +9,7 @@ import { EMOTE_ORDER, EMOTE_ICONS } from './avatar.js';
 import { myState } from './controller.js';
 import { getMe } from './mybody.js';
 import { registerXRPanel } from './xrpanels.js';
+import { fsvg, svg } from './icons.js';
 import { setPosture } from './controller.js';
 const POSTURES = ['sit', 'stand', 'lie'];
 // through the same flows the ring used: a nearby seat wins for sit, stand dismounts
@@ -56,6 +57,18 @@ export function initEmoteBar() {
   // push re-hydrates it — icons ride the same table as the names now
   const fill = () => {
     grid.innerHTML = ''; tiles.clear();
+    // postures lead the row as tiles like the rest — drawn glyphs (Phosphor
+    // fill), not emoji, since no platform ships a 'lie down' emoji that reads
+    for (const [k, icon] of [['sit', 'armchair'], ['stand', 'person-arms-spread'], ['lie', 'bed']]) {
+      const b = document.createElement('button');
+      b.className = 'tile posture';
+      b.dataset.posture = k;
+      b.title = k;
+      b.innerHTML = `<span class="tile-glyph">${fsvg(icon, 20) || svg(icon, 20) || k}</span>`;
+      b.onclick = () => { posture(k); paint(); };
+      grid.appendChild(b);
+      tiles.set(`posture:${k}`, b);
+    }
     EMOTE_ORDER.forEach((name, i) => {
       const b = document.createElement('button');
       b.className = 'tile';
@@ -68,13 +81,10 @@ export function initEmoteBar() {
     });
     if (f._state) snapTo(f._state.w);
   };
-  const paint = () => { for (const [n, b] of tiles) b.classList.toggle('on', myState.emote === n); };
+  const paint = () => { for (const [n, b] of tiles) b.classList.toggle('on', n.startsWith('posture:') ? myState.clip === n.slice(8) : myState.emote === n); };
   fill();
   bus.on('emotes-updated', fill);
-  // the same postures the quad shows — one vocabulary in both renderers
-  const pos = document.createElement('div'); pos.className = 'emote-postures';
-  for (const k of POSTURES) { const b = document.createElement('button'); b.className = 'keybtn'; b.textContent = k; b.title = k; b.onclick = () => posture(k); pos.appendChild(b); }
-  f.body.appendChild(pos);
+  // (postures are tiles in the grid above — one row, one grammar)
   setInterval(paint, 500);   // number keys set myState.emote elsewhere; the lit tile follows
   f.body.appendChild(grid);
   // the same six gestures as a VR quad — one button per emote, the same call
