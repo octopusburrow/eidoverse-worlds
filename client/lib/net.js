@@ -18,6 +18,8 @@ import { pending, P } from './scheduler.js';
 import { remotes, ensureRemote, dropRemote, pushPose, noteServerTime, noteSpeaking } from './remotes.js';
 import { myReachBag } from './reachnet.js';
 import { wingFoldPresence } from '../../shared/wingpresence.js';
+import { presenceWire, applyPresenceWire } from '../../shared/presencewire.js';
+import { presence } from './presence.js';
 import { logChat, logWhisper, noteTyping, noteHistoryContext } from './chat.js';
 import { composeFirstPerson } from './fp_view.js';
 import { captureFrame, captureFrom } from './capture.js';
@@ -191,6 +193,7 @@ export function sendPose(now) {
     yaw: s.yaw, speed: s.speed, clip: s.clip,
     pitch: Math.round((s.pitch ?? 0) * 100) / 100,
     ...wingFoldPresence(s.wingsFolded),
+    ...presenceWire(presence()),        // present / away / busy — for the Who panel (R, 09-05)
   };
   if (s.emote) { pose.emote = s.emote; s.emote = null; } // one-shot: send once
   // A held custom pose rides the presence packet (and therefore lastPose, so

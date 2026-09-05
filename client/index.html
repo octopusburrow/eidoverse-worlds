@@ -672,6 +672,11 @@ body.arranging #dock #hud.emark {
 [data-presence="busy"] > .pf-portrait-dot, .pf-pop-dot[data-presence="busy"] { background: #ef5b5b; border-radius: 2px; }
 [data-presence="busy"] > .pf-portrait-dot::after, .pf-pop-dot[data-presence="busy"]::after { content: ''; position: absolute; left: 20%; right: 20%; top: 40%; bottom: 40%; background: rgb(var(--panel-rgb)); border-radius: 1px; }
 .pf-pop-dot { position: relative; }
+/* the Who panel's mark: the same fixed colours + shapes as the profile */
+.who-mark { position: relative; display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #3ddc84; margin-right: 7px; flex: none; vertical-align: -1px; }
+.who-mark[data-presence="away"] { background: #f5b83d; border-radius: 2px; transform: rotate(45deg) scale(.85); }
+.who-mark[data-presence="busy"] { background: #ef5b5b; border-radius: 2px; }
+.who-mark[data-presence="busy"]::after { content: ''; position: absolute; left: 20%; right: 20%; top: 40%; bottom: 40%; background: rgb(var(--panel-rgb)); border-radius: 1px; }
 .pf-who .pf-state { font-style: normal; color: var(--brand); }
 .pf-id { position: relative; }
 .pf-pop { position: absolute; left: 0; top: 46px; z-index: 5; display: flex; flex-direction: column; gap: 2px; padding: 5px; min-width: 240px;

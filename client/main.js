@@ -401,10 +401,10 @@ bus.on('key', (e) => {
 // ---------------------------------------------------------------- roster
 
 function people() {
-  const list = [{ id: CONFIG.name, me: true, dist: null }];
+  const list = [{ id: CONFIG.name, me: true, dist: null, presence: presence() }];
   for (const r of remotes.values()) {
     list.push({
-      id: r.id, me: false, agent: !!r.agent,
+      id: r.id, me: false, agent: !!r.agent, presence: r.presence ?? 'present',
       dist: r.avatar ? r.avatar.root.position.distanceTo(myState.pos) : null,
     });
   }
