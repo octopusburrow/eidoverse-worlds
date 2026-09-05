@@ -1862,18 +1862,21 @@ export async function makeAvatar(id, libPath, { full = false, urgent = false } =
 export async function contributeThumbnail(name, vrm, token = '', { force = false } = {}) {
   try {
     if (!name) return;
-    if (!force && localStorage.getItem(`ew-thumb-${name}`)) return;   // we already tried
+    if (!force && localStorage.getItem(`ew-thumb2-${name}`)) return;   // we already tried
     if (!force) {
       const head = await fetch(`/thumb/${encodeURIComponent(name)}.png`, { method: 'HEAD' });
-      if (head.ok) { localStorage.setItem(`ew-thumb-${name}`, '1'); return; }
+      if (head.ok) { localStorage.setItem(`ew-thumb2-${name}`, '1'); return; }
     }
 
     const size = 256;
     const rt = new THREE.RenderTarget(size, size);
     const cam = new THREE.PerspectiveCamera(28, 1, 0.05, 12);
     const sub = new THREE.Scene();
-    sub.add(new THREE.HemisphereLight(0xffffff, 0x445566, 2.2));
-    const key = new THREE.DirectionalLight(0xffffff, 2.6);
+    // A render target gets no tone mapping — the canvas's ACES curve never
+    // touches these pixels — so lights tuned for the world burned every
+    // portrait to white (R, 09-05: 'burned'). Linear-safe levels instead.
+    sub.add(new THREE.HemisphereLight(0xffffff, 0x445566, 0.9));
+    const key = new THREE.DirectionalLight(0xffffff, 1.1);
     key.position.set(1.4, 2.2, 2.4);
     sub.add(key);
 
@@ -1998,7 +2001,7 @@ export async function contributeThumbnail(name, vrm, token = '', { force = false
     if (force) q.set('force', '1'); // a re-mint pass really does replace
     if (token) q.set('token', token);
     await fetch(`/thumb?${q}`, { method: 'POST', body: blob });
-    localStorage.setItem(`ew-thumb-${name}`, '1');
+    localStorage.setItem(`ew-thumb2-${name}`, '1');
   } catch (e) {
     console.warn('thumbnail contribution skipped', e);
   }

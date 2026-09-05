@@ -722,7 +722,7 @@ export function openDoor({ roster = [], needsKey = false, login = null, onEnter 
       : `<label><span class="lbl">your name — how the world and everyone in it will know you</span>
       <input id="d-name" type="text" maxlength="48" spellcheck="false" value="${escapeHtml(CONFIG.name)}"></label>`}
     ${needsKey ? `<label><span class="lbl">door key</span>
-      <input id="d-key" type="text" spellcheck="false" value="${escapeHtml(CONFIG.token)}"
+      <input id="d-key" type="password" autocomplete="off" spellcheck="false" value="${escapeHtml(CONFIG.token)}"
         placeholder="the key from your invite"></label>` : ''}
     ${needsKey && login && !CONFIG.authed ? `<p class="sub" style="margin:4px 0 0">
       no key? <a href="${escapeHtml(login)}">sign in with Discord</a> instead —
@@ -736,7 +736,15 @@ export function openDoor({ roster = [], needsKey = false, login = null, onEnter 
 
   let chosen = localStorage.getItem('ew-avatar-name') || 'claude';
   const grid = s.querySelector('#d-roster');
+  // the button says what you are about to do: enter as WHO, wearing WHAT
+  const goBtn = s.querySelector('#d-go');
+  const sayGo = () => {
+    const nm = CONFIG.authed ? CONFIG.name : (s.querySelector('#d-name')?.value.trim() || '…');
+    goBtn.innerHTML = `enter as <b>${escapeHtml(nm)}</b> · ${escapeHtml(chosen)}`;
+  };
+  s.querySelector('#d-name')?.addEventListener('input', sayGo);
   const paint = () => {
+    sayGo();
     grid.innerHTML = '';
     for (const a of roster) {
       const c = document.createElement('button');

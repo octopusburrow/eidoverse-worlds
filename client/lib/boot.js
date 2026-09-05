@@ -97,6 +97,7 @@ export function initBoot({ world, name }) {
   el = document.getElementById('splash');
   if (!el) return;
   bar = el.querySelector('.sp-bar-fill');
+  startLights(el);
   phaseEl = el.querySelector('.sp-phase');
   detailEl = el.querySelector('.sp-detail');
   tipEl = el.querySelector('.sp-tip');
@@ -139,6 +140,7 @@ export function finishBoot(reason = 'ready') {
   el.style.setProperty('--spp', '1');
   phaseEl.textContent = 'welcome';
   el.classList.add('gone');
+  stopLights();
   setTimeout(() => { el.style.display = 'none'; }, 620);
   const total = Math.round(performance.now() - startedAt);
   console.log(`[boot] ready in ${total}ms (${reason})`, marks);
@@ -163,3 +165,36 @@ export const whenBooted = () => (done
   ? Promise.resolve()
   : Promise.race([bootGate, new Promise((r) => setTimeout(r, BOOT_GATE_MAX))]));
 bus.on('booted', () => releaseBoot?.());
+
+// ---- the ground lights: a few soft brand-tinted glows drifting along the
+// bottom edge. Drawn per frame by rAF ON PURPOSE — this is the splash's
+// liveness signal: a frozen main thread freezes the lights (a CSS animation
+// would keep going on the compositor and lie). Subtle: alpha stays under .14.
+let lightsRaf = 0;
+function startLights(el) {
+  const cv = el.querySelector('.sp-lights');
+  if (!cv || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const g = cv.getContext('2d');
+  const brand = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim() || '#8fe8c8';
+  const N = 5, t0 = performance.now();
+  const seeds = Array.from({ length: N }, (_, i) => ({ x: (i + 0.5) / N, sp: 0.06 + 0.04 * ((i * 7) % 3), ph: i * 1.7, r: 0.22 + 0.08 * ((i * 5) % 3) }));
+  const frame = (now) => {
+    const w = cv.clientWidth, h = cv.clientHeight;
+    if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+    g.clearRect(0, 0, w, h);
+    const t = (now - t0) / 1000;
+    for (const s of seeds) {
+      const x = ((s.x + Math.sin(t * s.sp + s.ph) * 0.12) % 1) * w;
+      const y = h * (1.05 + Math.sin(t * s.sp * 1.3 + s.ph) * 0.05);
+      const r = s.r * Math.max(w, h) * 0.6;
+      const grad = g.createRadialGradient(x, y, 0, x, y, r);
+      grad.addColorStop(0, brand); grad.addColorStop(1, 'rgba(0,0,0,0)');
+      g.globalAlpha = 0.11 + 0.03 * Math.sin(t * 0.7 + s.ph);
+      g.fillStyle = grad; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+    }
+    g.globalAlpha = 1;
+    lightsRaf = requestAnimationFrame(frame);
+  };
+  lightsRaf = requestAnimationFrame(frame);
+}
+function stopLights() { if (lightsRaf) cancelAnimationFrame(lightsRaf); lightsRaf = 0; }
