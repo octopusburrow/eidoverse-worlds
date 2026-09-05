@@ -8,21 +8,35 @@ import { bus } from './base.js';
 import { net } from './net.js';
 import { renderDOM } from './panels.js';
 import { switchAvatar } from './palette.js';
-import { getMyAvatarName, getMyAvatarPath } from './mybody.js';
+import { getMyAvatarName } from './mybody.js';
+
+// MY avatars = the bodies you have actually worn (R, 09-05: the world offers a
+// wardrobe to try on — World›avatar — and only what you've worn is yours).
+// Kept per browser (ew-worn) until the server grows a per-person field; the
+// roster is consulted only to resolve a name to its path.
+const WORN_LS = 'ew-worn';
+let worn = [];
+try { worn = JSON.parse(localStorage.getItem(WORN_LS) || '[]'); } catch { worn = []; }
+if (!Array.isArray(worn)) worn = [];
+function noteWorn(name) {
+  if (!name) return;
+  worn = [name, ...worn.filter((n) => n !== name)].slice(0, 24);   // newest first
+  try { localStorage.setItem(WORN_LS, JSON.stringify(worn)); } catch { /* private mode */ }
+}
+bus.on('avatar-worn', noteWorn);
 
 function fields() {
-  const worn = getMyAvatarName();
-  const wornPath = String(getMyAvatarPath() ?? '').split('?')[0];
-  const list = net.avatars ?? [];
+  const cur = getMyAvatarName();
+  const roster = net.avatars ?? [];
+  const mine = worn.filter((n) => roster.some((a) => a.name === n) || n === cur);
   return [
-    { t: 'info', label: 'wearing', value: worn ?? '—' },
-    { t: 'list', label: 'bodies', empty: 'no bodies known yet — the roster arrives with the world',
-      rows: list.map((a) => ({
-        id: a.name, label: a.name,
-        sub: a.height ? `${a.height.toFixed(2)} m` : undefined,
-        active: a.name === worn || String(a.path ?? '').split('?')[0] === wornPath,
-        actions: [{ k: 'wear', label: 'wear' }],
-      })) },
+    { t: 'info', label: 'wearing', value: cur ?? '—' },
+    { t: 'list', label: 'my avatars', empty: 'nothing worn yet — try one from World › avatar',
+      rows: mine.map((n) => {
+        const a = roster.find((x) => x.name === n);
+        return { id: n, label: n, sub: a?.height ? `${a.height.toFixed(2)} m` : undefined, active: n === cur,
+          actions: n === cur ? [] : [{ k: 'wear', label: 'wear' }] };
+      }) },
   ];
 }
 function dispatch(k, id) {
