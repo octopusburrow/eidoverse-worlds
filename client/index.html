@@ -803,6 +803,10 @@ body.arranging #dock .dock-grip { display: grid; }
   color: color-mix(in srgb, var(--brand) 45%, white);
   background: color-mix(in srgb, var(--brand) 10%, var(--hov));
 }
+/* two weights per button: line at rest, fill when on (R, 09-04) */
+#dock button:not(.dock-grip) svg.ico-line + svg { display: none; }
+#dock button:not(.dock-grip).on svg.ico-line { display: none; }
+#dock button:not(.dock-grip).on svg.ico-line + svg { display: inline; }
 #dock button[hidden] { display: none; }
 /* keybtn: buttons that mirror physical KEYS read as key-caps — a darker well,
    no outline (the doctrine: visible boxes only for key-mirrors and committal actions) */
