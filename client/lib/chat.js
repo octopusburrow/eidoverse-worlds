@@ -54,6 +54,23 @@ export function mentionsMe(text) {
 
 /** Render text with mentions marked and links made clickable, without ever
  *  putting untrusted text through innerHTML. */
+// Standard inline markdown, nothing more: **bold**, *italic* / _italic_, `code`.
+// Text nodes only — no HTML is ever parsed from a message. Off = plain text.
+const MD_RX = /(\*\*([^*\n]+)\*\*)|(`([^`\n]+)`)|((?<![\w*])\*([^*\n]+)\*(?![\w*]))|((?<!\w)_([^_\n]+)_(?!\w))/g;
+function inline(run) {
+  if (!chatMd) return document.createTextNode(run);
+  const frag = document.createDocumentFragment();
+  let i = 0;
+  for (const m of run.matchAll(MD_RX)) {
+    if (m.index > i) frag.append(document.createTextNode(run.slice(i, m.index)));
+    const el = document.createElement(m[1] ? 'b' : m[3] ? 'code' : 'i');
+    el.textContent = m[2] ?? m[4] ?? m[6] ?? m[8];
+    frag.append(el);
+    i = m.index + m[0].length;
+  }
+  if (i < run.length) frag.append(document.createTextNode(run.slice(i)));
+  return frag;
+}
 function renderBody(text, names) {
   const frag = document.createDocumentFragment();
   const pattern = new RegExp(
@@ -62,7 +79,7 @@ function renderBody(text, names) {
   );
   let i = 0;
   for (const m of String(text).matchAll(pattern)) {
-    if (m.index > i) frag.append(document.createTextNode(text.slice(i, m.index)));
+    if (m.index > i) frag.append(inline(text.slice(i, m.index)));
     if (m[1]) {
       // Trailing punctuation is prose, not address: "…?world=garden)" from a
       // parenthesized link once sent a clicker to a world named "garden)" —
@@ -90,7 +107,7 @@ function renderBody(text, names) {
     }
     i = m.index + m[0].length;
   }
-  if (i < text.length) frag.append(document.createTextNode(text.slice(i)));
+  if (i < String(text).length) frag.append(inline(String(text).slice(i)));
   return frag;
 }
 const escapeRx = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -694,6 +711,9 @@ function applySide() {
   const side = frame?.body.querySelector('.chat-side');
   if (!side) return;
   side.classList.toggle('closed', !sideSt.open);
+  // the line between log and pane is the pane's grab edge; closed, there is
+  // nothing to grab, so the line goes too (R, 09-05: a confusing affordance)
+  frame.body.querySelector('.chat-cols')?.classList.toggle('side-closed', !sideSt.open);
   side.style.width = sideSt.open ? `${sideSt.w}px` : '';
   frame.body.querySelector('.chat-side-tog').textContent = sideSt.open ? '›' : '‹';
   paintSide();
@@ -724,6 +744,10 @@ function applyChatPrefs() {
 }
 let gearToggle = null, gearAnchor = null, gearOpen = () => false;
 let chatFs = 14;
+const CMD_LS = 'ew-chat-md';
+let chatMd = true;   // *italic* **bold** `code` in the log — on by default (R, 09-05)
+try { chatMd = localStorage.getItem(CMD_LS) !== '0' } catch {}
+export const chatMarkdownOn = () => chatMd;
 try { chatFs = Math.min(20, Math.max(11, parseFloat(localStorage.getItem(CFS_LS)) || 14)) } catch {}
 function initChatGear() {
   const pop = frame.body.querySelector('.chat-gearpop');
@@ -731,13 +755,19 @@ function initChatGear() {
     pop.innerHTML = `
       <div class="gp-row"><span>text size</span>
         <button data-fs="-1">−a</button><b>${chatFs}</b><button data-fs="1">+A</button></div>
+      <div class="gp-row"><span>markdown</span>
+        <button data-md="1" class="${chatMd ? 'on' : ''}">on</button>
+        <button data-md="0" class="${!chatMd ? 'on' : ''}">off</button></div>
       <div class="gp-row"><span>people pane</span>
         <button data-side="left" class="${sideSt.pos === 'left' ? 'on' : ''}">left</button>
         <button data-side="right" class="${sideSt.pos !== 'left' ? 'on' : ''}">right</button></div>`;
   };
   pop.onclick = (e) => {
-    const fs = e.target?.dataset?.fs, sd = e.target?.dataset?.side;
-    if (fs) {
+    const fs = e.target?.dataset?.fs, sd = e.target?.dataset?.side, md = e.target?.dataset?.md;
+    if (md != null) {
+      chatMd = md === '1';
+      try { localStorage.setItem(CMD_LS, md) } catch {}
+    } else if (fs) {
       chatFs = Math.min(20, Math.max(11, chatFs + Number(fs)));
       try { localStorage.setItem(CFS_LS, String(chatFs)) } catch {}
     } else if (sd) {

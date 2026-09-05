@@ -75,7 +75,11 @@ export function initEmoteBar() {
       b.className = 'tile';
       b.dataset.emote = name;
       b.title = `${name} — key ${i + 1}`;
-      b.innerHTML = `<span class="tile-glyph">${EMOTE_ICONS[name] ?? GLYPH[name] ?? '✨'}</span>`;
+      // emoji are content here (the gesture itself) — but a platform missing the
+      // glyph paints a tofu box or nothing, so the tile falls back to the word
+      // when the emoji measurably does not render (R, 09-05)
+      const em = EMOTE_ICONS[name] ?? GLYPH[name] ?? '✨';
+      b.innerHTML = emojiRenders(em) ? `<span class="tile-glyph">${em}</span>` : `<span class="tile-word">${name}</span>`;
       b.onclick = () => { getMe()?.playEmote(name); myState.emote = name; paint(); };
       grid.appendChild(b);
       tiles.set(name, b);
@@ -98,4 +102,30 @@ export function initEmoteBar() {
     dispatch: (k) => { if (POSTURES.includes(k)) posture(k); else if (EMOTE_ORDER.includes(k)) { getMe()?.playEmote(k); myState.emote = k; } },
   });
   return f;
+}
+
+// Does this emoji actually draw here? Paint it on a scratch canvas and look
+// for COLOUR: a rendered emoji has chroma, a tofu box / missing glyph paints
+// gray-on-nothing (or nothing). Cached per string; a false answer costs a
+// word instead of a box.
+const emojiCache = new Map();
+function emojiRenders(s) {
+  if (emojiCache.has(s)) return emojiCache.get(s);
+  let ok = true;
+  try {
+    const cv = document.createElement('canvas'); cv.width = cv.height = 24;
+    const g = cv.getContext('2d');
+    g.textBaseline = 'top'; g.font = '20px system-ui, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+    g.fillStyle = '#000'; g.fillText(s, 0, 0);
+    const d = g.getImageData(0, 0, 24, 24).data;
+    let chroma = 0, ink = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] < 40) continue; ink++;
+      const mx = Math.max(d[i], d[i + 1], d[i + 2]), mn = Math.min(d[i], d[i + 1], d[i + 2]);
+      if (mx - mn > 24) chroma++;
+    }
+    ok = ink > 0 && chroma > 4;   // some coloured pixels = a real emoji; monochrome = tofu or a text glyph
+  } catch { ok = true; }
+  emojiCache.set(s, ok);
+  return ok;
 }
