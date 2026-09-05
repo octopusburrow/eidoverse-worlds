@@ -88,10 +88,18 @@ export function chooseAvatar(path, name, { remember = false } = {}) {
 // ---------------------------------------------------------------- the handle
 
 let me = null;
+let seenFirstBody = false;
 export function getMe() { return me; }
 export function setMe(av) {
   me = av;
-  if (me) { releaseBodyGate('body on screen'); tee(`[body] on screen +${(performance.now() / 1000).toFixed(1)}s`); }
+  if (me) {
+    releaseBodyGate('body on screen');
+    // ONE '[body] on screen' per page — it is the load metric. Later setMe calls
+    // are body CHANGES (09-05: three swaps in the avatars tab read as +291 s
+    // 'loads' on the tee and corrupted the series).
+    if (!seenFirstBody) { seenFirstBody = true; tee(`[body] on screen +${(performance.now() / 1000).toFixed(1)}s`); }
+    else tee(`[body] changed → ${getMyAvatarName()}`);
+  }
   bus.emit('avatar-worn', me ? getMyAvatarName() : null);
   if (me) me.wingsFolded = folded();
   armFlightFor(av);
