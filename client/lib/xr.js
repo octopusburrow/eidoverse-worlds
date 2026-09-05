@@ -233,12 +233,18 @@ let radialOpen = false, stickPressWas = false;
 async function enterVR() {
   try {
     session = await navigator.xr.requestSession('immersive-vr', {
-      // 'layers' deliberately ABSENT: three then uses classic XRWebGLLayer,
-      // whose antialias defaults true → MSAA in VR (the porch A/B's finding).
-      optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking'],
+      // 'webgpu' OPTIONAL, not required: on a WebGPU backend three refuses a
+      // session without it (XRManager._validateWebGPUSession), and a browser
+      // that can't grant it (no XRGPUBinding) simply drops it — the WebGL
+      // backend path then works unchanged. 'layers' deliberately absent on
+      // that path: classic XRWebGLLayer keeps MSAA (the porch A/B's finding);
+      // WebGPU XR has no MSAA yet, three disables it per-session and says so.
+      optionalFeatures: ['webgpu', 'local-floor', 'bounded-floor', 'hand-tracking'],
     });
     renderer.xr.enabled = true;
     await renderer.xr.setSession(session);
+    console.log('[xr] session on', renderer.backend?.isWebGPUBackend ? 'WebGPU' : 'WebGL',
+      'features=' + JSON.stringify(session.enabledFeatures ?? []));
     try { renderer.xr.setFoveation(0); } catch { /* not all runtimes */ }
     rig.position.set(myState.pos.x, myState.pos.y, myState.pos.z);
     rig.rotation.y = 0;

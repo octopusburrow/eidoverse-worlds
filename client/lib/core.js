@@ -103,11 +103,12 @@ document.body.prepend(canvas);
 // (video settings) otherwise.
 export const PREF_MSAA = 'ew-msaa', PREF_BACKEND = 'ew-backend';
 const pref = (k) => { try { return localStorage.getItem(k); } catch { return null; } };   // a storage throw must not kill boot
-// XR needs the WebGL2 backend: three r184's XRManager throws on WebGPU
-// ("use forceWebGL"), and the backend is a construction-time choice — so VR
-// is a boot flag (?xr=1), not a runtime toggle. Known cost: WebGL loses the
-// reversed-Z depth precision noted below; the 0.15..20000 range is a
-// z-fighting risk in XR mode until a log-depth or tightened-far path lands.
+// ?xr=1 is a BOOT flag, not a runtime toggle: three 0.185's XRManager rides
+// WebGPU (XRGPUBinding — Chrome, flags today) but only if the adapter was
+// requested xrCompatible, which the backend reads off renderer.xr.enabled at
+// init() time. So the flag sets xr.enabled BEFORE init below. Where the
+// browser has no XRGPUBinding three falls back to the WebGL path on its own.
+// The r184-era "VR = WebGL2 only" rule is gone with the bump.
 export const XR_BOOT = CONFIG.params.has('xr');
 // TOLERANT RENDER LIST (XR strobe, 08-05): something leaves holes in the
 // per-eye render list mid-session ("Cannot destructure 'object' of
@@ -145,17 +146,17 @@ if (XR_BOOT) {
 export const renderer = new THREE.WebGPURenderer({ canvas,
   antialias: (CONFIG.params.get('msaa') ?? pref(PREF_MSAA)) !== '0',
   forceWebGL: CONFIG.params.get('webgl') === '1'
-    || (CONFIG.params.get('webgl') == null && pref(PREF_BACKEND) === 'webgl')
-    || XR_BOOT });   // a headset session needs WebGL 2 regardless of preference
+    || (CONFIG.params.get('webgl') == null && pref(PREF_BACKEND) === 'webgl') });
 /** 'webgpu' | 'webgl' — known once renderer.init() resolves. */
 export const backendName = () => (renderer.backend?.isWebGLBackend ? 'webgl' : 'webgpu');
-// r184/185 SHIPPING BUG (fixed on three dev): XRManager.onAnimationFrame calls
-// foveateBoundTexture(renderer._getFrameBufferTarget()) and the target is
-// legitimately NULL when no post-processing pass is needed. The method reads
-// .isPostProcessingRenderTarget off it → EVERY XR frame throws inside three
-// BEFORE the app callback; the world freezes while head tracking stays live.
-// Null-guard shim, byte-identical to dev's fix; delete when three ≥ r186.
+// STILL SHIPPING in 0.185.1 (read the source, not the changelog):
+// XRManager.onAnimationFrame calls foveateBoundTexture(_getFrameBufferTarget())
+// and Renderer.js:1432 returns NULL when no tonemap/colorspace pass is needed;
+// XRManager.js:655 then reads .isPostProcessingRenderTarget off null → EVERY
+// XR frame throws inside three BEFORE the app callback; the world freezes
+// while head tracking stays live. Null-guard shim; re-check at every bump.
 if (XR_BOOT) {
+  renderer.xr.enabled = true;   // must precede init(): xrCompatible adapter
   const fov = renderer.xr.foveateBoundTexture?.bind(renderer.xr);
   if (fov) renderer.xr.foveateBoundTexture = (rt) => (rt == null ? undefined : fov(rt));
 }
