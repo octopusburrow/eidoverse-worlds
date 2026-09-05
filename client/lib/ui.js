@@ -64,7 +64,8 @@ setErrorSink((context, message) => toast(`${context}: ${message}`, 'err'));
 
 bus.on('loading', () => {
   const items = loadingItems();
-  el.loading.classList.toggle('on', items.length > 0);
+  // the raw load list is debug's, not the HUD's (R, 09-05): shown only while debug is open
+  el.loading.classList.toggle('on', items.length > 0 && !!getFrame('debug')?.visible);
   el.loading.textContent = items.map((l) =>
     l.total ? `⏳ ${l.label} ${Math.min(99, Math.round((l.done / l.total) * 100))}%` : `⏳ ${l.label}…`,
   ).join('\n');
@@ -227,7 +228,7 @@ let settingsFrameApi = null;
 export function settingsFrame() {
   if (!settingsFrameApi) {
     settingsFrameApi = makeFrame('settings', {
-      title: 'settings', x: -10, y: 340, w: 250, h: 260, minW: 210, hidden: true,
+      title: 'settings', x: -10, y: 324, w: 232, h: 260, minW: 210, hidden: true,   // right column, UNDER world (52+260+12)
     });
     const stack = document.createElement('div');
     stack.className = 'stack';
