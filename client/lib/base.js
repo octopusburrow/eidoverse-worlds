@@ -106,7 +106,11 @@ export function tee(line) {
 if (typeof window !== 'undefined') {
   window.addEventListener('error', (e) => tee(`[window.error] ${e.message} @ ${(e.filename ?? '').split('/').pop()}:${e.lineno}`));
   window.addEventListener('unhandledrejection', (e) => tee(`[unhandled] ${e.reason?.message ?? e.reason}`));
-  tee(`[boot] ${location.pathname}${location.search.replace(/key=[^&]+/, 'key=…')} ua=${navigator.userAgent.slice(0, 120)}`);
+  // wake CAUSE, not just the URL (cribbed from agent-framework #141's turn
+  // provenance: who woke you ≠ whose words are in view): reload vs navigate
+  // vs back_forward separates "R reloaded" from "the tunnel reconnected"
+  let cause = '?'; try { cause = performance.getEntriesByType('navigation')[0]?.type ?? '?'; } catch { /* old UA */ }
+  tee(`[boot] cause=${cause} ${location.pathname}${location.search.replace(/key=[^&]+/, 'key=…')} ua=${navigator.userAgent.slice(0, 120)}`);
 }
 
 export function report(context, err) {
