@@ -132,8 +132,17 @@ export function initBoot({ world, name }) {
   paint();
 }
 
+// ?holdsplash=N keeps the splash up until N seconds after boot began, even
+// though the world is ready — R, 09-05: "fake a longer load so I can see what
+// it might look like on a big world". Everything else (tips, breath) runs as
+// on a real long load; only the dismissal waits.
+const HOLD_S = Number(new URLSearchParams(location.search).get('holdsplash')) || 0;
 export function finishBoot(reason = 'ready') {
   if (done || !el) return;
+  if (HOLD_S > 0) {
+    const left = HOLD_S * 1000 - (performance.now() - startedAt);
+    if (left > 0) { if (phaseEl) phaseEl.textContent = `holding the splash for a look · ${Math.ceil(left / 1000)}s`; setTimeout(() => finishBoot(reason), Math.min(left, 1000)); return; }
+  }
   done = true;
   clearInterval(tipTimer);
   bar.style.width = '100%';
