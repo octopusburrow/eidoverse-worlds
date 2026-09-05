@@ -13,7 +13,8 @@ import { RENDER_SCALES, getRenderScale, setRenderScale,
   AVATAR_DETAILS, getAvatarDetail, setAvatarDetail } from './governor.js';
 import { shadowsOn, setShadows } from './lightrig.js';
 import { backendName, PREF_MSAA, PREF_BACKEND } from './core.js';
-import { CONFIG } from './base.js';
+import { CONFIG, bus } from './base.js';
+import { registerXRPanel } from './xrpanels.js';
 import { WEBGL } from './capnotice.js';
 
 // same markup contract as the audio section (label right of centre, control
@@ -55,7 +56,36 @@ function needsReload(row) {
 }
 const pct = (v) => v === 'auto' ? 'auto (adaptive)' : `${Math.round(v * 100)}%`;
 
+// The same dials as a VR quad, under the rail's 'settings' id: the SAME
+// getters and setters the desk's rows call (the who pattern — one source, one
+// action set, two renderers); the desk's own rows are untouched. Discrete
+// choices are list rows with a 'use' action because 'auto' appears in all
+// three lists and a bare row click could not say which one it meant.
+function videoFields() {
+  const pick = (k, values, cur, label) => ({ t: 'list', label,
+    rows: values.map((v) => ({ id: String(v), label: String(v), active: String(v) === String(cur),
+      actions: String(v) === String(cur) ? [] : [{ k, label: 'use' }] })) });
+  const msaaOn = (CONFIG.params.get('msaa') ?? localStorage.getItem(PREF_MSAA)) !== '0';
+  return [
+    pick('scale', RENDER_SCALES, getRenderScale(), 'render scale'),
+    { t: 'check', k: 'shadows', label: 'shadows', value: shadowsOn() },
+    pick('particles', PARTICLE_TIERS, getParticleTier(), 'particles'),
+    pick('detail', Object.keys(AVATAR_DETAILS), getAvatarDetail(), 'avatar detail'),
+    { t: 'check', k: 'msaa', label: 'antialiasing (on reload)', value: msaaOn },
+  ];
+}
+function videoDispatch(k, v) {
+  if (k === 'scale') setRenderScale(v);
+  else if (k === 'shadows') setShadows(!!v);
+  else if (k === 'particles') setParticleTier(v);
+  else if (k === 'detail') setAvatarDetail(v);
+  else if (k === 'msaa') localStorage.setItem(PREF_MSAA, v ? '1' : '0');
+  else return;
+  bus.emit('xr:repaint');
+}
+
 export function initVideoPanel() {
+  registerXRPanel({ id: 'settings', title: 'settings · video', fields: videoFields, dispatch: videoDispatch });
   makeSection('🖥 video', (body) => {
     if (body.dataset.init) return;
     body.dataset.init = '1';
