@@ -150,31 +150,51 @@ function fieldDOM(f, edit) {
 // canvas pixels so xr.js can turn a laser UV-hit into the same edit() call.
 // Text fields render display-only here on purpose (no floating keyboards).
 
-const C = {
-  bg: '#101318', row: '#161b22', label: '#8b96a5', text: '#e8edf4',
-  accent: '#e8956b', danger: '#e06060', line: '#242b35',
-};
+// The quad wears the PANELS' skin, not its own (R in-headset 09-04: "looks
+// hand-rolled — go with the panels"): colors come from the same tokens the
+// desktop frames use, read at paint time; a quad has no alpha, so the panel
+// ground is the solid --panel-rgb. Fallbacks keep a headless/tokenless page
+// painting the old palette.
+function tokens() {
+  let cs = null;
+  try { cs = getComputedStyle(document.documentElement); } catch { /* no DOM */ }
+  const t = (n, fb) => { const v = cs?.getPropertyValue(n)?.trim(); return v || fb; };
+  const rgb = t('--panel-rgb', '16 19 24').split(/[ ,]+/).map(Number);
+  const bg = `rgb(${rgb[0] ?? 16}, ${rgb[1] ?? 19}, ${rgb[2] ?? 24})`;
+  return {
+    bg, row: 'rgba(255,255,255,0.04)', well: 'rgba(0,0,0,0.4)',
+    label: t('--dim', '#97979b'), text: t('--fg', '#ebebe9'),
+    accent: t('--brand', '#8fe8c8'), danger: '#6e2a2a', line: 'rgba(255,255,255,0.10)',
+    head: 'rgba(255,255,255,0.06)',
+  };
+}
+let C = tokens();
 
 export function renderCanvas(canvas, fields, { width = 512, rowH = 44, pad = 12, title = '' } = {}) {
   const rows = [];
   for (const f of fields) rows.push(f, ...(f.t === 'list' ? (f.rows ?? []).map((r) => ({ _row: r, parent: f })) : []));
-  const H = (title ? rowH : 0) + rows.length * rowH + pad * 2;
+  C = tokens();
+  const HEAD = title ? 30 : 0;                       // the frame's small always-on header
+  const H = HEAD + rows.length * rowH + pad * 2;
   canvas.width = width; canvas.height = H;
   const g = canvas.getContext('2d');
   const regions = [];
   g.fillStyle = C.bg; g.fillRect(0, 0, width, H);
-  let y = pad;
+  let y = 0;
   const font = (px, w = 400) => { g.font = `${w} ${px}px system-ui, sans-serif`; };
 
   if (title) {
-    font(18, 600); g.fillStyle = C.accent;
-    g.fillText(title, pad, y + rowH * 0.62);
-    y += rowH;
+    g.fillStyle = C.head; g.fillRect(0, 0, width, HEAD);
+    g.fillStyle = C.line; g.fillRect(0, HEAD - 1, width, 1);
+    font(13, 600); g.fillStyle = C.label;
+    g.fillText(title.toUpperCase(), pad, HEAD * 0.66);
+    y = HEAD;
   }
+  y += pad;
   for (const f of rows) {
     if (f._row) { // a list row
       const r = f._row;
-      g.fillStyle = r.active ? '#1d2634' : C.row;
+      g.fillStyle = r.active ? 'rgba(143,232,200,0.16)' : C.row;
       g.fillRect(pad, y + 2, width - pad * 2, rowH - 4);
       font(15, r.active ? 600 : 400); g.fillStyle = C.text;
       g.fillText(r.label.slice(0, 34), pad + 10, y + rowH * 0.62);
@@ -183,7 +203,7 @@ export function renderCanvas(canvas, fields, { width = 512, rowH = 44, pad = 12,
       for (const a of [...(r.actions ?? [])].reverse()) {
         const bw = Math.max(52, a.label.length * 9 + 18);
         bx -= bw + 6;
-        g.fillStyle = a.danger ? C.danger : '#2a3342';
+        g.fillStyle = a.danger ? C.danger : C.well;
         g.fillRect(bx, y + 7, bw, rowH - 14);
         font(13, 500); g.fillStyle = C.text;
         g.fillText(a.label, bx + 9, y + rowH * 0.6);
@@ -200,7 +220,7 @@ export function renderCanvas(canvas, fields, { width = 512, rowH = 44, pad = 12,
         const bw = Math.max(90, f.label.length * 9 + 24);
         g.fillStyle = f.danger ? C.danger : C.accent;
         g.fillRect(pad, y + 6, bw, rowH - 12);
-        font(15, 600); g.fillStyle = '#14100c';
+        font(15, 600); g.fillStyle = f.danger ? C.text : '#14100c';
         g.fillText(f.label, pad + 12, y + rowH * 0.62);
         regions.push({ x: pad, y: y + 6, w: bw, h: rowH - 12, action: f.k });
         break;
@@ -235,7 +255,7 @@ export function renderCanvas(canvas, fields, { width = 512, rowH = 44, pad = 12,
 
 function paintStepper(g, regions, f, val, x, y, rowH, k, axis, dp = 2, w = 150) {
   const bump = 26, mid = w - bump * 2;
-  g.fillStyle = '#2a3342';
+  g.fillStyle = C.well;
   g.fillRect(x, y + 7, bump, rowH - 14);
   g.fillRect(x + bump + mid, y + 7, bump, rowH - 14);
   g.fillStyle = C.row; g.fillRect(x + bump, y + 7, mid, rowH - 14);

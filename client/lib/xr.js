@@ -184,7 +184,7 @@ const RADIAL = [
   { icon: 'mic', label: 'mic', act: () => bus.emit('xr:mic') },
   { icon: 'hand', label: 'wave', act: () => sendVerb('say', { text: '👋' }) },
   { icon: 'pin', label: 'here?', act: () => sendVerb('say', { text: `I'm at (${myState.pos.x.toFixed(0)}, ${myState.pos.z.toFixed(0)})` }) },
-  { icon: 'tent', label: 'home', act: () => { myState.pos.set(0, 2, 0); flashHint('home'); } },
+  { icon: 'tent', label: 'home', act: () => { myState.pos.set(0, 0, 0); flashHint('home'); } },
   { icon: 'glasses', label: 'panels', act: () => bus.emit('xr:panels') },
 ];
 let radial = null;   // {group, slots[], sel}
@@ -250,7 +250,7 @@ async function enterVR() {
     } catch (e) {
       if (!gpu) throw e;
       tee(`[xr] webgpu session refused (${e?.name ?? ''} ${e?.message ?? e}) — reloading on the WebGL backend`);
-      toast('this browser can\'t do WebGPU VR yet — switching to WebGL and reloading', 'info', 8000);
+      toast('no WebGPU VR here — reloading on WebGL', 'info', 6000);
       const u = new URL(location.href); u.searchParams.set('webgl', '1'); u.searchParams.set('xr', '1');
       setTimeout(() => { location.href = u; }, 1200);
       return;
@@ -330,14 +330,20 @@ export function updateXR() {
     const rx = dead(pickAxis(R.axes[2], R.axes[0]));
     const ry = dead(pickAxis(R.axes[3], R.axes[1]));
     const pressed = !!R.buttons[3]?.pressed;              // thumbstick click
-    if (pressed && !stickPressWas && !radialOpen) { radialOpen = true; openRadial(); }
-    if (radialOpen) {
-      // commit BEFORE re-aiming: on the release frame the stick is often
-      // already back at center, and re-aiming first would select nothing —
-      // the commit honors where you were pointing, not where the spring is.
-      if (!pressed && stickPressWas) closeRadial(true);
+    // CLICK-TOGGLE, not hold (R in-headset 09-04: "small hands — hard to keep
+    // it down and select"): one click opens the ring and it STAYS; aim with
+    // the stick at leisure; a second click or the trigger commits; grip
+    // cancels. Nothing commits on a release, so a spring-back can't pick.
+    const trigNow = !!R.buttons[0]?.pressed, gripNow = !!R.buttons[1]?.pressed;
+    if (pressed && !stickPressWas) {
+      if (!radialOpen) { radialOpen = true; openRadial(); }
+      else closeRadial(true);
+    } else if (radialOpen) {
+      if (trigNow && !triggerWasDown) closeRadial(true);
+      else if (gripNow) closeRadial(false);
       else aimRadial(rx, ry);
-    } else if (Math.abs(rx) > 0.6 && !snapState.cooling) {
+    }
+    if (radialOpen) { /* the ring owns the stick */ } else if (Math.abs(rx) > 0.6 && !snapState.cooling) {
       // snap turns the RIG — the world pivots around the body. camYaw belongs
       // to the head (head-following rewrites it every frame), and the camera
       // rides the rig, so the head's world yaw inherits the snap on its own.
@@ -393,6 +399,7 @@ export function updateXR() {
       body: av ? (av.vrm?.scene?.visible ? 'visible' : 'HIDDEN') : 'NONE',
       fp: !!fpVrm, camMask: camera.layers.mask, rig: [+rig.position.x.toFixed(1), +rig.position.y.toFixed(1), +rig.position.z.toFixed(1)],
       hands: { L: !!sourceFor('left'), R: !!sourceFor('right') }, held: held?.id ?? null,
+      me: [+myState.pos.x.toFixed(1), +myState.pos.y.toFixed(1), +myState.pos.z.toFixed(1)], clip: myState.clip, seat: myState.seat?.id ?? null, ring: radialOpen,
     });
     console.log('[xr:rec]', rec); tee(`[xr:rec] ${rec}`);
   }
