@@ -14,7 +14,7 @@ import { contributeThumbnail, makeAvatar, EMOTE_ORDER } from './lib/avatar.js';
 import { updateSky, updateAutoSystems, skyArgs, setCloudQuality } from './lib/sky.js';
 import { setSkyArgsSource, entities, buildsPending, avatarMounts, roleOf, worldHasOwner } from './lib/world.js';
 import { initProfile } from './lib/profile.js';
-import { initBodies } from './lib/bodies.js';
+import { presence } from './lib/presence.js';
 import { initWorldQuad } from './lib/worldquad.js';
 import { initStylePanel } from './lib/stylepanel.js';
 import { initVideoPanel } from './lib/videopanel.js';
@@ -50,7 +50,7 @@ import { initXR, updateXR, bindXRSelf } from './lib/xr.js';
 import { trySitOn as xrTrySitOn, dismountMe as xrDismountMe } from './lib/localbody.js';
 import {
   toast, setHint, flashHint, buildHelp, toggleHelp,
-  openDoor, toggleRoster, initRoster, initDock, panelFrame, settingsFrame,
+  openDoor, initDock, paintPresence, panelFrame, settingsFrame,
 } from './lib/ui.js';
 import { initDebug, updateDebug, toggleDebug } from './lib/debug.js';
 
@@ -143,10 +143,8 @@ initChat({
   typing: (to) => { sendTyping(to); getMe()?.setTyping(); },
   people,
 });
-initRoster(people);
 initEmoteBar();
 initProfile();
-initBodies();
 initWorldQuad();
 initStylePanel();
 initVideoPanel();
@@ -159,10 +157,9 @@ initDock([
   { id: 'world', icon: 'planet' },
   { id: 'chat', icon: 'chat-circle' },
   { id: 'emotes', icon: 'hand-waving' },
-  { id: 'who', icon: 'users' },        // 'present' — the roster had no dock entry at all (R's sweep, 09-04)
   { id: 'debug', icon: 'bug' },
   { id: 'settings', icon: 'gear-six' },
-  { id: 'edit', icon: 'wrench', action: toggleEditMode,
+  { id: 'edit', icon: 'wrench', action: toggleEditMode, last: true,   // a MODE: always closes the list (ui.js initDock)
     active: () => isEditing(),
     gate: () => {
       // the SERVER's answer first: operators (WORLD_ADMIN) are owner everywhere
@@ -174,6 +171,8 @@ initDock([
       return ['builder', 'owner'].includes(r?.role ?? r) || !worldHasOwner();
     } },
 ]);
+paintPresence(presence());            // the dot needs the button: after initDock
+bus.on('presence:me', paintPresence);
 initDebug({
   // the body in your HAND wins over your own — that is the one being worked on
   ragdoll: () => dragSim() ?? activeRagdoll(),
@@ -365,7 +364,6 @@ initCommands();   // the /command surface (lib/commands/) + its bus subscription
 bus.on('key', (e) => {
   if (e.code === 'Slash' && e.shiftKey) { toggleHelp(); return; }
   if (e.code === 'KeyH' && !isEditing()) { toggleHelp(); return; }
-  if (e.code === 'Tab') { e.preventDefault(); toggleRoster(); return; }
   if (e.code === 'KeyB') { toggleEditMode(); return; }
   if (e.code === 'KeyP') { togglePhotoMode(); return; }
   if (e.code === 'F1') { e.preventDefault(); document.body.classList.toggle('photo'); return; }

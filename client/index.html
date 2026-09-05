@@ -610,11 +610,18 @@ body.arranging #dock #hud.emark:hover, body.arranging #dock button:not(.dock-gri
 body.arranging #dock #hud.emark {
   color: var(--ink-on-brand); background: var(--brand-deep); border-radius: 8px; animation: none;  /* inverted: you're holding the chrome */
 }
-#hud.emark.editing::after {
-  content: ''; position: absolute; right: 5px; top: 5px; width: 7px; height: 7px;
-  border-radius: 50%; background: var(--warn);
-}
 @keyframes netpulse { 50% { opacity: .35; } }
+/* presence on the profile icon: a dot in the bottom-right corner (the
+   Discord/Slack convention) — brand = present, attention = away, err = busy */
+#dock button[data-toggles="profile"] { position: relative; }
+#dock button[data-toggles="profile"]::after {
+  content: ''; position: absolute; right: 4px; bottom: 4px; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--ok); box-shadow: 0 0 0 2px rgb(var(--panel-rgb));
+}
+#dock button[data-toggles="profile"][data-presence="away"]::after { background: var(--attn); }
+#dock button[data-toggles="profile"][data-presence="busy"]::after { background: var(--err); }
+.pf-presence { margin: 6px 0 2px; }
+.pf-bodies { margin-top: 8px; max-height: 260px; }
 #emenu {
   position: fixed; top: 54px; left: 10px; z-index: 40;
   display: flex; flex-direction: column; min-width: 168px; padding: 6px;

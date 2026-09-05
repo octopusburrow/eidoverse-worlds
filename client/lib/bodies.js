@@ -1,14 +1,12 @@
 // bodies — choose what you wear, declared ONCE as fields and rendered twice:
-// a desktop frame (renderDOM) and a VR quad (renderCanvas), both dispatching
+// a section of the profile frame (renderDOM) and part of the profile quad, both dispatching
 // into the same switchAvatar the palette's cards call. R, 09-04 23:59: "the
 // exact same panels in Desktop mode — hopefully we only need to maintain
 // ONE set of menus"; and 22:57: a body is never optional — this is the
 // in-headset way to pick one when the default is not what you want.
 import { bus } from './base.js';
 import { net } from './net.js';
-import { registerPanel } from './ui.js';
 import { renderDOM } from './panels.js';
-import { registerXRPanel } from './xrpanels.js';
 import { switchAvatar } from './palette.js';
 import { getMyAvatarName, getMyAvatarPath } from './mybody.js';
 
@@ -33,20 +31,19 @@ function dispatch(k, id) {
   if (a) switchAvatar(a.path, a.name);
 }
 
-export function initBodies() {
-  let scroll = null;
-  const repaint = () => { if (scroll) renderDOM(scroll, fields(), dispatch); bus.emit('xr:repaint'); };
-  registerPanel({
-    id: 'bodies', icon: 'person-arms-spread', title: 'bodies', w: 280, h: 320,
-    mount: (body) => {
-      body.classList.add('schema-panel');
-      scroll = document.createElement('div');
-      scroll.className = 'schema-scroll';
-      body.append(scroll);
-      renderDOM(scroll, fields(), dispatch);
-    },
-  });
-  registerXRPanel({ id: 'bodies', title: 'bodies', fields, dispatch });
+// The bodies list lives INSIDE the profile (R, 09-05: reachable from
+// profile, not its own menu). profile.js mounts it under the avatars tile
+// and folds its fields into the profile quad.
+export const bodiesFields = fields;
+export const bodiesDispatch = dispatch;
+export function mountBodies(host) {
+  host.classList.add('schema-panel');
+  const scroll = document.createElement('div');
+  scroll.className = 'schema-scroll';
+  host.append(scroll);
+  const repaint = () => renderDOM(scroll, fields(), dispatch);
+  repaint();
   bus.on('avatars', repaint);
   bus.on('avatar-worn', repaint);
+  return repaint;
 }
