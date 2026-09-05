@@ -166,57 +166,25 @@ export const whenBooted = () => (done
   : Promise.race([bootGate, new Promise((r) => setTimeout(r, BOOT_GATE_MAX))]));
 bus.on('booted', () => releaseBoot?.());
 
-// ---- the rays: soft vertical light in the SteamVR key-art manner (R, 09-05).
-// Drawn at 1/6 resolution into a scratch canvas and upscaled with smoothing,
-// so nothing in it can have an edge; ~14 wide overlapping rays, each a soft
-// horizontal bell × a vertical fade from the ground; two tints (brand and
-// brand-deep) so the field has depth; slow sway. The WHOLE layer ramps from 0
-// alpha over 1.5 s — it can never pop in. rAF-driven on purpose: a frozen
-// page freezes it; a CSS animation would keep going on the compositor and lie.
-let raysRaf = 0;
-const RAYS_ON = new URLSearchParams(location.search).get('rays') === '1';   // OFF by default (R, 13:37: grain + banding); ?rays=1 to see the canvas version
+// ---- the rays live in a WORKER (splashrays.worker.js): a WebGL2 shader on an
+// OffscreenCanvas, so the splash animates every frame regardless of what
+// loading does to the main thread, and stops only if the tab is hard-frozen
+// (R, 09-05). Dithered in the shader — Canvas2D banded. Falls back to the
+// static gradient (already under it) when OffscreenCanvas/WebGL2 is missing.
+let raysWorker = null;
 function startLights(el) {
   const cv = el.querySelector('.sp-rays');
-  if (!cv || !RAYS_ON) return;
-  const calm = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0.3 : 1;
-  const g = cv.getContext('2d');
-  const off = document.createElement('canvas'); const og = off.getContext('2d');
-  const css = getComputedStyle(document.documentElement);
-  const tints = [css.getPropertyValue('--brand').trim() || '#8fe8c8', css.getPropertyValue('--brand-deep').trim() || '#6fb8a4'];
-  const N = 14, t0 = performance.now(), SCALE = 6;
-  const R = Array.from({ length: N }, (_, i) => ({
-    x0: (i + 0.5) / N + 0.02 * Math.sin(i * 2.3), w: 0.10 + 0.08 * ((i * 7) % 4) / 3, h: 0.45 + 0.25 * ((i * 5) % 3) / 2,
-    sway: 0.02 + 0.015 * ((i * 3) % 3), ws: (0.12 + 0.05 * ((i * 11) % 4)) * calm, ph: i * 1.31, tint: tints[i % 2], a: 0.5 + 0.5 * ((i * 13) % 3) / 2,
-  }));
-  const frame = (now) => {
-    const W = cv.clientWidth, H = cv.clientHeight;
-    if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
-    const w = Math.max(8, Math.round(W / SCALE)), h = Math.max(8, Math.round(H / SCALE));
-    if (off.width !== w || off.height !== h) { off.width = w; off.height = h; }
-    const t = (now - t0) / 1000;
-    og.clearRect(0, 0, w, h);
-    og.globalCompositeOperation = 'lighter';
-    for (const r of R) {
-      const x = (r.x0 + Math.sin(t * r.ws + r.ph) * r.sway) * w;
-      const hw = r.w * w, hh = r.h * h * (1 + 0.06 * Math.sin(t * r.ws * 1.7 + r.ph));
-      // horizontal bell: a radial gradient stretched tall — soft sides, no seams
-      const gr = og.createRadialGradient(x, h, 0, x, h, hw);
-      gr.addColorStop(0, r.tint); gr.addColorStop(1, 'rgba(0,0,0,0)');
-      og.save(); og.translate(x, h); og.scale(1, hh / hw); og.translate(-x, -h);
-      og.globalAlpha = 0.16 * r.a;
-      og.fillStyle = gr; og.beginPath(); og.arc(x, h, hw, 0, Math.PI * 2); og.fill();
-      og.restore();
-    }
-    og.globalCompositeOperation = 'source-over';
-    // the ramp: 0 → 1 over 1.5 s, eased — the layer arrives, it never pops
-    const ramp = Math.min(1, t / 1.5); const ease = ramp * ramp * (3 - 2 * ramp);
-    g.clearRect(0, 0, W, H);
-    g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
-    g.globalAlpha = ease;
-    g.drawImage(off, 0, 0, w, h, 0, 0, W, H);
-    g.globalAlpha = 1;
-    raysRaf = requestAnimationFrame(frame);
-  };
-  raysRaf = requestAnimationFrame(frame);
+  if (!cv || typeof OffscreenCanvas === 'undefined' || !cv.transferControlToOffscreen) return;
+  try {
+    const calm = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0.3 : 1;
+    cv.width = cv.clientWidth; cv.height = cv.clientHeight;
+    const off = cv.transferControlToOffscreen();
+    raysWorker = new Worker(new URL('./splashrays.worker.js', import.meta.url), { type: 'module' });
+    raysWorker.onmessage = (e) => { if (e.data?.type === 'nogl') { cv.style.display = 'none'; stopLights(); } };
+    raysWorker.postMessage({ type: 'init', canvas: off, calm }, [off]);
+    const onResize = () => raysWorker?.postMessage({ type: 'size', w: cv.clientWidth, h: cv.clientHeight });
+    addEventListener('resize', onResize);
+    globalThis.__raysWorker = raysWorker;   // harness: postMessage({type:'frames'}) answers with the frame count
+  } catch { cv.style.display = 'none'; }
 }
-function stopLights() { if (raysRaf) cancelAnimationFrame(raysRaf); raysRaf = 0; }
+function stopLights() { raysWorker?.postMessage({ type: 'stop' }); raysWorker = null; }
