@@ -223,10 +223,16 @@ function closeRadial(commit) {
 function aimRadial(x, y) {
   // stick vector picks the slot; center = no selection
   const m = Math.hypot(x, y);
+  // slot i sits at layout angle a_i = i·2π/N − π/2, placed at (cos a_i, −sin a_i):
+  // on screen that is θ_i = π/2 − i·2π/N — up for slot 0, then clockwise.
+  // The stick's screen angle is atan2(−y, x) (gamepad up is −y). Invert
+  // θ_i for i. (The old form added π/2 instead of subtracting: stick-up
+  // picked slot N/2 — R waved at the room for ten minutes, 09-04 23:43.)
   radial.sel = m < 0.45 ? -1 : (() => {
-    const a = Math.atan2(-y, x) + Math.PI / 2;                 // stick-up = slot 0
-    const i = Math.round(((a + Math.PI * 2) % (Math.PI * 2)) / (Math.PI * 2) * RADIAL.length) % RADIAL.length;
-    return i;
+    const N = RADIAL.length;
+    const theta = Math.atan2(-y, x);
+    const i = Math.round((Math.PI / 2 - theta) / (Math.PI * 2 / N));
+    return ((i % N) + N) % N;
   })();
   radial.slots.forEach((sp, i) => sp.scale.setScalar(i === radial.sel ? 0.105 : 0.075));
 }
