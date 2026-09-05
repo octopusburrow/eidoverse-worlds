@@ -58,14 +58,15 @@ export function initEmoteBar() {
   // push re-hydrates it — icons ride the same table as the names now
   const fill = () => {
     grid.innerHTML = ''; tiles.clear();
-    // postures lead the row as tiles like the rest — drawn glyphs (Phosphor
-    // fill), not emoji, since no platform ships a 'lie down' emoji that reads
-    for (const [k, icon] of [['sit', 'armchair'], ['stand', 'person-arms-spread'], ['lie', 'bed']]) {
+    // postures lead the row as tiles like the rest — EMOJI, same as the emotes
+    // (R, 09-05 16:41: "STILL have phosphor icons instead of emojis"); the same
+    // measured fallback: a platform without the glyph gets the word
+    for (const [k, em] of [['sit', '🪑'], ['stand', '🧍'], ['lie', '🛏️']]) {
       const b = document.createElement('button');
       b.className = 'tile posture';
       b.dataset.posture = k;
       b.title = k;
-      b.innerHTML = `<span class="tile-glyph">${fsvg(icon, 20) || svg(icon, 20) || k}</span>`;
+      b.innerHTML = emojiRenders(em) ? `<span class="tile-glyph">${em}</span>` : `<span class="tile-word">${k}</span>`;
       b.onclick = () => { posture(k); paint(); };
       grid.appendChild(b);
       tiles.set(`posture:${k}`, b);
