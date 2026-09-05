@@ -11,6 +11,7 @@
 // species are reading different rooms.
 
 import { CONFIG, bus, colorFor, assignColors } from './base.js';
+import { registerXRPanel } from './xrpanels.js';
 import { lastWhy } from './debuglog.js';
 import { makeFrame } from './frames.js';
 import { fsvg } from './icons.js';
@@ -26,6 +27,8 @@ let frame = null;
 let logEl = null;
 let inputEl = null;
 let onSend = null;
+const recent = [];   // the log's tail, for the VR quad
+export const recentChat = () => recent.slice();
 let onWhisper = () => {};
 let onTyping = () => {};
 let getPeople = () => [];
@@ -186,6 +189,11 @@ export function logChat(who, text, kind = '', meta = {}) {
     renderedSeqs.add(meta.seq);
   }
   noteSeq(meta.seq);
+  // the VR quad reads the tail of the log from here — every line, merged
+  // continuations included, twelve deep
+  recent.push({ who, text: String(text).slice(0, 140), kind });
+  if (recent.length > 12) recent.shift();
+  bus.emit('xr:repaint');
   // Spoken-utterance merge: merges ONLY the continuation of one spoken
   // utterance — spoken:true + same author + same utt (Sol review, PR#7).
   // A voicebox interrupted mid-utterance flushes the aired sentences as one
@@ -1006,4 +1014,20 @@ setInterval(paintTypers, 1200);
 bus.on('pinged', () => {
   frame?.el.classList.add('flash');
   setTimeout(() => frame?.el.classList.remove('flash'), 1400);
+});
+
+// ---- the chat frame as a VR quad: READ + canned replies --------------------
+// Typing in a headset needs a keyboard grid the renderer does not have yet
+// (a design item for R); until then the quad shows the log's tail and offers
+// a few whole replies that go through the SAME onSend typing goes through.
+// Honest about the gap in its title.
+const CANNED = ['hello', 'yes', 'no', 'one moment', 'come here', 'thank you'];
+registerXRPanel({
+  id: 'chat', title: 'chat (read · canned replies — keyboard soon)',
+  fields: () => [
+    ...(recent.length ? recent.slice(-8).map((l, i) => ({ t: 'info', label: l.who === '*' ? '·' : String(l.who).slice(0, 12), value: l.text }))
+                      : [{ t: 'info', label: '·', value: 'nothing said yet' }]),
+    ...CANNED.map((c) => ({ t: 'btn', k: `say:${c}`, label: c })),
+  ],
+  dispatch: (k) => { if (k?.startsWith('say:')) onSend?.(k.slice(4)); },
 });
