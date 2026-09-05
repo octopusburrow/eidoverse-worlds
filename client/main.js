@@ -41,6 +41,7 @@ import {
   net, connect, initIdentity, loginUrl, wireNet, sendVerb, sendPose, sendWhisper, sendTyping,
 } from './lib/net.js';
 import { updateBuild, toggleEditMode, isEditing } from './lib/build.js';
+import { escapeToggle, escapeIsClaimed } from './lib/frames.js';
 import { initPalette } from './lib/palette.js';
 import { setRightsSink } from './lib/state.js';
 import { initConjure } from './lib/conjure.js';
@@ -174,6 +175,14 @@ initDock([
 ]);
 paintPresence(presence());            // the dot needs the button: after initDock
 initDropdowns();                       // skins every chrome <select>, now and later
+// Esc: close every open panel, Esc again brings the same set back (R, 09-05).
+// Yields to anything that owns Esc already — see escapeIsClaimed; edit mode is
+// build.js's (its own Esc ladder), so it is checked here too.
+addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || e.defaultPrevented) return;
+  if (escapeIsClaimed() || isEditing()) return;
+  escapeToggle();
+});
 bus.on('presence:me', paintPresence);
 initDebug({
   // the body in your HAND wins over your own — that is the one being worked on
