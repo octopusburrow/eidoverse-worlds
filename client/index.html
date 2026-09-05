@@ -647,9 +647,29 @@ body.arranging #dock #hud.emark {
 }
 #dock button[data-toggles="profile"][data-presence="away"]::after { background: var(--attn); }
 #dock button[data-toggles="profile"][data-presence="busy"]::after { background: var(--err); }
-.pf-presence { margin: 6px 0 2px; }
-.profile-body .tiles { flex: none; }   /* the profile's four tiles size themselves: with flex:1/min-height:0 they collapsed to nothing when the bodies list opened and the list painted over them (R, 09-05) */
-.pf-bodies { margin-top: 8px; max-height: 260px; }
+/* profile (09-05 redesign): portrait = presence control; top tabs; one pane */
+.pf-portrait { position: relative; width: 40px; height: 40px; border-radius: 50%; flex: none; display: grid; place-items: center; padding: 0;
+  background: color-mix(in srgb, var(--who) 55%, rgb(var(--panel-rgb))); color: var(--fg); border: 1px solid transparent; cursor: pointer; }
+.pf-portrait:hover, .pf-portrait[aria-expanded="true"] { border-color: var(--brand); }
+.pf-portrait svg { opacity: .85; }
+.pf-portrait-dot { position: absolute; right: -1px; bottom: -1px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid rgb(var(--panel-rgb)); background: var(--brand); }
+[data-presence="away"] > .pf-portrait-dot, .pf-pop-dot[data-presence="away"] { background: var(--attn); }
+[data-presence="busy"] > .pf-portrait-dot, .pf-pop-dot[data-presence="busy"] { background: var(--err); }
+.pf-who .pf-state { font-style: normal; color: var(--brand); }
+.pf-id { position: relative; }
+.pf-pop { position: absolute; left: 0; top: 46px; z-index: 5; display: flex; flex-direction: column; gap: 2px; padding: 5px; min-width: 240px;
+  background: rgb(var(--panel-rgb) / .97); border: 1px solid var(--edge); border-radius: 8px; box-shadow: var(--shadow); }
+.pf-pop-row { display: flex; align-items: center; gap: 10px; text-align: left; padding: 6px 10px; border: none; border-radius: 6px; background: none; color: var(--fg); font-size: var(--fs-sm); cursor: pointer; }
+.pf-pop-row:hover { background: rgb(255 255 255 / .06); }
+.pf-pop-row.on { background: var(--well); color: var(--brand); font-weight: 600; }
+.pf-pop-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--brand); flex: none; }
+.pf-tabs { display: flex; gap: 2px; margin: 10px 0 8px; border-bottom: 1px solid var(--edge); }
+.pf-tab { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px 7px; border: none; border-bottom: 2px solid transparent; margin-bottom: -1px; background: none; color: var(--dim); font-size: var(--fs-sm); cursor: pointer; border-radius: 6px 6px 0 0; }
+.pf-tab:hover { color: var(--fg); background: rgb(255 255 255 / .04); }
+.pf-tab.on { color: var(--brand); border-bottom-color: var(--brand); }
+.pf-pane { flex: 1; min-height: 0; overflow: auto; }
+.pf-stub { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 28px 12px; color: var(--dim); text-align: center; }
+.pf-stub b { color: var(--fg); font-size: var(--fs); } .pf-stub em { font-style: normal; font-size: var(--fs-xs); opacity: .7; margin-top: 6px; }
 #emenu {
   position: fixed; top: 54px; left: 10px; z-index: 40;
   display: flex; flex-direction: column; min-width: 168px; padding: 6px;
