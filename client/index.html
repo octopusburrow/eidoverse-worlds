@@ -154,7 +154,7 @@ select {
   color-scheme: dark;
 }
 select option { background: rgb(var(--panel-rgb)); color: var(--fg); }
-select option:checked { background: color-mix(in srgb, var(--brand) 55%, rgb(var(--panel-rgb))); color: var(--ink-on-brand); }   /* pale highlight → DARK text (R, 09-04) */
+select option:checked { background: var(--well); color: var(--brand); font-weight: 600; }   /* the chosen row: dark well + brand ink — the brand FILL read as a gross green against the browser's blue hover (R, 09-05) */   /* pale highlight → DARK text (R, 09-04) */
 input[type=checkbox] { accent-color: var(--control); }
 input[type=color] {
   width: 26px; height: 20px; padding: 0; cursor: pointer; background: none;
@@ -178,18 +178,16 @@ a:hover { color: var(--fg); text-decoration-color: var(--brand); }
   position: fixed; inset: 0; z-index: 100;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 22px; padding: 28px; box-sizing: border-box;
-  /* the ground glow is a CANVAS now (.sp-lights, boot.js): a few soft lights
-     drifting along the bottom edge, drawn by requestAnimationFrame — so if
-     the page's main thread freezes, they stop. A CSS animation would not: it
-     runs on the compositor and keeps moving over a dead page (R, 09-05: make
-     the splash sexier AND let it show a freeze). */
-  background: var(--bg);
+  /* a quiet gradient. Two canvas experiments (drifting glows, aurora curtains)
+     were a HARD no (R, 09-05: banding, a hard pop from black). The liveness
+     signal lives in the status line's ellipsis instead — JS-driven, so a
+     frozen page freezes it; a CSS animation would keep going and lie. */
+  background:
+    linear-gradient(to top, color-mix(in srgb, var(--brand) 10%, transparent), transparent 42%), var(--bg);
   transition: opacity .6s ease, visibility .6s;
   font: var(--fs)/1.6 var(--font); color: var(--fg);
 }
 #splash.gone { opacity: 0; visibility: hidden; pointer-events: none; }
-.sp-lights { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; display: block; z-index: 0; }   /* full viewport: a part-height canvas clipped the glows at its top edge — a hard band in short windows (R, 09-05) */
-#splash > :not(.sp-lights) { position: relative; z-index: 1; }
 .sp-ver { position: absolute; right: 14px; bottom: 10px; font-size: var(--fs-xs);
   color: color-mix(in srgb, var(--brand) 30%, transparent); letter-spacing: .1em; }
 .sp-logo {
@@ -1262,8 +1260,7 @@ try { const o = JSON.parse(localStorage.getItem('ew-style-tokens') || '{}');
 </head>
 <body>
 <!-- Static so it paints before any module loads. boot.js only fills it in. -->
-<div id="splash" data-build="b78">
-  <canvas class="sp-lights" aria-hidden="true"></canvas>
+<div id="splash" data-build="b79">
   <div class="sp-ver"></div>
   <div class="sp-logo-wrap"><svg class="sp-logo" viewBox="-70 -40 1372 1372" aria-hidden="true" fill="currentColor">
     <path class="pc-top" d="M 92 82 Q 616 140 1072 78 Q 1024 290 1012 511 L 852 511 L 852 228 Q 440 218 68 232 Q 88 155 92 82 Z"/>
