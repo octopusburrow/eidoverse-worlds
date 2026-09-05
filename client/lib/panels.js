@@ -20,6 +20,7 @@
 //   { t:'vec3',   k, label, value:[x,y,z], step=0.1, dp=2 }       → edit(k, [x,y,z])
 //   { t:'text',   k, label, value, placeholder? }                 → edit(k, string)  [desktop only]
 //   { t:'btn',    k, label, danger? }                             → edit(k)
+//   { t:'range',  k, label, value, min=0, max=1, step=0.01, dp=2, unit? } → edit(k, number)  [a slider on BOTH renderers]
 //   { t:'list',   label, empty?, rows:[{ id, label, sub?, active?,
 //                 actions:[{k, label, danger?}] }] }              → edit(k, rowId) / edit('row', rowId)
 
@@ -90,6 +91,18 @@ function fieldDOM(f, edit) {
   switch (f.t) {
     case 'info': row.append(el('span', 'sp-info', String(f.value ?? ''))); break;
     case 'num':  row.append(stepper(f.value ?? 0, f, (v) => edit(f.k, v))); break;
+    case 'range': {
+      // the house's own <input type=range> (index.html styles it globally;
+      // --p drives the progress fill) — the same control the desk's dials use
+      const lo = f.min ?? 0, hi = f.max ?? 1, st = f.step ?? 0.01, dp = f.dp ?? 2;
+      const sl = el('input', 'sp-range'); sl.type = 'range'; sl.min = lo; sl.max = hi; sl.step = st; sl.value = f.value ?? lo;
+      const out = el('span', 'sp-range-val', `${(+sl.value).toFixed(dp)}${f.unit ?? ''}`);
+      const paint = () => sl.style.setProperty('--p', `${((sl.value - lo) / (hi - lo || 1)) * 100}%`);
+      paint();
+      sl.oninput = () => { paint(); out.textContent = `${(+sl.value).toFixed(dp)}${f.unit ?? ''}`; edit(f.k, +sl.value); };
+      row.append(sl, out);
+      break;
+    }
     case 'vec3': {
       const box = el('span', 'sp-vec');
       const cur = [...(f.value ?? [0, 0, 0])];
@@ -240,6 +253,18 @@ export function renderCanvas(canvas, fields, { width = 512, rowH = 44, pad = 12,
         regions.push({ x: vx, y: y + 8, w: s, h: s, action: f.k, payload: !f.value });
         break;
       }
+      case 'range': {
+        const lo = f.min ?? 0, hi = f.max ?? 1, st = f.step ?? 0.01, dp = f.dp ?? 2;
+        const v = Math.min(hi, Math.max(lo, +(f.value ?? lo)));
+        const tw = width - pad - vx - 64, ty = y + rowH / 2, frac = (v - lo) / (hi - lo || 1);
+        g.fillStyle = C.well; roundRect(g, vx, ty - 4, tw, 8, 4); g.fill();
+        g.fillStyle = C.accent; roundRect(g, vx, ty - 4, Math.max(8, tw * frac), 8, 4); g.fill();
+        g.beginPath(); g.arc(vx + tw * frac, ty, 9, 0, Math.PI * 2); g.fillStyle = C.text; g.fill();
+        font(15); g.fillStyle = C.text; g.textAlign = 'right'; g.fillText(`${v.toFixed(dp)}${f.unit ?? ''}`, width - pad, y + rowH * 0.62); g.textAlign = 'left';
+        // one region for the whole track: the hit's fraction along it is the value
+        regions.push({ x: vx - 6, y: y + 4, w: tw + 12, h: rowH - 8, action: f.k, slider: { lo, hi, st } });
+        break;
+      }
       case 'num': paintStepper(g, regions, f, +(f.value ?? 0), vx, y, rowH, f.k, null, f.dp); break;
       case 'vec3': {
         const seg = (width - vx - pad) / 3;
@@ -269,7 +294,21 @@ function paintStepper(g, regions, f, val, x, y, rowH, k, axis, dp = 2, w = 150) 
 }
 
 /** Resolve a UV hit (0..1, v measured from the top) against regions. */
+function roundRect(g, x, y, w, h, r) {
+  g.beginPath(); g.moveTo(x + r, y); g.lineTo(x + w - r, y); g.arcTo(x + w, y, x + w, y + r, r);
+  g.lineTo(x + w, y + h - r); g.arcTo(x + w, y + h, x + w - r, y + h, r); g.lineTo(x + r, y + h);
+  g.arcTo(x, y + h, x, y + h - r, r); g.lineTo(x, y + r); g.arcTo(x, y, x + r, y, r); g.closePath();
+}
+
 export function hitRegion(regions, canvas, u, v) {
   const x = u * canvas.width, y = v * canvas.height;
-  return regions.find((r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) ?? null;
+  const r = regions.find((r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) ?? null;
+  if (r?.slider) {
+    // a slider's payload is WHERE you clicked along the track, snapped to step
+    const { lo, hi, st } = r.slider;
+    const frac = Math.min(1, Math.max(0, (x - (r.x + 6)) / Math.max(1, r.w - 12)));
+    const raw = lo + frac * (hi - lo);
+    r.payload = +(Math.round(raw / st) * st).toFixed(6);
+  }
+  return r;
 }
