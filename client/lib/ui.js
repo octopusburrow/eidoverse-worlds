@@ -4,7 +4,7 @@
 
 import { bus, CONFIG, setName, setToken, setErrorSink, report, colorFor } from './base.js';
 import { resizeZoneAt } from './frames.js';
-import { flipMic, flipEar, micLive, earOn, glyphPinned, setGlyphPinned, micGlyph, earGlyph } from './mictoggle.js';
+import { flipMic, flipEar, micLive, earOn, glyphPinned, setGlyphPinned, micGlyph, earGlyph, xrGlyph, xrGlyphAvailable, xrLive, flipXr } from './mictoggle.js';
 import { svg, fsvg, hasFill, rsvg, hasLine } from './icons.js';
 
 // section-head emoji → Phosphor fill glyph (menu chrome never rides emoji —
@@ -567,7 +567,7 @@ function paintEMenu() {
       : entry?.action ? !!entry.active?.() : !!getFrame(id)?.visible;
     row.classList.toggle('open', on);
     // the glyph bakes its ink at build; re-stamp it when the state flips
-    const glyph = id === 'glyph:mic' ? micGlyph : id === 'glyph:ear' ? earGlyph : null;
+    const glyph = id === 'glyph:mic' ? micGlyph : id === 'glyph:ear' ? earGlyph : id === 'glyph:xr' ? xrGlyph : null;
     if (glyph && row.dataset.on !== String(on)) {
       row.dataset.on = String(on);
       const g = row.querySelector('svg');
@@ -592,7 +592,9 @@ function buildEMenu(m) {
   m.querySelector('.fr-btn').onclick = () => toggleEMenu(false);
   // voice first: mic + ears lead the menu in their own section — they matter
   // more than any window, and they wear the SAME glyphs as the floating pair
-  for (const [nm, key, glyph, flip] of [['mic', 'mic', micGlyph, flipMic], ['ears', 'ear', earGlyph, flipEar]]) {
+  const voiceRows = [['mic', 'mic', micGlyph, flipMic], ['ears', 'ear', earGlyph, flipEar]];
+  if (xrGlyphAvailable()) voiceRows.push(['VR', 'xr', xrGlyph, flipXr]);   // third of the trio, only where a headset can answer
+  for (const [nm, key, glyph, flip] of voiceRows) {
     const row = document.createElement('button');
     row.className = 'mrow'; row.dataset.row = `glyph:${key}`;
     row.innerHTML = `${glyph(16)}<span class="mname">${nm}</span>`;

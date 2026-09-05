@@ -72,7 +72,37 @@ const EAR_SVG = (on) => {
 </svg>`;
 };
 
-let micBtn = null, earBtn = null;
+// lab goggles, not spectacles (R, 09-04: "science goggles"): two rounded
+// cups on a bridge, a strap that runs off both sides, small vents on top.
+// ON = presenting — brand ink, like the mic when live.
+const XR_SVG = (on) => {
+  const c = on ? INK.on : INK.off;
+  return `
+<svg viewBox="0 0 32 32" width="26" height="26">
+  <g fill="none" stroke="${c}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="11" width="11" height="10" rx="4.5"/>
+    <rect x="18" y="11" width="11" height="10" rx="4.5"/>
+    <path d="M14 15.5 h4"/>
+    <path d="M3 15 c-1.5 0 -2.5 1 -2.5 2.5"/>
+    <path d="M29 15 c1.5 0 2.5 1 2.5 2.5"/>
+    <path d="M6.5 11 v-2 M11 11 v-2 M21.5 11 v-2 M26 11 v-2"/>
+  </g>
+</svg>`;
+};
+
+let micBtn = null, earBtn = null, xrBtn = null;
+// the third glyph is OPTIONAL: xr.js registers it only where the browser
+// answers isSessionSupported('immersive-vr'); until then it does not exist
+let xrHook = null;   // { onclick, live: () => bool }
+export function registerXrGlyph(hook) {
+  xrHook = hook;
+  ensure();
+  applyPairVisibility(); paint(); placeMic();
+  bus.emit('xr-glyph');   // the ∃ menu adds its row
+}
+export const xrGlyphAvailable = () => !!xrHook;
+export const xrLive = () => { try { return !!xrHook?.live?.(); } catch { return false; } };
+export function flipXr() { xrHook?.onclick?.(); }
 
 let micHot = false;
 // 🔴 THE GLYPH MUST READ WHICHEVER TRANSPORT IS LIVE.
@@ -111,6 +141,11 @@ function paint() {
   micBtn.title = !on ? 'mic off (V to talk)'
     : deaf ? 'mic LIVE — but you are not hearing the room (Shift+V to listen)'
     : 'mic LIVE — the world hears you (V)';
+  if (xrBtn) {
+    const live = xrLive();
+    xrBtn.innerHTML = XR_SVG(live);
+    xrBtn.title = live ? 'in VR — click to leave' : 'enter VR';
+  }
   if (earBtn) {
     const consented = receivingVoice();
     const on = consented && !isHushed();
@@ -154,9 +189,9 @@ setInterval(() => {
 // ---- pair API for the ∃ menu: rows toggle these; the pin
 // controls whether the pair hangs off the ∃ at all
 // per-glyph pins (forcing the pair to pin together was wrong)
-const PIN_LS = { mic: 'ew-mic-pinned', ear: 'ew-ear-pinned' };
-const _pinned = { mic: true, ear: true };
-try { for (const k of ['mic', 'ear']) _pinned[k] = localStorage.getItem(PIN_LS[k]) !== '0'; } catch {}
+const PIN_LS = { mic: 'ew-mic-pinned', ear: 'ew-ear-pinned', xr: 'ew-xr-pinned' };
+const _pinned = { mic: true, ear: true, xr: true };
+try { for (const k of ['mic', 'ear', 'xr']) _pinned[k] = localStorage.getItem(PIN_LS[k]) !== '0'; } catch {}
 export const glyphPinned = (k) => !!_pinned[k];
 export function setGlyphPinned(k, v) {
   _pinned[k] = !!v;
@@ -166,11 +201,13 @@ export function setGlyphPinned(k, v) {
 function applyPairVisibility() {
   if (micBtn) micBtn.style.display = _pinned.mic ? 'inline-block' : 'none';
   if (earBtn) earBtn.style.display = _pinned.ear ? 'inline-block' : 'none';
+  if (xrBtn) xrBtn.style.display = (_pinned.xr && xrHook) ? 'inline-block' : 'none';
 }
 export const micLive = () => { try { return micIsOn(); } catch { return false; } };
 export const earOn = () => { try { return receivingVoice() && !isHushed(); } catch { return false; } };
 export { flipMic, flipEar };
 /** the menu wears the SAME glyphs as the floating pair */
+export const xrGlyph = (size = 16) => XR_SVG(xrLive()).replace('width="26" height="26"', `width="${size}" height="${size}"`);
 export const micGlyph = (size = 16) => MIC_SVG(micIsOn(), false).replace('width="26" height="26"', `width="${size}" height="${size}"`);
 export const earGlyph = (size = 16) => { let on = false; try { on = receivingVoice() && !isHushed(); } catch {} return EAR_SVG(on).replace('width="26" height="26"', `width="${size}" height="${size}"`); };
 
@@ -204,7 +241,7 @@ function flipEar() {
 
 function ensure() {
   const hud = document.querySelector('#hud');
-  if (!hud || (document.contains(micBtn) && document.contains(earBtn))) return;
+  if (!hud || (document.contains(micBtn) && document.contains(earBtn) && document.contains(xrBtn))) return;
   // IN LINE with the bar: a bare glyph riding at the end of the
   // hud's own row — no box, no chrome, just the mic. The hud repaints via
   // setHud(innerHTML) which would erase a child, so we sit AFTER the hud text
@@ -217,7 +254,12 @@ function ensure() {
   earBtn.id = 'earbtn'; earBtn.style.cssText = 'cursor:pointer;display:inline-block;line-height:0;position:fixed;z-index:45;';
   earBtn.onclick = flipEar;
   document.body.appendChild(earBtn);
+  xrBtn = document.createElement('span');
+  xrBtn.id = 'xrbtn'; xrBtn.style.cssText = 'cursor:pointer;display:none;line-height:0;position:fixed;z-index:45;';
+  xrBtn.onclick = flipXr;
+  document.body.appendChild(xrBtn);
   paint();
+  applyPairVisibility();
   placeMic();          // position + bind the observer the moment we exist
 }
 // Anchored to the hud panel's LIVE box. This used to re-measure on a 1s
@@ -243,7 +285,7 @@ function placeMic() {
   const room = vert ? r.top : r.left;              // space before the ∃ along the rail
   // mic is ALWAYS the top/left of whatever is visible, and a lone
   // pinned glyph packs into the slot nearest the ∃ (pins are per-glyph)
-  const vis = [ _pinned.mic && micBtn, _pinned.ear && earBtn ].filter(Boolean);
+  const vis = [ _pinned.mic && micBtn, _pinned.ear && earBtn, _pinned.xr && xrHook && xrBtn ].filter(Boolean);
   const n = vis.length;
   if (n) {
     if (room >= 42 + 32 * (n - 1)) {
