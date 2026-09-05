@@ -600,7 +600,7 @@ input[type=range]:disabled { accent-color: color-mix(in srgb, var(--control) 40%
   color: var(--brand); border: none; cursor: pointer; background: none; box-shadow: none;
 }
 #dock #hud.emark { color: var(--dim); }                             /* local only */
-#dock #hud.emark.net-live { color: color-mix(in srgb, var(--brand) 70%, white); }   /* connected — EXACTLY an open panel's icon tint; the 'dingy' was opacity, not color (measured 09-04 23:52). Live mic/ear glyphs are pure --brand, one step more saturated. */
+#dock #hud.emark.net-live { color: var(--brand); }   /* connected — the accent itself, same as an open panel's icon and the live mic/ear (ONE ink; R, 09-04 23:59: line-weight off-icons solved readability, so on can be pure brand) */
 #dock #hud.emark:hover, #dock #hud.emark.net-live:hover { color: var(--fg); }   /* hover = white, like the rail's buttons (R, 09-04) */
 #dock #hud.emark.net-wait { color: var(--dim); animation: netpulse 2.6s ease-in-out infinite; }  /* trying */
 /* arranging (menu-edit) mode: hovering the E or a button still goes white —
@@ -788,7 +788,7 @@ body.arranging #dock .dock-grip { display: grid; }
      ON+HOVER  a whisper of well so about-to-close still differs from about-to-open */
 #dock button.on {
   position: relative;
-  color: color-mix(in srgb, var(--brand) 70%, white);
+  color: var(--brand);   /* the accent itself — one ink with the ∃ and the live mic/ear (R, 09-04 23:59) */
   background: none;
 }
 #dock button.on::before {
