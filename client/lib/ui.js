@@ -341,6 +341,15 @@ if (typeof window !== 'undefined') {
   window.eido = Object.assign(window.eido ?? {}, { ui: { registerPanel } });
 }
 
+/** The rail as DATA, for the VR ring (R, 09-04 22:02: the radial IS the dock
+ *  rendered radially — same pins). Open ∪ pinned, in dock order; action
+ *  entries (the wrench) are not frames and stay out. */
+export function dockPins() {
+  return dockEntries
+    .filter((e) => !e.action && (pins.has(e.id) || !!getFrame(e.id)?.visible))
+    .map((e) => ({ id: e.id, icon: e.icon, open: !!getFrame(e.id)?.visible }));
+}
+
 function addDockButton(entry) {
   const { id, label, icon, action } = entry;
   const b = document.createElement('button');

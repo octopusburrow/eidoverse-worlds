@@ -167,3 +167,19 @@ export function rsvg(name, size = 18) {
 }
 export const hasLine = (name) => !!PR[name];
 
+/** Fill a Phosphor glyph on a canvas, centred on the origin, `size` px tall.
+ *  `weight` 'line' draws the regular set (the dock at rest), 'fill' the fill
+ *  set (the dock when that window is open). Falls back across the two. */
+export function fillPath(ctx, name, size = 26, weight = 'fill') {
+  const pick = weight === 'line' ? (PR[name] ?? PF[name]) : (PF[name] ?? PR[name]);
+  if (!pick) return false;
+  const ds = Array.isArray(pick) ? pick : [pick];
+  const k = size / 256;
+  ctx.save();
+  ctx.scale(k, k);
+  ctx.translate(-128, -128);
+  for (const d of ds) ctx.fill(new Path2D(d));
+  ctx.restore();
+  return true;
+}
+
