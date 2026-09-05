@@ -704,6 +704,8 @@ function initSidePane() {
     addEventListener('pointermove', move); addEventListener('pointerup', up);
   });
   bus.on('roster', paintSide);
+  bus.on('presence:me', paintSide);                                   // my own mark flips at once
+  setInterval(() => { if (frame?.visible && !side.hidden) paintSide(); }, 2000);   // remote presence rides pose packets; a 2 s repaint is plenty
   applySide();
 }
 const saveSide = () => { try { localStorage.setItem(SIDE_LS, JSON.stringify(sideSt)) } catch {} };
@@ -727,6 +729,7 @@ function paintSide() {
     others === 0 ? 'just you' : `${others} other${others === 1 ? '' : 's'} here`;
   side.querySelector('.chat-side-list').innerHTML = people.length
     ? people.map((p) => `<div class="who-row ${p.me ? 'self' : ''}">
+        <span class="who-mark" data-presence="${esc(p.presence ?? 'present')}" title="${esc(p.presence ?? 'present')}"></span>
         <span class="n" style="color:${colorFor(p.id)}">${esc(p.id)}${p.me ? ' (you)' : ''}</span>
         <span class="d">${p.dist == null ? '' : p.dist.toFixed(0) + 'm'}</span></div>`).join('')
     : '<div class="who-empty">nobody yet</div>';

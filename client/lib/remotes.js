@@ -13,6 +13,7 @@ import { avatarMounts, mountTransform } from './world.js';
 import { declareSeatState, clearSeatState } from './seats.js';
 import { applyRemoteReach, noteReachEvents } from './reachnet.js';
 import { applyWingFoldPresence } from '../../shared/wingpresence.js';
+import { applyPresenceWire } from '../../shared/presencewire.js';
 
 export const remotes = new Map(); // id -> RemoteBody
 
@@ -210,6 +211,7 @@ function planPoseBlend(r, pa, pb) {
  *  interpolated and single-sample paths so a late joiner isn't missing them. */
 function applyPresenceExtras(r, s) {
   applyWingFoldPresence(r.avatar, s);
+  applyPresenceWire(r, s);            // present / away / busy, for the Who panel
   const clip = s.clip ?? 'idle';
   if (s.emote && s.emote !== r.lastEmote) {
     r.lastEmote = s.emote;
@@ -285,6 +287,7 @@ export function updateRemotes(dt, now = performance.now()) {
           // The seat owns root/clip, not semantic anatomy. A seated vigil is
           // still visibly folded through the same rig-local renderer path.
           applyWingFoldPresence(r.avatar, s);
+          applyPresenceWire(r, s);
           if (s.emote && s.emote !== r.lastEmote) {
             r.lastEmote = s.emote;
             r.avatar.playEmote(s.emote);
