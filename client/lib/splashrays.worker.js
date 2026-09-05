@@ -36,10 +36,10 @@ void main(){
   float tt = t * calm;
   // the breath IS the not-frozen indicator (R, 15:29): at whisper brightness a
   // ±13 % swing is invisible, so it breathes deep — down to 15 % at the trough
-  float breath = 0.575 + 0.425 * sin(tt * 0.9);
+  float breath = 0.525 + 0.475 * sin(tt * 0.9);      // trough 5 %: fades nearly out (R, 15:42)
   float fall = exp(-uv.y * 7.0);                          // exponential fall-off (R): bright only at the ground, ~1/16 by 0.4
   vec3 brand = vec3(0.561, 0.910, 0.784);
-  float a = fall * 0.037 * breath * ramp;               // R: way more subtle — half again (0.15 → .075 → .037)
+  float a = fall * 0.030 * breath * ramp;            // −20 % (R, 15:42)               // R: way more subtle — half again (0.15 → .075 → .037)
   float n = (h2(gl_FragCoord.xy + fract(tt) * 13.0) + h2(gl_FragCoord.xy * 1.7 + fract(tt * 0.7) * 29.0) - 1.0) / 255.0;
   vec3 enc = pow(max(brand * a, 0.0), vec3(1.0 / 2.2)) + n;
   o = vec4(enc, a + n);
