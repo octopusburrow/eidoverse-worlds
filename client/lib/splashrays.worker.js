@@ -6,7 +6,7 @@
 // bits still bands at these luminances unless you dither, and only a shader
 // can dither. Soft vertical rays in the SteamVR key-art manner, two tints,
 // alpha eased from 0 over 1.5 s so it never pops in.
-let gl, prog, uT, uRes, uRamp, uCalm, canvas, t0, raf = 0, calm = 1;
+let gl, prog, uT, uRes, uRamp, uCalm, canvas, t0, raf = 0, calm = 1, probe = false;
 // COST (09-05 A/B): full-res 60 Hz fbm per pixel added ~9 s to the load on a
 // CPU GL and a visible creep on R's GPU. Caustics are soft by nature: render
 // at 1/3 resolution and 30 Hz; the compositor upscales.
@@ -46,7 +46,7 @@ void main(){
 function init(cv) {
   canvas = cv;
   cv.width = Math.ceil(cv.width / RES_DIV); cv.height = Math.ceil(cv.height / RES_DIV);
-  gl = cv.getContext('webgl2', { alpha: true, premultipliedAlpha: true, antialias: false });
+  gl = cv.getContext('webgl2', { alpha: true, premultipliedAlpha: true, antialias: false, preserveDrawingBuffer: !!probe });   // probe: lets the harness readPixels after present
   if (!gl) { postMessage({ type: 'nogl' }); return; }
   const sh = (t, src) => { const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
   prog = gl.createProgram(); gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(prog);
@@ -75,7 +75,7 @@ function frame() {
 }
 onmessage = (e) => {
   const m = e.data;
-  if (m.type === 'init') { calm = m.calm ?? 1; try { init(m.canvas); } catch (err) { postMessage({ type: 'nogl', err: String(err) }); } }
+  if (m.type === 'init') { calm = m.calm ?? 1; probe = !!m.probe; try { init(m.canvas); } catch (err) { postMessage({ type: 'nogl', err: String(err) }); } }
   else if (m.type === 'size' && canvas) { canvas.width = Math.ceil(m.w / RES_DIV); canvas.height = Math.ceil(m.h / RES_DIV); }
   else if (m.type === 'frames') postMessage({ type: 'frames', n: frames });
   else if (m.type === 'pix' && gl) {   // harness: alpha/rgb stats of a few rows, read straight from the GL framebuffer
