@@ -185,8 +185,10 @@ function startLights(el) {
     const t = (now - t0) / 1000;
     for (const s of seeds) {
       const x = ((s.x + Math.sin(t * s.sp + s.ph) * 0.12) % 1) * w;
-      const y = h * (1.05 + Math.sin(t * s.sp * 1.3 + s.ph) * 0.05);
-      const r = s.r * Math.max(w, h) * 0.6;
+      // anchored a little BELOW the bottom edge, radius tied to width only —
+      // the glow is a ground light, never taller than a third of the window
+      const y = h * (1.06 + Math.sin(t * s.sp * 1.3 + s.ph) * 0.04);
+      const r = Math.min(s.r * w * 0.6, h * 0.42);
       const grad = g.createRadialGradient(x, y, 0, x, y, r);
       grad.addColorStop(0, brand); grad.addColorStop(1, 'rgba(0,0,0,0)');
       g.globalAlpha = 0.11 + 0.03 * Math.sin(t * 0.7 + s.ph);

@@ -188,7 +188,8 @@ a:hover { color: var(--fg); text-decoration-color: var(--brand); }
   font: var(--fs)/1.6 var(--font); color: var(--fg);
 }
 #splash.gone { opacity: 0; visibility: hidden; pointer-events: none; }
-.sp-lights { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 34vh; pointer-events: none; display: block; }
+.sp-lights { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; display: block; z-index: 0; }   /* full viewport: a part-height canvas clipped the glows at its top edge — a hard band in short windows (R, 09-05) */
+#splash > :not(.sp-lights) { position: relative; z-index: 1; }
 .sp-ver { position: absolute; right: 14px; bottom: 10px; font-size: var(--fs-xs);
   color: color-mix(in srgb, var(--brand) 30%, transparent); letter-spacing: .1em; }
 .sp-logo {
