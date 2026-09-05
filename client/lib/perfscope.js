@@ -239,6 +239,7 @@ let mode = 'off';
 // grass would double the grass draw, a perf tool costing perf.
 let solidOn = false;
 export function setSolid(on) { solidOn = !!on; if (mode !== 'off') applyTint(); onSolidChange?.(); }
+export const isSolid = () => solidOn;
 let onSolidChange = null;
 const solidMats = TIERS.map((c) => {
   const m = new THREE.MeshBasicMaterial({ color: new THREE.Color(c), polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
