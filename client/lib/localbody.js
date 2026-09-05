@@ -83,7 +83,7 @@ export function getUp() {
 // dismount with my landing spot stamped (the plane-transition invariant),
 // and control returns to the normal ground controller.
 const _seatP = new THREE.Vector3();
-function dismountMe() {
+export function dismountMe() {
   const sw = mountTransform(CONFIG.name, _seatP);
   const yaw = sw?.yaw ?? myState.yaw;
   const off = sw ? _seatP.clone() : myState.pos.clone();

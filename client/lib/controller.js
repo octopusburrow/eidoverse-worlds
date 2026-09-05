@@ -245,6 +245,14 @@ export const myState = {
 };
 
 export const keys = new Set();
+// XR intent — a thumbstick is a keyboard that reports fractions (parity law:
+// every gesture must be sayable). xr.js fills this per-frame while presenting;
+// the same wish/gravity/mantle/seat code below does every bit of the moving.
+export const xrIntent = { fwd: 0, strafe: 0, yawDelta: 0, jump: false, active: false };
+// While an XR session presents, the headset owns the camera (via the rig in
+// xr.js) — the desktop follow-cam must not fight it. Probe pattern as usual.
+let xrPresenting = () => false;
+export function setXrProbe(fn) { xrPresenting = fn; }
 let posture = null;              // 'sit' | 'lie' | null
 let vy = 0, grounded = true, mantle = null, airborneFor = 0;
 
@@ -502,6 +510,10 @@ export function updateMe(dt, me) {
   let fwd = Number(held(MOVE_KEYS.fwd)) - Number(held(MOVE_KEYS.back));
   let strafe = Number(held(MOVE_KEYS.right)) - Number(held(MOVE_KEYS.left));
   if (touchState.moveX || touchState.moveZ) { strafe = touchState.moveX; fwd = -touchState.moveZ; }
+  if (xrIntent.active) {
+    fwd = xrIntent.fwd; strafe = xrIntent.strafe;
+    if (xrIntent.yawDelta) { camYaw += xrIntent.yawDelta; xrIntent.yawDelta = 0; }
+  }
 
   const moving = Math.abs(fwd) > 0.08 || Math.abs(strafe) > 0.08;
   const running = keys.has('ShiftLeft') || keys.has('ShiftRight');
@@ -639,7 +651,7 @@ export function updateMe(dt, me) {
     myState.pos.lerpVectors(mantle.from, mantle.to, e);
     if (k >= 1) { mantle = null; grounded = true; vy = 0; }
   } else {
-    if (grounded && keys.has('Space')) {
+    if (grounded && (keys.has('Space') || (xrIntent.active && xrIntent.jump))) {
       posture = null; myState.seat = null;
       const reach = blockedTop !== null ? blockedTop - myState.pos.y : 0;
       if (blockedTop !== null && reach > 0.3 && reach <= 1.7) {
@@ -696,6 +708,7 @@ const STANDING_CLIPS = new Set(['idle', 'walk', 'run', 'jump', 'climb']);
 const _headWp = new THREE.Vector3();
 
 export function updateFollowCamera(dt, me) {
+  if (xrPresenting()) return;   // the rig carries the camera; the body stays visible (own head hidden by layers)
   const headY = 1.45;
   const focus = _eye.set(myState.pos.x, myState.pos.y + headY, myState.pos.z);
 
