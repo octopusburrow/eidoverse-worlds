@@ -354,8 +354,9 @@ const ROUTES: Route[] = [
       let body = "";
       try { body = (await req.text()).slice(0, 4096); } catch { return new Response("bad", { status: 400 }); }
       const line = JSON.stringify({ t: new Date(now).toISOString(), ip: req.headers.get("cf-connecting-ip") ?? "", line: body }) + "\n";
-      try { await Bun.write(Bun.file(`/tmp/claude-1000/clientlog-${world}.log`), line, { append: true } as any); }
-      catch { try { const { appendFileSync } = await import("node:fs"); appendFileSync(`/tmp/claude-1000/clientlog-${world}.log`, line); } catch { /* the tee must never fail the page */ } }
+      // appendFileSync, not Bun.write: Bun.write has no append and silently
+      // overwrote the file per line (the tail "replayed" the same entry, 09-04)
+      try { appendFileSync(`/tmp/claude-1000/clientlog-${world}.log`, line); } catch { /* the tee must never fail the page */ }
       return new Response("ok", { headers: { "cache-control": "no-store" } });
     },
   },
