@@ -166,60 +166,24 @@ export const whenBooted = () => (done
   : Promise.race([bootGate, new Promise((r) => setTimeout(r, BOOT_GATE_MAX))]));
 bus.on('booted', () => releaseBoot?.());
 
-// ---- the ground lights: faint aurora CURTAINS projected upward from the
-// bottom edge (R, 09-05: "bars of light, faint Northern Lights") — a handful
-// of tall soft columns, bright at the ground and gone by a third of the way
-// up, drifting sideways and breathing in height. Drawn per frame by rAF ON
-// PURPOSE: this is the splash's liveness signal — a frozen main thread
-// freezes the curtains (a CSS animation would keep going on the compositor
-// and lie). Additive blend so overlaps glow rather than stack gray. No
-// wrapping: positions ease, never jump (the old `% 1` drift popped when it
-// went negative). Reduced-motion slows the whole thing, never stops it.
-let lightsRaf = 0;
+// ---- the pulse: the status line's ellipsis is drawn by requestAnimationFrame,
+// not CSS — so it is the page's liveness signal: if the main thread freezes,
+// the dots freeze with it. (R, 09-05: the shader experiments were a hard no;
+// this is the honest, quiet version she suggested first.)
+let pulseRaf = 0;
 function startLights(el) {
-  const cv = el.querySelector('.sp-lights');
-  if (!cv) return;
-  const calm = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0.35 : 1;
-  const g = cv.getContext('2d');
-  const off = document.createElement('canvas'); const og = off.getContext('2d');   // per-curtain scratch
-  const brand = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim() || '#8fe8c8';
-  const N = 7, t0 = performance.now();
-  // each curtain: a home x, a slow sway, a width, a height and its own breath
-  const C = Array.from({ length: N }, (_, i) => ({
-    x0: (i + 0.5) / N, sway: 0.03 + 0.02 * ((i * 5) % 3), ws: (0.25 + 0.1 * ((i * 3) % 4)) * calm, ph: i * 1.9,
-    w: 0.07 + 0.05 * ((i * 7) % 3), h: 0.32 + 0.12 * ((i * 11) % 3), hs: (0.4 + 0.12 * ((i * 5) % 3)) * calm,
-  }));
+  const phase = el.querySelector('.sp-phase');
+  if (!phase) return;
+  const t0 = performance.now();
   const frame = (now) => {
-    const w = cv.clientWidth, h = cv.clientHeight;
-    if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
-    g.clearRect(0, 0, w, h);
-    const t = (now - t0) / 1000;
-    g.globalCompositeOperation = 'lighter';
-    for (const c of C) {
-      const x = (c.x0 + Math.sin(t * c.ws + c.ph) * c.sway) * w;      // eased sway, never wraps
-      const hh = h * (c.h + 0.06 * Math.sin(t * c.hs + c.ph * 1.3));  // breathing height
-      const hw = w * c.w * (1 + 0.15 * Math.sin(t * c.ws * 0.7 + c.ph)) / 2;
-      // vertical fade: bright at the ground, gone at the top of the curtain
-      const vg = g.createLinearGradient(0, h, 0, h - hh);
-      vg.addColorStop(0, brand); vg.addColorStop(0.55, brand); vg.addColorStop(1, 'rgba(0,0,0,0)');
-      // horizontal softness: a curtain has no hard sides — fade across the width
-      const hg = g.createLinearGradient(x - hw, 0, x + hw, 0);
-      hg.addColorStop(0, 'rgba(0,0,0,0)'); hg.addColorStop(0.5, 'rgba(255,255,255,1)'); hg.addColorStop(1, 'rgba(0,0,0,0)');
-      // compose ONE curtain on the scratch canvas (vertical fade, then the
-      // horizontal softness as a destination-in mask — on the main canvas that
-      // mask would erase the curtains already drawn), then add it
-      if (off.width !== w || off.height !== h) { off.width = w; off.height = h; }
-      og.clearRect(x - hw - 1, h - hh - 1, hw * 2 + 2, hh + 2);
-      og.globalCompositeOperation = 'source-over';
-      og.fillStyle = vg; og.fillRect(x - hw, h - hh, hw * 2, hh);
-      og.globalCompositeOperation = 'destination-in';
-      og.fillStyle = hg; og.fillRect(x - hw, h - hh, hw * 2, hh);
-      g.globalAlpha = 0.15;
-      g.drawImage(off, x - hw, h - hh, hw * 2, hh, x - hw, h - hh, hw * 2, hh);
-    }
-    g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
-    lightsRaf = requestAnimationFrame(frame);
+    const n = 1 + Math.floor(((now - t0) / 450) % 3);
+    // read the base FRESH each frame: the phase writer changes the words
+    // ('waking the engine' → 'folding the world log…'); we only own the dots
+    const base = phase.textContent.replace(/[….\s]+$/, '');
+    const next = base + '.'.repeat(n);
+    if (phase.textContent !== next) phase.textContent = next;
+    pulseRaf = requestAnimationFrame(frame);
   };
-  lightsRaf = requestAnimationFrame(frame);
+  pulseRaf = requestAnimationFrame(frame);
 }
-function stopLights() { if (lightsRaf) cancelAnimationFrame(lightsRaf); lightsRaf = 0; }
+function stopLights() { if (pulseRaf) cancelAnimationFrame(pulseRaf); pulseRaf = 0; }

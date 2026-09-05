@@ -131,8 +131,10 @@ await renderer.init();
 globalThis.__ewEngineUp = true;
 
 export const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x101828);
-scene.fog = new THREE.FogExp2(0x101828, 0.018);
+// the construct (no sky yet) wears the PANEL family — deep-ocean dark — not a
+// navy that fought the teal chrome (R, 09-05)
+scene.background = new THREE.Color(0x051414);
+scene.fog = new THREE.FogExp2(0x051414, 0.018);
 
 // The far plane has to hold the SKY, not just the scene. Skye's world-space
 // sky builds a cloud dome ~3200 units out, and the ringworld package hangs its
@@ -168,7 +170,7 @@ export const ground = new THREE.Mesh(
 );
 ground.receiveShadow = true;
 scene.add(ground);
-export const grid = new THREE.GridHelper(160, 80, 0x3a4a5a, 0x222c38);
+export const grid = new THREE.GridHelper(160, 80, 0x1e3a36, 0x122622);   // low-contrast teal: 1px lines alias less when they shout less (a shader grid is the real fix)
 // XR per-eye frustum culling misjudges huge planes (in-headset 08-05: the
 // ground VANISHES at some head angles) — one draw call each, never cull them
 ground.frustumCulled = false;
