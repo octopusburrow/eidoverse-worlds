@@ -13,8 +13,10 @@ let lastInput = performance.now();
 
 export const presence = () => manual ?? auto;
 export function setPresence(s) {
-  manual = STATES.includes(s) ? s : null;
-  if (s === 'present' || s === 'away') manual = null;   // choosing those hands control back to the clock
+  // away and busy are CHOICES and hold until you choose present (which hands
+  // control back to the clock). The first cut nulled 'away' too, so it could
+  // never be set by hand — R caught it live on 09-05 ("away doesn't work").
+  manual = (s === 'away' || s === 'busy') ? s : null;
   emit();
 }
 let last = null;
