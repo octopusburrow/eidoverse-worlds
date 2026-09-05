@@ -648,6 +648,7 @@ body.arranging #dock #hud.emark {
 #dock button[data-toggles="profile"][data-presence="away"]::after { background: var(--attn); }
 #dock button[data-toggles="profile"][data-presence="busy"]::after { background: var(--err); }
 .pf-presence { margin: 6px 0 2px; }
+.profile-body .tiles { flex: none; }   /* the profile's four tiles size themselves: with flex:1/min-height:0 they collapsed to nothing when the bodies list opened and the list painted over them (R, 09-05) */
 .pf-bodies { margin-top: 8px; max-height: 260px; }
 #emenu {
   position: fixed; top: 54px; left: 10px; z-index: 40;
