@@ -17,7 +17,7 @@ import {
   CLIP_SLOTS, CLIP_SPEED, releaseVRM, vrmWarmed, markVrmWarmed,
 } from './assets.js';
 import { beginWork, enqueue, idleYield, nextFrame, loadNote } from './loadwork.js';
-import { warm } from './warmqueue.js';
+import { warm, P_GATE } from './warmqueue.js';
 import { heightAt } from './terrain.js';
 import { surfaceUnder } from './colliders.js';
 import { DRIVEN_BONES } from './ragdoll.js';
@@ -1827,6 +1827,11 @@ export async function makeAvatar(id, libPath, { full = false, urgent = false } =
       // compile-stall frames to exactly that. Spread, shared materials
       // cache-hit after their first mesh. frustumCulled defeats the compile
       // walk's culling while the body is still detached (stale matrices).
+      // YOUR body compiles at P_GATE — arrival priority, ahead of every
+      // world model's compile. Measured 09-04 (bodytime probe): at P_MODEL
+      // the body queued behind 19 things' compiles, each 'real frame' 300–
+      // 450 ms under parse jank — 24 s from clips-ready to a visible body,
+      // 33 s from load. R reloaded faster than that and never saw it.
       await warm(`avatar ${id}`, async () => {
         const meshes = [];
         vrm.scene.traverse((o) => { if (o.isMesh) meshes.push(o); });
@@ -1837,7 +1842,7 @@ export async function makeAvatar(id, libPath, { full = false, urgent = false } =
           finally { mesh.frustumCulled = culled; }
           await nextFrame();
         }
-      });
+      }, { p: urgent ? P_GATE : undefined });
       markVrmWarmed(vrm);
     }
     const av = new Avatar(id, vrm, clips);
