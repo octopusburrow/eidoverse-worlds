@@ -484,7 +484,8 @@ a:hover { color: var(--fg); text-decoration-color: var(--brand); }
   overflow: hidden; width: 100%;
 }
 .card:hover span { -webkit-line-clamp: 4; }
-.card.on { background: var(--accent-dk); border-color: var(--edge-hi); }
+.card.on { background: color-mix(in srgb, var(--brand) 18%, transparent); border-color: var(--brand); }
+.card.on span { color: var(--brand); }
 
 .row { display: flex; align-items: center; gap: 7px; font-size: var(--fs-sm); color: var(--dim); }
 /* min-widths, not fixed: 'sweepPhase' overran a 42px label and '0.29411' a 34px readout (R, 09-04) */
@@ -877,6 +878,21 @@ body.altgrab .frame:active { cursor: grabbing; }
 }
 /* the door is a frame like the others: its title follows .fr-title (R, 09-04: the card read as the old menu styling) */
 .sheet h1 { font-size: var(--fs-sm); margin: 0 0 6px; color: var(--dim); font-weight: 600; text-transform: uppercase; letter-spacing: .085em; }
+/* the door wears the frames' own header: a title chip on the top edge (the
+   fr-head/fr-title grammar), then the panel body — not a headline in a box */
+#door .sheet { padding: 0; overflow: visible; }
+#door .sheet .fr-head { position: static; display: flex; align-items: center; padding: 6px 12px; border-bottom: 1px solid var(--edge); border-radius: var(--r) var(--r) 0 0; background: rgb(var(--panel-rgb) / .35); cursor: default; }
+#door .sheet .fr-title { flex: 1; font-size: var(--fs-sm); color: var(--dim); text-transform: none; letter-spacing: .02em; font-weight: 500; }
+#door .sheet .fr-title b { color: var(--fg); font-weight: 600; }
+#door .sheet .door-body { padding: 16px 18px 18px; max-height: calc(100vh - 120px); overflow-y: auto; }
+#door .sheet h2 { margin: 14px 0 8px; }
+#door .sheet label input { background: var(--well); border: 1px solid var(--edge); border-radius: 7px; color: var(--fg); }
+#door .sheet label input:focus { outline: none; border-color: color-mix(in srgb, var(--brand) 60%, var(--edge)); }
+#door .sheet p.sub a { color: var(--brand); }
+#door .grid.dense { gap: 6px; }
+#door .card { background: var(--well); border: 1px solid transparent; border-radius: 7px; padding: 5px; color: var(--dim); }
+#door .card:hover { border-color: var(--edge); color: var(--fg); }
+#door .card.on { border-color: var(--brand); }
 .sheet h2 {
   font-size: var(--fs-sm); margin: 16px 0 7px; color: var(--dim);
   text-transform: uppercase; letter-spacing: .09em; font-weight: 600;
@@ -887,9 +903,12 @@ body.altgrab .frame:active { cursor: grabbing; }
 .sheet label input { width: 100%; box-sizing: border-box; font-size: var(--fs); padding: 8px 10px; }
 .sheet .go {
   width: 100%; text-align: center; font-size: var(--fs); padding: 10px;
-  background: var(--accent-dk); border-color: var(--edge-hi); color: var(--accent); font-weight: 600;
+  /* the one action on the sheet wears the brand, dark ink on it — the same
+     chip grammar as .sp-btn; the amber lane is for ATTENTION, not for 'go'
+     (R, 09-05: the door still read as the old UI) */
+  background: var(--brand); border: none; color: var(--ink-on-brand); font-weight: 600; border-radius: 7px;
 }
-.sheet .go:hover { background: color-mix(in srgb, var(--accent-dk) 78%, var(--accent)); }
+.sheet .go:hover { background: color-mix(in srgb, var(--brand) 82%, white); }
 .keys {
   display: grid; grid-template-columns: max-content 1fr;
   gap: 7px 14px; align-items: baseline;

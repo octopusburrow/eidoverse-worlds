@@ -740,8 +740,8 @@ export function toggleHelp() {
 export function openDoor({ roster = [], needsKey = false, login = null, onEnter }) {
   const s = sheet(el.door);
   s.innerHTML = `
-    <h1>step in</h1>
-    <p class="sub">You're arriving at <b>${escapeHtml(CONFIG.world)}</b>.</p>
+    <div class="fr-head"><span class="fr-title">step in — <b>${escapeHtml(CONFIG.world)}</b></span></div>
+    <div class="door-body">
     ${CONFIG.authed
       ? `<p class="sub">arriving as <b>${escapeHtml(CONFIG.name)}</b> — verified via Discord</p>`
       : `<label><span class="lbl">your name — how the world and everyone in it will know you</span>
@@ -756,7 +756,8 @@ export function openDoor({ roster = [], needsKey = false, login = null, onEnter 
     <div class="grid dense" id="d-roster"></div>
     <button class="go" id="d-go">enter the world</button>
     <p class="sub" style="margin:12px 0 0; text-align:center">
-      press <kbd>?</kbd> any time for the controls</p>`;
+      press <kbd>?</kbd> any time for the controls</p>
+    </div>`;
 
   let chosen = localStorage.getItem('ew-avatar-name') || 'claude';
   const grid = s.querySelector('#d-roster');
