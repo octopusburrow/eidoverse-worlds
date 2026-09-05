@@ -599,17 +599,6 @@ export function initDebug(p = {}) {
   });
   stack.appendChild(dials.el);
 
-  // the tuning families, one head + one builder each
-  for (const [head, build] of [
-    ['blink (live)', buildBlinkPanel],
-    ['hair (live, while ragdolled)', buildHairPanel],
-    ['limp hair, no local sim', buildLimpPanel],
-    ['wings', buildWingPanel],
-    ['joint limits (live)', buildJointPanel],
-  ]) {
-    stack.appendChild(sectionHead(head));
-    build(stack);
-  }
 
   // The live-tuning groups become COLLAPSIBLE subsections (the debug menu
   // splits into subareas with a dropdown arrow, matching World/Settings).
