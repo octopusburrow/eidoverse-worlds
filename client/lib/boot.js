@@ -173,11 +173,17 @@ bus.on('booted', () => releaseBoot?.());
 let lightsRaf = 0;
 function startLights(el) {
   const cv = el.querySelector('.sp-lights');
-  if (!cv || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if (!cv) return;
+  // reduced-motion does NOT switch the lights off — they are the page's pulse
+  // (a frozen page shows frozen lights); it slows them to a gentle breath
+  const calm = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0.35 : 1;
   const g = cv.getContext('2d');
   const brand = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim() || '#8fe8c8';
   const N = 5, t0 = performance.now();
-  const seeds = Array.from({ length: N }, (_, i) => ({ x: (i + 0.5) / N, sp: 0.06 + 0.04 * ((i * 7) % 3), ph: i * 1.7, r: 0.22 + 0.08 * ((i * 5) % 3) }));
+  // a full drift cycle every 6–9 s: visible within the few seconds a splash
+  // lasts now (R, 09-05: 'not getting any animation' — the old 60–100 s cycle
+  // was stillness to the eye)
+  const seeds = Array.from({ length: N }, (_, i) => ({ x: (i + 0.5) / N, sp: (0.7 + 0.15 * ((i * 7) % 3)) * calm, ph: i * 1.7, r: 0.22 + 0.08 * ((i * 5) % 3) }));
   const frame = (now) => {
     const w = cv.clientWidth, h = cv.clientHeight;
     if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
@@ -191,7 +197,7 @@ function startLights(el) {
       const r = Math.min(s.r * w * 0.6, h * 0.42);
       const grad = g.createRadialGradient(x, y, 0, x, y, r);
       grad.addColorStop(0, brand); grad.addColorStop(1, 'rgba(0,0,0,0)');
-      g.globalAlpha = 0.11 + 0.03 * Math.sin(t * 0.7 + s.ph);
+      g.globalAlpha = 0.11 + 0.05 * Math.sin(t * 1.6 * calm + s.ph);
       g.fillStyle = grad; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
     }
     g.globalAlpha = 1;
