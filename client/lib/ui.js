@@ -5,7 +5,7 @@
 import { bus, CONFIG, setName, setToken, setErrorSink, report, colorFor } from './base.js';
 import { resizeZoneAt } from './frames.js';
 import { flipMic, flipEar, micLive, earOn, glyphPinned, setGlyphPinned, micGlyph, earGlyph } from './mictoggle.js';
-import { svg, fsvg, hasFill } from './icons.js';
+import { svg, fsvg, hasFill, rsvg, hasLine } from './icons.js';
 
 // section-head emoji → Phosphor fill glyph (menu chrome never rides emoji —
 // the canvas-emoji trap generalizes: platform glyph gaps are silent)
@@ -344,7 +344,10 @@ if (typeof window !== 'undefined') {
 function addDockButton(entry) {
   const { id, label, icon, action } = entry;
   const b = document.createElement('button');
-  if (icon && hasFill(icon)) b.innerHTML = fsvg(icon, 21);   // +25% glyph, same 34px button
+  // both weights ride the button; CSS shows the LINE glyph at rest and the
+  // FILL glyph while the window is open (the .on class) — a glyph swap, not
+  // a color change, is what makes inactive read as inactive
+  if (icon && hasFill(icon)) b.innerHTML = (hasLine(icon) ? rsvg(icon, 21) : '') + fsvg(icon, 21);   // +25% glyph, same 34px button
   else b.textContent = label ?? id;
   b.title = action ? id : `toggle ${id}`;
   b.onclick = () => {

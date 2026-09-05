@@ -24,7 +24,7 @@ import { xrPanelsEnter, xrPanelsExit, xrPanelsPick } from './xrpanels.js';
 import { myState, xrIntent, setCamYaw, setXrProbe } from './controller.js';
 import { entities } from './world.js';
 import { sendVerb } from './net.js';
-import { flashHint } from './ui.js';
+import { flashHint, toast } from './ui.js';
 import { pushUndo } from './build.js';
 import { perf } from './perf.js';
 
@@ -287,7 +287,9 @@ async function enterVR() {
     });
   } catch (e) {
     report('enter VR', e);
-    flashHint('VR session failed — see console');
+    // the failure must OUTLIVE the glance (R, 09-04: "didn't see the error
+    // for very long") — a sticky toast with the actual message, 30 s
+    toast(`VR failed to start: ${e?.message ?? e}`, 'err', 30000);
   }
 }
 
