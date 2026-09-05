@@ -166,41 +166,58 @@ export const whenBooted = () => (done
   : Promise.race([bootGate, new Promise((r) => setTimeout(r, BOOT_GATE_MAX))]));
 bus.on('booted', () => releaseBoot?.());
 
-// ---- the ground lights: a few soft brand-tinted glows drifting along the
-// bottom edge. Drawn per frame by rAF ON PURPOSE — this is the splash's
-// liveness signal: a frozen main thread freezes the lights (a CSS animation
-// would keep going on the compositor and lie). Subtle: alpha stays under .14.
+// ---- the ground lights: faint aurora CURTAINS projected upward from the
+// bottom edge (R, 09-05: "bars of light, faint Northern Lights") — a handful
+// of tall soft columns, bright at the ground and gone by a third of the way
+// up, drifting sideways and breathing in height. Drawn per frame by rAF ON
+// PURPOSE: this is the splash's liveness signal — a frozen main thread
+// freezes the curtains (a CSS animation would keep going on the compositor
+// and lie). Additive blend so overlaps glow rather than stack gray. No
+// wrapping: positions ease, never jump (the old `% 1` drift popped when it
+// went negative). Reduced-motion slows the whole thing, never stops it.
 let lightsRaf = 0;
 function startLights(el) {
   const cv = el.querySelector('.sp-lights');
   if (!cv) return;
-  // reduced-motion does NOT switch the lights off — they are the page's pulse
-  // (a frozen page shows frozen lights); it slows them to a gentle breath
   const calm = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0.35 : 1;
   const g = cv.getContext('2d');
+  const off = document.createElement('canvas'); const og = off.getContext('2d');   // per-curtain scratch
   const brand = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim() || '#8fe8c8';
-  const N = 5, t0 = performance.now();
-  // a full drift cycle every 6–9 s: visible within the few seconds a splash
-  // lasts now (R, 09-05: 'not getting any animation' — the old 60–100 s cycle
-  // was stillness to the eye)
-  const seeds = Array.from({ length: N }, (_, i) => ({ x: (i + 0.5) / N, sp: (0.7 + 0.15 * ((i * 7) % 3)) * calm, ph: i * 1.7, r: 0.22 + 0.08 * ((i * 5) % 3) }));
+  const N = 7, t0 = performance.now();
+  // each curtain: a home x, a slow sway, a width, a height and its own breath
+  const C = Array.from({ length: N }, (_, i) => ({
+    x0: (i + 0.5) / N, sway: 0.03 + 0.02 * ((i * 5) % 3), ws: (0.25 + 0.1 * ((i * 3) % 4)) * calm, ph: i * 1.9,
+    w: 0.07 + 0.05 * ((i * 7) % 3), h: 0.32 + 0.12 * ((i * 11) % 3), hs: (0.4 + 0.12 * ((i * 5) % 3)) * calm,
+  }));
   const frame = (now) => {
     const w = cv.clientWidth, h = cv.clientHeight;
     if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
     g.clearRect(0, 0, w, h);
     const t = (now - t0) / 1000;
-    for (const s of seeds) {
-      const x = ((s.x + Math.sin(t * s.sp + s.ph) * 0.12) % 1) * w;
-      // anchored a little BELOW the bottom edge, radius tied to width only —
-      // the glow is a ground light, never taller than a third of the window
-      const y = h * (1.06 + Math.sin(t * s.sp * 1.3 + s.ph) * 0.04);
-      const r = Math.min(s.r * w * 0.6, h * 0.42);
-      const grad = g.createRadialGradient(x, y, 0, x, y, r);
-      grad.addColorStop(0, brand); grad.addColorStop(1, 'rgba(0,0,0,0)');
-      g.globalAlpha = 0.11 + 0.05 * Math.sin(t * 1.6 * calm + s.ph);
-      g.fillStyle = grad; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+    g.globalCompositeOperation = 'lighter';
+    for (const c of C) {
+      const x = (c.x0 + Math.sin(t * c.ws + c.ph) * c.sway) * w;      // eased sway, never wraps
+      const hh = h * (c.h + 0.06 * Math.sin(t * c.hs + c.ph * 1.3));  // breathing height
+      const hw = w * c.w * (1 + 0.15 * Math.sin(t * c.ws * 0.7 + c.ph)) / 2;
+      // vertical fade: bright at the ground, gone at the top of the curtain
+      const vg = g.createLinearGradient(0, h, 0, h - hh);
+      vg.addColorStop(0, brand); vg.addColorStop(0.55, brand); vg.addColorStop(1, 'rgba(0,0,0,0)');
+      // horizontal softness: a curtain has no hard sides — fade across the width
+      const hg = g.createLinearGradient(x - hw, 0, x + hw, 0);
+      hg.addColorStop(0, 'rgba(0,0,0,0)'); hg.addColorStop(0.5, 'rgba(255,255,255,1)'); hg.addColorStop(1, 'rgba(0,0,0,0)');
+      // compose ONE curtain on the scratch canvas (vertical fade, then the
+      // horizontal softness as a destination-in mask — on the main canvas that
+      // mask would erase the curtains already drawn), then add it
+      if (off.width !== w || off.height !== h) { off.width = w; off.height = h; }
+      og.clearRect(x - hw - 1, h - hh - 1, hw * 2 + 2, hh + 2);
+      og.globalCompositeOperation = 'source-over';
+      og.fillStyle = vg; og.fillRect(x - hw, h - hh, hw * 2, hh);
+      og.globalCompositeOperation = 'destination-in';
+      og.fillStyle = hg; og.fillRect(x - hw, h - hh, hw * 2, hh);
+      g.globalAlpha = 0.15;
+      g.drawImage(off, x - hw, h - hh, hw * 2, hh, x - hw, h - hh, hw * 2, hh);
     }
-    g.globalAlpha = 1;
+    g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
     lightsRaf = requestAnimationFrame(frame);
   };
   lightsRaf = requestAnimationFrame(frame);
