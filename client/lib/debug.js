@@ -14,6 +14,11 @@
 // have shown nothing wrong on the day it mattered most.
 
 import { THREE, scene } from './core.js';
+import { bus } from './base.js';
+import { registerXRPanel, xrPanelOpen } from './xrpanels.js';
+import { perf } from './perf.js';
+import { drawStats } from './render.js';
+import { MODES, setMode, activeMode, setSolid, isSolid } from './perfscope.js';
 import { MeshBVHHelper } from 'three-mesh-bvh';
 import { colliders } from './colliders.js';
 import { closestParams, TUNING } from './ragdoll.js';
@@ -755,3 +760,29 @@ export function updateDebug(now = performance.now()) {
   }
   statsEl.textContent = lines.join('\n');
 }
+
+// ---- the debug frame as a VR quad: YOUR numbers, in-headset -----------------
+// The recorder tees them to the operator; this shows them to the person
+// wearing the headset (R, 09-04: "extremely janky" — a number beats an
+// adjective). Same sources as the desk (perf.js, render.js, perfscope);
+// the perfscope modes are the same setMode the desk's rows call.
+function debugFields() {
+  const r = drawStats().render ?? {};
+  const cur = activeMode();
+  return [
+    { t: 'info', label: 'fps', value: `${perf.fps}` },
+    { t: 'info', label: 'frame', value: `${(+perf.ms).toFixed(1)} ms · worst ${(+perf.worst).toFixed(0)} · spikes ${perf.spikes}` },
+    { t: 'info', label: 'draws', value: `${r.drawCalls ?? '—'} calls · ${((r.triangles ?? 0) / 1000).toFixed(0)}k tris` },
+    { t: 'list', label: 'perfscope', rows: Object.entries(MODES).map(([k, m]) => ({ id: k, label: m.label, active: k === cur, actions: k === cur ? [] : [{ k: 'mode', label: 'use' }] })) },
+    { t: 'check', k: 'solid', label: 'solid tint', value: isSolid() },
+  ];
+}
+function debugDispatch(k, v) {
+  if (k === 'mode') setMode(v);
+  else if (k === 'solid') setSolid(!!v);
+  else return;
+  bus.emit('xr:repaint');
+}
+registerXRPanel({ id: 'debug', title: 'debug', fields: debugFields, dispatch: debugDispatch });
+// live numbers: one repaint a second while the quad is open
+setInterval(() => { try { if (xrPanelOpen('debug')) bus.emit('xr:repaint'); } catch { /* not presenting */ } }, 1000);

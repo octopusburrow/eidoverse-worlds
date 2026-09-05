@@ -5,13 +5,30 @@
 // a bigger panel, identity up top, destination tiles below.
 
 import { CONFIG, bus, colorFor } from './base.js';
+import { registerXRPanel, showXRPanel } from './xrpanels.js';
+import { getMyAvatarName } from './mybody.js';
 import { makeFrame } from './frames.js';
 import { fsvg } from './icons.js';
 import { toast } from './ui.js';
 
 let frame = null;
 
+// the profile as a VR quad: who you are, and doors to the quads the desk's
+// tiles open (bodies = the avatars tile; who = present). The satchel/worlds/
+// friends tiles are sketches on the desk too — no surface, no slot.
+function profileFields() {
+  return [
+    { t: 'info', label: 'name', value: CONFIG.name ?? '—' },
+    { t: 'info', label: 'wearing', value: getMyAvatarName() ?? '—' },
+    { t: 'info', label: 'world', value: CONFIG.world ?? '—' },
+    { t: 'btn', k: 'bodies', label: 'change body' },
+    { t: 'btn', k: 'who', label: 'who is here' },
+  ];
+}
+function profileDispatch(k) { if (k === 'bodies' || k === 'who') showXRPanel(k, true); }
+
 export function initProfile() {
+  registerXRPanel({ id: 'profile', title: 'profile', fields: profileFields, dispatch: profileDispatch });
   frame = makeFrame('profile', {
     title: 'profile', x: 64, y: 60, w: 420, h: 330, minW: 320, minH: 240, hidden: true,
   });
