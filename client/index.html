@@ -195,8 +195,7 @@ a:hover { color: var(--fg); text-decoration-color: var(--brand); }
      key-art manner — drawn small and upscaled so nothing has an edge, the whole
      layer ramping from 0 alpha over 1.5 s so it never pops in, rAF-driven so a
      frozen page freezes it. The static gradient stays UNDER it as the floor. */
-  background:
-    linear-gradient(to top, color-mix(in srgb, var(--brand) 8%, transparent), transparent 40%), var(--bg);
+  background: var(--bg);   /* the ground light is the worker's breathing gradient (.sp-rays); no CSS copy underneath or it doubles */
   transition: opacity .6s ease, visibility .6s;
   font: var(--fs)/1.6 var(--font); color: var(--fg);
 }
@@ -1280,7 +1279,7 @@ try { const o = JSON.parse(localStorage.getItem('ew-style-tokens') || '{}');
 </head>
 <body>
 <!-- Static so it paints before any module loads. boot.js only fills it in. -->
-<div id="splash" data-build="b80">
+<div id="splash" data-build="b81">
   <canvas class="sp-rays" aria-hidden="true"></canvas>
   <div class="sp-ver"></div>
   <div class="sp-logo-wrap"><svg class="sp-logo" viewBox="-70 -40 1372 1372" aria-hidden="true" fill="currentColor">

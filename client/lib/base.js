@@ -110,7 +110,7 @@ if (typeof window !== 'undefined') {
   // provenance: who woke you ≠ whose words are in view): reload vs navigate
   // vs back_forward separates "R reloaded" from "the tunnel reconnected"
   let cause = '?'; try { cause = performance.getEntriesByType('navigation')[0]?.type ?? '?'; } catch { /* old UA */ }
-  tee(`[boot] cause=${cause} ${location.pathname}${location.search.replace(/key=[^&]+/, 'key=…')} ua=${navigator.userAgent.slice(0, 120)}`);
+  tee(`[boot] cause=${cause} host=${location.host} ${location.pathname}${location.search.replace(/key=[^&]+/, 'key=…')} ua=${navigator.userAgent.slice(0, 120)}`);
 }
 
 export function report(context, err) {

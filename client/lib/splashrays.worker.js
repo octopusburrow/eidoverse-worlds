@@ -27,26 +27,17 @@ float n2(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(h2(i), h2(i + vec2(1, 0)), f.x), mix(h2(i + vec2(0, 1)), h2(i + vec2(1, 1)), f.x), f.y); }
 void main(){
   vec2 uv = gl_FragCoord.xy / res;            // (0,0) bottom-left
-  float tt = t * calm * 0.22;                  // slow, oily (R: 0.4× was still too quick)
-  // CAUSTICS (R, 15:01): light diffracting onto a wall from under water —
-  // wide, slow, folding bands; no tips. The x axis is scaled DOWN 3× so
-  // bands are broad, and a slow 2-D warp slides the pattern so bands fold
-  // over each other instead of drifting rigidly.
-  float px = uv.x * res.x / res.y / 3.0;
-  // the fold is in x ONLY (R: 'why did it get curved?' — a y-term bent the bands);
-  // two slow 1-D fields slide the pattern so bands still glide over each other
-  float warp = n1(px * 1.3 + tt * 0.21) - 0.5;
-  float x1 = px + warp * 0.35 + 0.08 * sin(tt * 0.6 + px * 2.0);
-  float bands = fbm1(x1 * 5.5 + tt * 0.5) * 0.65 + fbm1(x1 * 11.0 - tt * 0.27 + 7.0) * 0.35;
-  bands = smoothstep(0.30, 0.72, bands);                    // the fbm's real range
-  bands = bands * bands * (3.0 - 2.0 * bands);              // gentle contrast, no hard cores
-  // heights come from their OWN slow field, not from brightness — so bands
-  // end in soft shoulders at different heights, never a point
-  float top = 0.30 + 0.40 * n1(px * 2.2 + tt * 0.17 + 3.0);
-  float fall = smoothstep(top, top * 0.15, uv.y);           // flat near the ground, soft shoulder at the top
-  float beam = bands * fall;
+  // THE GRADIENT, BREATHING (R, 15:11: "the plain gradient but pulsing slowly —
+  // surely there's not much lighter than that"). A few instructions per pixel:
+  // brand light at the ground fading out by ~0.45 of the frame, its strength
+  // breathing on a ~7 s cycle between 0.55 and 1. Still in the worker, so it
+  // animates through any main-thread stall and stops only on a hard freeze;
+  // still dithered, so the dark ramp has no bands.
+  float tt = t * calm;
+  float breath = 0.775 + 0.225 * sin(tt * 0.9);
+  float fall = smoothstep(0.45, 0.0, uv.y); fall *= fall;
   vec3 brand = vec3(0.561, 0.910, 0.784);
-  float a = clamp(beam * 0.17, 0.0, 0.25) * ramp;           // R: half the alpha
+  float a = fall * 0.16 * breath * ramp;
   float n = (h2(gl_FragCoord.xy + fract(tt) * 13.0) + h2(gl_FragCoord.xy * 1.7 + fract(tt * 0.7) * 29.0) - 1.0) / 255.0;
   vec3 enc = pow(max(brand * a, 0.0), vec3(1.0 / 2.2)) + n;
   o = vec4(enc, a + n);
