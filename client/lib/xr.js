@@ -26,6 +26,7 @@ import { entities } from './world.js';
 import { sendVerb } from './net.js';
 import { flashHint } from './ui.js';
 import { pushUndo } from './build.js';
+import { perf } from './perf.js';
 
 // ---- self-body in first person ---------------------------------------------
 // R's first headset session (23:22): own body invisible (she stood INSIDE it,
@@ -364,7 +365,24 @@ export function updateXR() {
 
   // the body moved by THEIR controller code; the rig goes where the body is
   rig.position.set(myState.pos.x, myState.pos.y, myState.pos.z);
+
+  // FLIGHT RECORDER: one line every 5 s while presenting — numbers where a
+  // headset gives adjectives ("janky", "no avatar"). Read it out of the
+  // desktop console after the session.
+  const now = performance.now();
+  if (now - recAt > 5000) {
+    recAt = now;
+    const av = getSelf();
+    console.log('[xr:rec]', JSON.stringify({
+      backend: renderer.backend?.isWebGPUBackend ? 'webgpu' : 'webgl',
+      fps: perf.fps, ms: +perf.ms.toFixed(1), worst: +perf.worst.toFixed(0), spikes: perf.spikes,
+      body: av ? (av.vrm?.scene?.visible ? 'visible' : 'HIDDEN') : 'NONE',
+      fp: !!fpVrm, camMask: camera.layers.mask, rig: [+rig.position.x.toFixed(1), +rig.position.y.toFixed(1), +rig.position.z.toFixed(1)],
+      hands: { L: !!sourceFor('left'), R: !!sourceFor('right') }, held: held?.id ?? null,
+    }));
+  }
 }
+let recAt = 0;
 
 export async function initXR() {
   if (!navigator.xr) return;
