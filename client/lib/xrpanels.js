@@ -87,6 +87,18 @@ function togglePanels() {
   for (const p of panels ?? []) p.mesh.visible = shown;
 }
 
+/** One quad by id — what a ring slot does (R: each slot opens that frame's
+ *  quad). `on` null toggles. */
+export function showXRPanel(id, on = null) {
+  const p = panels?.find((q) => q.def.id === id);
+  if (!p) return false;
+  p.mesh.visible = on == null ? !p.mesh.visible : !!on;
+  shown = (panels ?? []).some((q) => q.mesh.visible);
+  return p.mesh.visible;
+}
+export const xrPanelHas = (id) => registry.some((d) => d.id === id);
+export const xrPanelOpen = (id) => !!panels?.find((q) => q.def.id === id)?.mesh.visible;
+
 /** Laser test against the panels. Returns hit distance (for laser length) or
  *  null. When `click`, resolves the region and fires the panel's dispatcher —
  *  the same function the desktop frame calls. */
@@ -108,6 +120,7 @@ export function xrPanelsPick(handRay, click = false) {
 
 /** harness window */
 export const xrPanelsDebug = () => ({
+  fields: Object.fromEntries(registry.map((d) => [d.id, d.fields().map((f) => f.k ?? f.t)])),
   registered: xrPanelIds(), live: panels?.length ?? 0, shown,
   regions: panels?.map((p) => ({ id: p.def.id, n: p.regions.length, w: p.canvas.width, h: p.canvas.height })) ?? [],
 });

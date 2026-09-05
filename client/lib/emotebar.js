@@ -9,6 +9,14 @@ import { EMOTE_ORDER, EMOTE_ICONS } from './avatar.js';
 import { myState } from './controller.js';
 import { getMe } from './mybody.js';
 import { registerXRPanel } from './xrpanels.js';
+import { setPosture } from './controller.js';
+const POSTURES = ['sit', 'stand', 'lie'];
+// through the same flows the ring used: a nearby seat wins for sit, stand dismounts
+function posture(k) {
+  if (k === 'sit') bus.emit('xr:sit');
+  else if (k === 'stand') bus.emit('xr:stand');
+  else setPosture('lie');
+}
 import { bus } from './base.js';
 
 // emoji here are CONTENT (the gesture itself), not chrome — the fill-icon set
@@ -63,13 +71,20 @@ export function initEmoteBar() {
   const paint = () => { for (const [n, b] of tiles) b.classList.toggle('on', myState.emote === n); };
   fill();
   bus.on('emotes-updated', fill);
+  // the same postures the quad shows — one vocabulary in both renderers
+  const pos = document.createElement('div'); pos.className = 'emote-postures';
+  for (const k of POSTURES) { const b = document.createElement('button'); b.className = 'keybtn'; b.textContent = k; b.title = k; b.onclick = () => posture(k); pos.appendChild(b); }
+  f.body.appendChild(pos);
   setInterval(paint, 500);   // number keys set myState.emote elsewhere; the lit tile follows
   f.body.appendChild(grid);
   // the same six gestures as a VR quad — one button per emote, the same call
   registerXRPanel({
     id: 'emotes', title: 'emotes',
-    fields: () => EMOTE_ORDER.map((name) => ({ t: 'btn', k: name, label: name })),   // names, not emoji: a canvas fillText of a missing glyph paints NOTHING
-    dispatch: (k) => { if (EMOTE_ORDER.includes(k)) { getMe()?.playEmote(k); myState.emote = k; } },
+    // postures lead (R, 09-04 22:02: sit/lie belong to the emote menu, not the
+    // ring); then the emotes — names, not emoji: a canvas fillText of a
+    // missing glyph paints nothing
+    fields: () => [...POSTURES.map((k) => ({ t: 'btn', k, label: k })), ...EMOTE_ORDER.map((name) => ({ t: 'btn', k: name, label: name }))],
+    dispatch: (k) => { if (POSTURES.includes(k)) posture(k); else if (EMOTE_ORDER.includes(k)) { getMe()?.playEmote(k); myState.emote = k; } },
   });
   return f;
 }

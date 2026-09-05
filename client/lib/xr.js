@@ -19,13 +19,14 @@
 
 import { THREE, renderer, camera, scene, XR_BOOT } from './core.js';
 import { CONFIG, report, bus, tee } from './base.js';
-import { stroke } from './icons.js';
-import { xrPanelsEnter, xrPanelsExit, xrPanelsPick } from './xrpanels.js';
+import { stroke, fillPath } from './icons.js';
+import { xrPanelsEnter, xrPanelsExit, xrPanelsPick, showXRPanel, xrPanelHas, xrPanelOpen } from './xrpanels.js';
 import { myState, xrIntent, setCamYaw, setXrProbe } from './controller.js';
 import { entities } from './world.js';
 import { sendVerb } from './net.js';
 import { flashHint, toast } from './ui.js';
-import { registerXrGlyph } from './mictoggle.js';
+import { registerXrGlyph, glyphPinned, micGlyph, earGlyph, xrGlyph, micLive, earOn, flipEar } from './mictoggle.js';
+import { dockPins } from './ui.js';
 import { pushUndo } from './build.js';
 import { perf } from './perf.js';
 import { warm, P_AMBIENT } from './warmqueue.js';
@@ -180,45 +181,68 @@ function releaseGrab() {
 // Every slot is verb-backed — an agent can speak each of these; the ring is
 // just a hand-shaped way to say them. The dock has no body in VR: this ring
 // is the dock, and 'panels' toggles the schema quads xrpanels.js carries.
-const RADIAL = [
-  { icon: 'armchair', label: 'sit', act: () => bus.emit('xr:sit') },
-  { icon: 'personStanding', label: 'stand', act: () => bus.emit('xr:stand') },
-  { icon: 'mic', label: 'mic', act: () => bus.emit('xr:mic') },
-  { icon: 'hand', label: 'wave', act: () => sendVerb('say', { text: '👋' }) },
-  { icon: 'pin', label: 'here?', act: () => sendVerb('say', { text: `I'm at (${myState.pos.x.toFixed(0)}, ${myState.pos.z.toFixed(0)})` }) },
-  { icon: 'tent', label: 'home', act: () => { myState.pos.set(0, 0, 0); flashHint('home'); } },
-  { icon: 'glasses', label: 'panels', act: () => bus.emit('xr:panels') },
-];
-let radial = null;   // {group, slots[], sel}
-function makeRadial() {
+/** The ring IS the dock rendered radially (R, 09-04 22:02): the same pins, in
+ *  the same order, each slot opening that frame's quad. Rebuilt on every open
+ *  so a pin toggled on the desk shows up here. The pinned trio glyphs lead,
+ *  drawn from their own SVGs so the ring and the rail cannot drift; a frame
+ *  with no VR surface yet is still a slot — dim, and honest about it — because
+ *  parity means the gap is visible until the sweep fills it. sit/lie live in
+ *  the emote quad now, not here. */
+function radialEntries() {
+  const out = [];
+  if (glyphPinned('mic')) out.push({ svg: micGlyph(52), label: 'mic', on: micLive, act: () => bus.emit('xr:mic') });
+  if (glyphPinned('ear')) out.push({ svg: earGlyph(52), label: 'ears', on: earOn, act: () => flipEar() });
+  if (glyphPinned('xr')) out.push({ svg: xrGlyph(52), label: 'leave VR', on: () => true, act: () => { try { session?.end?.(); } catch { /* already gone */ } } });
+  for (const e of dockPins()) {
+    const has = xrPanelHas(e.id);
+    out.push({ icon: e.icon, label: e.id, has, on: () => xrPanelOpen(e.id),
+      act: () => { if (has) showXRPanel(e.id); else tee(`[xr] ring: ${e.id} has no VR surface yet`); } });
+  }
+  return out;
+}
+let radial = null;   // {group, slots[], entries[], sel}
+function makeRadial(entries) {
   const group = new THREE.Group();
-  const slots = RADIAL.map((s, i) => {
-    const a = (i / RADIAL.length) * Math.PI * 2 - Math.PI / 2;
+  const N = Math.max(1, entries.length);
+  const slots = entries.map((s, i) => {
+    const a = (i / N) * Math.PI * 2 - Math.PI / 2;
     const cv = document.createElement('canvas'); cv.width = cv.height = 128;
     const g = cv.getContext('2d');
-    // drawn Lucide, never fillText(emoji): that call silently paints NOTHING
-    // on platforms missing the glyph (see icons.js header) — and this canvas
-    // is exactly that trap, discovered live 08-05.
-    g.save(); g.translate(64, 52); g.strokeStyle = '#f2f7f5'; stroke(g, s.icon, 52); g.restore();
+    const open = !!s.on?.();
+    const ink = s.has === false ? 'rgba(242,247,245,.45)' : (open ? '#8fe8c8' : '#f2f7f5');
+    const tex = new THREE.CanvasTexture(cv);
+    // drawn glyphs, never fillText(emoji): that call silently paints NOTHING
+    // on platforms missing the glyph (icons.js header; discovered live 08-05).
+    // Phosphor at the dock's own weights (line at rest, fill when open);
+    // the trio from its own SVG via an Image (async — the texture updates).
+    g.save(); g.translate(64, 52); g.fillStyle = ink; g.strokeStyle = ink;
+    if (s.svg) {
+      const img = new Image();
+      img.onload = () => { g.save(); g.translate(64, 52); g.drawImage(img, -26, -26, 52, 52); g.restore(); tex.needsUpdate = true; };
+      img.src = 'data:image/svg+xml;utf8,' + encodeURIComponent(s.svg);
+    } else if (!fillPath(g, s.icon, 52, open ? 'fill' : 'line')) stroke(g, s.icon, 52);
+    g.restore();
     g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.font = '20px monospace'; g.fillStyle = '#cfe8f5'; g.fillText(s.label, 64, 104);
-    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true }));
+    g.font = '20px monospace'; g.fillStyle = s.has === false ? 'rgba(207,232,245,.45)' : '#cfe8f5'; g.fillText(s.label, 64, 104);
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
     sp.scale.setScalar(0.075);
     sp.position.set(Math.cos(a) * 0.13, Math.sin(a) * -0.13, 0);
     group.add(sp);
     return sp;
   });
-  return { group, slots, sel: -1 };
+  return { group, slots, entries, sel: -1 };
 }
 function openRadial() {
-  if (!radial) radial = makeRadial();
+  // rebuilt every open: the rail is the source of truth and it changes
+  if (radial) { for (const sp of radial.slots) { sp.material.map?.dispose(); sp.material.dispose(); } }
+  radial = makeRadial(radialEntries());
   radial.sel = -1;
   hands.right.ray.add(radial.group);
   radial.group.position.set(0, 0.02, -0.18);
 }
 function closeRadial(commit) {
   if (!radial) return;
-  if (commit && radial.sel >= 0) RADIAL[radial.sel].act();
+  if (commit && radial.sel >= 0) radial.entries[radial.sel]?.act();
   hands.right.ray.remove(radial.group);
   radialOpen = false;
 }
@@ -231,7 +255,7 @@ function aimRadial(x, y) {
   // θ_i for i. (The old form added π/2 instead of subtracting: stick-up
   // picked slot N/2 — R waved at the room for ten minutes, 09-04 23:43.)
   radial.sel = m < 0.45 ? -1 : (() => {
-    const N = RADIAL.length;
+    const N = Math.max(1, radial.entries.length);
     const theta = Math.atan2(-y, x);
     const i = Math.round((Math.PI / 2 - theta) / (Math.PI * 2 / N));
     return ((i % N) + N) % N;
@@ -467,9 +491,10 @@ export async function initXR() {
 
 /** harness window */
 export const xrDebug = () => {
+  const ring = radialEntries().map((e) => ({ label: e.label, has: e.has !== false, on: !!e.on?.() }));
   const gp = new THREE.Vector3();
   hands.right?.grip.getWorldPosition(gp);
-  return {
+  return { ring,
     presenting, held: held?.id ?? null, radialOpen,
     radialSel: radial?.sel ?? null,
     rigYaw: +rig.rotation.y.toFixed(3),
