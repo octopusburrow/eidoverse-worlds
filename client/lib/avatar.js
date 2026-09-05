@@ -2,8 +2,8 @@
 // the small autonomic behaviours that make a puppet read as present (gaze,
 // blink, head pitch, mouth movement while speaking).
 
-import { THREE, scene, camera, renderer } from './core.js';
-import { report, angleDelta, bus } from './base.js';
+import { THREE, scene, camera, renderer, backendName } from './core.js';
+import { report, angleDelta, bus, tee } from './base.js';
 import { defsRegistry } from './defs.js';
 import { measureChain, solveChain } from './reachbone.js';
 import { REACH_CHAINS } from '../../shared/joints.js';
@@ -1985,13 +1985,34 @@ export async function contributeThumbnail(name, vrm, token = '', { force = false
     // readRenderTargetPixelsAsync RETURNS the pixels; its 6th parameter is a
     // texture index, not an output buffer.
     const buf = await renderer.readRenderTargetPixelsAsync(rt, 0, 0, size, size);
+    // A blank readback must never become a portrait: every WebGPU mint on
+    // 09-05 came back all-zero alpha (claude/aletheia/tigerbee.png 0 % opaque)
+    // and overwrote real art. Count opaque pixels; below 2 % skip the POST and
+    // say so on the tee, so the next wear tells us whether the readback works.
+    { let opaque = 0; for (let i = 3; i < size * size * 4; i += 16) if (buf[i] > 10) opaque++;
+      const frac = opaque / (size * size / 4);
+      if (frac < 0.02) { tee(`[thumb] blank readback (${backendName()}) for ${name} — not posted`); rt.dispose(); return; } }
     const c = document.createElement('canvas');
     c.width = c.height = size;
     const ctx = c.getContext('2d');
     const img = ctx.createImageData(size, size);
-    // WebGPU hands back rows already in top-down order — flipping here (the
-    // WebGL habit) produced upside-down portraits.
-    img.data.set(buf.subarray(0, size * size * 4));
+    // Row order depends on the BACKEND: WebGPU hands rows back top-down; WebGL
+    // bottom-up. Flipping unconditionally made WebGPU portraits upside down
+    // (fixed 09-04); flipping never made WebGL ones upside down (R's shot,
+    // 09-05: claude_suit on its head — minted by a WebGL client). So: flip iff
+    // WebGL.
+    if (backendName() === 'webgl') {
+      const row = size * 4;
+      for (let y = 0; y < size; y++) img.data.set(buf.subarray((size - 1 - y) * row, (size - y) * row), y * row);
+    } else {
+      img.data.set(buf.subarray(0, size * size * 4));
+    }
+    // The target holds LINEAR light and a PNG is shown as sRGB — without this
+    // encode the portraits read dark (claude_suit.png: opaque region averaging
+    // ~49/255 under lights that look right in the world). Alpha untouched.
+    { const d = img.data; const lut = new Uint8Array(256);
+      for (let i = 0; i < 256; i++) { const l = i / 255; lut[i] = Math.round(255 * (l <= 0.0031308 ? 12.92 * l : 1.055 * Math.pow(l, 1 / 2.4) - 0.055)); }
+      for (let i = 0; i < d.length; i += 4) { d[i] = lut[d[i]]; d[i + 1] = lut[d[i + 1]]; d[i + 2] = lut[d[i + 2]]; } }
     ctx.putImageData(img, 0, 0);
     rt.dispose();
 

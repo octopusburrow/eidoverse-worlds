@@ -114,17 +114,23 @@ export function setMyAvatarPath(p) { myAvatarPath = p; }
 async function paintAvatars(body) {
   const list = await fetch('/avatars').then((r) => r.json()).catch(() => []);
   body.innerHTML = '';
+  // the door's proven recipe (09-05): dense grid, every card a 3:4 portrait
+  // box whether the image loaded or not — inline styles on the placeholder
+  // used to give it its own size, so cards came out at two sizes (R's shot)
   const grid = document.createElement('div');
-  grid.className = 'grid';
+  grid.className = 'grid dense av-grid';
   for (const { name, path } of list) {
     const card = document.createElement('button');
     card.className = `card panel ${path === myAvatarPath ? 'on' : ''}`;
+    // the portrait BOX sizes the card, never the image: a lazy <img> that has
+    // not loaded (or 404s) has no size, and a card sized by it collapsed —
+    // that was the two-sizes grid. The placeholder sits under the image and
+    // simply shows through until a portrait covers it.
     card.innerHTML =
-      `<img alt="" loading="lazy" src="/thumb/${encodeURIComponent(name)}.png"
-         onerror="this.parentNode.querySelector('.ph').style.display='flex';this.style.display='none'">
-       <div class="ph" style="display:none;width:100%;aspect-ratio:1;align-items:center;
-         justify-content:center;background:rgba(0,0,0,.3);border-radius:4px;font-size:18px">🧍</div>
+      `<div class="av-shot"><div class="ph">🧍</div><img alt="" loading="lazy" src="/thumb/${encodeURIComponent(name)}.png"></div>
        <span>${escapeHtml(name)}</span>`;
+    const img = card.querySelector('img');
+    img.addEventListener('error', () => { img.remove(); });
     card.onclick = () => onSwitchAvatar?.(path, name);
     grid.appendChild(card);
   }
