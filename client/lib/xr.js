@@ -55,6 +55,7 @@ function selfFirstPerson(on) {
   if (av.label) av.label.visible = !on; // your own name is for OTHER eyes
 }
 
+const lastGood = new THREE.Vector3();
 const rig = new THREE.Group();
 rig.name = 'xr-rig';
 let presenting = false;
@@ -322,8 +323,18 @@ export function updateXR() {
   // at north (porch-old :9948, a debugged-for-days bug — not a style choice).
   const me_ = camera.matrixWorld.elements;
   _v.set(-me_[8], -me_[9], -me_[10]);
-  if (_v.lengthSq() < 1e-6) _v.set(0, 0, -1);
-  setCamYaw(Math.atan2(_v.x, _v.z) + Math.PI);
+  // NaN passes `< 1e-6` (every comparison with NaN is false): a frame whose
+  // XR camera matrix is momentarily NaN (tracking loss, the hand-mesh
+  // compile spike) poisoned camYaw → updateMe rotated the move vector by NaN
+  // → myState.pos = [NaN, 0, NaN] → camera.far NaN → three threw in render
+  // (R's recorder, 09-04 23:50). Keep the last good yaw on a bad frame.
+  const yaw = Math.atan2(_v.x, _v.z) + Math.PI;
+  if (Number.isFinite(yaw) && _v.lengthSq() > 1e-6) setCamYaw(yaw);
+
+  // and if a NaN slipped into the body anyway, put it back on the last good
+  // spot rather than let it poison every matrix downstream
+  if (Number.isFinite(myState.pos.x) && Number.isFinite(myState.pos.z)) lastGood.copy(myState.pos);
+  else { tee(`[xr] myState.pos NaN — restored to ${lastGood.x.toFixed(1)},${lastGood.z.toFixed(1)}`); myState.pos.copy(lastGood); }
 
   // sticks → intent (deadzone-with-rescale; snap cooldown — exultation math)
   const L = sourceFor('left')?.gamepad, R = sourceFor('right')?.gamepad;
@@ -391,6 +402,16 @@ export function updateXR() {
 
   // the body moved by THEIR controller code; the rig goes where the body is
   rig.position.set(myState.pos.x, myState.pos.y, myState.pos.z);
+
+  // three pushes camera.near/far into session.updateRenderState every frame
+  // it changes; a non-finite value throws INSIDE render and the headset
+  // freezes (R's tee, 09-04 23:50: "depthFar … non-finite"). Nothing of ours
+  // writes camera.far directly, so restore sane planes and record what was
+  // found — the writer is still being hunted.
+  if (!Number.isFinite(camera.near) || !Number.isFinite(camera.far) || camera.far <= camera.near) {
+    tee(`[xr] camera planes non-finite: near=${camera.near} far=${camera.far} — restored`);
+    camera.near = 0.15; camera.far = 20000; camera.updateProjectionMatrix();
+  }
 
   // FLIGHT RECORDER: one line every 5 s while presenting — numbers where a
   // headset gives adjectives ("janky", "no avatar"). Read it out of the
