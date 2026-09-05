@@ -15,6 +15,7 @@ import { updateSky, updateAutoSystems, skyArgs, setCloudQuality } from './lib/sk
 import { setSkyArgsSource, entities, buildsPending, avatarMounts, roleOf, worldHasOwner } from './lib/world.js';
 import { initProfile } from './lib/profile.js';
 import { presence } from './lib/presence.js';
+import { initDropdowns } from './lib/dropdown.js';
 import { initWorldQuad } from './lib/worldquad.js';
 import { initStylePanel } from './lib/stylepanel.js';
 import { initVideoPanel } from './lib/videopanel.js';
@@ -172,6 +173,7 @@ initDock([
     } },
 ]);
 paintPresence(presence());            // the dot needs the button: after initDock
+initDropdowns();                       // skins every chrome <select>, now and later
 bus.on('presence:me', paintPresence);
 initDebug({
   // the body in your HAND wins over your own — that is the one being worked on
