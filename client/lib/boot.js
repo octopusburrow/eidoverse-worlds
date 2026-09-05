@@ -175,6 +175,7 @@ let raysWorker = null;
 function startLights(el) {
   const cv = el.querySelector('.sp-rays');
   if (!cv || typeof OffscreenCanvas === 'undefined' || !cv.transferControlToOffscreen) return;
+  if (new URLSearchParams(location.search).get('rays') === '0') return;   // A/B: does the splash shader slow the load?
   try {
     const calm = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0.3 : 1;
     cv.width = cv.clientWidth; cv.height = cv.clientHeight;

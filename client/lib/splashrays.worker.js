@@ -7,6 +7,11 @@
 // can dither. Soft vertical rays in the SteamVR key-art manner, two tints,
 // alpha eased from 0 over 1.5 s so it never pops in.
 let gl, prog, uT, uRes, uRamp, uCalm, canvas, t0, raf = 0, calm = 1;
+// COST (09-05 A/B): full-res 60 Hz fbm per pixel added ~9 s to the load on a
+// CPU GL and a visible creep on R's GPU. Caustics are soft by nature: render
+// at 1/3 resolution and 30 Hz; the compositor upscales.
+const RES_DIV = 3, FRAME_MS = 33;
+let lastFrame = 0;
 
 const VS = `#version 300 es
 in vec2 p; void main(){ gl_Position = vec4(p, 0.0, 1.0); }`;
@@ -28,8 +33,10 @@ void main(){
   // bands are broad, and a slow 2-D warp slides the pattern so bands fold
   // over each other instead of drifting rigidly.
   float px = uv.x * res.x / res.y / 3.0;
-  float warp = n2(vec2(px * 1.3 + tt * 0.21, uv.y * 0.9 - tt * 0.13)) - 0.5;
-  float x1 = px + warp * 0.35;
+  // the fold is in x ONLY (R: 'why did it get curved?' — a y-term bent the bands);
+  // two slow 1-D fields slide the pattern so bands still glide over each other
+  float warp = n1(px * 1.3 + tt * 0.21) - 0.5;
+  float x1 = px + warp * 0.35 + 0.08 * sin(tt * 0.6 + px * 2.0);
   float bands = fbm1(x1 * 5.5 + tt * 0.5) * 0.65 + fbm1(x1 * 11.0 - tt * 0.27 + 7.0) * 0.35;
   bands = smoothstep(0.30, 0.72, bands);                    // the fbm's real range
   bands = bands * bands * (3.0 - 2.0 * bands);              // gentle contrast, no hard cores
@@ -47,6 +54,7 @@ void main(){
 
 function init(cv) {
   canvas = cv;
+  cv.width = Math.ceil(cv.width / RES_DIV); cv.height = Math.ceil(cv.height / RES_DIV);
   gl = cv.getContext('webgl2', { alpha: true, premultipliedAlpha: true, antialias: false });
   if (!gl) { postMessage({ type: 'nogl' }); return; }
   const sh = (t, src) => { const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
@@ -62,7 +70,10 @@ function init(cv) {
 }
 let frames = 0;
 function frame() {
-  const t = (performance.now() - t0) / 1000;
+  const now = performance.now();
+  if (now - lastFrame < FRAME_MS) { raf = requestAnimationFrame(frame); return; }
+  lastFrame = now;
+  const t = (now - t0) / 1000;
   const r = Math.min(1, t / 1.5); const ease = r * r * (3 - 2 * r);
   gl.viewport(0, 0, canvas.width, canvas.height);
   gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
@@ -74,7 +85,7 @@ function frame() {
 onmessage = (e) => {
   const m = e.data;
   if (m.type === 'init') { calm = m.calm ?? 1; try { init(m.canvas); } catch (err) { postMessage({ type: 'nogl', err: String(err) }); } }
-  else if (m.type === 'size' && canvas) { canvas.width = m.w; canvas.height = m.h; }
+  else if (m.type === 'size' && canvas) { canvas.width = Math.ceil(m.w / RES_DIV); canvas.height = Math.ceil(m.h / RES_DIV); }
   else if (m.type === 'frames') postMessage({ type: 'frames', n: frames });
   else if (m.type === 'pix' && gl) {   // harness: alpha/rgb stats of a few rows, read straight from the GL framebuffer
     const W = canvas.width, H = canvas.height, rows = [0.03, 0.15, 0.35, 0.6].map((f) => Math.floor(f * H)), out = {};
