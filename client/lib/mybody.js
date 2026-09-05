@@ -4,7 +4,8 @@
 // sites; now there is one owner and everyone else holds the getter. Nothing
 // here may import main.js.
 
-import { CONFIG, bus, report } from './base.js';
+import { CONFIG, bus, report, tee } from './base.js';
+import { releaseBodyGate } from './bodygate.js';
 import { armFlight, folded } from './controller.js';
 import { makeAvatar, contributeThumbnail } from './avatar.js';
 import { setMyAvatarPath, wireAvatarSwitch } from './palette.js';
@@ -90,6 +91,7 @@ let me = null;
 export function getMe() { return me; }
 export function setMe(av) {
   me = av;
+  if (me) { releaseBodyGate('body on screen'); tee(`[body] on screen +${(performance.now() / 1000).toFixed(1)}s`); }
   if (me) me.wingsFolded = folded();
   armFlightFor(av);
 }

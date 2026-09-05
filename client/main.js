@@ -8,6 +8,7 @@
 // consent.js, voice mouths in voicemouths.js, /commands in lib/commands/.
 
 import { THREE, scene, camera, renderer } from './lib/core.js';
+import { releaseBodyGate } from './lib/bodygate.js';
 import { CONFIG, bus, report } from './lib/base.js';
 import { contributeThumbnail, makeAvatar, EMOTE_ORDER } from './lib/avatar.js';
 import { updateSky, updateAutoSystems, skyArgs, setCloudQuality } from './lib/sky.js';
@@ -185,6 +186,7 @@ initDebug({
 // server (correctly) calls this person by their Discord name.
 await initIdentity();
 
+if (isViewer) releaseBodyGate('viewer — no body expected');
 if (isViewer) {
   panelFrame().hide();
   markPhase('body', 1);
@@ -292,7 +294,7 @@ function start() {
         // (§16.1g). Calm = 5 smooth seconds with no load work in flight.
         whenCalm().then(() => contributeThumbnail(getMyAvatarName(), av.vrm, CONFIG.token));
       })
-      .catch((e) => { markPhase('body', 1); report('avatar', e); });
+      .catch((e) => { markPhase('body', 1); report('avatar', e); releaseBodyGate('body failed — the world must not wait'); });
   }
 }
 
