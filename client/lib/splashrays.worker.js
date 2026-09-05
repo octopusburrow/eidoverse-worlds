@@ -22,37 +22,26 @@ float n2(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(h2(i), h2(i + vec2(1, 0)), f.x), mix(h2(i + vec2(0, 1)), h2(i + vec2(1, 1)), f.x), f.y); }
 void main(){
   vec2 uv = gl_FragCoord.xy / res;            // (0,0) bottom-left
-  float aspect = res.x / res.y;
-  // BEAMS: light from a source below the frame. Everything is polar about it,
-  // so shafts are narrow near the ground and widen as they rise — the
-  // geometry of light scattering up, not a bell.
-  vec2 src = vec2(0.5, -0.55);
-  vec2 d = vec2((uv.x - src.x) * aspect, uv.y - src.y);
-  float r = length(d);
-  float ang = atan(d.x, d.y);                  // 0 = straight up
-  float tt = t * calm;
-  // many thin shafts of varying brightness: fbm over angle, drifting VISIBLY
-  // (a full pattern period every ~12 s) plus a slower counter-drift layer
-  float shafts = fbm1(ang * 9.0 + tt * 0.5) * 0.7 + fbm1(ang * 23.0 - tt * 0.31 + 7.0) * 0.3;
-  shafts = pow(smoothstep(0.22, 1.0, shafts), 1.2);      // wide ramp: soft shaft edges
-  // light TRAVELLING up the shafts: low-frequency noise scrolling along r
-  float travel = 0.75 + 0.25 * n1(r * 6.0 - tt * 0.9 + ang * 3.0);
-  // falloff with height (in uv, so it reads the same at every aspect)
-  float fall = smoothstep(0.78, 0.0, uv.y); fall *= fall;
-  // a soft haze so the beams sit in atmosphere rather than on black
-  float haze = n2(vec2(uv.x * 3.0 + tt * 0.05, uv.y * 2.0 - tt * 0.08)) * 0.35 + 0.25;
+  float tt = t * calm * 0.4;                   // R: 0.3–0.5× the first cut
+  // VERTICAL beams (R: straight up/down): the shaft pattern is a 1-D fbm over
+  // x, drifting slowly; a second, finer layer counter-drifts for shimmer
+  float px = uv.x * res.x / res.y;             // aspect-true so shaft widths don't stretch
+  float shafts = fbm1(px * 5.5 + tt * 0.5) * 0.7 + fbm1(px * 14.0 - tt * 0.31 + 7.0) * 0.3;
+  shafts = pow(smoothstep(0.30, 0.72, shafts), 1.4);   // the fbm actually spans 0.13–0.76 (mean 0.46): map ITS range, or everything is black
+  // brighter shafts reach farther (R): each column's top is set by ITS
+  // brightness — dim ones die low, the brightest reach ~0.75 of the frame
+  float top = 0.15 + 0.60 * shafts;
+  float fall = pow(smoothstep(top, 0.0, uv.y), 1.5);
+  // light travelling up the shaft, slowly
+  float travel = 0.8 + 0.2 * n1(uv.y * 5.0 - tt * 0.9 + px * 3.0);
   float beam = shafts * travel * fall;
-  float glow = haze * fall * 0.35;
-  vec3 brand = vec3(0.561, 0.910, 0.784), deep = vec3(0.22, 0.52, 0.47);
-  vec3 col = mix(deep, brand, clamp(beam * 1.4, 0.0, 1.0));
-  float a = clamp(beam * 0.24 + glow * 0.14, 0.0, 0.45) * ramp;
-  // DITHER, properly: triangular-distributed noise (two hashes summed), ±1
-  // level, applied in LINEAR light, then the value is encoded to sRGB — so the
-  // dark end, where 8-bit steps are coarsest to the eye, gets the most help.
+  // no haze layer, no second tint (R: washed out) — the colour is the brand at
+  // every brightness; only alpha varies
+  vec3 brand = vec3(0.561, 0.910, 0.784);
+  float a = clamp(beam * 0.34, 0.0, 0.5) * ramp;
   float n = (h2(gl_FragCoord.xy + fract(tt) * 13.0) + h2(gl_FragCoord.xy * 1.7 + fract(tt * 0.7) * 29.0) - 1.0) / 255.0;
-  vec3 lin = col * a;
-  vec3 enc = pow(max(lin, 0.0), vec3(1.0 / 2.2)) + n;
-  o = vec4(enc, a + n);                        // premultiplied
+  vec3 enc = pow(max(brand * a, 0.0), vec3(1.0 / 2.2)) + n;
+  o = vec4(enc, a + n);
 }`;
 
 function init(cv) {
@@ -86,5 +75,12 @@ onmessage = (e) => {
   if (m.type === 'init') { calm = m.calm ?? 1; try { init(m.canvas); } catch (err) { postMessage({ type: 'nogl', err: String(err) }); } }
   else if (m.type === 'size' && canvas) { canvas.width = m.w; canvas.height = m.h; }
   else if (m.type === 'frames') postMessage({ type: 'frames', n: frames });
+  else if (m.type === 'pix' && gl) {   // harness: alpha/rgb stats of a few rows, read straight from the GL framebuffer
+    const W = canvas.width, H = canvas.height, rows = [0.03, 0.15, 0.35, 0.6].map((f) => Math.floor(f * H)), out = {};
+    for (const y of rows) { const px = new Uint8Array(W * 4); gl.readPixels(0, y, W, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      let maxA = 0, sumA = 0, maxG = 0; for (let i = 0; i < W; i++) { const a = px[i * 4 + 3]; sumA += a; if (a > maxA) maxA = a; if (px[i * 4 + 1] > maxG) maxG = px[i * 4 + 1]; }
+      out[`y=${(y / H).toFixed(2)}`] = { maxA, meanA: +(sumA / W).toFixed(1), maxG }; }
+    postMessage({ type: 'pix', size: [W, H], t: (performance.now() - t0) / 1000, ...out });
+  }
   else if (m.type === 'stop') { cancelAnimationFrame(raf); close(); }
 };
