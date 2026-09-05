@@ -22,23 +22,24 @@ float n2(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(h2(i), h2(i + vec2(1, 0)), f.x), mix(h2(i + vec2(0, 1)), h2(i + vec2(1, 1)), f.x), f.y); }
 void main(){
   vec2 uv = gl_FragCoord.xy / res;            // (0,0) bottom-left
-  float tt = t * calm * 0.4;                   // R: 0.3–0.5× the first cut
-  // VERTICAL beams (R: straight up/down): the shaft pattern is a 1-D fbm over
-  // x, drifting slowly; a second, finer layer counter-drifts for shimmer
-  float px = uv.x * res.x / res.y;             // aspect-true so shaft widths don't stretch
-  float shafts = fbm1(px * 5.5 + tt * 0.5) * 0.7 + fbm1(px * 14.0 - tt * 0.31 + 7.0) * 0.3;
-  shafts = pow(smoothstep(0.30, 0.72, shafts), 1.4);   // the fbm actually spans 0.13–0.76 (mean 0.46): map ITS range, or everything is black
-  // brighter shafts reach farther (R): each column's top is set by ITS
-  // brightness — dim ones die low, the brightest reach ~0.75 of the frame
-  float top = 0.15 + 0.60 * shafts;
-  float fall = pow(smoothstep(top, 0.0, uv.y), 1.5);
-  // light travelling up the shaft, slowly
-  float travel = 0.8 + 0.2 * n1(uv.y * 5.0 - tt * 0.9 + px * 3.0);
-  float beam = shafts * travel * fall;
-  // no haze layer, no second tint (R: washed out) — the colour is the brand at
-  // every brightness; only alpha varies
+  float tt = t * calm * 0.22;                  // slow, oily (R: 0.4× was still too quick)
+  // CAUSTICS (R, 15:01): light diffracting onto a wall from under water —
+  // wide, slow, folding bands; no tips. The x axis is scaled DOWN 3× so
+  // bands are broad, and a slow 2-D warp slides the pattern so bands fold
+  // over each other instead of drifting rigidly.
+  float px = uv.x * res.x / res.y / 3.0;
+  float warp = n2(vec2(px * 1.3 + tt * 0.21, uv.y * 0.9 - tt * 0.13)) - 0.5;
+  float x1 = px + warp * 0.35;
+  float bands = fbm1(x1 * 5.5 + tt * 0.5) * 0.65 + fbm1(x1 * 11.0 - tt * 0.27 + 7.0) * 0.35;
+  bands = smoothstep(0.30, 0.72, bands);                    // the fbm's real range
+  bands = bands * bands * (3.0 - 2.0 * bands);              // gentle contrast, no hard cores
+  // heights come from their OWN slow field, not from brightness — so bands
+  // end in soft shoulders at different heights, never a point
+  float top = 0.30 + 0.40 * n1(px * 2.2 + tt * 0.17 + 3.0);
+  float fall = smoothstep(top, top * 0.15, uv.y);           // flat near the ground, soft shoulder at the top
+  float beam = bands * fall;
   vec3 brand = vec3(0.561, 0.910, 0.784);
-  float a = clamp(beam * 0.34, 0.0, 0.5) * ramp;
+  float a = clamp(beam * 0.17, 0.0, 0.25) * ramp;           // R: half the alpha
   float n = (h2(gl_FragCoord.xy + fract(tt) * 13.0) + h2(gl_FragCoord.xy * 1.7 + fract(tt * 0.7) * 29.0) - 1.0) / 255.0;
   vec3 enc = pow(max(brand * a, 0.0), vec3(1.0 / 2.2)) + n;
   o = vec4(enc, a + n);
