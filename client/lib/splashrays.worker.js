@@ -35,9 +35,9 @@ void main(){
   // still dithered, so the dark ramp has no bands.
   float tt = t * calm;
   float breath = 0.775 + 0.225 * sin(tt * 0.9);
-  float fall = smoothstep(0.45, 0.0, uv.y); fall *= fall;
+  float fall = smoothstep(0.42, 0.0, uv.y);              // the ORIGINAL CSS gradient shape (R preferred it): linear-ish, gone by ~0.4
   vec3 brand = vec3(0.561, 0.910, 0.784);
-  float a = fall * 0.16 * breath * ramp;
+  float a = fall * 0.075 * breath * ramp;               // R: subtle, half again
   float n = (h2(gl_FragCoord.xy + fract(tt) * 13.0) + h2(gl_FragCoord.xy * 1.7 + fract(tt * 0.7) * 29.0) - 1.0) / 255.0;
   vec3 enc = pow(max(brand * a, 0.0), vec3(1.0 / 2.2)) + n;
   o = vec4(enc, a + n);
