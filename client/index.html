@@ -42,6 +42,8 @@
   --brand-deep: color-mix(in srgb, var(--brand) 84%, #1a2a28);  /* the ∃ at rest when live */
   --attn:      #ffc46b;   /* THE attention amber — the only one */
   --err:       #ff8f8f;
+  --ok:        var(--brand);            /* 'running / fine' — the brand, never a third green */
+  --ink-on-brand: #0f2024;               /* dark ink for text/edges drawn ON a brand-filled chip */
   /* legacy aliases — keep working, point at roles */
   --accent:    var(--attn);
   --accent-dk: #382a1a;
@@ -66,7 +68,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); }
 /* Cursors stay native except the loupe: ui.js generates an SVG loupe tinted
    by the LIVE --brand (CSS url() can't read vars) and publishes it as
    --cur-loupe; the rule falls back to the native cursor until then. */
-button, .btn, select, a, label, .mrow, .mpin, .dbg-row, .pf-row, .card,
+button, .btn, select, a, label, .mrow, .mpin, .dbg-row, .ps-row, .card,
 .ac-row, .chat-gear, .fr-btn, .sec > .head, .chat-tabs button, .pf-tile,
 .chat-side-tog, .sp-skip { cursor: pointer; }
 body.loupe-on canvas { cursor: var(--cur-loupe, crosshair); }
@@ -122,14 +124,14 @@ button:active { transform: translateY(1px); }
    the label with the base button's own padding and shares the row
    (no per-menu handrolling; one fallback). Use `<div class="row btn-row">`. */
 .btn-row { display: flex; gap: 6px; }
-.btn-row > button { flex: 1; text-align: center; padding: 5px 8px; }
+.btn-row > button { flex: 1; max-width: 12rem; text-align: center; padding: 5px 8px; }   /* capped: a wide frame must not stretch buttons out of proportion (R, 09-04) */
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 input:focus-visible, textarea:focus-visible { outline: 1px solid var(--edge-hi); }
 button.on { background: var(--hov); border-color: var(--edge-hi); color: var(--fg); }
 /* unshared local changes are pending until committed */
 button.dirty { border-color: var(--warn); color: var(--warn); }
 
-input[type=text], input[type=search], input:not([type]) {
+input[type=text], input[type=search], input[type=number], input:not([type]) {
   font: var(--fs-sm) var(--font);
   color: var(--fg);
   background: var(--well);
@@ -141,7 +143,27 @@ input::placeholder { color: var(--dim); }
 select {
   font: 11px var(--font); background: var(--well); color: var(--fg);
   border: 1px solid var(--edge); border-radius: 5px; padding: 5px;
+  max-width: 100%; min-width: 0;   /* never wider than its row (video panel clipped at the frame edge, R 09-04) */
+  /* the popup list is the OS's: color-scheme dark makes Chrome/Edge draw it dark
+     instead of white-with-a-blue-bar; option colors follow the panel. The hover
+     bar inside a native popup stays the OS's — a house dropdown would need a
+     custom control (R, 09-04) */
+  color-scheme: dark;
 }
+select option { background: rgb(var(--panel-rgb)); color: var(--fg); }
+select option:checked { background: color-mix(in srgb, var(--brand) 55%, rgb(var(--panel-rgb))); color: var(--ink-on-brand); }   /* pale highlight → DARK text (R, 09-04) */
+input[type=checkbox] { accent-color: var(--control); }
+input[type=color] {
+  width: 26px; height: 20px; padding: 0; cursor: pointer; background: none;
+  border: 1px solid var(--edge-hi); border-radius: 4px;
+}
+input[type=color]::-webkit-color-swatch-wrapper { padding: 0; }
+input[type=color]::-webkit-color-swatch { border: none; border-radius: 3px; }
+input[type=color]::-moz-color-swatch { border: none; border-radius: 3px; }
+/* links: brand ink, quiet underline — the browser's blue was the one thing on
+   screen outside the scheme (R, 09-04: "open orrery" in Conjure) */
+a { color: var(--brand); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--brand) 40%, transparent); text-underline-offset: 2px; }
+a:hover { color: var(--fg); text-decoration-color: var(--brand); }
 
 
 /* ============================================================ splash
@@ -167,15 +189,27 @@ select {
   width: 200px; height: 210px; transform: scale(.5); transform-origin: center;
   margin: -52px 0; color: var(--brand); overflow: visible;
 }
-.sp-logo path { transition: transform .45s cubic-bezier(.22,.9,.3,1.04); will-change: transform; }
+.sp-logo path { transition: transform .55s cubic-bezier(.22,.9,.3,1.04), opacity .55s ease; will-change: transform, opacity; }
 #splash.gone .sp-logo { filter: drop-shadow(0 0 26px rgb(143 232 200 / .55)); transition: filter .3s ease-out; }
 #splash.gone .sp-mark { color: #d9fff1; }
-/* assembly driven by --spp (0..1): pieces drift apart when nothing has
-   arrived, settle into register as the world loads; the arm slides through
-   the parted spine last. The mark assembling IS the progress display. */
-.sp-logo .pc-top { transform: translate(calc((1 - var(--spp,0)) *  7%), calc((1 - var(--spp,0)) * -11%)); }
-.sp-logo .pc-arm { transform: translateX(calc((1 - var(--spp,0)) * -34%)); }  /* starts clear of the body — it SPEARS in */
-.sp-logo .pc-bot { transform: translate(calc((1 - var(--spp,0)) *  7%), calc((1 - var(--spp,0)) *  11%)); }
+/* all three parts hold ONE tint throughout — the dimmed-while-apart read as an
+   error, not a gesture (R, 09-04); the motion alone carries the assembly.
+   assembly driven by --spp (0..1), in two beats so every frame reads as a
+   gesture, not a glitch: the brackets settle first (0→.6) — tilted and a
+   little dim while apart, upright and full when in register — and only then
+   does the arm spear through the parted spine (.6→1). Before, all three
+   moved together over a few percent and the arm's half-way frames poked out
+   past the spine. The mark assembling IS the progress display. */
+.sp-logo { --br: clamp(0, calc(var(--spp, 0) / .6), 1); --ar: clamp(0, calc((var(--spp, 0) - .6) / .4), 1); }
+.sp-logo .pc-top { transform: translate(calc((1 - var(--br)) * 12%), calc((1 - var(--br)) * -18%)) rotate(calc((1 - var(--br)) * -6deg)); transform-origin: 50% 50%; }
+.sp-logo .pc-bot { transform: translate(calc((1 - var(--br)) * 12%), calc((1 - var(--br)) *  18%)) rotate(calc((1 - var(--br)) *  6deg)); transform-origin: 50% 50%; }
+.sp-logo .pc-arm { transform: translateX(calc((1 - var(--ar)) * -46%)); }
+/* a slow breath while we wait: a stalled load must still look alive. It used
+   to be a radial glow under the mark ("a little 2005" — R, 09-04); now the
+   mark itself breathes, faintly, in opacity alone. Stops the moment the splash goes. */
+.sp-logo-wrap { position: relative; display: grid; place-items: center; }
+#splash:not(.gone) .sp-logo-wrap { animation: sp-breathe 3.4s ease-in-out infinite; }
+@keyframes sp-breathe { 0%, 100% { opacity: .82; } 50% { opacity: 1; } }
 .sp-mark {
   font-size: 26px; letter-spacing: .34em; color: var(--brand); opacity: .9;
   text-transform: lowercase; font-weight: 500; margin-left: .34em; /* recenter over tracking */
@@ -263,6 +297,7 @@ select {
 /* scrollbars sit a couple px in from the frame edge so the scroll thumb and
    the edge-resize band don't fight over the same column */
 .frame .fr-body { padding-right: 6px; }
+.frame .fr-body:has(> .tiles.fixed) { padding: 7px; }   /* tile bodies pad EVENLY — the right-only scrollbar room read as a lopsided gutter (R, 09-04) */
 .frame.flash { animation: flash 1.4s ease-out; }
 @keyframes flash {
   0%, 100% { border-color: var(--edge); }
@@ -281,7 +316,12 @@ select {
 .chat-side-tog:hover { color: var(--fg); background: rgb(255 255 255 / .05); }
 .chat-side { flex: none; display: flex; flex-direction: column; position: relative; min-height: 0; }
 .chat-side.closed { display: none; }
-.chat-side-grip { position: absolute; left: -4px; top: 0; bottom: 0; width: 8px; cursor: ew-resize; z-index: 2; }
+/* the grip straddles the LINE you can see (the toggler's border, between the log
+   and the 14px strip) — it used to sit on the strip's far side, invisible (R, 09-04) */
+.chat-side-grip { position: absolute; left: calc(-14px - 4px); top: 0; bottom: 0; width: 8px; cursor: ew-resize; z-index: 3; }
+/* the affordance is the LINE itself, not a band: a 1px stroke that turns brand under the pointer */
+.chat-side-grip::before { content: ''; position: absolute; left: 4px; top: 0; bottom: 0; width: 1px; background: transparent; }
+.chat-side-grip:hover::before, .chat-side-grip:active::before { background: var(--brand); }
 .chat-side-list { flex: 1; overflow-y: auto; padding: 6px 8px; }
 .chat-side-list .who-row { display: flex; justify-content: space-between; gap: 8px; padding: 1px 0; font-size: var(--fs-sm); }
 .chat-side-list .who-row .d { color: var(--dim); }
@@ -289,6 +329,7 @@ select {
 .chat-side-head { flex: none; padding: 6px 8px 2px; font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
 .chat-cols.side-left { flex-direction: row-reverse; }
 .chat-cols.side-left .chat-side-tog { border-left: none; border-right: 1px solid var(--edge); }
+.chat-cols.side-left .chat-side-grip { left: auto; right: calc(-14px - 4px); }
 .chat-cols.side-left .chat-side-grip { left: auto; right: -4px; }
 .chat-tabs .chat-gear {
   flex: none; margin-left: 2px; padding: 3px 6px;
@@ -355,7 +396,7 @@ select {
   z-index: 3; font-size: 10.5px; padding: 3px 10px; border-radius: 11px;
   background: var(--accent-dk); border-color: var(--edge-hi); color: var(--accent);
 }
-.chat-jump.ping { background: #4a3a18; border-color: var(--ping); color: var(--ping); }
+.chat-jump.ping { background: var(--accent-dk); border-color: var(--ping); color: var(--ping); }
 
 .chat-compose { position: relative; padding: 6px; flex: none; }
 .chat-compose input { width: 100%; box-sizing: border-box; font-size: var(--fs); }
@@ -393,7 +434,13 @@ select {
 }
 .sec > .head svg { flex: none; opacity: .8; color: var(--icon); }
 .sec > .head:hover { background: var(--hov); }
-.sec.open > .head { background: rgb(255 255 255 / 0.05); font-weight: 600; color: color-mix(in srgb, var(--brand) 35%, var(--fg)); }
+.sec.open > .head {
+  position: relative; background: rgb(255 255 255 / 0.05); font-weight: 600;
+  color: color-mix(in srgb, var(--brand) 35%, var(--fg));
+}
+.sec.open > .head svg { opacity: 1; color: var(--brand); }
+/* no left bar on an extended section: R saw it first on Debug and it is not the panels' convention (09-04) — the brand icon + lifted body edge carry 'extended' */
+.sec.open > .body { border-color: var(--edge-hi); }
 .sec > .body {
   display: none; flex-direction: column; gap: 4px;
   padding: 6px; max-height: 44vh; overflow-y: auto;
@@ -405,7 +452,7 @@ select {
 .dbg-sec { margin-top: 4px; }
 .dbg-sec > .head { display: flex; align-items: center; gap: 7px; padding: 5px 8px; color: var(--dim); }
 .dbg-sec.open > .head { color: color-mix(in srgb, var(--brand) 35%, var(--fg)); }
-.dbg-sec .dbg-arrow { font-size: 9px; width: 9px; color: var(--icon); flex: none; }
+.dbg-sec .dbg-arrow { font-size: 13px; width: 13px;   /* was 9: "teensy, very hard to see" (R, 09-04) */ color: var(--icon); flex: none; }
 /* panel content hierarchy: heads = fg with brand-whisper glyphs,
    body copy = dim; outlined buttons hug their text, never stretch the column */
 .sec > .body { color: var(--dim); }
@@ -440,43 +487,47 @@ select {
 .card.on { background: var(--accent-dk); border-color: var(--edge-hi); }
 
 .row { display: flex; align-items: center; gap: 7px; font-size: var(--fs-sm); color: var(--dim); }
-.row .nm { width: 42px; flex: none; color: var(--fg); }
-.row input[type=range] { flex: 1; accent-color: var(--control); min-width: 0;
+/* min-widths, not fixed: 'sweepPhase' overran a 42px label and '0.29411' a 34px readout (R, 09-04) */
+.row .nm { min-width: 42px; max-width: 40%; flex: none; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+input[type=range] { flex: 1; accent-color: var(--control); min-width: 0;
   appearance: none; -webkit-appearance: none; height: 14px; background: none; }
 /* the track joins the theme: bright-filled to the thumb, accent-flavored
    dark well after it (the value must read at a glance). WebKit has no
-   native progress fill on custom tracks, so ui.js paints --p per input. */
-.row input[type=range] { --p: 50%; }
-.row input[type=range]::-webkit-slider-runnable-track {
-  height: 4px; border-radius: 2px;
+   native progress fill on custom tracks, so ui.js paints --p per input.
+   Un-scoped from .row on 09-04: Scene's sliders live outside a .row and were browser-default (R). */
+input[type=range] { --p: 50%; }
+/* no transition on the track: its --p gradient stop would ANIMATE on release,
+   fading the dark half up and back for a beat (R, 09-04). Chunkier + round ends. */
+input[type=range], input[type=range]::-webkit-slider-runnable-track, input[type=range]::-webkit-slider-thumb { transition: none; }
+input[type=range]::-webkit-slider-runnable-track {
+  height: 6px; border-radius: 999px;
   background: linear-gradient(to right,
     var(--control) 0 var(--p),
     color-mix(in srgb, var(--control) 14%, rgb(255 255 255 / .07)) var(--p) 100%);
-  /* dark outline so the bar stays legible over a bright surface */
-  border: 1px solid rgb(0 0 0 / .55);
-  box-shadow: inset 0 1px 1px rgb(0 0 0 / .45);
+  /* no border: the 'legibility' ring read as a gray outline on our dark panels
+     (R, 09-04); the well after the thumb is the contrast */
+  border: none; box-shadow: none;
 }
-.row input[type=range]::-webkit-slider-thumb {
-  -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%;
-  background: var(--control); margin-top: -5px;
-  border: 1px solid rgb(0 0 0 / .55);
-  box-shadow: 0 1px 3px rgb(0 0 0 / .55);
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%;
+  background: var(--control); margin-top: -4px;
+  border: none;
+  box-shadow: 0 1px 3px rgb(0 0 0 / .45);
 }
-.row input[type=range]:hover::-webkit-slider-thumb { background: color-mix(in srgb, var(--control) 78%, white); }
-.row input[type=range]:disabled::-webkit-slider-thumb { background: color-mix(in srgb, var(--control) 40%, #555); }
-.row input[type=range]::-moz-range-track {
-  height: 4px; border-radius: 2px;
+input[type=range]:hover::-webkit-slider-thumb { background: color-mix(in srgb, var(--control) 78%, white); }
+input[type=range]:disabled::-webkit-slider-thumb { background: color-mix(in srgb, var(--control) 40%, #555); }
+input[type=range]::-moz-range-track {
+  height: 6px; border-radius: 999px;
   background: color-mix(in srgb, var(--control) 14%, rgb(255 255 255 / .07));
-  border: 1px solid rgb(0 0 0 / .55);
 }
-.row input[type=range]::-moz-range-progress { height: 4px; border-radius: 2px; background: var(--control); }
-.row input[type=range]::-moz-range-thumb {
+input[type=range]::-moz-range-progress { height: 6px; border-radius: 3px; background: var(--control); }
+input[type=range]::-moz-range-thumb {
   width: 12px; height: 12px; border: 1px solid rgb(0 0 0 / .55); border-radius: 50%; background: var(--control);
 }
 /* a YIELDED slider (sky time under real-clock, basic-only knobs under the
    detailed sky) keeps the house hue, dimmed — the UA's disabled range
    painted stark white against every teal sibling */
-.row input[type=range]:disabled { accent-color: color-mix(in srgb, var(--control) 40%, #555); opacity: .5; }
+input[type=range]:disabled { accent-color: color-mix(in srgb, var(--control) 40%, #555); opacity: .5; }
 /* Checkboxes take the same accent as the sliders — seafoam fill, UA-contrast
    (black) tick when checked. This existed via accent-color when the audio
    panel first spent the house palette, and fell out of the selector when the
@@ -494,10 +545,10 @@ select {
 .row input[type=checkbox]:checked { background: var(--brand); border-color: var(--brand); }
 .row input[type=checkbox]:checked::before {
   content: ''; width: 8px; height: 5px; margin-top: -2px;
-  border-left: 2px solid #0f2024; border-bottom: 2px solid #0f2024;
+  border-left: 2px solid var(--ink-on-brand); border-bottom: 2px solid var(--ink-on-brand);
   transform: rotate(-45deg);
 }
-.row .v { width: 34px; flex: none; text-align: right; color: var(--dim); }
+.row .v { min-width: 34px; flex: none; text-align: right; color: var(--dim); font-variant-numeric: tabular-nums; }
 
 /* 🔴 .row.wide — the SAME row, for panels whose labels are sentences.
    (Reuse the existing class: the audio panel once carried 40 lines of
@@ -509,8 +560,19 @@ select {
    a sentence — and inherits gap, font-size and colour from .row itself, so it
    CANNOT drift again. Everything else (range accent, .v readout, .nm colour)
    already comes from the rules above and needs no duplicate. */
-.row.wide { display: grid; grid-template-columns: var(--row-label-col, 8.5rem) minmax(0, 1fr); }
-.row.wide > .nm { width: auto; text-align: right; line-height: 1.25; }
+/* 🔴 THE ROW RULE (R, 09-04: "stop making people guess"). Labels are LEFT-aligned
+   everywhere in a FIXED, not-very-wide column (7rem) and WRAP if they must; the
+   control sits right beside the label (start of its cell), never pushed to the
+   far edge of a wide frame. .row = short label (42px) + slider + readout;
+   .row.wide = label + one control; .btn-row = buttons, each capped at 12rem.
+   No private layout rules anywhere. */
+.row.wide { display: grid; grid-template-columns: var(--row-label-col, 7rem) minmax(0, 1fr); align-items: center; }
+.row.wide > .nm { width: auto; max-width: none; overflow: visible; text-align: left; line-height: 1.25; white-space: normal; }
+/* selects stay compact and start-aligned; the CONTROL CELL stretches so a slider
+   or meter inside fills the row (Audio's did not — .ctl had been swept into the
+   12rem cap by a bad edit; R 09-04) */
+.row.wide > select, .row.wide .ctl > select { max-width: 12rem; justify-self: start; }
+.row.wide > .ctl { justify-self: stretch; display: flex; align-items: center; gap: 6px; min-width: 0; }
 /* a label + a bare control still lines up: the control owns the whole second
    column, left-justified against the centre line */
 .row.wide > input[type=checkbox] { justify-self: start; }
@@ -538,11 +600,14 @@ select {
   color: var(--brand); border: none; cursor: pointer; background: none; box-shadow: none;
 }
 #dock #hud.emark { color: var(--dim); }                             /* local only */
-#dock #hud.emark.net-live { color: var(--brand-deep); }                        /* connected — subtle green-blue */
-#dock #hud.emark.net-live:hover { color: color-mix(in srgb, var(--brand) 70%, white); }
+#dock #hud.emark.net-live { color: var(--brand); }   /* connected — FULL accent at rest: it is the logo, not a menu item (R, 09-04) */
+#dock #hud.emark:hover, #dock #hud.emark.net-live:hover { color: var(--fg); }   /* hover = white, like the rail's buttons (R, 09-04) */
 #dock #hud.emark.net-wait { color: var(--dim); animation: netpulse 2.6s ease-in-out infinite; }  /* trying */
+/* arranging (menu-edit) mode: hovering the E or a button still goes white —
+   the affordance must survive the mode (R, 09-04) */
+body.arranging #dock #hud.emark:hover, body.arranging #dock button:not(.dock-grip):hover { color: var(--fg) !important; }
 body.arranging #dock #hud.emark {
-  color: #0f2024; background: var(--brand-deep); border-radius: 8px; animation: none;  /* inverted: you're holding the chrome */
+  color: var(--ink-on-brand); background: var(--brand-deep); border-radius: 8px; animation: none;  /* inverted: you're holding the chrome */
 }
 #hud.emark.editing::after {
   content: ''; position: absolute; right: 5px; top: 5px; width: 7px; height: 7px;
@@ -657,6 +722,13 @@ body.edit-mode::after {
 #loading { padding: 7px 10px; font-size: var(--fs-sm); color: var(--warn); white-space: pre; display: none; }
 #loading.on { display: block; }
 #toasts { display: flex; flex-direction: column; gap: 5px; align-items: flex-end; }
+/* floating chrome carries a thin outline so it separates from whatever the
+   world is drawing behind it (R, 09-04): toasts, hint bar, chat gear pop, hud pops */
+.toast, #hintbar, .chat-gearpop, .hud-pop, #tipchip {
+  outline: 1px solid var(--edge-hi); outline-offset: -1px;
+  /* and fully OPAQUE — readable over anything the world draws (R, 09-04) */
+  background: rgb(var(--panel-rgb)); backdrop-filter: none; -webkit-backdrop-filter: none;
+}
 .toast {
   padding: 7px 10px; font-size: var(--fs-sm); max-width: 100%;
   border-left: 3px solid var(--dim); white-space: pre-wrap; word-break: break-word;
@@ -695,8 +767,12 @@ body.arranging #dock .dock-grip { display: grid; }
 #dock button:not(.dock-grip) {
   display: grid; place-items: center; width: 34px; height: 34px; padding: 0;
   font-size: 11px;   /* label-fallback buttons (entries with no fill icon) */
+  /* OFF wears exactly what a collapsed World-menu row wears: --icon (the
+     desaturated brand) at .8 — same recipe as `.sec > .head svg` (R, 09-04) */
   color: var(--icon); background: none; border: none; box-shadow: none; border-radius: 7px;
 }
+#dock button:not(.dock-grip):not(.on) svg { opacity: .8; }
+#dock button:not(.dock-grip):hover svg, #dock button.on svg { opacity: 1; }
 #dock button:not(.dock-grip):hover { color: var(--fg); background: var(--hov); }
 /* The ON look must not be loud or distracting, and quieting it moves OFF
    too, so both are drawn together; the ∃ mark is untouched.
@@ -718,11 +794,11 @@ body.arranging #dock .dock-grip { display: grid; }
   content: ''; position: absolute; border-radius: 2px;
   background: var(--brand); opacity: .9;
   /* default (rail welded left / floating top-left): bar on the RIGHT edge */
-  top: 7px; bottom: 7px; right: -3px; width: 2px;
+  top: 7px; bottom: 7px; right: -3px; width: 1.5px;   /* a smidge thinner than 2 (R, 09-04) */
 }
 #dock[data-edge="right"]  button.on::before { right: auto; left: -3px; }
-#dock[data-edge="top"]    button.on::before { top: auto; right: 7px; left: 7px; bottom: -3px; width: auto; height: 2px; }
-#dock[data-edge="bottom"] button.on::before { bottom: auto; right: 7px; left: 7px; top: -3px; width: auto; height: 2px; }
+#dock[data-edge="top"]    button.on::before { top: auto; right: 7px; left: 7px; bottom: -3px; width: auto; height: 1.5px; }
+#dock[data-edge="bottom"] button.on::before { bottom: auto; right: 7px; left: 7px; top: -3px; width: auto; height: 1.5px; }
 #dock button.on:hover {
   color: color-mix(in srgb, var(--brand) 45%, white);
   background: color-mix(in srgb, var(--brand) 10%, var(--hov));
@@ -748,16 +824,27 @@ button.keybtn:active { box-shadow: inset 0 1px 3px rgb(0 0 0 / .6); }
 .pf-who > b { font-size: 17px; font-weight: 650; }
 .pf-who > span { color: var(--dim); font-size: var(--fs-sm); }
 .pf-who > span b { color: var(--fg); font-weight: 550; }
-.pf-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; flex: 1; min-height: 0; }
-.pf-tile {
-  display: flex; flex-direction: column; align-items: flex-start; justify-content: center;
+ /* 🔴 TILES — the one tile, shared: profile's stubs and the emote menu both use it.
+   A tile is a quiet well with an icon/glyph, a name, and an optional note or key.
+   .on = lit (the playing emote, the chosen thing). No private tile rules. */
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; flex: 1; min-height: 0; }
+/* emote tiles are FIXED width and flow: widen the frame and they go to one
+   line; the frame snaps to whole tiles on release (emotebar.js). Even gutters. */
+.tiles.fixed { grid-template-columns: repeat(auto-fill, 40px); grid-auto-rows: 40px; gap: 5px; justify-content: center; align-content: start; flex: none; padding: 0; }   /* centred: any remainder splits evenly left/right; rows never stretch */
+.tile {
+  position: relative; display: flex; flex-direction: column; align-items: flex-start; justify-content: center;
   gap: 3px; padding: 12px 14px; border-radius: 9px;
-  background: rgb(255 255 255 / .04); border: none;
+  background: rgb(255 255 255 / .04); border: none; color: var(--fg);
 }
-.pf-tile:hover { background: rgb(255 255 255 / .09); }
-.pf-tile svg { opacity: .75; margin-bottom: 3px; }
-.pf-tile b { font-size: var(--fs); font-weight: 600; }
-.pf-tile span { color: var(--dim); font-size: 11px; }
+.tile:hover { background: rgb(255 255 255 / .09); }
+.tile.on { background: color-mix(in srgb, var(--brand) 16%, rgb(255 255 255 / .04)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand) 45%, transparent); }
+.tile svg { opacity: .9; margin-bottom: 3px; color: var(--icon); }   /* icons carry the brand whisper everywhere, stubs included (R, 09-04) */
+.tile b { font-size: var(--fs); font-weight: 600; }
+.tile span { color: var(--dim); font-size: 11px; }
+.tile .tile-glyph { font-size: 22px; line-height: 1; color: inherit; }   /* the gesture is content, drawn large */
+.tile kbd { position: absolute; top: 6px; right: 7px; font-size: 9px; opacity: .6; }
+.tiles.fixed .tile { width: 40px; height: 40px; box-sizing: border-box; padding: 0; align-items: center; justify-content: center; border-radius: 7px; }
+.tiles.fixed .tile .tile-glyph { font-size: 20px; }
 .pf-note { color: var(--dim); font-size: 11px; opacity: .7; }
 /* alt held = every frame is grabbable, and says so */
 body.altgrab .frame { cursor: grab; }
@@ -783,7 +870,8 @@ body.altgrab .frame:active { cursor: grabbing; }
   width: min(560px, 100%); max-height: 100%; overflow-y: auto;
   padding: 20px 22px; box-sizing: border-box; position: relative;
 }
-.sheet h1 { font-size: 17px; margin: 0 0 3px; color: var(--fg); font-weight: 600; }
+/* the door is a frame like the others: its title follows .fr-title (R, 09-04: the card read as the old menu styling) */
+.sheet h1 { font-size: var(--fs-sm); margin: 0 0 6px; color: var(--dim); font-weight: 600; text-transform: uppercase; letter-spacing: .085em; }
 .sheet h2 {
   font-size: var(--fs-sm); margin: 16px 0 7px; color: var(--dim);
   text-transform: uppercase; letter-spacing: .09em; font-weight: 600;
@@ -796,7 +884,7 @@ body.altgrab .frame:active { cursor: grabbing; }
   width: 100%; text-align: center; font-size: var(--fs); padding: 10px;
   background: var(--accent-dk); border-color: var(--edge-hi); color: var(--accent); font-weight: 600;
 }
-.sheet .go:hover { background: #4a3620; }
+.sheet .go:hover { background: color-mix(in srgb, var(--accent-dk) 78%, var(--accent)); }
 .keys {
   display: grid; grid-template-columns: max-content 1fr;
   gap: 7px 14px; align-items: baseline;
@@ -813,6 +901,33 @@ kbd {
   font-size: var(--fs); background: none; border: none; color: var(--dim);
 }
 
+/* capability notice: a persistent card, bottom-centre, until dismissed */
+.capnotice {
+  position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); z-index: 60;   /* clear of the hint bar */
+  max-width: 460px; padding: 12px 14px 10px; font-size: 13px; line-height: 1.45;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.capnotice b { display: block; margin-bottom: 4px; }
+.capnotice p { margin: 0 0 8px; color: var(--dim); }
+.capnotice .cn-btns { display: flex; gap: 8px; justify-content: flex-end; }
+.capnotice .cn-btns button { padding: 4px 10px; }
+/* photo mode hides every chrome layer but keeps the canvas */
+body.photo .frame, body.photo #hud, body.photo #trayzone,
+body.photo #hintbar, body.photo #dock { display: none !important; }
+
+#touch { position: fixed; inset: 0; z-index: 3; display: none; pointer-events: none; }
+body.touch #touch { display: block; }
+#stick {
+  position: absolute; left: 18px; bottom: 18px; width: 116px; height: 116px;
+  border-radius: 50%; border: 1px solid var(--edge); background: rgba(9,20,28,.5);
+  pointer-events: auto; touch-action: none;
+}
+#stick .nub {
+  position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px;
+  border-radius: 50%; background: color-mix(in srgb, var(--brand) 28%, transparent); border: 1px solid var(--edge-hi);
+}
+#touchbtns { position: absolute; right: 18px; bottom: 18px; display: flex; gap: 8px; pointer-events: auto; }
+#touchbtns button { padding: 13px 15px; font-size: var(--fs); border-radius: 50%; }
 /* ------------------------------------------------------- perfscope (debug) */
 .perf-loupe {
   position: fixed; z-index: 55; pointer-events: none;
@@ -914,20 +1029,20 @@ kbd {
 /* action hint right-justified — echoes the panel's right edge and reads as
    chrome/affordance, not data */
 .perf-loupe .pl-foot { color: var(--dim); font-size: 9.5px; margin-top: 4px; opacity: .75; border-top: 1px solid var(--edge); padding-top: 4px; text-align: right; }
-.pf-badge {
+.ps-badge {
   display: inline-block; min-width: 8px; height: 8px; border-radius: 4px;
-  color: #0c1412; font-size: 9px; font-weight: 700; line-height: 1;
+  color: var(--ink-on-brand); font-size: 9px; font-weight: 700; line-height: 1;
   padding: 1px 4px; vertical-align: 1px;
 }
 /* chunky labeled pills (readable performance pills):
    the tier WORD in a solid rounded chip, dark ink on the tier color. Same chip
    for row pills and the header rank pill, header just a hair larger + uppercase. */
 /* chunky labeled pill — inline-FLEX centering fixes the old off-center text
-   (the text sat off-center): the base .pf-badge's height:8px +
+   (the text sat off-center): the base .ps-badge's height:8px +
    line-height:1 + vertical-align shoved the label up, and trailing letter-
    spacing pushed it left. Flex-center owns both axes; a text-indent equal to
    the letter-spacing cancels the trailing-gap lean. */
-.pf-badge-lg {
+.ps-badge-lg {
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 34px; height: 17px; border-radius: 5px; padding: 0 8px;
   font-size: 9.5px; font-weight: 700; vertical-align: middle;
@@ -940,22 +1055,20 @@ kbd {
      the INK, not the line box, at true center. Tuned by re-measuring ink gaps. */
   line-height: 14px; padding-top: 1px; padding-bottom: 0;
 }
-.perf-loupe .pl-head .pf-badge-lg { height: 18px; font-size: 10px; line-height: 15px; padding-top: 1px; text-transform: uppercase; letter-spacing: .06em; text-indent: .06em; }
+.perf-loupe .pl-head .ps-badge-lg { height: 18px; font-size: 10px; line-height: 15px; padding-top: 1px; text-transform: uppercase; letter-spacing: .06em; text-indent: .06em; }
 .perf-loupe .pl-rank { cursor: help; }
-.pf-loupe-btn { display: flex; align-items: center; gap: 7px; padding: 5px 10px; color: var(--icon); }
-.pf-loupe-btn.on { color: var(--brand); box-shadow: inset 0 1px 3px rgb(0 0 0 / .6); }
-.pf-legend { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--dim); padding: 2px 2px 0; }
-.pf-legend i { width: 16px; height: 7px; border-radius: 2px; }
-.pf-legend span { margin-left: 7px; letter-spacing: .02em; }
-.pf-table { display: flex; flex-direction: column; gap: 1px; margin-top: 2px; }
-.pf-row {
+.ps-legend { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--dim); padding: 2px 2px 0; }
+.ps-legend i { width: 16px; height: 7px; border-radius: 2px; }
+.ps-legend span { margin-left: 7px; letter-spacing: .02em; }
+.ps-table { display: flex; flex-direction: column; gap: 1px; margin-top: 2px; }
+.ps-row {
   display: flex; align-items: center; gap: 6px; padding: 2px 4px;
   font-size: 11px; border-radius: 4px; cursor: pointer;
 }
-.pf-row:hover { background: var(--hov); }
-.pf-row i { flex: none; width: 8px; height: 8px; border-radius: 50%; }
-.pf-row span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
-.pf-row em { flex: none; font-style: normal; color: var(--dim); font-variant-numeric: tabular-nums; }
+.ps-row:hover { background: var(--hov); }
+.ps-row i { flex: none; width: 8px; height: 8px; border-radius: 50%; }
+.ps-row span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
+.ps-row em { flex: none; font-style: normal; color: var(--dim); font-variant-numeric: tabular-nums; }
 
 /* the house tooltip (ui.js owns the behavior) — native title= chrome can't be
    styled, so it's borrowed on hover and repainted as one of our chips */
@@ -979,28 +1092,7 @@ kbd {
   color: var(--dim); background: rgba(0,0,0,0.25); border-radius: 5px;
   white-space: pre; overflow-x: auto;
 }
-/* utility rules perfscope relies on; the token/frames PR defines the same ones */
-.btn-row { display: flex; gap: 6px; } .btn-row > button { flex: 1 1 0; min-width: 0; }
-button.keybtn { background: rgb(0 0 0 / .4); border: none; border-radius: 7px; }
-button.keybtn.on { color: var(--accent, #8fe8c8); }
 
-/* photo mode hides every chrome layer but keeps the canvas */
-body.photo .frame, body.photo #hud, body.photo #trayzone,
-body.photo #hintbar, body.photo #dock { display: none !important; }
-
-#touch { position: fixed; inset: 0; z-index: 3; display: none; pointer-events: none; }
-body.touch #touch { display: block; }
-#stick {
-  position: absolute; left: 18px; bottom: 18px; width: 116px; height: 116px;
-  border-radius: 50%; border: 1px solid var(--edge); background: rgba(9,20,28,.5);
-  pointer-events: auto; touch-action: none;
-}
-#stick .nub {
-  position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px;
-  border-radius: 50%; background: color-mix(in srgb, var(--brand) 28%, transparent); border: 1px solid var(--edge-hi);
-}
-#touchbtns { position: absolute; right: 18px; bottom: 18px; display: flex; gap: 8px; pointer-events: auto; }
-#touchbtns button { padding: 13px 15px; font-size: var(--fs); border-radius: 50%; }
 /* schema panels — a frame body declared as FIELDS (panels.js); the same
    fields paint a VR quad (xrpanels.js). Desktop renderer styles: */
 .schema-panel { padding: 0; overflow: hidden; font-size: var(--fs-sm, 12px); }
@@ -1118,11 +1210,11 @@ try { const o = JSON.parse(localStorage.getItem('ew-style-tokens') || '{}');
 <!-- Static so it paints before any module loads. boot.js only fills it in. -->
 <div id="splash" data-build="b77">
   <div class="sp-ver"></div>
-  <svg class="sp-logo" viewBox="-70 -40 1372 1372" aria-hidden="true" fill="currentColor">
+  <div class="sp-logo-wrap"><svg class="sp-logo" viewBox="-70 -40 1372 1372" aria-hidden="true" fill="currentColor">
     <path class="pc-top" d="M 92 82 Q 616 140 1072 78 Q 1024 290 1012 511 L 852 511 L 852 228 Q 440 218 68 232 Q 88 155 92 82 Z"/>
     <path class="pc-arm" d="M 420 522 C 490 562 565 585 700 588 L 1140 586 Q 1168 583 1178 576 Q 1186 572 1185 582 Q 1180 653 1185 724 Q 1186 734 1178 730 Q 1168 723 1140 720 L 700 718 C 565 721 490 744 420 784 Q 436 653 420 522 Z"/>
     <path class="pc-bot" d="M 120 1212 Q 616 1152 1080 1216 Q 1024 1002 1012 796 L 852 796 L 852 1064 Q 440 1074 62 1062 Q 88 1137 120 1212 Z"/>
-  </svg>
+  </svg></div>
   <div class="sp-mark">eidoverse</div>
   <div class="sp-mark-sub">worlds</div>
   <div class="sp-sub">stepping into <b class="sp-world">a world</b> as <b class="sp-name">…</b></div>

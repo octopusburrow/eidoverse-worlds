@@ -17,7 +17,6 @@ import { previewSky, skyArgs, skyImpl, WEATHERS, CLOUDS, SKY_WORLDS,
   CLOUD_QUALITY, getCloudQuality, setCloudQuality } from './sky.js';
 import { GRASS_QUALITY, getGrassQuality, setGrassQuality,
   getGrassDensity, getGrassShed, getGrassApplied } from './terrain.js';
-import { RENDER_SCALES, getRenderScale, setRenderScale } from './governor.js';
 
 const SLIDERS = [
   ['hours', 'time', 0, 24, 0.1, 12],
@@ -173,20 +172,8 @@ export function paintSky(body) {
   bus.on('grass-budget', syncGrassRow);   // governor sheds repaint immediately
   body.appendChild(gqRow);
 
-  // Render scale is YOURS too (§22k) — the whole frame's pixel budget, the
-  // one lever a pixel-bound machine actually answers to (§22j's tables).
-  // 'auto' lets the governor's cruise drive; a pinned % is the resident's
-  // word and turns the cruise off. Persisted like the other two dials.
-  const { row: rsRow, select: rs } = selectRow('scale⚙',
-    RENDER_SCALES.map((v) => [v, v === 'auto' ? 'auto' : `${Math.round(v * 100)}%`]),
-    getRenderScale(),
-    (v) => {
-      setRenderScale(v);
-      flashHint(`render scale: ${v === 'auto' ? 'auto' : `${Math.round(v * 100)}%`} (yours only)`);
-    });
-  rs.setAttribute('aria-label', 'render scale — local only, never shared with the world');
-  rsRow.title = 'local performance setting — not shared with the world';
-  body.appendChild(rsRow);
+  // render scale moved to Settings › Video (videopanel.js) in the 09-04 UI pass —
+  // a local performance dial, not a sky property
 
   // Sliders that only the BASIC sky answers. On the real sky the engine owns
   // sun direction and supplies its own bounce fill (sky.js documents the

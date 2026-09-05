@@ -411,7 +411,7 @@ let loupeEl = null, loupeOn = false, pinned = null, pinnedHtml = '', lastCast = 
 const fmtB = (b) => (b >= 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`);
 // short tier words for the chunky row pills
 const TIER_SHORT = ['great', 'good', 'ok', 'poor', 'bad'];
-const badge = (t, txt, chunky) => `<b class="pf-badge${chunky ? ' pf-badge-lg' : ''}" style="background:${TIERS[Math.min(4, t)]}">${txt}</b>`;
+const badge = (t, txt, chunky, title = '') => `<b class="ps-badge${chunky ? ' ps-badge-lg' : ''}" style="background:${TIERS[Math.min(4, t)]}"${title ? ` title="${esc(title)}"` : ''}>${txt}</b>`;
 
 function loupeHtml(rec) {
   // biggest textures first as an inner table: dims (+ `raw` = uncompressed,
@@ -445,7 +445,8 @@ function loupeHtml(rec) {
     const u = key === 'texMB' ? ' MB' : '';
     const parts = TIER_SHORT.map((name, i) =>
       i < th.length ? `${name} ≤${th[i].toLocaleString()}${u}` : `${name} >${th[th.length - 1].toLocaleString()}${u}`);
-    return `${label} — ${parts.join(' · ')}`;
+    // one tier per line: #tipchip renders titles pre-line (R, 09-04: easier to read)
+    return `${label}\n${parts.join('\n')}`;
   };
   // what each metric IMPACTS (data labels should describe which part of
   // performance they affect). Hovering the label row shows this.
@@ -483,7 +484,7 @@ function loupeHtml(rec) {
   // (worst category wins, VRChat model) and which metric set THIS rank.
   const worstLabel = { tris: 'triangles', draws: 'draw calls', texMB: 'texture VRAM',
     bones: 'bones', mats: 'materials', alpha: 'transparency' }[rec.worst] || rec.worst;
-  const why = `overall = worst category wins (VRChat model). this object's ${TIER_NAMES[rec.rank]} rank is set by ${worstLabel}. fix the red/orange rows to raise it.`;
+  const why = `overall = worst category wins (VRChat model)\nthis object's ${TIER_NAMES[rec.rank]} rank is set by ${worstLabel}\nfix the red/orange rows to raise it`;
   const lensTip = { rank: 'overall rank — worst category wins (VRChat model)',
     tris: 'triangle count — GPU vertex/geometry load', draws: 'draw calls — CPU→GPU submit overhead, often the real cost',
     tex: 'texture memory — estimated VRAM the images occupy', mat: 'material cost — a categorical shader-complexity proxy',
@@ -492,7 +493,8 @@ function loupeHtml(rec) {
   // <wbr> after separators / camelCase humps lets long identifiers wrap.
   const paren = rec.label.indexOf('  (');
   const nameOnly = paren > 0 ? rec.label.slice(0, paren) : rec.label;
-  const libOnly = paren > 0 ? rec.label.slice(paren + 3).replace(/\)$/, '').replace(/\.(glb|gltf|vrm)$/i, '') : '';
+  // keep the .glb/.gltf/.vrm: the second line is the FILE, and the extension is what says so (R, 09-04)
+  const libOnly = paren > 0 ? rec.label.slice(paren + 3).replace(/\)$/, '') : '';
   const wbr = (t) => esc(t)
     .replace(/([_./:\-])/g, '$1<wbr>')          // break after separators
     .replace(/([a-z0-9])([A-Z])/g, '$1<wbr>$2'); // and at camelCase humps
@@ -504,7 +506,7 @@ function loupeHtml(rec) {
   return `
   <div class="pl-head">
     <div class="pl-verdict">
-      <span title="${esc(why)}" class="pl-rank">${badge(rec.rank, TIER_NAMES[rec.rank], true)}</span>
+      <span title="${esc(why)}" class="pl-rank">${badge(rec.rank, TIER_NAMES[rec.rank], true, why)}</span>
       <div class="pl-verdictsub">
         <span class="pl-mode" title="${esc(lensTip)}">${lensLabel}</span>
         ${rankStr ? `<span class="pl-rankrow" title="this object's position among all ${total} subjects in the scene, ranked by the active lens">${rankStr}</span>` : ''}
@@ -654,10 +656,10 @@ function paintTable() {
     .sort((a, b) => (lens === 'rank' ? b.rank - a.rank || b.tris - a.tris : metricOf(b, lens) - metricOf(a, lens)))
     .slice(0, 6);
   tableEl.innerHTML = rows.map((r) =>
-    `<div class="pf-row" data-key="${esc(r.key)}">
+    `<div class="ps-row" data-key="${esc(r.key)}">
        <i style="background:${TIERS[MODES[lens].tier?.(r) ?? r.rank]}"></i>
        <span>${esc(r.label)}</span><em>${metricFmt(r, lens)}</em>
-     </div>`).join('') || '<div class="pf-row"><span>nothing collected yet</span></div>';
+     </div>`).join('') || '<div class="ps-row"><span>nothing collected yet</span></div>';
 }
 
 // a one-shot census taken while nothing is watching must not outlive its use —
@@ -721,12 +723,13 @@ async function copyReceipt() {
 
 /** Mounts the perf section into the debug panel's stack. */
 export function buildPerfPanel(stack, { toast = console.log } = {}) {
+  // house rows only (R, 09-04: "stop making people guess"): .row.wide = label
+  // column + control, the same grid Video uses; no private layout rules here.
   const modeRow = document.createElement('div');
-  modeRow.className = 'row';
+  modeRow.className = 'row wide';
   const lbl = document.createElement('span');
   lbl.className = 'nm'; lbl.textContent = 'overlay';
   const sel = document.createElement('select');
-  sel.style.cssText = 'flex:0 1 auto;max-width:150px;min-width:0;margin-left:auto';
   for (const [k, m] of Object.entries(MODES)) {
     const o = document.createElement('option');
     o.value = k; o.textContent = m.label;
@@ -735,53 +738,43 @@ export function buildPerfPanel(stack, { toast = console.log } = {}) {
   sel.value = mode;                         // the section builds lazily — read the live mode, don't assume 'off'
   sel.onchange = () => setMode(sel.value);
   onModeChange = () => { sel.value = mode; };
-  modeRow.append(lbl, sel);
+  const selCtl = document.createElement('span'); selCtl.className = 'ctl'; selCtl.appendChild(sel);
+  modeRow.append(lbl, selCtl);
 
-  // the loupe gets a proper TOOL button: key-mirror styling,
-  // its own glyph, pressed-in while armed; the cursor changes with it
-  const loupeRow = document.createElement('div');
-  loupeRow.className = 'row';
+  // the loupe is a plain house button (button.on draws its armed state) and
+  // lives with rescan/copy in the button row below — no private tool styling
   const lb = document.createElement('button');
-  lb.className = 'keybtn pf-loupe-btn';
   lb.title = 'loupe — hover an object for its cost card; click pins';
-  lb.innerHTML = `${fsvg('magnifying-glass', 15)}<span>loupe</span>`;
+  lb.innerHTML = `${fsvg('magnifying-glass', 13)} loupe`;
   lb.onclick = () => setLoupe(!loupeOn);
   lb.classList.toggle('on', loupeOn);       // lazily built: reflect the live state
   onLoupeChange = (on) => lb.classList.toggle('on', on);
-  loupeRow.append(lb);
 
-  const olRow = document.createElement('label');
-  olRow.className = 'row';
-  olRow.style.cssText = 'gap:8px';
-  const olCb = document.createElement('input');
-  olCb.type = 'checkbox'; olCb.checked = outlinesOn;
-  olCb.onchange = () => { outlinesOn = olCb.checked; if (mode !== 'off') applyTint(); };
-  const olNm = document.createElement('span');
-  olNm.className = 'nm'; olNm.textContent = 'bounds outlines';
-  olRow.append(olCb, olNm);
-
-  const solRow = document.createElement('label');
-  solRow.className = 'row';
-  solRow.style.cssText = 'gap:8px';
-  const solCb = document.createElement('input');
-  solCb.type = 'checkbox'; solCb.checked = solidOn;
-  solCb.title = 'the conventional cost view (UE/Unity/Godot): flat tier color replaces textures, ground and sky included';
-  solCb.onchange = () => setSolid(solCb.checked);
+  const checkRow = (text, checked, title, onchange) => {
+    const row = document.createElement('label');
+    row.className = 'row wide';
+    const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = text;
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = checked; if (title) cb.title = title;
+    cb.onchange = () => onchange(cb);
+    row.append(nm, cb);
+    return { row, cb };
+  };
+  const { row: olRow } = checkRow('bounds outlines', outlinesOn, '', (cb) => { outlinesOn = cb.checked; if (mode !== 'off') applyTint(); });
+  const { row: solRow, cb: solCb } = checkRow('solid colors', solidOn,
+    'the conventional cost view (UE/Unity/Godot): flat tier color replaces textures, ground and sky included',
+    (cb) => setSolid(cb.checked));
   onSolidChange = () => { solCb.checked = solidOn; };
-  const solNm = document.createElement('span');
-  solNm.className = 'nm'; solNm.textContent = 'solid colors (replace textures)';
-  solRow.append(solCb, solNm);
 
   const legend = document.createElement('div');
-  legend.className = 'pf-legend';
+  legend.className = 'ps-legend';
   legend.title = 'viewer-local: nothing here is sent to the world or written to the log';
   legend.innerHTML = TIERS.map((c, i) => `<i style="background:${c}" title="${TIER_NAMES[i]}"></i>`).join('')
     + '<span>cheap → costly · fixed thresholds</span>';
 
   tableEl = document.createElement('div');
-  tableEl.className = 'pf-table';
+  tableEl.className = 'ps-table';
   tableEl.onclick = (e) => {
-    const k = e.target.closest('.pf-row')?.dataset.key;
+    const k = e.target.closest('.ps-row')?.dataset.key;
     if (k) flashSubject(k);
   };
 
@@ -795,6 +788,9 @@ export function buildPerfPanel(stack, { toast = console.log } = {}) {
   rcpt.onclick = async () => toast(`perfscope: receipt copied (${await copyReceipt()} subjects)`);
   btns.append(rescan, rcpt);
 
+  // the loupe is the tool; it sits under the overlay lens, not among the
+  // housekeeping buttons (R, 09-04)
+  const loupeRow = document.createElement('div'); loupeRow.className = 'row btn-row'; loupeRow.appendChild(lb);
   stack.append(modeRow, loupeRow, olRow, solRow, legend, tableEl, btns);
 }
 
@@ -813,7 +809,7 @@ export function mountPerfPanel(stack, { toast = console.log, section = null } = 
   if (cur?.kind === 'section') return;
   if (section) {
     cur?.el?.remove();
-    const box = section(stack, 'perf', (body) => buildPerfPanel(body, { toast })) ?? stack.lastElementChild;
+    const box = section(stack, 'performance', (body) => buildPerfPanel(body, { toast })) ?? stack.lastElementChild;
     stack.__perfMount = { kind: 'section', el: box };
     return;
   }

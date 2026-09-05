@@ -53,6 +53,13 @@ document.body.prepend(canvas);
 // opt-out lever (the +10fps is one flag away; §22q bought the frames back
 // for the default look). The dPR-gated auto-off waits for a real settings
 // row alongside the other quality dials.
+// ?webgl=1 forces three's WebGL 2 backend — the path a browser without WebGPU
+// (Firefox stable, older Safari, most WebXR runtimes today) takes on its own.
+// Both are renderer-construction choices, so they apply on the next load: the
+// URL param wins for a session (the A/B lever), the persisted preference
+// (video settings) otherwise.
+export const PREF_MSAA = 'ew-msaa', PREF_BACKEND = 'ew-backend';
+const pref = (k) => { try { return localStorage.getItem(k); } catch { return null; } };   // a storage throw must not kill boot
 // ?xr=1 is a BOOT flag, not a runtime toggle: three 0.185's XRManager rides
 // WebGPU (XRGPUBinding — Chrome, flags today) but only if the adapter was
 // requested xrCompatible, which the backend reads off renderer.xr.enabled at
@@ -94,7 +101,11 @@ if (XR_BOOT) {
 }
 
 export const renderer = new THREE.WebGPURenderer({ canvas,
-  antialias: CONFIG.params.get('msaa') !== '0' });
+  antialias: (CONFIG.params.get('msaa') ?? pref(PREF_MSAA)) !== '0',
+  forceWebGL: CONFIG.params.get('webgl') === '1'
+    || (CONFIG.params.get('webgl') == null && pref(PREF_BACKEND) === 'webgl') });
+/** 'webgpu' | 'webgl' — known once renderer.init() resolves. */
+export const backendName = () => (renderer.backend?.isWebGLBackend ? 'webgl' : 'webgpu');
 // Still in 0.185.1; FIXED on three dev (db1daf163, 2026-07-24, #34088 —
 // after the r185 tag, so it ships with r186): XRManager.onAnimationFrame
 // calls foveateBoundTexture(_getFrameBufferTarget()); Renderer.js:1432

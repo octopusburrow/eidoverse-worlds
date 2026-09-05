@@ -32,7 +32,10 @@ const INK = {
   get off()   { return tok('--dim', '#7d8f8a'); },
   get on()    { return tok('--brand', '#8fe8c8'); },   // live = brand, like the ∃
   get hot()   { return tok('--attn', '#ffd66b'); },
-  get slash() { return tok('--err', '#c0574f'); },
+  // the slash is the OFF state's own ink, not an alarm: a silent body is the
+  // rest state here ("a body should wake up silent"), and --err read as the one
+  // thing on screen outside the scheme (R, 09-03)
+  get slash() { return tok('--dim', '#7d8f8a'); },
 };
 
 const MIC_SVG = (on, hot) => {

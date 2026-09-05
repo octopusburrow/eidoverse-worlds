@@ -11,7 +11,7 @@ import { svg, fsvg, hasFill } from './icons.js';
 // the canvas-emoji trap generalizes: platform glyph gaps are silent)
 const EMOJI_ICON = {
   '🧱': 'hammer', '🧍': 'person-arms-spread', '🌿': 'plant', '☀': 'sun',
-  '✨': 'sparkle', '🌳': 'tree', '📜': 'scroll', '🧩': 'puzzle-piece', '🔊': 'speaker-high', '🎨': 'palette',
+  '✨': 'sparkle', '🌳': 'tree', '📜': 'scroll', '🧩': 'puzzle-piece', '🔊': 'speaker-high', '🎨': 'palette', '🖥': 'monitor',
 };
 import { loadingItems } from './assets.js';
 import { makeFrame, getFrame, isLocked, setLocked, resetLayout } from './frames.js';
@@ -102,14 +102,14 @@ export function flashHint(html, ms = 2600) {
 }
 
 // ============================================================ cursors
-// The loupe cursor is tinted by the live --brand. CSS url() cursors can't read
+// The loupe cursor is inked with --fg (white — R 09-04: 'non-accent for now'). CSS url() cursors can't read
 // custom properties, so the tint is baked here and published as --cur-loupe
 // (index.html holds the rule and the native fallback). Rebuilt when the style
 // panel writes a new accent.
 
 let _cursorBrand = null;
 function buildCursors() {
-  const brand = (getComputedStyle(document.documentElement).getPropertyValue('--brand') || '#8fe8c8').trim();
+  const brand = (getComputedStyle(document.documentElement).getPropertyValue('--fg') || '#ebebe9').trim();
   if (brand === _cursorBrand) return;
   _cursorBrand = brand;
   const ink = '#101b1a';
@@ -139,11 +139,16 @@ function paintRange(i) {
   i.style.setProperty('--p', `${(((+i.value || 0) - min) / (max - min || 1)) * 100}%`);
 }
 document.addEventListener('input', (e) => {
-  if (e.target.matches?.('.row input[type=range]')) paintRange(e.target);
+  if (e.target.matches?.('input[type=range]')) paintRange(e.target);
 }, true);
-setInterval(() => {
-  for (const i of document.querySelectorAll('.row input[type=range]')) paintRange(i);
-}, 1000);
+/** Repaint every slider fill under `root` NOW — call after setting .value from
+ *  code (a reset, a sync). The sweep below also catches it, but a code-driven
+ *  reset showed stale fills for up to a second (R, 09-04: 'half the sliders
+ *  highlight oddly' after Reset Hair). */
+export function paintRangesIn(root = document) {
+  for (const i of root.querySelectorAll('input[type=range]')) paintRange(i);
+}
+setInterval(() => paintRangesIn(document), 200);
 
 // ============================================================ tooltips
 // Every hover hint in the client is a native title= attribute, which browsers
@@ -407,7 +412,9 @@ function applyDockEdge({ edge, along }) {
   d.style.left = d.style.right = d.style.top = d.style.bottom = 'auto';
   const r = d.getBoundingClientRect();
   const max = horiz ? innerWidth - r.width - 4 : innerHeight - r.height - 4;
-  const a = Math.max(4, Math.min(max, along));
+  // whole pixels: the rail sits on a blur layer, and a fractional offset (drag
+  // coords on a 125% display) rasterizes every glyph on it soft (R, 09-04)
+  const a = Math.round(Math.max(4, Math.min(max, along)));
   if (edge === 'left') { d.style.left = '0'; d.style.top = `${a}px`; }
   if (edge === 'right') { d.style.right = '0'; d.style.top = `${a}px`; }
   if (edge === 'top') { d.style.top = '0'; d.style.left = `${a}px`; }
@@ -726,9 +733,12 @@ export function openDoor({ roster = [], needsKey = false, login = null, onEnter 
       c.className = `card panel ${a.name === chosen ? 'on' : ''}`;
       // Bodies nobody has worn yet have no portrait — say so with a placeholder
       // rather than an empty box that reads as a broken image.
-      c.innerHTML = `<img alt="" loading="lazy" src="/thumb/${encodeURIComponent(a.name)}.png"
-           onerror="this.style.display='none';this.nextElementSibling.style.display='grid'">
+      c.innerHTML = `<img alt="" loading="lazy" src="/thumb/${encodeURIComponent(a.name)}.png">
          <div class="ph">🧍</div><span>${escapeHtml(a.name)}</span>`;
+      // a JS listener, not an inline onerror= — inline handlers never ran here,
+      // so a body with no portrait showed the browser's broken-image glyph (R, 09-04)
+      const img = c.querySelector('img');
+      img.addEventListener('error', () => { img.style.display = 'none'; c.querySelector('.ph').style.display = 'grid'; });
       c.onclick = () => { chosen = a.name; paint(); };
       grid.appendChild(c);
     }

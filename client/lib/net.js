@@ -663,6 +663,9 @@ async function handle(msg) {
       break;
 
     case 'error':
+      // the world tells us it has no voice relay only when we try to use one —
+      // remember it, so the mic glyph can say WHY it stays off (R, 09-04)
+      if (/no voice relay/i.test(String(msg.error ?? ''))) window.__voiceRelayAbsent = true;
       // Server-side refusals are the user's problem to see, not the console's.
       toast(msg.error, 'warn');
       // ...and any module holding an optimistic preview needs to hear it: a

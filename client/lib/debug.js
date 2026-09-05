@@ -14,8 +14,6 @@
 // have shown nothing wrong on the day it mattered most.
 
 import { THREE, scene } from './core.js';
-import { toast as perfToast } from './ui.js';   // aliased: the token/frames branch imports toast under its own name
-import { mountPerfPanel } from './perfscope.js';
 import { MeshBVHHelper } from 'three-mesh-bvh';
 import { colliders } from './colliders.js';
 import { closestParams, TUNING } from './ragdoll.js';
@@ -23,7 +21,7 @@ import { JOINT_SPECS, HAIR_TUNING, WING_TUNING } from './ammodoll.js';
 import { BLINK, WING_IDLE, LIMP_SPRINGS } from './avatar.js';
 import { makeFrame } from './frames.js';
 import { sliderTable, checkRow, selectRow, btn, sectionHead } from './rows.js';
-import { toast } from './ui.js';
+import { toast, paintRangesIn } from './ui.js';
 
 // box = an OBB, walkable on top, solid on the sides between min.y and max.y
 // pillar = anything over 2.4m tall, collapsed to a slim centre column so you
@@ -373,7 +371,7 @@ function buildJointPanel(stack) {
   btns.append(
     btn('reset joint', () => {
       Object.assign(JOINT_SPECS[pick.value], JSON.parse(JSON.stringify(jointDefaults[pick.value])));
-      table.repaint(); apply();
+      table.repaint(); apply(); paintRangesIn(stack);
     }),
     copyBtn('copy table', () => {
       const txt = Object.entries(JOINT_SPECS).map(([k, S]) => {
@@ -460,7 +458,7 @@ function buildHairPanel(stack) {
   const btns = document.createElement('div');
   btns.className = 'row btn-row';
   btns.append(
-    btn('reset hair', () => { Object.assign(HAIR_TUNING, defaults); table.repaint(); apply(); }),
+    btn('reset hair', () => { Object.assign(HAIR_TUNING, defaults); table.repaint(); apply(); paintRangesIn(stack); }),
     copyBtn('copy hair', () => tableLiteral('HAIR_TUNING', HAIR_TUNING)),
   );
   stack.append(table.el, btns);
@@ -522,7 +520,7 @@ function buildWingPanel(stack) {
     btn('reset wings', () => {
       Object.assign(WING_IDLE, idleDefaults);
       Object.assign(WING_TUNING, simDefaults);
-      idle.repaint(); sim.repaint(); apply();
+      idle.repaint(); sim.repaint(); apply(); paintRangesIn(stack);
     }),
     copyBtn('copy wings', () =>
       `${tableLiteral('WING_IDLE', WING_IDLE)}\n\n${tableLiteral('WING_TUNING', WING_TUNING)}`),
@@ -562,22 +560,25 @@ export function initDebug(p = {}) {
   for (const [k] of SWITCHES) DEFAULTS[k] = TUNING[k];
 
   const btns = document.createElement('div');
-  btns.className = 'row btn-row';
-  const BTN_CSS = 'flex:1;font-size:var(--fs-sm);padding:3px 0';
-  const pause = btn('pause', () => {
+  btns.className = 'row btn-row';   // unified equal-width action-button row
+  const mk = (label, fn) => {
+    const b = document.createElement('button');
+    b.textContent = label; b.onclick = fn;
+    return b;
+  };
+  const pause = mk('pause', () => {
     TUNING.PAUSED = TUNING.PAUSED ? 0 : 1;
     pause.textContent = TUNING.PAUSED ? '▶ resume' : 'pause';
-  }, BTN_CSS);
+  });
   btns.append(
-    btn('re-drop', () => providers.reLimp?.(), BTN_CSS),
+    btn('re-drop', () => providers.reLimp?.()),
     pause,
     btn('reset', () => {
       for (const [k] of [...DIALS, ...SWITCHES]) TUNING[k] = DEFAULTS[k];
       dials.repaint(); repaintSwitches();
-    }, BTN_CSS),
+    }),
   );
   stack.appendChild(btns);
-  mountPerfPanel(stack, { toast: perfToast, section: dbgSection });
 
   const swBox = document.createElement('div');
   // NOT .stack — that is flex:1 with its own scroller, and nested inside the
@@ -599,18 +600,35 @@ export function initDebug(p = {}) {
   stack.appendChild(dials.el);
 
   // the tuning families, one head + one builder each
-  // The live-tuning groups are COLLAPSIBLE subsections (the debug menu splits
-  // into subareas with a dropdown arrow, matching World/Settings); they reuse
-  // the .sec grammar so open/hover styling matches the house.
+  for (const [head, build] of [
+    ['blink (live)', buildBlinkPanel],
+    ['hair (live, while ragdolled)', buildHairPanel],
+    ['limp hair, no local sim', buildLimpPanel],
+    ['wings', buildWingPanel],
+    ['joint limits (live)', buildJointPanel],
+  ]) {
+    stack.appendChild(sectionHead(head));
+    build(stack);
+  }
+
+  // The live-tuning groups become COLLAPSIBLE subsections (the debug menu
+  // splits into subareas with a dropdown arrow, matching World/Settings).
+  // These are looser than the panel sections, so an arrow (not an icon) marks
+  // each; they reuse the .sec grammar so open/hover styling matches the house.
   dbgSection(stack, 'blink', (body) => buildBlinkPanel(body));
   dbgSection(stack, 'hair (while ragdolled)', (body) => buildHairPanel(body));
   dbgSection(stack, 'limp hair (no local sim)', (body) => buildLimpPanel(body));
   dbgSection(stack, 'wings', (body) => buildWingPanel(body));
   dbgSection(stack, 'joint limits', (body) => buildJointPanel(body));
+  // perfscope mounts itself when its module is present; without it this is a silent no-op
+  import('./perfscope.js').then((m) => m.mountPerfPanel(stack, { toast: toastLike, section: dbgSection })).catch(() => {});
 
+  // the live bone readout gets its own collapsible section: loose in the stack
+  // it sat between 'joint limits' and 'performance' as a scrollable sliver
+  // that no section's open/close could account for (R, 09-04)
   statsEl = document.createElement('pre');
   statsEl.className = 'dbg-stats';
-  stack.appendChild(statsEl);
+  dbgSection(stack, 'ragdoll readout', (body) => body.appendChild(statsEl));
   frame.body.appendChild(stack);
   return frame;
 }

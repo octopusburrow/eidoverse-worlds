@@ -14,6 +14,8 @@ import { updateSky, updateAutoSystems, skyArgs, setCloudQuality } from './lib/sk
 import { setSkyArgsSource, entities, buildsPending, avatarMounts, roleOf, worldHasOwner } from './lib/world.js';
 import { initProfile } from './lib/profile.js';
 import { initStylePanel } from './lib/stylepanel.js';
+import { initVideoPanel } from './lib/videopanel.js';
+import { initCapNotice } from './lib/capnotice.js';
 import { foldParity } from './lib/parity.js';
 import { initModelsRealizer, reconcileModels, residencyDebug, setResidencyFocus, drainPromoteTail } from './lib/realize/models.js';
 import { initEnvironmentRealizer } from './lib/realize/environment.js';
@@ -142,6 +144,8 @@ initRoster(people);
 initEmoteBar();
 initProfile();
 initStylePanel();
+initVideoPanel();
+initCapNotice();
 settingsFrame();               // exists (hidden) so the ∃ menu can open it
 initDock([
   // order: profile right under ∃, then world, chat, emotes, debug;
@@ -150,11 +154,17 @@ initDock([
   { id: 'world', icon: 'planet' },
   { id: 'chat', icon: 'chat-circle' },
   { id: 'emotes', icon: 'hand-waving' },
+  { id: 'who', icon: 'users' },        // 'present' — the roster had no dock entry at all (R's sweep, 09-04)
   { id: 'debug', icon: 'bug' },
   { id: 'settings', icon: 'gear-six' },
   { id: 'edit', icon: 'wrench', action: toggleEditMode,
     active: () => isEditing(),
     gate: () => {
+      // the SERVER's answer first: operators (WORLD_ADMIN) are owner everywhere
+      // but never appear in the fold's roles map, so roleOf() alone hid the
+      // wrench from R while every build verb was already accepted (09-04)
+      const mine = net.myRights?.role;
+      if (['builder', 'owner'].includes(mine)) return true;
       const r = roleOf(CONFIG.name);
       return ['builder', 'owner'].includes(r?.role ?? r) || !worldHasOwner();
     } },

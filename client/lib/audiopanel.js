@@ -186,7 +186,7 @@ function micFloorRow() {
     `<span class="nm" title="${hint}">mic sensitivity</span>` +
     `<span class="ctl">` +
     `<span data-meter title="${hint}" style="flex:1;min-width:60px;position:relative;height:14px;` +
-    `background:#000;border-radius:2px;overflow:hidden;cursor:ew-resize">` +
+    `background:var(--well);border-radius:2px;overflow:hidden;cursor:ew-resize">` +
     `<span data-lvl style="position:absolute;left:0;top:0;height:100%;width:0;background:${LVL_DARK}"></span>` +
     // The marker is a RULER, not a signal (R, 2026-08-16: "the percentage
     // slider being green is kinda ugly with a gold waveform bar… maybe just

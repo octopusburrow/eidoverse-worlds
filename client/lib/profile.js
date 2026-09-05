@@ -22,7 +22,7 @@ export function initProfile() {
 }
 
 function tile(icon, name, note) {
-  return `<button class="pf-tile" data-stub="${name}">
+  return `<button class="tile" data-stub="${name}">
     ${fsvg(icon, 22)}<b>${name}</b><span>${note}</span></button>`;
 }
 
@@ -38,14 +38,14 @@ function paint() {
         <span>in <b>${escape(CONFIG.world)}</b> · wearing <b>${escape(avatar)}</b></span>
       </div>
     </div>
-    <div class="pf-tiles">
+    <div class="tiles">
       ${tile('person-arms-spread', 'avatars', 'change what you wear')}
       ${tile('push-pin', 'satchel', 'personal inventory')}
       ${tile('planet', 'worlds', 'places you know')}
       ${tile('users', 'friends', 'people you keep')}
     </div>
     <div class="pf-note">sketch — tiles are stubs; shapes first, plumbing next</div>`;
-  frame.body.querySelectorAll('.pf-tile').forEach((b) => {
+  frame.body.querySelectorAll('.tile').forEach((b) => {
     b.onclick = () => {
       const n = b.dataset.stub;
       toast(`${n}: not built yet — this tile reserves the spot`, 'info');
