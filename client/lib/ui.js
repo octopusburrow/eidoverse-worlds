@@ -212,7 +212,7 @@ let worldFrame = null;
 export function panelFrame() {
   if (!worldFrame) {
     worldFrame = makeFrame('world', {
-      title: 'world', x: -10, y: 52, w: 232, h: 260, minW: 200,
+      title: 'world', x: -10, y: 52, w: 232, h: 300, minW: 200,   // eight rows, no bleed
     });
     const stack = document.createElement('div');
     stack.className = 'stack';
@@ -228,7 +228,7 @@ let settingsFrameApi = null;
 export function settingsFrame() {
   if (!settingsFrameApi) {
     settingsFrameApi = makeFrame('settings', {
-      title: 'settings', x: -10, y: 324, w: 232, h: 260, minW: 210, hidden: true,   // right column, UNDER world (52+260+12)
+      title: 'settings', x: -10, y: 364, w: 232, h: 260, minW: 210, hidden: true,   // right column, UNDER world (52+300+12)
     });
     const stack = document.createElement('div');
     stack.className = 'stack';

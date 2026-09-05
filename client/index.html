@@ -100,7 +100,7 @@ canvas { display: block; touch-action: none; }
    inset box-shadow paints under children, so light "behind" the title read
    wrong; glass catches light on its whole top edge, contents included */
 /* no browser-default 13.33px anywhere in a frame: buttons inherit the house size */
-.frame button:not(.tile) { font-size: var(--fs-sm); font-family: var(--font); }
+.frame button:not(.tile), .frame input { font-size: var(--fs-sm); font-family: var(--font); }
 .frame::after {
   content: ''; position: absolute; inset: 0; border-radius: inherit;
   box-shadow: var(--rim); pointer-events: none; z-index: 30;
@@ -952,7 +952,7 @@ kbd {
 .capnotice {
   /* a one-line STRIP along the bottom edge — off the body, which stands
      centre-stage (R, 09-05); the long explanation is the title tooltip */
-  position: fixed; left: 50%; bottom: 8px; transform: translateX(-50%); z-index: 60;
+  position: fixed; left: 50%; top: 8px; transform: translateX(-50%); z-index: 60;   /* the top-centre gap: nothing lives there by default */
   max-width: min(720px, 92vw); padding: 5px 10px; font-size: var(--fs-sm); line-height: 1.4;
   display: flex; flex-direction: row; align-items: center; gap: 10px; border-radius: 8px;
 }
