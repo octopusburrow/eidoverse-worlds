@@ -245,13 +245,13 @@ a:hover { color: var(--fg); text-decoration-color: var(--brand); }
    a bar affordance gives an unambiguous DONE */
 #splash .sp-bar { width: 260px; height: 3px; border-radius: 2px; overflow: hidden; background: color-mix(in srgb, var(--brand) 12%, transparent); }
 #splash .sp-bar-fill { width: 0%; height: 100%; border-radius: 2px; background: color-mix(in srgb, var(--brand) 65%, transparent); transition: width .3s ease; }
-.sp-sub { color: var(--dim); font-size: 15px; margin: -5px 0; text-align: center; }  /* equal air above + below */
+.sp-sub { color: var(--dim); font-size: var(--fs); margin: -5px 0; text-align: center; }   /* HUD body size, not a bespoke 15px (R, 09-05) */  /* equal air above + below */
 .sp-sub b { color: var(--fg); font-weight: 600; }
 /* one centered breath under the bar — phase and bytes are a single quiet
    line, not furniture at opposite walls */
 .sp-status {
   display: flex; justify-content: center; align-items: baseline; gap: 10px;
-  font-size: 14px; margin-top: -10px;
+  font-size: var(--fs); margin-top: -10px;
 }
 .sp-phase { color: var(--brand); }
 .sp-phase::after { content: '…'; }
