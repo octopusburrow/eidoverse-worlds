@@ -773,6 +773,7 @@ body.arranging #dock .dock-grip { display: grid; }
 }
 #dock button:not(.dock-grip):not(.on) svg { opacity: .8; }
 #dock button:not(.dock-grip):hover svg, #dock button.on svg { opacity: 1; }
+#dock #hud.emark.net-live svg { opacity: 1; }   /* the live ∃ is never dimmed: the :not(.on) .8 above was reaching it (measured 09-04 23:52 — 'dingy') */
 #dock button:not(.dock-grip):hover { color: var(--fg); background: var(--hov); }
 /* The ON look must not be loud or distracting, and quieting it moves OFF
    too, so both are drawn together; the ∃ mark is untouched.
