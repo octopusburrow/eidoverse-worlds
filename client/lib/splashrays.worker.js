@@ -34,7 +34,9 @@ void main(){
   // animates through any main-thread stall and stops only on a hard freeze;
   // still dithered, so the dark ramp has no bands.
   float tt = t * calm;
-  float breath = 0.775 + 0.225 * sin(tt * 0.9);
+  // the breath IS the not-frozen indicator (R, 15:29): at whisper brightness a
+  // ±13 % swing is invisible, so it breathes deep — down to 15 % at the trough
+  float breath = 0.575 + 0.425 * sin(tt * 0.9);
   float fall = exp(-uv.y * 7.0);                          // exponential fall-off (R): bright only at the ground, ~1/16 by 0.4
   vec3 brand = vec3(0.561, 0.910, 0.784);
   float a = fall * 0.037 * breath * ramp;               // R: way more subtle — half again (0.15 → .075 → .037)
