@@ -40,6 +40,7 @@ function hierarchyFields() {
   const walk = (id, depth) => {
     const meta = entityMeta.get(id); const bag = comps.get(id) ?? {};
     const badges = Object.keys(bag).filter((t) => t !== 'lock');
+    if (!entities.get(id)) badges.unshift('loading…');
     rows.push({ id, label: id, sub: short(meta), depth, active: id === sel, badges, locked: !!bag.lock });
     for (const r of riders.get(id) ?? []) rows.push({ id: `rider:${r}`, label: `🧍 ${r}`, depth: depth + 1 });
     for (const k of kids.get(id) ?? []) walk(k, depth + 1);
@@ -87,6 +88,9 @@ function inspectorFields() {
   const id = sceneSelected();
   if (!id || !entities.has(id)) return [{ t: 'info', label: 'selection', value: 'nothing selected — click a thing, or a row in the hierarchy' }];
   const obj = entities.get(id); const meta = entityMeta.get(id) ?? {}; const bag = comps.get(id) ?? {};
+  // the fold knows the thing before its model arrives: entities holds null
+  // while the GLB loads (scenegraph guards the same seam)
+  if (!obj) return [{ t: 'info', label: 'id', value: id }, { t: 'info', label: 'lib', value: short(meta) }, { t: 'info', label: 'state', value: 'loading…' }];
   const isLight = !!obj?.userData?.isLight;
   const locked = !!bag.lock;
   const f = [
