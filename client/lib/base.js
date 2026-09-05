@@ -88,9 +88,16 @@ function teeFlush() {
   }
   if (teeQ.length) teeTimer = setTimeout(teeFlush, 1000);
 }
+const teeSeen = new Map();   // repeats cost one line, then one per 20
 export function tee(line) {
   try {
     const who = CONFIG.name ?? '?';
+    const key = String(line).slice(0, 160);
+    if (!key.startsWith('[xr:rec]')) {
+      const n = (teeSeen.get(key) ?? 0) + 1; teeSeen.set(key, n);
+      if (n > 1 && n % 20 !== 0) return;
+      if (n > 1) line = `${line} ×${n}`;
+    }
     teeQ.push(`${who} ${String(line).slice(0, 3000)}`);
     if (teeQ.length > 200) teeQ.splice(0, teeQ.length - 200);
     if (!teeTimer) teeTimer = setTimeout(teeFlush, 1000);
