@@ -301,7 +301,11 @@ wireNet({
   myState,
   me: () => getMe(),
   onRestore: (r) => {
-    myState.pos.set(r.p[0], r.p[1] ?? 0, r.p[2]);
+    // a remembered pose can carry null (JSON has no NaN — tonight's NaN body
+    // was stored as [null,0,null] and every rejoin put R back on it): only
+    // finite numbers are a place; anything else is the origin
+    const fin = (v, fb = 0) => (Number.isFinite(v) ? v : fb);
+    myState.pos.set(fin(r.p[0]), fin(r.p[1]), fin(r.p[2]));
     myState.yaw = r.yaw ?? 0;
     setCamYaw(myState.yaw + Math.PI); // camera behind you, facing your way
     if (r.clip === 'sit' || r.clip === 'sitchair' || r.clip === 'lie') {
