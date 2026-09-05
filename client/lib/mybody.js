@@ -125,10 +125,12 @@ wireAvatarSwitch(async (path, name) => {
     // instance pool, so switching BACK is a 0ms pool-hit, not a re-parse.
     const next = await makeAvatar(CONFIG.name, path, { urgent: true }); // build before shedding the old
     me?.dispose();
-    setMe(next);
+    // name and path FIRST: setMe announces 'avatar-worn' with the current name,
+    // and My Avatars / the profile read it — set after, they heard the old body
     myAvatarPath = path;
     myAvatarName = name;
     setMyAvatarPath(path);
+    setMe(next);
     localStorage.setItem('ew-avatar-name', name);
     contributeThumbnail(name, next.vrm, CONFIG.token);
     if (net.joined) {

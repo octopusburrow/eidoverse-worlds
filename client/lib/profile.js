@@ -48,6 +48,7 @@ function tile(icon, name, note) {
     ${fsvg(icon, 22)}<b>${name}</b><span>${note}</span></button>`;
 }
 
+let bodiesOpen = false;   // survives repaints: paint() rebuilds the body wholesale
 function paint() {
   if (!frame?.visible && frame?.body.dataset.painted) return;
   frame.body.dataset.painted = '1';
@@ -62,7 +63,7 @@ function paint() {
     </div>
     <div class="pf-presence"></div>
     <div class="tiles">
-      ${tile('person-arms-spread', 'avatars', 'change what you wear')}
+      ${tile('person-arms-spread', 'my avatars', 'bodies you have worn')}
       ${tile('push-pin', 'satchel', 'personal inventory')}
       ${tile('planet', 'worlds', 'places you know')}
       ${tile('users', 'friends', 'people you keep')}
@@ -75,12 +76,14 @@ function paint() {
     (k, v) => { if (k === 'presence') { setPresence(v); paint(); } });
   // avatars: the bodies list unfolds in place (bodies.js, one declaration)
   const bodiesHost = frame.body.querySelector('.pf-bodies');
+  const unfold = () => { bodiesHost.hidden = false; if (!bodiesHost.dataset.mounted) { bodiesHost.dataset.mounted = '1'; mountBodies(bodiesHost); } };
+  if (bodiesOpen) unfold();   // a roster/presence repaint must not fold the list you opened
   frame.body.querySelectorAll('.tile').forEach((b) => {
     b.onclick = () => {
       const n = b.dataset.stub;
-      if (n === 'avatars') {
-        bodiesHost.hidden = !bodiesHost.hidden;
-        if (!bodiesHost.hidden && !bodiesHost.dataset.mounted) { bodiesHost.dataset.mounted = '1'; mountBodies(bodiesHost); }
+      if (n === 'my avatars') {
+        bodiesOpen = bodiesHost.hidden;
+        if (bodiesOpen) unfold(); else bodiesHost.hidden = true;
         return;
       }
       toast(`${n}: not built yet — this tile reserves the spot`, 'info');
