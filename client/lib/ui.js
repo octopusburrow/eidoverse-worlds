@@ -6,6 +6,7 @@ import { bus, CONFIG, setName, setToken, setErrorSink, report, colorFor } from '
 import { resizeZoneAt } from './frames.js';
 import { flipMic, flipEar, micLive, earOn, glyphPinned, setGlyphPinned, micGlyph, earGlyph, xrGlyph, xrGlyphAvailable, xrLive, flipXr } from './mictoggle.js';
 import { svg, fsvg, hasFill, rsvg, hasLine } from './icons.js';
+import { registerXRPanel } from './xrpanels.js';
 
 // section-head emoji → Phosphor fill glyph (menu chrome never rides emoji —
 // the canvas-emoji trap generalizes: platform glyph gaps are silent)
@@ -286,7 +287,21 @@ export function initRoster(source) {
   stack.className = 'stack';
   whoFrame.body.appendChild(stack);
   whoFrame.list = stack;
-  bus.on('roster', paintRoster);
+  bus.on('roster', () => { paintRoster(); bus.emit('xr:repaint'); });
+  // the VR quad reads the SAME source and offers the SAME action (go to);
+  // the desk keeps its own look (names in their colours) — one data source,
+  // one action set, two renderers
+  registerXRPanel({
+    id: 'who', title: 'present',
+    fields: () => [{ t: 'list', label: 'present', empty: 'nobody else yet',
+      rows: whoSource().map((p) => ({
+        id: p.id, label: p.me ? `${p.id} (you)` : p.id,
+        sub: p.dist == null ? undefined : `${p.dist.toFixed(0)} m`,
+        active: !!p.me,
+        actions: p.me ? [] : [{ k: 'goto', label: 'go to' }],
+      })) }],
+    dispatch: (k, id) => { if ((k === 'goto' || k === 'row') && id) bus.emit('command', { cmd: 'goto', arg: id }); },
+  });
   return whoFrame;
 }
 export function paintRoster() {
@@ -294,10 +309,15 @@ export function paintRoster() {
   const people = whoSource();
   whoFrame.setTitle(`present · ${people.length}`);
   whoFrame.list.innerHTML = people.length
-    ? people.map((p) => `<div class="who-row ${p.me ? 'self' : ''}">
+    ? people.map((p) => `<div class="who-row ${p.me ? 'self' : ''}" data-id="${escapeHtml(p.id)}" title="${p.me ? '' : 'go to'}">
         <span class="n" style="color:${colorFor(p.id)}">${escapeHtml(p.id)}${p.me ? ' (you)' : ''}</span>
         <span class="d">${p.dist == null ? '' : p.dist.toFixed(0) + 'm'}</span></div>`).join('')
     : '<div style="color:var(--dim)">nobody else yet</div>';
+  // a row is an action on the desk too (parity with the quad's 'go to')
+  for (const row of whoFrame.list.querySelectorAll('.who-row:not(.self)')) {
+    row.style.cursor = 'pointer';
+    row.onclick = () => bus.emit('command', { cmd: 'goto', arg: row.dataset.id });
+  }
 }
 export function toggleRoster() {
   whoFrame?.toggle();
