@@ -79,7 +79,7 @@ const VISOR = { regular: 'M183.05,56H72A72,72,0,0,0,.08,131.4c1.69,36.69,31.76,6
 const XR_SVG = (on) => {
   const c = on ? INK.on : INK.off;
   return `
-<svg viewBox="0 0 256 256" width="26" height="26" fill="${c}"><path d="${on ? VISOR.fill : VISOR.regular}"/></svg>`;
+<svg viewBox="0 0 256 256" width="26" height="26" fill="${c}"><path d="${on ? VISOR.fill : VISOR.regular}"/>${on ? '' : `<line x1="56" y1="32" x2="200" y2="224" stroke="${INK.slash}" stroke-width="14" stroke-linecap="round"/>`}</svg>`;
 };
 
 let micBtn = null, earBtn = null, xrBtn = null;
