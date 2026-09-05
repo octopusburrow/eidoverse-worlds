@@ -103,12 +103,62 @@ document.body.prepend(canvas);
 // (video settings) otherwise.
 export const PREF_MSAA = 'ew-msaa', PREF_BACKEND = 'ew-backend';
 const pref = (k) => { try { return localStorage.getItem(k); } catch { return null; } };   // a storage throw must not kill boot
+// XR needs the WebGL2 backend: three r184's XRManager throws on WebGPU
+// ("use forceWebGL"), and the backend is a construction-time choice — so VR
+// is a boot flag (?xr=1), not a runtime toggle. Known cost: WebGL loses the
+// reversed-Z depth precision noted below; the 0.15..20000 range is a
+// z-fighting risk in XR mode until a log-depth or tightened-far path lands.
+export const XR_BOOT = CONFIG.params.has('xr');
+// TOLERANT RENDER LIST (XR strobe, 08-05): something leaves holes in the
+// per-eye render list mid-session ("Cannot destructure 'object' of
+// renderList[i]"), and the stock loop throws — one hole kills the whole
+// frame, which reads as the world blinking in the headset. Skip holes, render
+// everything else, log the first few with a stack. Patched on the CLASS
+// PROTOTYPE before construction — an instance patch verifiably engaged yet
+// raw crashes continued (some path holds a constructor-time binding).
+// REIMPLEMENTED, not wrapped: the list mutates DURING iteration (the stock
+// loop caches its length and then dereferences a vacated slot).
+if (XR_BOOT) {
+  const proto = THREE.WebGPURenderer?.prototype;
+  const orig = proto?._renderObjects;
+  let logged = 0;
+  if (orig) {
+    proto._renderObjects = function (renderList, cam, scn, lightsNode, passId = null) {
+      for (let i = 0; i < renderList.length; i++) {
+        const item = renderList[i];
+        if (!item) {
+          if (logged < 5) {
+            logged++;
+            const err = new Error(`renderList hole at ${i}/${renderList.length}, pass=${passId}, xr=${this.xr?.isPresenting}`);
+            globalThis.__errLog?.push?.(`${err.message} :: ${err.stack?.split('\n').slice(2, 5).join(' | ')}`);
+            console.warn('[renderlist]', err.message);
+          }
+          continue;
+        }
+        const { object, geometry, material, group, clippingContext } = item;
+        this._currentRenderObjectFunction(object, scn, cam, geometry, material, group, lightsNode, clippingContext, passId);
+      }
+    };
+  }
+}
+
 export const renderer = new THREE.WebGPURenderer({ canvas,
   antialias: (CONFIG.params.get('msaa') ?? pref(PREF_MSAA)) !== '0',
   forceWebGL: CONFIG.params.get('webgl') === '1'
-    || (CONFIG.params.get('webgl') == null && pref(PREF_BACKEND) === 'webgl') });
+    || (CONFIG.params.get('webgl') == null && pref(PREF_BACKEND) === 'webgl')
+    || XR_BOOT });   // a headset session needs WebGL 2 regardless of preference
 /** 'webgpu' | 'webgl' — known once renderer.init() resolves. */
 export const backendName = () => (renderer.backend?.isWebGLBackend ? 'webgl' : 'webgpu');
+// r184/185 SHIPPING BUG (fixed on three dev): XRManager.onAnimationFrame calls
+// foveateBoundTexture(renderer._getFrameBufferTarget()) and the target is
+// legitimately NULL when no post-processing pass is needed. The method reads
+// .isPostProcessingRenderTarget off it → EVERY XR frame throws inside three
+// BEFORE the app callback; the world freezes while head tracking stays live.
+// Null-guard shim, byte-identical to dev's fix; delete when three ≥ r186.
+if (XR_BOOT) {
+  const fov = renderer.xr.foveateBoundTexture?.bind(renderer.xr);
+  if (fov) renderer.xr.foveateBoundTexture = (rt) => (rt == null ? undefined : fov(rt));
+}
 renderer.setSize(innerWidth, innerHeight);
 // Spectators start a notch lower — an audience laptop's job is 30fps for an
 // hour, not maximum sharpness. Adaptive scaling adjusts from here.
@@ -136,7 +186,9 @@ camera.position.set(3.5, 2.6, 5.5);
 camera.lookAt(0, 1, 0);
 
 addEventListener('resize', () => {
-  renderer.setSize(innerWidth, innerHeight);
+  // XR owns the framebuffer while presenting: resizing it mid-session tears
+  // the eye buffers. Aspect math is still safe to keep warm.
+  if (!renderer.xr?.isPresenting) renderer.setSize(innerWidth, innerHeight);
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
 });
@@ -158,6 +210,10 @@ export const ground = new THREE.Mesh(
 ground.receiveShadow = true;
 scene.add(ground);
 export const grid = new THREE.GridHelper(160, 80, 0x3a4a5a, 0x222c38);
+// XR per-eye frustum culling misjudges huge planes (in-headset 08-05: the
+// ground VANISHES at some head angles) — one draw call each, never cull them
+ground.frustumCulled = false;
+grid.frustumCulled = false;
 grid.position.y = 0.01;
 scene.add(grid);
 

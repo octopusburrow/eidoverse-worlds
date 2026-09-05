@@ -8,6 +8,7 @@ import { makeFrame } from './frames.js';
 import { EMOTE_ORDER } from './avatar.js';
 import { myState } from './controller.js';
 import { getMe } from './mybody.js';
+import { registerXRPanel } from './xrpanels.js';
 
 // emoji here are CONTENT (the gesture itself), not chrome — the fill-icon set
 // has no gesture glyphs beyond a wave, and a drawn set is still an open question.
@@ -54,5 +55,11 @@ export function initEmoteBar() {
   const paint = () => { for (const [n, b] of tiles) b.classList.toggle('on', myState.emote === n); };
   setInterval(paint, 500);   // number keys set myState.emote elsewhere; the lit tile follows
   f.body.appendChild(grid);
+  // the same six gestures as a VR quad — one button per emote, the same call
+  registerXRPanel({
+    id: 'emotes', title: 'emotes',
+    fields: () => EMOTE_ORDER.map((name) => ({ t: 'btn', k: name, label: name })),   // names, not emoji: a canvas fillText of a missing glyph paints NOTHING
+    dispatch: (k) => { if (EMOTE_ORDER.includes(k)) { getMe()?.playEmote(k); myState.emote = k; } },
+  });
   return f;
 }
