@@ -285,6 +285,12 @@ function textSprite(draw, w, h, scaleW) {
   return s;
 }
 const disposeSprite = (s) => { s.material.map?.dispose(); s.material.dispose(); };
+// a token read at paint time — canvas sprites cannot use var(); a 'style' event repaints them
+const tokv = (n, fb) => (getComputedStyle(document.documentElement).getPropertyValue(n) || fb).trim();
+// every live Avatar, so a Style change can repaint the sprites it baked from
+// tokens (R, 09-05 16:41: pink accent, nameplates still teal)
+const liveAvatars = new Set();
+bus.on('style', () => { for (const a of liveAvatars) a.repaintLabel?.(); });
 
 const makeLabel = (name) => textSprite((ctx) => {
   // humanist, not terminal (R, 08-30: "Matrix vibes, can we do better").
@@ -294,10 +300,9 @@ const makeLabel = (name) => textSprite((ctx) => {
   try { ctx.letterSpacing = '1.5px'; } catch {}
   ctx.textAlign = 'center';
   const w = Math.min(500, ctx.measureText(name.slice(0, 24)).width + 40);
-  const tokv = (n, fb) => (getComputedStyle(document.documentElement).getPropertyValue(n) || fb).trim();
-  ctx.fillStyle = 'rgba(6,16,22,0.62)';
+  ctx.fillStyle = tokv('--pill-bg', 'rgba(6,16,22,0.62)');
   ctx.beginPath(); ctx.roundRect((512 - w) / 2, 6, w, 52, 26); ctx.fill();   // pill (R, 15:12)
-  ctx.fillStyle = tokv('--brand', '#8fe8c8');
+  ctx.fillStyle = tokv('--pill-name', '#8fe8c8');
   ctx.fillText(name.slice(0, 24), 256, 46);
 }, 512, 64, 0.9);
 
@@ -326,13 +331,13 @@ function makeBubble(text) {
     // wrapped line; the old fixed 700 stays as the ceiling
     const wMax = Math.max(...lines.map((l) => ctx.measureText(l).width));
     const w = Math.min(700, Math.ceil(wMax) + 44);
-    ctx.fillStyle = 'rgba(8,20,28,0.86)';
-    ctx.strokeStyle = 'rgba(143,232,200,0.25)';
+    ctx.fillStyle = tokv('--pill-bg', 'rgba(8,20,28,0.86)');
+    ctx.strokeStyle = tokv('--pill-edge', 'rgba(143,232,200,0.25)');
     ctx.lineWidth = 2;
     ctx.beginPath(); ctx.roundRect((704 - w) / 2, 2, w, h - 4, 16); ctx.fill(); ctx.stroke();
     ctx.textAlign = 'center';
     lines.forEach((l, i) => {
-      ctx.fillStyle = clipped && i === lines.length - 1 ? '#8ba39c' : '#e8f4ef';
+      ctx.fillStyle = clipped && i === lines.length - 1 ? tokv('--pill-dim', '#8ba39c') : tokv('--pill-fg', '#e8f4ef');
       ctx.fillText(l, 352, 38 + i * 34);
     });
   }, 704, Math.max(64, h), 2.4);
@@ -392,8 +397,8 @@ function drawTypingDots(sprite, t, state) {
   } else {
     for (let i = 0; i < 3; i++) {
       const b = 0.32 + 0.68 * Math.max(0, Math.sin(t * 5 - i * 0.85));
-      ctx.fillStyle = `rgba(180,240,216,${b})`;
-      ctx.beginPath(); ctx.arc(48 + i * 16, 28, 5, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = b; ctx.fillStyle = tokv('--pill-dot', 'rgb(180,240,216)');
+      ctx.beginPath(); ctx.arc(48 + i * 16, 28, 5, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
     }
   }
   sprite.material.map.needsUpdate = true;
@@ -464,6 +469,7 @@ export class Avatar {
     this.label = makeLabel(id);
     this.label.position.y = 1.95;
     this.root.add(this.label);
+    liveAvatars.add(this);
 
     // ---- gaze: VRM ships a lookAt rig and nothing was ever pointing it, so
     // every body in the world had dead eyes. A target object per avatar,
@@ -1405,6 +1411,12 @@ export class Avatar {
    *  whole avatar to change a label would drop you through the floor mid-step. */
   setName(name) {
     this.id = name;
+    this._labelName = name;
+    this.repaintLabel();
+  }
+  /** rebuild the nameplate sprite from the current tokens (rename, or a Style change) */
+  repaintLabel() {
+    const name = this._labelName ?? this.id ?? '';
     this.root.remove(this.label);
     disposeSprite(this.label);
     this.label = makeLabel(this._seatApprox ? `${name} ≈` : name);
@@ -1753,6 +1765,7 @@ export class Avatar {
   // deepDispose happens only at pool eviction). Deep-disposing a body that
   // then pools is the recorded black-avatar landmine (§13.3).
   dispose() {
+    liveAvatars.delete(this);
     // Idempotent, and that is load-bearing now: a second dispose() of THIS
     // avatar after its VRM was re-worn by a newer one would release a body
     // someone is wearing back into the pool — two wearers, one instance.

@@ -319,6 +319,7 @@ bus.on('audio:receive', paint);
 // voicesfubridge.js) and subscribed by nobody. The glyph repainted only from
 // its own 125ms poll, which read mesh state — so under SFU it never moved.
 bus.on('audio:mic', paint);
+bus.on('style', paint);       // the badge is baked from tokens (INK) — a Style change repaints it (R, 09-05)
 setInterval(ensure, 1000);
 ensure();
 

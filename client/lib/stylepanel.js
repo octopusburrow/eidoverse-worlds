@@ -4,6 +4,7 @@
 // Persisted per-browser; "reset" returns to the sheet's own values.
 
 import { makeSection } from './ui.js';
+import { bus } from './base.js';
 
 const LS = 'ew-style-tokens';
 const FIELDS = [
@@ -35,6 +36,7 @@ export function applyStyleTokens() {
     localStorage.removeItem('ew-panel-a');
   } catch {}
   for (const [k, v] of Object.entries(o)) rootStyle().setProperty(k, v);
+  bus.emit('style', { key: '*', value: null });
 }
 
 // --panel-a: the sheet's value unless a person dialed it (stored with the tokens)
@@ -65,6 +67,7 @@ export function initStylePanel() {
       sw.oninput = () => {
         const v = f.kind === 'rgbTriplet' ? hexToTriplet(sw.value) : sw.value;
         rootStyle().setProperty(f.key, v);
+        bus.emit('style', { key: f.key, value: v });   // sprites baked from tokens (nameplates, pills) repaint on this
         const o = load(); o[f.key] = v; save(o);
       };
       const name = document.createElement('span');
