@@ -60,7 +60,13 @@ let windowWorst = 0;
 let windowDoubled = 0;
 let windowSpikes = 0;
 function frame(now) {
-  const dtMs = now - last;
+  let dtMs = now - last;
+  // A RESUME is not a frame. Under an XR session the loop ticks on the
+  // session's clock and stops while the session is blurred (SteamVR
+  // dashboard, headset off); the first tick back arrived with dtMs = -72464
+  // (R's recorder, 09-04 23:41) and a negative dt went straight into the
+  // body physics. Negative or absurd deltas advance nothing.
+  if (dtMs < 0 || dtMs > 2000) dtMs = 0;
   const dt = Math.min(0.1, dtMs / 1000);
   last = now;
   // A hidden tab suspends rAF; the resume gap is a suspension, not a frame —
