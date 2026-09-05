@@ -21,7 +21,7 @@
 // the identity RTT resolves — a module that self-started on import would
 // change boot ordering silently (§14.1).
 
-import { report } from './core.js';
+import { report, renderer, XR_BOOT } from './core.js';
 import { BC } from './bc.js';
 import { perf } from './perf.js';
 
@@ -100,12 +100,17 @@ function frame(now) {
     frames = 0;
     fpsAt = now;
   }
-  requestAnimationFrame(frame);
+  if (!XR_BOOT) requestAnimationFrame(frame);
 }
 
 /** Start the loop. Called once from boot, AFTER identity resolves. */
 export function startFrame() {
   last = performance.now();
   fpsAt = last;
-  requestAnimationFrame(frame);
+  // Inside an XR session the window's rAF stops (or detaches from the
+  // headset's cadence) and only session.requestAnimationFrame ticks —
+  // renderer.setAnimationLoop routes to whichever is live. Desktop boot
+  // keeps the plain rAF loop byte-for-byte.
+  if (XR_BOOT) renderer.setAnimationLoop(frame);
+  else requestAnimationFrame(frame);
 }

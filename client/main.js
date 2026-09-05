@@ -37,7 +37,9 @@ import { initPalette, updateBuild, toggleEditMode, isEditing } from './lib/build
 import { initConjure } from './lib/conjure.js';
 import './lib/mictoggle.js'; // mic + headphone toggles beside the HUD, both off by default
 import { initAudioPanel } from './lib/audiopanel.js';
-import { initSceneGraph } from './lib/scenegraph.js';
+import { initSceneGraph, sceneSelect } from './lib/scenegraph.js';
+import { initXR, updateXR, bindXRSelf } from './lib/xr.js';
+import { trySitOn as xrTrySitOn, dismountMe as xrDismountMe } from './lib/localbody.js';
 import {
   toast, setHint, flashHint, buildHelp, toggleHelp,
   openDoor, toggleRoster, initRoster, initDock, panelFrame,
@@ -433,7 +435,14 @@ registerSystem('promote-tail', () => drainPromoteTail());        // §16.2.C: pr
                                  // before 'debug' so F3 sees same-frame colliders
 registerSystem('debug', (dt, t, now) => updateDebug(now));       // F3 wireframes
 registerSystem('send-pose', (dt, t, now) => sendPose(now));
+// XR: read hands → fill intent (updateMe already moved the body) → rig follows
+registerSystem('xr', () => updateXR());
 registerSystem('render', () => renderer.render(scene, camera));
+// radial-menu actions: the ring speaks through the same flows the keyboard does
+bus.on('xr:sit', () => { if (!xrTrySitOn(null)) setPosture('sit'); });
+bus.on('xr:stand', () => xrDismountMe());
+bus.on('xr:mic', async () => { const { toggleMic } = await import('./lib/micstate.js'); await toggleMic(CONFIG.name); });
+bus.on('xr:select', (id) => sceneSelect(id));
 let _pulseAt = 0;
 registerSystem('pulse', (dt, t, now) => {
   if (now - _pulseAt < 1000) return;
@@ -443,6 +452,8 @@ registerSystem('pulse', (dt, t, now) => {
 });
 
 startFrame();   // explicit — the loop starts only after identity resolved
+initXR();               // the VR chip appears only where immersive-vr is supported
+bindXRSelf(() => getMe());   // first-person split + own-label hide need the body
 
 // Idle bandwidth streams the rest of the library into the HTTP cache — fire
 // and forget; it waits out the boot and yields to every real load on its own

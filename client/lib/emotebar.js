@@ -6,6 +6,7 @@ import { makeFrame } from './frames.js';
 import { EMOTE_ORDER } from './avatar.js';
 import { myState } from './controller.js';
 import { getMe } from './mybody.js';
+import { registerXRPanel } from './xrpanels.js';
 
 export function initEmoteBar() {
   const f = makeFrame('emotes', {
@@ -22,5 +23,11 @@ export function initEmoteBar() {
     wrap.appendChild(b);
   });
   f.body.appendChild(wrap);
+  // the same six gestures as a VR quad — one button per emote, the same call
+  registerXRPanel({
+    id: 'emotes', title: 'emotes',
+    fields: () => EMOTE_ORDER.map((name) => ({ t: 'btn', k: name, label: `${ICON[name] ?? ''} ${name}`.trim() })),
+    dispatch: (k) => { if (EMOTE_ORDER.includes(k)) { getMe()?.playEmote(k); myState.emote = k; } },
+  });
   return f;
 }

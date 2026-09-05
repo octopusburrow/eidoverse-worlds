@@ -278,7 +278,7 @@ bus.on('drag', ({ id, pos, yaw }) => {
 
 // ============================================================ commits + undo
 
-function pushUndo(inverse, describe) {
+export function pushUndo(inverse, describe) {
   undoStack.push({ inverse, describe });
   while (undoStack.length > 40) undoStack.shift();
 }
