@@ -1118,6 +1118,14 @@ body.touch #touch { display: block; }
 .sp-item-sub { color: var(--dim); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sp-mini { background: var(--well); border: none; color: var(--fg); border-radius: 4px; padding: 2px 7px; cursor: pointer; }
 .sp-empty { color: var(--dim); font-style: italic; padding: 4px 7px; }
+/* schema fields added for edit mode (panels.js: group / enum / color / tree, units) */
+.sp-group { width: 100%; text-align: left; background: none; border: none; border-bottom: 1px solid var(--edge); color: var(--brand); font-weight: 600; padding: 4px 0 3px; margin-top: 4px; cursor: pointer; }
+.sp-unit { color: var(--dim); font-size: 11px; margin-left: 2px; }
+.sp-enum { background: var(--panel); border: 1px solid var(--edge); color: var(--fg); border-radius: 4px; padding: 2px 4px; font: inherit; }
+.sp-color { width: 34px; height: 22px; padding: 0; border: 1px solid var(--edge); border-radius: 4px; background: none; }
+.sp-tree { display: flex; flex-direction: column; gap: 1px; max-height: 260px; overflow-y: auto; }
+.sp-tree-row .sp-item-label { font-weight: 500; }
+.sp-mini.on { background: var(--brand); color: #14100c; }
 /* the VR chip beside the dock rail (xr.js seats it; only appears when the
    browser answers isSessionSupported('immersive-vr')) */
 .xr-chip { position: fixed; z-index: 30; font-size: 13px; padding: 5px 10px; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
