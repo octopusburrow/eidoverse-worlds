@@ -34,7 +34,7 @@ function profileDispatch(k, v) {
 export function initProfile() {
   registerXRPanel({ id: 'profile', title: 'profile', fields: profileFields, dispatch: profileDispatch });
   frame = makeFrame('profile', {
-    title: 'profile', x: 64, y: 60, w: 420, h: 440, minW: 320, minH: 300, hidden: true,   // id + presence + four tiles + note
+    title: 'profile', x: 64, y: 60, w: 420, h: 440, minW: 320, minH: 300, hidden: true,   // portrait + header + tabs + pane
   });
   frame.body.classList.add('profile-body');
   paint();
@@ -43,52 +43,80 @@ export function initProfile() {
   return frame;
 }
 
-function tile(icon, name, note) {
-  return `<button class="tile" data-stub="${name}">
-    ${fsvg(icon, 22)}<b>${name}</b><span>${note}</span></button>`;
-}
+// ---- the body: portrait (= presence control) · header · tabs · one pane
+// R, 09-05 16:06 — "try for the redesign, it was a stub anyway":
+//   • the portrait circle carries the profile glyph as its placeholder and IS
+//     the presence control: click → a Discord-style pop with present/away/busy
+//   • tabs across the top under the header (side tabs fight 420 px; bottom
+//     tabs read as a dock): avatars · satchel · worlds · friends
+//   • the last tab is remembered per browser (ew-profile-tab)
+//   • the bodies list is the avatars tab's content — no more folding
+const TABS = [
+  ['avatars', 'person-arms-spread', 'bodies you have worn'],
+  ['satchel', 'push-pin', 'personal inventory'],
+  ['worlds', 'planet', 'places you know'],
+  ['friends', 'users', 'people you keep'],
+];
+const TAB_KEY = 'ew-profile-tab';
+let tab = (() => { try { return localStorage.getItem(TAB_KEY) || 'avatars'; } catch { return 'avatars'; } })();
+const PRESENCE_WORD = { present: 'present · here and active', away: 'away · idle or elsewhere', busy: 'busy · here, not to be disturbed' };
 
-let bodiesOpen = false;   // survives repaints: paint() rebuilds the body wholesale
 function paint() {
   if (!frame?.visible && frame?.body.dataset.painted) return;
   frame.body.dataset.painted = '1';
   const avatar = (CONFIG.avatar || 'default').split('/').pop().replace(/\.vrm$/i, '');
+  const st = presence();
   frame.body.innerHTML = `
     <div class="pf-id">
-      <span class="pf-dot" style="background:${colorFor(CONFIG.name)}"></span>
+      <button class="pf-portrait" data-presence="${st}" title="presence · ${st} — click to change" aria-haspopup="menu" aria-expanded="false"
+        style="--who:${colorFor(CONFIG.name)}">${fsvg('user-circle', 20)}<span class="pf-portrait-dot"></span></button>
       <div class="pf-who">
         <b>${escape(CONFIG.name)}</b>
-        <span>in <b>${escape(CONFIG.world)}</b> · wearing <b>${escape(avatar)}</b></span>
+        <span>in <b>${escape(CONFIG.world)}</b> · wearing <b>${escape(avatar)}</b> · <i class="pf-state">${st}</i></span>
       </div>
     </div>
-    <div class="pf-presence"></div>
-    <div class="tiles">
-      ${tile('person-arms-spread', 'my avatars', 'bodies you have worn')}
-      ${tile('push-pin', 'satchel', 'personal inventory')}
-      ${tile('planet', 'worlds', 'places you know')}
-      ${tile('users', 'friends', 'people you keep')}
+    <div class="pf-tabs" role="tablist">
+      ${TABS.map(([id, icon, note]) => `<button class="pf-tab${id === tab ? ' on' : ''}" role="tab" aria-selected="${id === tab}" data-tab="${id}" title="${note}">${fsvg(icon, 14)}<span>${id}</span></button>`).join('')}
     </div>
-    <div class="pf-bodies" hidden></div>
-    <div class="pf-note">satchel · worlds · friends are stubs — shapes first, plumbing next</div>`;
-  // presence: the same three the quad offers, as the house's own rows
-  renderDOM(frame.body.querySelector('.pf-presence'),
-    [{ t: 'list', label: 'presence', rows: STATES.map((st) => ({ id: st, label: st, active: presence() === st, actions: presence() === st ? [] : [{ k: 'presence', label: 'set' }] })) }],
-    (k, v) => { if (k === 'presence') { setPresence(v); paint(); } });
-  // avatars: the bodies list unfolds in place (bodies.js, one declaration)
-  const bodiesHost = frame.body.querySelector('.pf-bodies');
-  const unfold = () => { bodiesHost.hidden = false; if (!bodiesHost.dataset.mounted) { bodiesHost.dataset.mounted = '1'; mountBodies(bodiesHost); } };
-  if (bodiesOpen) unfold();   // a roster/presence repaint must not fold the list you opened
-  frame.body.querySelectorAll('.tile').forEach((b) => {
-    b.onclick = () => {
-      const n = b.dataset.stub;
-      if (n === 'my avatars') {
-        bodiesOpen = bodiesHost.hidden;
-        if (bodiesOpen) unfold(); else bodiesHost.hidden = true;
-        return;
-      }
-      toast(`${n}: not built yet — this tile reserves the spot`, 'info');
-    };
+    <div class="pf-pane" data-tab="${tab}"></div>`;
+
+  // the presence pop, anchored to the portrait
+  const portrait = frame.body.querySelector('.pf-portrait');
+  portrait.onclick = (e) => {
+    e.stopPropagation();
+    const open = frame.body.querySelector('.pf-pop');
+    if (open) { open.remove(); portrait.setAttribute('aria-expanded', 'false'); return; }
+    const pop = document.createElement('div');
+    pop.className = 'pf-pop panel'; pop.setAttribute('role', 'menu');
+    for (const s of STATES) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = `pf-pop-row${s === presence() ? ' on' : ''}`; b.dataset.presence = s; b.setAttribute('role', 'menuitemradio'); b.setAttribute('aria-checked', String(s === presence()));
+      b.innerHTML = `<span class="pf-pop-dot" data-presence="${s}"></span><span>${PRESENCE_WORD[s]}</span>`;
+      b.onclick = (ev) => { ev.stopPropagation(); setPresence(s); pop.remove(); paint(); };
+      pop.append(b);
+    }
+    frame.body.querySelector('.pf-id').append(pop);
+    portrait.setAttribute('aria-expanded', 'true');
+    const close = (ev) => { if (!pop.contains(ev.target) && ev.target !== portrait) { pop.remove(); portrait.setAttribute('aria-expanded', 'false'); removeEventListener('pointerdown', close, true); } };
+    addEventListener('pointerdown', close, true);
+  };
+
+  // tabs
+  frame.body.querySelectorAll('.pf-tab').forEach((b) => {
+    b.onclick = () => { tab = b.dataset.tab; try { localStorage.setItem(TAB_KEY, tab); } catch {} paint(); };
   });
+  paintPane(frame.body.querySelector('.pf-pane'));
+}
+
+let bodiesHost = null;   // mounted ONCE: mountBodies subscribes bus listeners, so re-mounting per repaint would leak them
+function paintPane(pane) {
+  if (tab === 'avatars') {
+    if (!bodiesHost) { bodiesHost = document.createElement('div'); bodiesHost.className = 'pf-bodies'; mountBodies(bodiesHost); }
+    pane.append(bodiesHost);
+    return;
+  }
+  const [, icon, note] = TABS.find(([id]) => id === tab);
+  pane.innerHTML = `<div class="pf-stub">${fsvg(icon, 28)}<b>${tab}</b><span>${note}</span><em>not built yet — this tab reserves the spot; shapes first, plumbing next</em></div>`;
 }
 
 const escape = (v) => String(v).replace(/[&<>"]/g, (c) => (
