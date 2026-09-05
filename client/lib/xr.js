@@ -18,13 +18,14 @@
 // foveation 0, local-floor, and the settled law: NEVER navigate mid-session.
 
 import { THREE, renderer, camera, scene, XR_BOOT } from './core.js';
-import { CONFIG, report, bus } from './base.js';
-import { stroke, svg } from './icons.js';
+import { CONFIG, report, bus, tee } from './base.js';
+import { stroke } from './icons.js';
 import { xrPanelsEnter, xrPanelsExit, xrPanelsPick } from './xrpanels.js';
 import { myState, xrIntent, setCamYaw, setXrProbe } from './controller.js';
 import { entities } from './world.js';
 import { sendVerb } from './net.js';
 import { flashHint, toast } from './ui.js';
+import { registerXrGlyph } from './mictoggle.js';
 import { pushUndo } from './build.js';
 import { perf } from './perf.js';
 
@@ -245,8 +246,8 @@ async function enterVR() {
     });
     renderer.xr.enabled = true;
     await renderer.xr.setSession(session);
-    console.log('[xr] session on', renderer.backend?.isWebGPUBackend ? 'WebGPU' : 'WebGL',
-      'features=' + JSON.stringify(session.enabledFeatures ?? []));
+    const onLine = `[xr] session on ${renderer.backend?.isWebGPUBackend ? 'WebGPU' : 'WebGL'} features=${JSON.stringify(session.enabledFeatures ?? [])}`;
+    console.log(onLine); tee(onLine);
     try { renderer.xr.setFoveation(0); } catch { /* not all runtimes */ }
     rig.position.set(myState.pos.x, myState.pos.y, myState.pos.z);
     rig.rotation.y = 0;
@@ -280,9 +281,8 @@ async function enterVR() {
     session.addEventListener('inputsourceschange', (ev) => {
       for (const src of ev.added ?? []) {
         const g = src.gamepad;
-        console.log('[xr] input:', src.handedness,
-          'profiles=' + JSON.stringify(src.profiles),
-          g ? `axes=${g.axes.length} buttons=${g.buttons.length} haptics=${g.hapticActuators?.length ?? 0}` : 'no-gamepad');
+        const inLine = `[xr] input: ${src.handedness} profiles=${JSON.stringify(src.profiles)} ${g ? `axes=${g.axes.length} buttons=${g.buttons.length} haptics=${g.hapticActuators?.length ?? 0}` : 'no-gamepad'}`;
+        console.log(inLine); tee(inLine);
       }
     });
   } catch (e) {
@@ -290,6 +290,7 @@ async function enterVR() {
     // the failure must OUTLIVE the glance (R, 09-04: "didn't see the error
     // for very long") — a sticky toast with the actual message, 30 s
     toast(`VR failed to start: ${e?.message ?? e}`, 'err', 30000);
+    tee(`[xr] ENTER FAILED: ${e?.name ?? ''} ${e?.message ?? e}`);
   }
 }
 
@@ -375,13 +376,14 @@ export function updateXR() {
   if (now - recAt > 5000) {
     recAt = now;
     const av = getSelf();
-    console.log('[xr:rec]', JSON.stringify({
+    const rec = JSON.stringify({
       backend: renderer.backend?.isWebGPUBackend ? 'webgpu' : 'webgl',
       fps: perf.fps, ms: +perf.ms.toFixed(1), worst: +perf.worst.toFixed(0), spikes: perf.spikes,
       body: av ? (av.vrm?.scene?.visible ? 'visible' : 'HIDDEN') : 'NONE',
       fp: !!fpVrm, camMask: camera.layers.mask, rig: [+rig.position.x.toFixed(1), +rig.position.y.toFixed(1), +rig.position.z.toFixed(1)],
       hands: { L: !!sourceFor('left'), R: !!sourceFor('right') }, held: held?.id ?? null,
-    }));
+    });
+    console.log('[xr:rec]', rec); tee(`[xr:rec] ${rec}`);
   }
 }
 let recAt = 0;
@@ -393,38 +395,13 @@ export async function initXR() {
   catch (e) { report('xr support probe', e); }
   if (!supported) return;
 
-  const b = document.createElement('button');
-  b.className = 'panel xr-chip';
-  // Seats beside the dock rail on whichever edge the rail is welded to
-  // (ui.js welds it by pointer); ResizeObserver re-seats the frame the rail
-  // changes — no timers, no drift-in-late.
-  let ro = null, seen = null;
-  const seat = () => {
-    const dock = document.querySelector('#dock');
-    if (!dock) { setTimeout(seat, 300); return; }
-    const r = dock.getBoundingClientRect();
-    const vertical = r.height > r.width;
-    if (vertical) {
-      b.style.left = `${Math.round(r.left < innerWidth / 2 ? r.right + 8 : r.left - b.offsetWidth - 8)}px`;
-      b.style.top = `${Math.round(r.bottom - b.offsetHeight)}px`;
-    } else {
-      b.style.left = `${Math.round(r.left - b.offsetWidth - 8)}px`;
-      b.style.top = `${Math.round(r.top + (r.height - b.offsetHeight) / 2)}px`;
-    }
-    if (dock !== seen) { seen = dock; ro?.disconnect(); ro = new ResizeObserver(seat); ro.observe(dock); }
-  };
-  window.addEventListener('resize', seat);
-  seat();
-  if (!XR_BOOT) {
-    b.innerHTML = `${svg('glasses', 13)} VR`;
-    b.onclick = () => {
-      const u = new URL(location.href); u.searchParams.set('xr', '1'); location.href = u;
-    };
-  } else {
-    b.innerHTML = `${svg('glasses', 13)} enter VR`;
-    b.onclick = enterVR;
-  }
-  document.body.appendChild(b);
+  // the third glyph of the mic/ear trio — the same ink, the same slot
+  // layout, the same pin row in the ∃ menu (R, 09-04). Exists only here,
+  // where the browser answered that a headset can present.
+  registerXrGlyph({
+    onclick: () => { if (presenting) session?.end?.(); else if (XR_BOOT) enterVR(); else { const u = new URL(location.href); u.searchParams.set('xr', '1'); location.href = u; } },
+    live: () => presenting,
+  });
   setXrProbe(() => presenting);
 }
 

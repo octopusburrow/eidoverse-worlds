@@ -23,6 +23,7 @@ import { resolveLibFile } from "./lint.ts";
 import { summarizeGlb } from "./geometry.ts";
 import { worlds, getWorld, type World } from "./world.ts";
 import { handleUpload } from "./upload.ts";
+const clientLogRate = new Map<string, { at: number; n: number }>();
 import { defsPayload, avatarDefs, animationDefs } from "./defs.ts";
 import { tickStats } from "./tick.ts";
 import { entryBusStats } from "./events.ts";
@@ -333,6 +334,30 @@ const ROUTES: Route[] = [
       JSON.stringify({ login: HN_ISSUER_KEY ? HN_LOGIN_URL : null, required: HN_REQUIRE_LOGIN && Boolean(HN_ISSUER_KEY) }),
       { headers: { "content-type": "application/json", "cache-control": "no-store" } },
     ),
+  },
+  {
+    // client console tee — a visitor's errors and [xr] lines land in a file
+    // the operator can tail, because a headset shows an error for three
+    // seconds and a desk shows nothing (R, 09-04: "I'm surprised you can't
+    // get errors directly reported from my environment"). Bounded: 4 KB per
+    // line, 600 lines per minute per world, key-gated like the door.
+    match: (u, req) => u.pathname === "/clientlog" && req.method === "POST",
+    handler: async ({ req, url }) => {
+      const world = (url.searchParams.get("world") ?? "unknown").replace(/[^a-z0-9_-]/gi, "").slice(0, 40);
+      const key = url.searchParams.get("key") ?? "";
+      if (JOIN_TOKEN && key !== JOIN_TOKEN) return new Response("no", { status: 401 });
+      const now = Date.now();
+      let bucket = clientLogRate.get(world);
+      if (!bucket) { bucket = { at: now, n: 0 }; clientLogRate.set(world, bucket); }
+      if (now - bucket.at > 60_000) { bucket.at = now; bucket.n = 0; }
+      if (++bucket.n > 600) return new Response("slow down", { status: 429 });
+      let body = "";
+      try { body = (await req.text()).slice(0, 4096); } catch { return new Response("bad", { status: 400 }); }
+      const line = JSON.stringify({ t: new Date(now).toISOString(), ip: req.headers.get("cf-connecting-ip") ?? "", line: body }) + "\n";
+      try { await Bun.write(Bun.file(`/tmp/claude-1000/clientlog-${world}.log`), line, { append: true } as any); }
+      catch { try { const { appendFileSync } = await import("node:fs"); appendFileSync(`/tmp/claude-1000/clientlog-${world}.log`, line); } catch { /* the tee must never fail the page */ } }
+      return new Response("ok", { headers: { "cache-control": "no-store" } });
+    },
   },
   {
     match: (u) => u.pathname === "/whoami",
