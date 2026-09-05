@@ -466,6 +466,26 @@ addEventListener('resize', () => {
 
 export function getFrame(id) { return frames.get(id); }
 export function allFrames() { return [...frames.values()]; }
+// Esc toggles the whole set of open frames closed ⇄ back (R, 09-05 16:08),
+// but only when nothing more specific wants the key: an open pop, a focused
+// field, a scrim, edit mode (build.js owns Esc there), a locked pointer, or
+// chat's own Esc. The remembered set lives only for the session.
+let escStash = null;
+export function escapeToggle() {
+  const open = [...frames.values()].filter((f) => f.visible);
+  if (open.length) { escStash = open.map((f) => f.id); for (const f of open) f.hide(); return 'closed'; }
+  if (escStash?.length) { for (const id of escStash) frames.get(id)?.show(); escStash = null; return 'restored'; }
+  return 'nothing';
+}
+export function escapeIsClaimed() {
+  const a = document.activeElement;
+  if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable)) return 'field';
+  if (document.querySelector('.pf-pop, .dd-pop, .chat-gearpop:not([hidden]), #emenu:not([hidden])')) return 'pop';   // the gear pop lives in the DOM hidden; only a SHOWN one claims Esc
+  if (document.querySelector('.scrim.open')) return 'overlay';
+  if (document.pointerLockElement) return 'pointer-lock';
+  return null;
+}
+
 export function resetLayout() {
   for (const f of frames.values()) f.resetLayout();
   setLocked(false);

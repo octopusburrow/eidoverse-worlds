@@ -97,8 +97,11 @@ function paint() {
     }
     frame.body.querySelector('.pf-id').append(pop);
     portrait.setAttribute('aria-expanded', 'true');
-    const close = (ev) => { if (!pop.contains(ev.target) && ev.target !== portrait) { pop.remove(); portrait.setAttribute('aria-expanded', 'false'); removeEventListener('pointerdown', close, true); } };
+    const dismiss = () => { pop.remove(); portrait.setAttribute('aria-expanded', 'false'); removeEventListener('pointerdown', close, true); removeEventListener('keydown', onKey, true); };
+    const close = (ev) => { if (!pop.contains(ev.target) && ev.target !== portrait) dismiss(); };
+    const onKey = (ev) => { if (ev.key === 'Escape') { ev.stopPropagation(); ev.preventDefault(); dismiss(); } };   // Esc closes the pop and goes no further (the global Esc toggle yields to an open pop)
     addEventListener('pointerdown', close, true);
+    addEventListener('keydown', onKey, true);
   };
 
   // tabs
