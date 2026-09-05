@@ -170,7 +170,16 @@ export const ground = new THREE.Mesh(
 );
 ground.receiveShadow = true;
 scene.add(ground);
-export const grid = new THREE.GridHelper(160, 80, 0x6a7078, 0x1e2328);   // monochrome; the two lines through the origin clearly brighter (R, 09-05); a shader grid is still the AA fix
+// monochrome grid (R, 09-05). GridHelper draws every line in ONE buffer, so
+// its bright centre lines lose the depth test wherever a dark line crosses
+// them at the same y and come out dashed — so the grid is all dark, and the
+// two axis lines are their own object, a hair higher, drawn after it.
+export const grid = new THREE.GridHelper(160, 80, 0x1e2328, 0x1e2328);
+export const axisLines = new THREE.LineSegments(
+  new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-80, 0, 0), new THREE.Vector3(80, 0, 0), new THREE.Vector3(0, 0, -80), new THREE.Vector3(0, 0, 80)]),
+  new THREE.LineBasicMaterial({ color: 0x6a7078 }));
+axisLines.position.y = 0.013; axisLines.renderOrder = 1; axisLines.frustumCulled = false;
+scene.add(axisLines);
 // XR per-eye frustum culling misjudges huge planes (in-headset 08-05: the
 // ground VANISHES at some head angles) — one draw call each, never cull them
 ground.frustumCulled = false;
