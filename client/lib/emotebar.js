@@ -29,7 +29,8 @@ export function initEmoteBar() {
   // geometry the CSS owns too: .tiles.fixed → 68px tiles, 6px gap, 8px body pad
   const TILE = 40, GAP = 5, PAD = 7, ROW_H = 40;   // glyph-only tiles; name + key are the tooltip (R, 09-04)
   const widthFor = (cols) => cols * TILE + (cols - 1) * GAP + PAD * 2 + 2;   // +2: frame edges
-  const rowsFor = (cols) => Math.ceil(EMOTE_ORDER.length / cols);
+  const POSTURE_TILES = 3;   // sit / stand / lie lead the grid (R, 09-05) — they count toward the rows
+  const rowsFor = (cols) => Math.ceil((POSTURE_TILES + EMOTE_ORDER.length) / cols);
   // state.h is the body's CONTENT height (frames.js paints body.style.height; the body
   // pads 7px top+bottom on top of it) — so rows + gaps only, no pad term
   const heightFor = (cols) => rowsFor(cols) * ROW_H + (rowsFor(cols) - 1) * GAP;

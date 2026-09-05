@@ -34,7 +34,7 @@ function profileDispatch(k, v) {
 export function initProfile() {
   registerXRPanel({ id: 'profile', title: 'profile', fields: profileFields, dispatch: profileDispatch });
   frame = makeFrame('profile', {
-    title: 'profile', x: 64, y: 60, w: 420, h: 330, minW: 320, minH: 240, hidden: true,
+    title: 'profile', x: 64, y: 60, w: 420, h: 440, minW: 320, minH: 300, hidden: true,   // id + presence + four tiles + note
   });
   frame.body.classList.add('profile-body');
   paint();
