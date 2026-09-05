@@ -266,8 +266,22 @@ function start() {
   setHint('<kbd>WASD</kbd> move · <kbd>Enter</kbd> chat · <kbd>B</kbd> build · <kbd>?</kbd> help');
 
   if (!isViewer) {
+    // A body is never optional (R, in-headset 09-04: no avatar at all, on
+    // desktop too, and nothing said why). If the chosen body fails to load,
+    // wear the default and SAY SO; the stale cache is cleared so the next
+    // boot re-resolves instead of failing the same way forever. Only if the
+    // default fails too is there nothing to wear — that one is reported.
+    const DEFAULT_BODY = 'eidoverse/assets/vrms/claude.vrm';
+    const wear = (path) => makeAvatar(CONFIG.name, path, { urgent: true });   // your body skips the load queue
     resolveMyAvatarPath()
-      .then((path) => makeAvatar(CONFIG.name, path, { urgent: true })) // your body skips the load queue
+      .then((path) => wear(path).catch((e) => {
+        report('avatar', e);
+        if (String(path).startsWith(DEFAULT_BODY)) throw e;
+        try { localStorage.removeItem('ew-avatar-path'); } catch { /* private mode */ }
+        toast(`your body (${getMyAvatarName()}) failed to load — wearing the default. Pick another in Profile.`, 'warn', 9000);
+        chooseAvatar(DEFAULT_BODY, 'claude');
+        return wear(DEFAULT_BODY);
+      }))
       .then((av) => {
         setMe(av);
         markPhase('body', 1);
