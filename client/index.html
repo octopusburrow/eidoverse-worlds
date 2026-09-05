@@ -664,9 +664,11 @@ body.arranging #dock #hud.emark {
 .pf-pop-row.on { background: var(--well); color: var(--brand); font-weight: 600; }
 .pf-pop-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--brand); flex: none; }
 .pf-tabs { display: flex; gap: 2px; margin: 10px 0 8px; border-bottom: 1px solid var(--edge); }
-.pf-tab { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px 7px; border: none; border-bottom: 2px solid transparent; margin-bottom: -1px; background: none; color: var(--dim); font-size: var(--fs-sm); cursor: pointer; border-radius: 6px 6px 0 0; }
+.pf-tab { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px 7px; border: none; border-bottom: 1px solid transparent; margin-bottom: -1px; background: none; color: var(--dim); font-size: var(--fs-sm); cursor: pointer; border-radius: 6px 6px 0 0; }
+.pf-tab svg { opacity: .8; color: var(--icon); }          /* the section-head recipe: desaturated brand at .8 when idle (R, 09-05) */
 .pf-tab:hover { color: var(--fg); background: rgb(255 255 255 / .04); }
 .pf-tab.on { color: var(--brand); border-bottom-color: var(--brand); }
+.pf-tab.on svg { opacity: 1; color: var(--brand); }
 .pf-pane { flex: 1; min-height: 0; overflow: auto; }
 .pf-stub { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 28px 12px; color: var(--dim); text-align: center; }
 .pf-stub b { color: var(--fg); font-size: var(--fs); } .pf-stub em { font-style: normal; font-size: var(--fs-xs); opacity: .7; margin-top: 6px; }
@@ -954,6 +956,10 @@ body.altgrab .frame:active { cursor: grabbing; }
    so a second row lines up under the first */
 #door .grid.dense { display: grid; grid-template-columns: repeat(5, 1fr); }
 #door .card img, #door .card .ph { aspect-ratio: 3 / 4; }
+.sec > .body .av-grid .card { align-self: stretch; width: auto; align-items: stretch; }   /* fill the grid cell. The house rule `.sec > .body button { align-self:flex-start; width:fit-content }` hit these <button> cards, so each took the width of its NAME — as many sizes as names (R's shot, 09-05) */
+.av-shot { position: relative; width: 100%; aspect-ratio: 3 / 4; border-radius: 4px; overflow: hidden; background: rgba(0,0,0,.35); }   /* World › avatar: the box sizes the card; the image only fills it */
+.av-shot .ph { display: grid; position: absolute; inset: 0; width: auto; aspect-ratio: auto; }
+.av-shot img { position: absolute; inset: 0; width: 100%; height: 100%; aspect-ratio: auto; object-fit: cover; }
 #door .sheet .go b { color: inherit; font-weight: 700; }
 #door .card:hover { border-color: var(--edge); color: var(--fg); }
 #door .card.on { border-color: var(--brand); }
