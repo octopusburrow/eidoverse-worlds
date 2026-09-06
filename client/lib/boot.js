@@ -102,7 +102,7 @@ export function initBoot({ world, name }) {
   el = document.getElementById('splash');
   if (!el) return;
   bar = el.querySelector('.sp-bar-fill');
-  startLights(el);
+  startRays(el);
   phaseEl = el.querySelector('.sp-phase');
   detailEl = el.querySelector('.sp-detail');
   tipEl = el.querySelector('.sp-tip');
@@ -153,7 +153,7 @@ export function finishBoot(reason = 'ready') {
   bar.style.width = '100%';
   phaseEl.textContent = 'welcome';
   el.classList.add('gone');
-  stopLights();
+  stopRays();
   setTimeout(() => { el.style.display = 'none'; }, 620);
   const total = Math.round(performance.now() - startedAt);
   console.log(`[boot] ready in ${total}ms (${reason})`, marks);
@@ -185,7 +185,7 @@ bus.on('booted', () => releaseBoot?.());
 // (R, 09-05). Dithered in the shader — Canvas2D banded. Falls back to the
 // static gradient (already under it) when OffscreenCanvas/WebGL2 is missing.
 let raysWorker = null;
-function startLights(el) {
+function startRays(el) {
   const cv = el.querySelector('.sp-rays');
   if (!cv || typeof OffscreenCanvas === 'undefined' || !cv.transferControlToOffscreen) return;
   if (new URLSearchParams(location.search).get('rays') === '0') return;   // A/B: does the splash shader slow the load?
@@ -194,11 +194,11 @@ function startLights(el) {
     cv.width = cv.clientWidth; cv.height = cv.clientHeight;
     const off = cv.transferControlToOffscreen();
     raysWorker = new Worker(new URL('./splashrays.worker.js', import.meta.url), { type: 'module' });
-    raysWorker.onmessage = (e) => { if (e.data?.type === 'nogl') { cv.style.display = 'none'; stopLights(); } };
+    raysWorker.onmessage = (e) => { if (e.data?.type === 'nogl') { cv.style.display = 'none'; stopRays(); } };
     raysWorker.postMessage({ type: 'init', canvas: off, calm }, [off]);
     const onResize = () => raysWorker?.postMessage({ type: 'size', w: cv.clientWidth, h: cv.clientHeight });
     addEventListener('resize', onResize);
     globalThis.__raysWorker = raysWorker;   // harness: postMessage({type:'frames'}) answers with the frame count
   } catch { cv.style.display = 'none'; }
 }
-function stopLights() { raysWorker?.postMessage({ type: 'stop' }); raysWorker = null; }
+function stopRays() { raysWorker?.postMessage({ type: 'stop' }); raysWorker = null; }
