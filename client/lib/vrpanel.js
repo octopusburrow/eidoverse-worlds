@@ -33,7 +33,7 @@ export function initVRPanel() {
     vig.title = 'darkens the edges of your view while you move or turn on the stick; opens again when you stop.';
     body.appendChild(vig);
 
-    const { row: mir } = selectRow('desktop view while in VR', [['off', 'off (black)'], ['first', 'mirror my eyes'], ['third', 'third person']], xrPrefs.mirror,
+    const { row: mir } = selectRow('desktop view', [['off', 'off (black)'], ['first', 'mirror my eyes'], ['third', 'third person']], xrPrefs.mirror,
       (v) => { setXrPref('mirror', v); flashHint(`desktop view: ${v}`); });
     mir.title = 'what the browser window shows while you are in the headset. off costs nothing; the others draw one extra frame per tick.';
     body.appendChild(mir);
