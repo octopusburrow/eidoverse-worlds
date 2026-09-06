@@ -1,5 +1,7 @@
 # The pose packet — what rides presence (never the log)
 
+*Field-level contract of the `pose` bag. The message-level inventory (planes, close codes, the verb set) is `docs/WIRE.md` §3 — this file is what that table's `{pose}` contains.*
+
 `{ type: 'pose', pose }` at ≤15 Hz per embodied client; the server batches the latest per id into
 `frame` messages and keeps `lastPose` for late joiners. Nothing here is persisted. The server
 refuses non-finite or malformed samples at the source (`server/posecheck.ts`).
