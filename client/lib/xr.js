@@ -71,8 +71,10 @@ function selfFirstPerson(on) {
   // render resolution; in the eye buffers that hull can swallow the body (R 09-06 12:08: 'the claudesona
   // is pitch black' — and probably 11:31's 'no avatar' against a near-black construct). Off on MY body
   // while presenting; remotes keep theirs until this is proven. Restored on exit.
-  if (on && !outlinesOff.has(av.vrm)) { let n = 0; av.vrm.scene.traverse((o) => { if (o.isMesh && o.material?.isOutline && o.visible) { o.visible = false; n++; } }); outlinesOff.set(av.vrm, n); tee(`[xr] ${n} outline hulls hidden on my body (MToon isOutline)`); }
-  if (!on) { for (const [v] of outlinesOff) v.scene.traverse((o) => { if (o.isMesh && o.material?.isOutline) o.visible = true; }); outlinesOff.clear(); }
+  // outline materials live INSIDE multi-material arrays on this body (12:43 census: 5 of them) — hide the
+  // MATERIAL (material.visible gates its geometry group), not the mesh. 12:33's '0 hulls' read the array.
+  if (on && !outlinesOff.has(av.vrm)) { const hid = []; av.vrm.scene.traverse((o) => { if (!o.isMesh) return; for (const m of [].concat(o.material ?? [])) if (m?.isOutline && m.visible) { m.visible = false; hid.push(m); } }); outlinesOff.set(av.vrm, hid); tee(`[xr] ${hid.length} outline hulls hidden on my body (MToon isOutline)`); }
+  if (!on) { for (const [, hid] of outlinesOff) for (const m of hid) m.visible = true; outlinesOff.clear(); }
   if (av.label) av.label.visible = !on; // your own name is for OTHER eyes
 }
 const outlinesOff = new Map();   // vrm → count hidden
