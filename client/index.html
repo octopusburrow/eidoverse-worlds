@@ -216,33 +216,17 @@ a:hover { color: var(--fg); text-decoration-color: var(--brand); }
 #splash > :not(.sp-rays) { position: relative; z-index: 1; }
 .sp-ver { position: absolute; right: 14px; bottom: 10px; font-size: var(--fs-xs);
   color: color-mix(in srgb, var(--brand) 30%, transparent); letter-spacing: .1em; }
+/* THE MARK IS STILL, BY DESIGN (R, 09-05 17:41: "I keep feeling unsure about
+   it and that's usually a sign I'm trying too hard"). Two motions were
+   removed here — the ∃'s three strokes assembling with load progress, and a
+   compositor-side opacity breath — plus the finish glow. The splash's one
+   moving thing is the ground light (.sp-rays, worker-driven): it means
+   "alive"; the mark means "us", and holds. */
 .sp-logo {
-  /* rendered 2x and scaled down: Chrome re-rasters animated svg children from
-     the layer cache, which pixelates at 1x — the classic fix, plus will-change */
-  width: 200px; height: 210px; transform: scale(.5); transform-origin: center;
+  width: 200px; height: 210px; transform: scale(.5); transform-origin: center;   /* drawn 2x, shown at 1x: crisp curves */
   margin: -52px 0; color: var(--brand); overflow: visible;
 }
-.sp-logo path { transition: transform .55s cubic-bezier(.22,.9,.3,1.04), opacity .55s ease; will-change: transform, opacity; }
-#splash.gone .sp-logo { filter: drop-shadow(0 0 26px rgb(143 232 200 / .55)); transition: filter .3s ease-out; }
-#splash.gone .sp-mark { color: #d9fff1; }
-/* all three parts hold ONE tint throughout — the dimmed-while-apart read as an
-   error, not a gesture (R, 09-04); the motion alone carries the assembly.
-   assembly driven by --spp (0..1), in two beats so every frame reads as a
-   gesture, not a glitch: the brackets settle first (0→.6) — tilted and a
-   little dim while apart, upright and full when in register — and only then
-   does the arm spear through the parted spine (.6→1). Before, all three
-   moved together over a few percent and the arm's half-way frames poked out
-   past the spine. The mark assembling IS the progress display. */
-.sp-logo { --br: clamp(0, calc(var(--spp, 0) / .6), 1); --ar: clamp(0, calc((var(--spp, 0) - .6) / .4), 1); }
-.sp-logo .pc-top { transform: translate(calc((1 - var(--br)) * 12%), calc((1 - var(--br)) * -18%)) rotate(calc((1 - var(--br)) * -6deg)); transform-origin: 50% 50%; }
-.sp-logo .pc-bot { transform: translate(calc((1 - var(--br)) * 12%), calc((1 - var(--br)) *  18%)) rotate(calc((1 - var(--br)) *  6deg)); transform-origin: 50% 50%; }
-.sp-logo .pc-arm { transform: translateX(calc((1 - var(--ar)) * -46%)); }
-/* a slow breath while we wait: a stalled load must still look alive. It used
-   to be a radial glow under the mark ("a little 2005" — R, 09-04); now the
-   mark itself breathes, faintly, in opacity alone. Stops the moment the splash goes. */
 .sp-logo-wrap { position: relative; display: grid; place-items: center; }
-#splash:not(.gone) .sp-logo-wrap { animation: sp-breathe 3.4s ease-in-out infinite; }
-@keyframes sp-breathe { 0%, 100% { opacity: .82; } 50% { opacity: 1; } }
 .sp-mark {
   font-size: 26px; letter-spacing: .34em; color: var(--brand); opacity: .9;
   text-transform: lowercase; font-weight: 500; margin-left: .34em; /* recenter over tracking */
