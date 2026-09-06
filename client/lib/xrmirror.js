@@ -30,12 +30,17 @@ export function tickXRMirror() {
     deskCam.lookAt(myState.pos.x, myState.pos.y + 1.2, myState.pos.z);
   }
   deskCam.updateMatrixWorld(true);
-  const was = renderer.xr.enabled;
+  // porch-old :11176–11179, the line I dropped this afternoon: three's XR frame binds the HEADSET'S
+  // framebuffer as the current render target before the animation callback, so a mirror pass that
+  // doesn't retarget the canvas renders the desktop camera INTO THE EYES (R, 09-05 21:45: 'I pop to
+  // the origin' — a mono desktop-camera frame in the visor). Save, retarget null (the canvas), restore.
+  const was = renderer.xr.enabled; const oldRT = renderer.getRenderTarget();
   renderer.xr.enabled = false;
   try {
+    renderer.setRenderTarget(null);
     // the desktop view sees the third-person head (layer 10), never the FP-only meshes (9)
     deskCam.layers.enable(10); deskCam.layers.disable(9);
     renderer.render(scene, deskCam);
   } catch { /* a bad frame must never kill the XR loop */ }
-  finally { renderer.xr.enabled = was; }
+  finally { renderer.setRenderTarget(oldRT); renderer.xr.enabled = was; }
 }
