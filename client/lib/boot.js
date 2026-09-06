@@ -13,7 +13,7 @@
 //      spent learning them instead of watching a bar.
 
 import { bus } from './base.js';
-import { bootBytes } from './assets.js';
+import { loadingItems, bootBytes } from './assets.js';
 
 // Phase weights are rough shares of a cold boot, measured rather than guessed
 // (see the timings in the commit that added this). They only need to be
@@ -56,8 +56,28 @@ function currentLabel() {
   return 'stepping in';
 }
 
+// ---- what's loading: named items, once they have been in flight > 2 s
+const firstSeen = new Map();   // key → performance.now() when first seen in flight
+const SHOW_AFTER_MS = 2000, MAX_ITEMS = 2;
+function paintItems() {
+  if (!itemsEl || done) return;
+  const now = performance.now();
+  const items = loadingItems();
+  const seen = new Set();
+  for (const it of items) { const k = it.label; seen.add(k); if (!firstSeen.has(k)) firstSeen.set(k, now); }
+  for (const k of firstSeen.keys()) if (!seen.has(k)) firstSeen.delete(k);
+  const shown = items
+    .filter((it) => now - (firstSeen.get(it.label) ?? now) > SHOW_AFTER_MS)
+    .sort((a, b) => ((b.total || 0) - b.done) - ((a.total || 0) - a.done))
+    .slice(0, MAX_ITEMS);
+  itemsEl.innerHTML = shown.map((it) => `<div class="sp-item"><span class="sp-item-name">${escapeHtml(prettyLabel(it.label))}</span><span class="sp-item-bytes">${it.total > 0 ? `${(it.done / 1048576).toFixed(1)} / ${(it.total / 1048576).toFixed(1)} MB` : it.done > 0 ? `${(it.done / 1048576).toFixed(1)} MB…` : ''}</span></div>`).join('');
+}
+const prettyLabel = (l) => String(l).split('/').pop().replace(/\.(vrm|glb|gltf|png|jpg|ktx2|json|g|gl)(\?.*)?$/i, '').replace(/[_-]+/g, ' ');   // some labels arrive pre-truncated ('desk.g')
+const escapeHtml = (v) => String(v).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
 function paint() {
   if (!el || done) return;
+  paintItems();
   const pct = Math.round(progress() * 100);
   bar.style.width = `${pct}%`;
   phaseEl.textContent = currentLabel();
@@ -91,6 +111,7 @@ const TIPS = [
 ];
 let tipIdx = Math.floor(Math.random() * TIPS.length);
 let tipTimer = null;
+let itemsEl = null, itemsTimer = null;
 function rotateTip() {
   if (!tipEl) return;
   tipIdx = (tipIdx + 1) % TIPS.length;
@@ -105,6 +126,9 @@ export function initBoot({ world, name }) {
   startRays(el);
   phaseEl = el.querySelector('.sp-phase');
   detailEl = el.querySelector('.sp-detail');
+  itemsEl = el.querySelector('.sp-items');
+  bus.on('loading', paintItems);
+  itemsTimer = setInterval(paintItems, 500);   // the > 2 s gate needs a clock, not just events
   tipEl = el.querySelector('.sp-tip');
   el.querySelector('.sp-world').textContent = world;
   const v = el.querySelector('.sp-ver'); if (v) v.textContent = el.dataset.build || '';
@@ -150,6 +174,8 @@ export function finishBoot(reason = 'ready') {
   }
   done = true;
   clearInterval(tipTimer);
+  clearInterval(itemsTimer);
+  if (itemsEl) itemsEl.innerHTML = '';
   bar.style.width = '100%';
   phaseEl.textContent = 'welcome';
   el.classList.add('gone');
