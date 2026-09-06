@@ -50,7 +50,7 @@ import { initAudioPanel } from './lib/audiopanel.js';
 import { initSceneGraph, sceneSelect } from './lib/scenegraph.js';
 import { initXR, updateXR, bindXRSelf } from './lib/xr.js';
 import { tickXRMirror } from './lib/xrmirror.js';
-import { tickXRBody, bindXRBodySelf } from './lib/xrbody.js';
+import { ensureXRBodyHook, bindXRBodySelf } from './lib/xrbody.js';
 import { tickXRVignette } from './lib/xrvignette.js';
 import { initVRPanel } from './lib/vrpanel.js';
 import { trySitOn as xrTrySitOn, dismountMe as xrDismountMe } from './lib/localbody.js';
@@ -488,7 +488,7 @@ registerSystem('held-pose', () => {
   }
 });
 // XR body BEFORE me-update: humanoid bone writes must precede vrm.update (normalized→raw copy) or they never reach the skeleton — avatar.js's own 'ordering trap' note
-registerSystem('xrbody', (dt) => tickXRBody(dt));
+registerSystem('xrbody', () => ensureXRBodyHook());   // the chain itself runs inside Avatar.update(), before vrm.update
 registerSystem('me-update', (dt, t, now) => {
   updateVoiceMouths(now);        // BEFORE the avatar update that consumes it
   getMe()?.update(dt, now);

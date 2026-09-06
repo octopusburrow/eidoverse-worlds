@@ -1677,6 +1677,11 @@ export class Avatar {
     this._springsLimp(this._limp && !this.__simHair);
     const sbm = this.__simHair ? this.vrm.springBoneManager : null;
     if (sbm) this.vrm.springBoneManager = null;
+    // THE SEAM for tracked-body writes (xrbody: look-at, eye anchor, arm IK): after
+    // the mixer has posed this frame, before vrm.update copies normalized → raw.
+    // A system before update() is overwritten by the mixer; one after never
+    // reaches the skeleton — the same ordering trap the head pitch met (above).
+    this.onBeforeVrmUpdate?.(dt);
     this.vrm.update(dt);
     if (sbm) this.vrm.springBoneManager = sbm;
 
