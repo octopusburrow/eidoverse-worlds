@@ -180,12 +180,21 @@ function wrapMaterial(mat, receiver, pbr) {
     .add(vnoise2(positionWorld.xz.mul(0.09)).mul(0.6));
   // distance-faded: procedural noise has no mips — far wet ground should
   // read as uniform sheen, not aggregated swamp
-  const pDist = length(positionWorld.sub(cameraPosition));
+  // NON-PBR (MToon bodies) NEVER BUILD THE PUDDLE TERM. Its distance fade reads `cameraPosition`, a
+  // camera accessor three builds as Fn(({ camera }) => …) from the active builder; MToon compiles our
+  // colorNode inside its own sub-context, and under per-view rendering (WebXR's ArrayCamera, WebGL
+  // backend) that context carries no camera → "THREE.TSL: Cannot destructure property 'camera' of
+  // 'undefined'" → the material's program never builds → the body renders BLACK in the headset (R,
+  // 09-06 12:08–13:20, four entries; tigerbee — no MToon — was fine). Reproduced and bisected headless
+  // (stereo probe: with the node the whole stereo pass drew nothing; without it both eyes lit). Puddles
+  // on a body were nonsense anyway; darkening and tint (no camera terms) stay.
+  const pDist = pbr ? length(positionWorld.sub(cameraPosition)) : null;
   // shape × gate, always: sharpening after the wetness multiply would zero
   // all puddles in any state below full wet
-  const pShape = smoothstep(0.97, 1.13, pn).mul(flat).mul(U.puddleK).mul(puddleGate)
-    .mul(float(1).sub(smoothstep(160, 450, pDist)));
-  const puddle = smoothstep(0.25, 0.6, pShape).mul(smoothstep(0.35, 0.9, U.wet));
+  const pShape = pbr
+    ? smoothstep(0.97, 1.13, pn).mul(flat).mul(U.puddleK).mul(puddleGate).mul(float(1).sub(smoothstep(160, 450, pDist)))
+    : float(0);
+  const puddle = pbr ? smoothstep(0.25, 0.6, pShape).mul(smoothstep(0.35, 0.9, U.wet)) : float(0);
   // normalize color roots to RGBA once — alpha must survive for cutout
   // silhouettes (foliage cards)
   const baseColor4 = vec4(mat.colorNode ?? materialColor);

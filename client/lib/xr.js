@@ -73,11 +73,10 @@ function selfFirstPerson(on) {
   // while presenting; remotes keep theirs until this is proven. Restored on exit.
   // outline materials live INSIDE multi-material arrays on this body (12:43 census: 5 of them) — hide the
   // MATERIAL (material.visible gates its geometry group), not the mesh. 12:33's '0 hulls' read the array.
-  if (on && !outlinesOff.has(av.vrm)) { const hid = []; av.vrm.scene.traverse((o) => { if (!o.isMesh) return; for (const m of [].concat(o.material ?? [])) if (m?.isOutline && m.visible) { m.visible = false; hid.push(m); } }); outlinesOff.set(av.vrm, hid); tee(`[xr] ${hid.length} outline hulls hidden on my body (MToon isOutline)`); }
-  if (!on) { for (const [, hid] of outlinesOff) for (const m of hid) m.visible = true; outlinesOff.clear(); }
+  // (An outline-hull hide lived here 12:44–13:20: with it on, selfDrawn fell 10 → 5 and the body stayed
+  // black — those 'isOutline' materials carry real geometry groups on this body. Retired; not the cause.)
   if (av.label) av.label.visible = !on; // your own name is for OTHER eyes
 }
-const outlinesOff = new Map();   // vrm → count hidden
 // how many of MY meshes the renderer actually drew this frame (all eyes) — 'invisible' becomes a number
 let selfDrawn = 0, selfDrawnLast = 0, drawHookVrm = null;
 function hookSelfDraws() {
@@ -531,6 +530,21 @@ async function enterVR() {
       // HMD's ~110° matrices; position alone leaves the desktop view fisheyed.
       camera.fov = 60; camera.aspect = innerWidth / innerHeight; camera.zoom = 1;
       camera.updateProjectionMatrix();
+      // Defensive: the canvas back to the window's size and ratio (three restores its own record; ours is the truth)
+      try { renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(innerWidth, innerHeight); } catch (e) { report('xr exit resize', e); }
+      // AFTER-EXIT INSTRUMENT (R 09-06 12:46 + 13:20: 'black desktop after leaving VR, the world is inoperable'):
+      // at +0.5 s and +3 s, tee what the desktop actually is — is the loop running, what did the last frame
+      // draw, where is the camera, what size is the canvas, and a REAL pixel read of the canvas centre.
+      const f0 = perf.frames ?? 0;
+      const probe = (tag) => {
+        try {
+          const cv = renderer.domElement; const ctx = document.createElement('canvas').getContext('2d'); ctx.canvas.width = 8; ctx.canvas.height = 8;
+          let mean = null; try { ctx.drawImage(cv, cv.width * 0.4, cv.height * 0.4, cv.width * 0.2, cv.height * 0.2, 0, 0, 8, 8); const d = ctx.getImageData(0, 0, 8, 8).data; let a = 0; for (let i = 0; i < d.length; i += 4) a += d[i] + d[i + 1] + d[i + 2]; mean = +(a / (d.length / 4) / 3).toFixed(1); } catch (e) { mean = `err:${e?.name}`; }
+          const e = camera.matrixWorld.elements;
+          tee(`[xr] after-exit ${tag}: frames+${(perf.frames ?? 0) - f0} draws ${renderer.info.render.calls} canvas ${cv.width}x${cv.height} css ${cv.clientWidth}x${cv.clientHeight} pr ${renderer.getPixelRatio()} cam ${[e[12], e[13], e[14]].map((v) => v.toFixed(1)).join(',')} parent ${camera.parent?.name ?? camera.parent?.type ?? 'none'} fov ${camera.fov} near/far ${camera.near}/${camera.far} rt ${renderer.getRenderTarget() ? 'SET' : 'canvas'} xr.enabled ${renderer.xr.enabled} presenting ${renderer.xr.isPresenting} hidden ${document.hidden} centrePx ${mean}`);
+        } catch (e) { tee(`[xr] after-exit ${tag} probe threw: ${e?.message ?? e}`); }
+      };
+      setTimeout(() => probe('+0.5s'), 500); setTimeout(() => probe('+3s'), 3000);
     });
     // Controller census: log each input source's claimed profiles + layout
     // once. Devices with no registry entry (Steam Frame, 2026) still speak
@@ -552,6 +566,20 @@ async function enterVR() {
   }
 }
 
+/** The rig goes where the body is: the BODY's root offset by the head's playspace position (recentreXR),
+ *  so the head — not the playspace origin — stands on myState.pos and turns pivot about the head. Called
+ *  from xrbody BEFORE the head/arm solve (main.js runs `xrbody` inside updateMe, ahead of `xr`): read
+ *  after the root moved but before the rig followed, the grips and the XR camera were one frame behind
+ *  the body — at 4 m/s that is a 4–5 cm fore/aft error flipping sign every frame (R 09-06 12:53: 'hands
+ *  stutter backwards and forwards while running'). Basis and porch-old both move the playspace first.
+ *  Rebuilds the stereo camera from the fresh rig so the eye pose xrbody reads is this frame's. */
+export function syncRigToBody() {
+  if (!presenting) return;
+  const c = Math.cos(rig.rotation.y), sn = Math.sin(rig.rotation.y);
+  rig.position.set(myState.pos.x - (c * recentre.x + sn * recentre.z), myState.pos.y + recentre.y, myState.pos.z - (-sn * recentre.x + c * recentre.z));
+  rig.updateMatrixWorld(true);
+  renderer.xr.updateCamera(camera);
+}
 /** Per-frame while presenting. Order matters: read hands → fill intent →
  *  (controller.updateMe moves the body with THEIR loco) → rig follows body. */
 function camYawWorld() { const e = renderer.xr.getCamera().matrixWorld.elements; return Math.atan2(-e[8], -e[10]); }   // world yaw of the HMD's -Z
@@ -745,9 +773,7 @@ export function updateXR(dtSec = 1 / 72) {
   // and writes the rig or the body root; the VRM chases the head INSIDE the root (xrbody.js).
   // the rig is the BODY's root offset by the head's playspace position (recentreXR), so the
   // head — not the playspace origin — stands on myState.pos, and turns pivot about the head
-  { const c = Math.cos(rig.rotation.y), sn = Math.sin(rig.rotation.y);
-    rig.position.set(myState.pos.x - (c * recentre.x + sn * recentre.z), myState.pos.y + recentre.y, myState.pos.z - (-sn * recentre.x + c * recentre.z)); }
-  rig.updateMatrixWorld(true);   // three's XRManager builds cameraXR from camera.parent.matrixWorld — R's per-eye cameras sat at the playspace origin (05:09Z) while rig.position was (23.8, 9.6): the world matrix was stale/identity on her frame
+  syncRigToBody();   // (again, after a snap/smooth turn above changed rig.rotation) — three's XRManager builds cameraXR from camera.parent.matrixWorld
 
   // three pushes camera.near/far into session.updateRenderState every frame
   // it changes; a non-finite value throws INSIDE render and the headset
