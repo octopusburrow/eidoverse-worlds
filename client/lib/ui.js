@@ -12,7 +12,7 @@ import { registerXRPanel } from './xrpanels.js';
 // the canvas-emoji trap generalizes: platform glyph gaps are silent)
 const EMOJI_ICON = {
   '🧱': 'hammer', '🧍': 'person-arms-spread', '🌿': 'plant', '☀': 'sun',
-  '✨': 'sparkle', '🌳': 'tree', '📜': 'scroll', '🧩': 'puzzle-piece', '🔊': 'speaker-high', '🎨': 'palette', '🖥': 'monitor',
+  '✨': 'sparkle', '🌳': 'tree', '📜': 'scroll', '🧩': 'puzzle-piece', '🔊': 'speaker-high', '🎨': 'palette', '🖥': 'monitor', '🥽': 'virtual-reality',
 };
 import { loadingItems } from './assets.js';
 import { makeFrame, getFrame, isLocked, setLocked, resetLayout } from './frames.js';
