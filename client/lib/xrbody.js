@@ -36,7 +36,7 @@ const TORSO_DEADBAND = (+(_qs.get('torsoplay') ?? 0) || 0) * Math.PI / 180;   //
 const TORSO_BLEND = 8;                                                          // BasisSettingsDefaults.cs:2111
 const TORSO_RELOCK = 6 * Math.PI / 180;                                         // TorsoYawRelockSpeedDeg (BasisVirtualSpineCore.cs:18)
 const latch = { anchor: null, broken: false, follow: 0, yaw: 0, lastHead: 0 };
-const hipsBase = new THREE.Quaternion(), qHip = new THREE.Quaternion();
+const hipsBase = new THREE.Quaternion(), qHip = new THREE.Quaternion(), hipsLast = new THREE.Quaternion(0, 0, 0, 2), hipsStored = new THREE.Quaternion();   // hipsLast starts unequal to any unit quat
 const CHAIN = ['spine', 'chest', 'upperChest', 'neck', 'head'];
 const wY = [.12, .12, .16, .25, .35],   // porch-old's twist share: the body chases the head slowly (below), the uncaught part rides the spine
  wP = [.10, .12, .16, .26, .36], wR = [.08, .10, .14, .28, .40];
@@ -189,7 +189,13 @@ export function tickXRBody(dt) {
     L.follow += ((L.broken ? 1 : 0) - L.follow) * (1 - Math.exp(-TORSO_BLEND * dtc));
     if (L.broken && L.follow >= 0.999 && headSpeed <= TORSO_RELOCK) { L.broken = false; L.anchor = headYaw; }
     L.yaw = wrap(L.anchor + wrap(headYaw - L.anchor) * L.follow);
-    if (hips) { hipsBase.copy(hips.quaternion); qHip.setFromEuler(eul.set(0, L.yaw, 0, 'YXZ')); hips.quaternion.copy(qHip).multiply(hipsBase); hips.updateWorldMatrix(true, true); }   // ASSIGN onto the animated pose, never accumulate
+    if (hips) {
+      // The base is the MIXER's pose. If the bone still holds what WE wrote last frame (a clip that
+      // doesn't own hips, an emote ending), reuse the stored base — else the latch compounds into a
+      // fast spin (R, 09-05 22:14: 'a strobing tumbleweed… spinning extremely fast' after a wave).
+      if (hipsLast.equals(hips.quaternion)) hipsBase.copy(hipsStored); else { hipsBase.copy(hips.quaternion); hipsStored.copy(hipsBase); }
+      qHip.setFromEuler(eul.set(0, L.yaw, 0, 'YXZ')); hips.quaternion.copy(qHip).multiply(hipsBase); hipsLast.copy(hips.quaternion); hips.updateWorldMatrix(true, true);
+    }
     dbg.hipsYaw = L.yaw; dbg.follow = L.follow; }
   // the look chain measures the head against the BODY'S ACTUAL FACING = root + hips offset + rest
   const facing = rootYaw + latch.yaw + restYaw;
