@@ -105,6 +105,7 @@ export function domQuadsExit(rig) {
   quads = null; shown = false;
 }
 
+export const domQuadsShown = () => !!quads && quads.some((q) => q.mesh.visible);
 export function domQuadsSetShown(v) {
   shown = !!v;
   for (const q of quads ?? []) { q.mesh.visible = shown; const t = q.mesh.material.map; if (shown) t.resume?.(); else t.pause?.(); }

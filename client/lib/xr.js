@@ -359,6 +359,11 @@ function aimRadial(x, y) {
 let radialOpen = false, stickPressWas = false, radialAt = 0, lStickPressWas = false;
 const RADIAL_IDLE_MS = 5000;   // an open ring nobody aims at closes itself (R 09-06 11:31: opened by a stick click mid-turn, invisible, ate the right stick for 5 min)
 const triggerWas = { left: false, right: false };
+// Buttons are NOT trusted for the first 700 ms after an input source appears: the gamepad's first
+// frames report pressed=true garbage (R 09-06 11:35: 'panels toggled' fired by itself, sandwiched
+// between the two connect lines; same family as the NaN axis). Edges inside the window are swallowed.
+let inputsSettledAt = 0;
+const buttonsTrusted = () => performance.now() > inputsSettledAt;
 
 // ---- session ---------------------------------------------------------------
 async function enterVR() {
@@ -440,6 +445,7 @@ async function enterVR() {
     // once. Devices with no registry entry (Steam Frame, 2026) still speak
     // xr-standard; this line is how we learn what they actually expose.
     session.addEventListener('inputsourceschange', (ev) => {
+      if (ev.added?.length) inputsSettledAt = performance.now() + 700;
       for (const src of ev.added ?? []) {
         const g = src.gamepad;
         const inLine = `[xr] input: ${src.handedness} profiles=${JSON.stringify(src.profiles)} ${g ? `axes=${g.axes.length} buttons=${g.buttons.length} haptics=${g.hapticActuators?.length ?? 0}` : 'no-gamepad'}`;
@@ -545,7 +551,7 @@ export function updateXR(dtSec = 1 / 72) {
     // LEFT stick click: hide / show every quad (R 09-06 11:31: 'a button to close/open the menu panels,
     // they're in my way'). The same 'xr:panels' verb the ring speaks — porch-old used this click for its keyboard.
     const lPressed = !!L.buttons[3]?.pressed;
-    if (lPressed && !lStickPressWas) { bus.emit('xr:panels'); haptic('left', 0.3, 25); tee('[xr] panels toggled (left stick click)'); }
+    if (lPressed && !lStickPressWas && buttonsTrusted()) { bus.emit('xr:panels'); haptic('left', 0.3, 25); tee('[xr] panels toggled (left stick click)'); }
     lStickPressWas = lPressed;
   } else { xrIntent.fwd = 0; xrIntent.strafe = 0; xrIntent.jump = false; }
   if (R) {
@@ -557,7 +563,7 @@ export function updateXR(dtSec = 1 / 72) {
     // the stick at leisure; a second click or the trigger commits; grip
     // cancels. Nothing commits on a release, so a spring-back can't pick.
     const trigNow = !!R.buttons[0]?.pressed, gripNow = !!R.buttons[1]?.pressed;
-    if (pressed && !stickPressWas) {
+    if (pressed && !stickPressWas && buttonsTrusted()) {
       if (!radialOpen) { radialOpen = true; radialAt = performance.now(); openRadial(); haptic('right', 0.35, 30); tee('[xr] ring open'); }
       else { closeRadial(true); tee('[xr] ring closed (click)'); }
     } else if (radialOpen) {
@@ -594,6 +600,7 @@ export function updateXR(dtSec = 1 / 72) {
       if (!G || !hand) continue;
       const grip = !!G.buttons[1]?.pressed, trig = !!G.buttons[0]?.pressed;
       hand.laser.visible = grip || trig;
+      if (!buttonsTrusted()) { triggerWas[side] = trig; continue; }
       if (grip && trig && !held) tryGrab(side);
       if (!grip && held?.hand === side) releaseGrab();
       if (trig && !triggerWas[side] && !grip && !(radialOpen && side === 'right')) {
@@ -653,7 +660,10 @@ export function updateXR(dtSec = 1 / 72) {
       backend: renderer.backend?.isWebGPUBackend ? 'webgpu' : 'webgl',
       fps: perf.fps, ms: +perf.ms.toFixed(1), worst: +perf.worst.toFixed(0), spikes: perf.spikes,
       body: av ? (av.vrm?.scene?.visible ? 'visible' : 'HIDDEN') : 'NONE',
-      fp: !!fpVrm, camMask: camera.layers.mask, rig: [+rig.position.x.toFixed(1), +rig.position.y.toFixed(1), +rig.position.z.toFixed(1)],
+      fp: !!fpVrm, camMask: camera.layers.mask,
+      eyeMasks: (renderer.xr.getCamera().cameras ?? []).map((c) => c.layers.mask),   // what each eye may SEE
+      fpSplit: (() => { const n = { fp: 0, tp: 0, both: 0, base: 0 }; av?.vrm?.scene?.traverse((o) => { if (!o.isMesh && !o.isSkinnedMesh) return; const f = o.layers.isEnabled(FP_LAYER), t = o.layers.isEnabled(TP_LAYER); n[f && t ? 'both' : f ? 'fp' : t ? 'tp' : 'base']++; }); return n; })(),   // a body whose meshes are ALL tp is invisible in FP by spec
+      controllers: { L: !!sourceFor('left'), R: !!sourceFor('right'), trusted: buttonsTrusted() }, rig: [+rig.position.x.toFixed(1), +rig.position.y.toFixed(1), +rig.position.z.toFixed(1)],
       hands: { L: !!sourceFor('left'), R: !!sourceFor('right') }, held: held?.id ?? null,
       me: [+myState.pos.x.toFixed(1), +myState.pos.y.toFixed(1), +myState.pos.z.toFixed(1)], clip: myState.clip, seat: myState.seat?.id ?? null, ring: radialOpen,
       yaw: { cam: +camYawWorld().toFixed(2), rig: +rig.rotation.y.toFixed(2), root: +(av?.root?.rotation.y ?? 0).toFixed(2) },
