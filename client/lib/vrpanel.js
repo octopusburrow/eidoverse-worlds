@@ -4,8 +4,8 @@
 // frame loop reads them without a round trip. Visible whether or not a
 // headset is sensed — the first row says which, so the rest make sense.
 import { makeSection, flashHint } from './ui.js';
-import { checkRow, selectRow } from './rows.js';
-import { xrPrefs, setXrPref } from './xr.js';
+import { checkRow, selectRow, btn } from './rows.js';
+import { xrPrefs, setXrPref, recentreXR, isPresenting } from './xr.js';
 import { xrGlyphAvailable } from './mictoggle.js';
 
 export function initVRPanel() {
@@ -37,5 +37,16 @@ export function initVRPanel() {
       (v) => { setXrPref('mirror', v); flashHint(`desktop view: ${v}`); });
     mir.title = 'what the browser window shows while you are in the headset. off costs nothing; the others draw one extra frame per tick.';
     body.appendChild(mir);
+
+    // C15: seated + recentre. Seated keeps the body standing while you sit (the head is lifted to the
+    // avatar's standing eye height and your real height is not measured); recentre puts the body
+    // under your head and turns it to face where you face — also on the VR ring.
+    const seated = checkRow('seated', () => !!xrPrefs.seated,
+      (on) => { setXrPref('seated', !!on); flashHint(`VR seated ${on ? 'on' : 'off'}`); if (isPresenting()) recentreXR('seated'); });
+    seated.title = 'playing from a chair: the body stands at its own height under your head, and your real height is not measured. Recentres when toggled.';
+    body.appendChild(seated);
+    const rc = btn('recentre now', () => { if (!recentreXR('settings')) flashHint('recentre: enter VR first'); else flashHint('recentred'); });
+    rc.title = 'body under your head, facing where you face. Also on the VR ring (right-stick press).';
+    body.appendChild(rc);
   }, { id: 'vr', host: 'settings' });
 }

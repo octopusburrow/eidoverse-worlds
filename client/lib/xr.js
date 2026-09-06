@@ -131,7 +131,7 @@ export const isPresenting = () => presenting;
 // turn: 'snap' | 'smooth' · vignette: comfort tunnel on move/turn · mirror:
 // what the desktop window shows while presenting — 'off' | 'first' | 'third'.
 const PREF_XR = 'ew-xr-prefs';
-export const xrPrefs = (() => { try { return { turn: 'snap', vignette: false, mirror: 'off', ...JSON.parse(localStorage.getItem(PREF_XR) || '{}') }; } catch { return { turn: 'snap', vignette: false, mirror: 'off' }; } })();
+export const xrPrefs = (() => { try { return { turn: 'snap', vignette: false, mirror: 'off', seated: false, ...JSON.parse(localStorage.getItem(PREF_XR) || '{}') }; } catch { return { turn: 'snap', vignette: false, mirror: 'off', seated: false }; } })();
 { const m = new URLSearchParams(location.search).get('mirror'); if (m === 'off' || m === 'first' || m === 'third') xrPrefs.mirror = m; }   // URL override for A/B (R's 'pop to origin' hunt, 09-05 21:46)
 export function setXrPref(k, v) { xrPrefs[k] = v; try { localStorage.setItem(PREF_XR, JSON.stringify(xrPrefs)); } catch {} bus.emit('xr:prefs', xrPrefs); }
 const DEADZONE = 0.18;
@@ -277,6 +277,7 @@ function radialEntries() {
   if (glyphPinned('mic')) out.push({ svg: micGlyph(52), label: 'mic', on: micLive, act: () => bus.emit('xr:mic') });
   if (glyphPinned('ear')) out.push({ svg: earGlyph(52), label: 'ears', on: earOn, act: () => flipEar() });
   if (glyphPinned('xr')) out.push({ svg: xrGlyph(52), label: 'leave VR', on: () => true, act: () => { try { session?.end?.(); } catch { /* already gone */ } } });
+  out.push({ svg: RECENTRE_SVG, label: 'recentre', on: () => false, act: () => recentreXR('ring') });   // C15: the playspace verb — always on the ring while presenting
   for (const e of dockPins()) {
     const has = xrPanelHas(e.id);
     out.push({ icon: e.icon, label: e.id, has, on: () => xrPanelOpen(e.id),
@@ -284,6 +285,7 @@ function radialEntries() {
   }
   return out;
 }
+const RECENTRE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="52" height="52" viewBox="0 0 26 26" fill="none" stroke="#f2f7f5" stroke-width="1.6" stroke-linecap="round"><circle cx="13" cy="13" r="7"/><circle cx="13" cy="13" r="1.6" fill="#f2f7f5"/><path d="M13 2v4M13 20v4M2 13h4M20 13h4"/></svg>';
 let radial = null;   // {group, slots[], entries[], sel}
 function makeRadial(entries) {
   const group = new THREE.Group();
@@ -388,6 +390,7 @@ async function enterVR() {
     console.log(onLine); tee(onLine);
     try { renderer.xr.setFoveation(0); } catch { /* not all runtimes */ }
     rig.position.set(myState.pos.x, myState.pos.y, myState.pos.z);
+    recentre.x = recentre.z = recentre.y = 0; recentre.pending = true;   // fold the head's playspace pose in on the first tracked frame (C15)
     rig.rotation.y = wrapPi(myState.yaw);   // headset-forward = body-forward at entry, WRAPPED (R's recorder: root/rig 7.88 vs cam −1.6 → the pop)
     scene.add(rig);
     rig.add(camera);
@@ -447,12 +450,47 @@ async function enterVR() {
  *  (controller.updateMe moves the body with THEIR loco) → rig follows body. */
 function camYawWorld() { const e = renderer.xr.getCamera().matrixWorld.elements; return Math.atan2(-e[8], -e[10]); }   // world yaw of the HMD's -Z
 const wrapPi = (a) => Math.atan2(Math.sin(a), Math.cos(a));   // every yaw write wraps: an unwrapped body yaw (7.88 = 1.6 + 2π on R's recorder) met a wrapped camera yaw and 'popped' a full turn
+// ---- recentre / seated (gap list C15; Basis: seated suppresses height capture) ----------
+// The headset sits wherever the human is in the playspace; the rig is the body's root. Without
+// this the root stands on myState.pos while the visible body (eye-anchored under the head) stands
+// a step away — colliders, the wire `p`, and every turn pivot are off by the human's drift. Recentre
+// measures the head's RIG-LOCAL pose once and folds it into the rig every frame: head xz lands on
+// myState.pos (turns then pivot about the head), rig yaw turns so head-forward = body-forward, and
+// in seated mode the rig is lifted so the head reads at the avatar's standing eye height — the
+// body stands, the knees don't bend for the rest of the session. Runs once on entry, and on the
+// ring / Settings › VR verb. Pure math in recentreSolve (tested in tools/recentre-test.mjs).
+const recentre = { x: 0, y: 0, z: 0, pending: false };
+/** @returns {{x,z,y,dyaw}} rig-local head xz to fold in; y lift (seated only); yaw delta to apply to the rig */
+export function recentreSolve({ headLocal, headWorldYaw, bodyYaw, seated, standingEyeY }) {
+  const dyaw = wrapPi(bodyYaw - headWorldYaw);
+  const y = seated && standingEyeY > 0.5 && headLocal.y > 0.3 ? standingEyeY - headLocal.y : 0;
+  return { x: headLocal.x, z: headLocal.z, y, dyaw };
+}
+const _hl = new THREE.Vector3();
+export function recentreXR(why = 'verb') {
+  if (!presenting) return false;
+  const cam = renderer.xr.getCamera();
+  _hl.setFromMatrixPosition(cam.matrixWorld);
+  rig.updateMatrixWorld(true); rig.worldToLocal(_hl);           // head in rig space (the playspace, pre-offset)
+  _hl.x += recentre.x; _hl.z += recentre.z; _hl.y -= recentre.y;  // undo the offset already folded in: rig-local == playspace
+  const headWorldYaw = camYawWorld();
+  if (![_hl.x, _hl.y, _hl.z, headWorldYaw].every(Number.isFinite)) return false;
+  const eye = avatarEyeY();
+  const r = recentreSolve({ headLocal: _hl, headWorldYaw, bodyYaw: myState.yaw, seated: !!xrPrefs.seated, standingEyeY: eye ? eye / scaleState.k : 0 });
+  recentre.x = r.x; recentre.z = r.z; recentre.y = r.y;
+  rig.rotation.y = wrapPi(rig.rotation.y + r.dyaw);
+  tee(`[xr] recentre (${why}): head at playspace ${r.x.toFixed(2)},${_hl.y.toFixed(2)},${r.z.toFixed(2)} folded in; yaw ${(r.dyaw * 180 / Math.PI).toFixed(0)}°${r.y ? `; seated lift ${r.y.toFixed(2)} m` : ''}`);
+  bus.emit('xr:recentre', { ...r, why });
+  return true;
+}
+export const xrRecentre = () => ({ ...recentre });
 let turnMag = 0;                    // |stick-X| while smooth-turning — the vignette reads it
 export const turnMagnitude = () => turnMag;
 export function updateXR(dtSec = 1 / 72) {
   if (!presenting) { turnMag = 0; return; }
-  { const e = renderer.xr.getCamera().matrixWorld.elements; const hy = e[13] - rig.position.y; if (Number.isFinite(hy)) sampleDeviceScale(hy); }
+  if (!xrPrefs.seated) { const e = renderer.xr.getCamera().matrixWorld.elements; const hy = e[13] - rig.position.y - recentre.y; if (Number.isFinite(hy)) sampleDeviceScale(hy); }   // Basis: seated suppresses height capture
   sampleFingerCurl();
+  if (recentre.pending) { recentre.pending = false; recentreXR('entry'); }
 
   // head yaw becomes the movement frame: stick-forward = where you look.
   // Read the -Z column of matrixWorld DIRECTLY: getWorldDirection() calls
@@ -559,7 +597,10 @@ export function updateXR(dtSec = 1 / 72) {
   // the body moved by THEIR controller code; the rig goes where the body is
   // porch-old's rule (index.html:11034–11072, verified 09-05): the RIG IS STICK-ONLY. Nothing reads the head
   // and writes the rig or the body root; the VRM chases the head INSIDE the root (xrbody.js).
-  rig.position.set(myState.pos.x, myState.pos.y, myState.pos.z);
+  // the rig is the BODY's root offset by the head's playspace position (recentreXR), so the
+  // head — not the playspace origin — stands on myState.pos, and turns pivot about the head
+  { const c = Math.cos(rig.rotation.y), sn = Math.sin(rig.rotation.y);
+    rig.position.set(myState.pos.x - (c * recentre.x + sn * recentre.z), myState.pos.y + recentre.y, myState.pos.z - (-sn * recentre.x + c * recentre.z)); }
   rig.updateMatrixWorld(true);   // three's XRManager builds cameraXR from camera.parent.matrixWorld — R's per-eye cameras sat at the playspace origin (05:09Z) while rig.position was (23.8, 9.6): the world matrix was stale/identity on her frame
 
   // three pushes camera.near/far into session.updateRenderState every frame
