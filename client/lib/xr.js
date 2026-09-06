@@ -74,7 +74,7 @@ function sampleFingerCurl() {
   }
 }
 rig.name = 'xr-rig';
-let presenting = false;
+let presenting = false; let shadowsWere = false;
 let floorSpace = null;              // 'local-floor' | 'bounded-floor' | null (fell back to 'local')
 export const xrFloorSpace = () => floorSpace;
 
@@ -392,12 +392,23 @@ async function enterVR() {
     rig.add(camera);
     slots[0] ??= makeHand(0); slots[1] ??= makeHand(1);
     hands.left ??= slots[0]; hands.right ??= slots[1];   // guess until 'connected' files them by handedness
-    presenting = true; bus.emit('xr:state');   // the HUD visor repaints (R 22:04: 'VR icon still inactive')
+    presenting = true; bus.emit('xr:state');
+    // WE own the stereo camera update (render.js renderWorld → xr.updateCamera(camera)). With
+    // cameraAutoUpdate on, three rebuilt cameraXR inside EVERY renderer.render() while presenting —
+    // including ShadowNode's nested render with the light camera (parent null) → the eyes at the
+    // playspace origin (R's Frame, 09-05 21:45–23:45: 'I pop to the origin', view-dependent).
+    renderer.xr.cameraAutoUpdate = false;
+    // three.webgpu also hands the shadow pass cameraXR instead of the light camera while presenting
+    // (Renderer.js: camera = xr.getCamera() for any render) — shadow maps are wrong by construction
+    // in XR, and cost a full scene pass per light per frame. Off while presenting; ?xrshadows=1 keeps them.
+    shadowsWere = renderer.shadowMap?.enabled ?? false;
+    if (renderer.shadowMap && !new URLSearchParams(location.search).has('xrshadows')) renderer.shadowMap.enabled = false;   // the HUD visor repaints (R 22:04: 'VR icon still inactive')
     xrIntent.active = true;
     selfFirstPerson(true);
     xrPanelsEnter(rig);            // every registered frame as a physical surface
     session.addEventListener('end', () => {
       presenting = false; bus.emit('xr:state');
+      renderer.xr.cameraAutoUpdate = true; if (renderer.shadowMap) renderer.shadowMap.enabled = shadowsWere;
       xrIntent.active = false;
       camera.layers.enable(TP_LAYER); camera.layers.disable(FP_LAYER);
       selfFirstPerson(false);
