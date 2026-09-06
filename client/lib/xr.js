@@ -439,6 +439,7 @@ async function enterVR() {
  *  (controller.updateMe moves the body with THEIR loco) → rig follows body. */
 function camYawWorld() { const e = renderer.xr.getCamera().matrixWorld.elements; return Math.atan2(-e[8], -e[10]); }   // world yaw of the HMD's -Z
 const wrapPi = (a) => Math.atan2(Math.sin(a), Math.cos(a));   // every yaw write wraps: an unwrapped body yaw (7.88 = 1.6 + 2π on R's recorder) met a wrapped camera yaw and 'popped' a full turn
+let followTeed = false;
 let turnMag = 0;                    // |stick-X| while smooth-turning — the vignette reads it
 export const turnMagnitude = () => turnMag;
 export function updateXR(dtSec = 1 / 72) {
@@ -465,8 +466,14 @@ export function updateXR(dtSec = 1 / 72) {
     // direction); standing still in XR the body never turned — R's recorder,
     // 09-05 20:15: root fixed at 7.62 while cam swept −0.9…−3.1. She saw its
     // back, and the look-at was fed a 140° residual: the 'pop'.
+    // camYaw is the ORBIT yaw (the follow camera sits behind the body: facing + π);
+    // the body's own convention is atan2(dir.x, dir.z) with no π — so the body
+    // target is yaw − π. (First cut used yaw itself: body faced AWAY from her gaze.)
     const dtb = Math.min(0.05, dtSec ?? 1 / 72);
-    myState.yaw = wrapPi(myState.yaw + wrapPi(yaw - myState.yaw) * Math.min(1, 10 * dtb));
+    const bodyTarget = wrapPi(yaw - Math.PI);
+    const step = wrapPi(bodyTarget - myState.yaw) * Math.min(1, 10 * dtb);
+    myState.yaw = wrapPi(myState.yaw + step);
+    if (!followTeed && Math.abs(step) > 0.02) { followTeed = true; tee(`[xr] body follows head: first step ${step.toFixed(3)} toward ${bodyTarget.toFixed(2)}`); }
   }
 
   // and if a NaN slipped into the body anyway, put it back on the last good
