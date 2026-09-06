@@ -60,7 +60,6 @@ function paint() {
   if (!el || done) return;
   const pct = Math.round(progress() * 100);
   bar.style.width = `${pct}%`;
-  el.style.setProperty('--spp', String(progress()));   // drives the mark's assembly
   phaseEl.textContent = currentLabel();
   const b = bootBytes();
   // ALWAYS show the expected total (R, 16:01 — people deserve to know how
@@ -152,7 +151,6 @@ export function finishBoot(reason = 'ready') {
   done = true;
   clearInterval(tipTimer);
   bar.style.width = '100%';
-  el.style.setProperty('--spp', '1');
   phaseEl.textContent = 'welcome';
   el.classList.add('gone');
   stopLights();
