@@ -20,8 +20,25 @@ const batches = new DrawBatches({ warm: async (mesh, live) => {
 batches.enabled = CONFIG.params.get('batching') !== '0';
 let lastRender = {};
 
+/** Render something that is NOT the world's eye pass — a sky bake, a thumbnail, a snapshot, the
+ *  desktop mirror — without disturbing WebXR. three's XRManager.updateCamera(cam) runs inside EVERY
+ *  renderer.render() while presenting and rewrites the SHARED stereo camera from `cam.parent`; a
+ *  parentless bake/thumbnail camera leaves the eyes at the playspace origin for the frame (R's Steam
+ *  Frame, 2026-09-05 21:45–23:30: 'I pop to the origin' — per-eye cameras at (0, 1.6, 0) while the
+ *  base camera sat on the rig; sky_baked.js:351 had met the same class once). Pattern from porch-old
+ *  :11176–11179: XR off around the pass, render target saved and restored. */
+export function renderAside(sc, cam, target = null) {
+  const xr = renderer.xr;
+  if (!xr?.isPresenting) { const rt = renderer.getRenderTarget(); renderer.setRenderTarget(target); try { return renderer.render(sc, cam); } finally { renderer.setRenderTarget(rt); } }
+  const was = xr.enabled, rt = renderer.getRenderTarget();
+  xr.enabled = false;
+  try { renderer.setRenderTarget(target); return renderer.render(sc, cam); }
+  finally { renderer.setRenderTarget(rt); xr.enabled = was; if (xr.cameraAutoUpdate) xr.updateCamera(camera); }   // the eyes are rebuilt from the RIG before anything else renders
+}
+
 export function renderWorld() {
   const before = { ...renderer.info.render };
+  if (renderer.xr?.isPresenting && renderer.xr.cameraAutoUpdate) renderer.xr.updateCamera(camera);   // belt and braces: whatever rendered aside this frame, the eye pass starts from the rig
   batches.render(renderer, scene, camera);
   const after = renderer.info.render;
   // Count this render and its nested shadow/output passes, independently of

@@ -2,6 +2,7 @@
 // the small autonomic behaviours that make a puppet read as present (gaze,
 // blink, head pitch, mouth movement while speaking).
 
+import { renderAside } from './render.js';
 import { THREE, scene, camera, renderer, backendName } from './core.js';
 import { report, angleDelta, bus, tee } from './base.js';
 import { defsRegistry } from './defs.js';
@@ -1983,8 +1984,7 @@ export async function contributeThumbnail(name, vrm, token = '', { force = false
       // Keep the loader's VRM0 normalization (rotateVRM0 sets rotation.y=π on
       // the scene root) — zeroing it photographed every VRM0 body from behind.
       vrm.scene.rotation.set(0, vrm.meta?.metaVersion === '0' ? Math.PI : 0, 0);
-      renderer.setRenderTarget(rt);
-      renderer.render(sub, cam);
+      renderAside(sub, cam, rt);   // never through renderer.render while presenting: a parentless camera rewrites the stereo eyes (render.js)
     } finally {
       renderer.setRenderTarget(prevTarget);
       poseMixer?.stopAllAction();
