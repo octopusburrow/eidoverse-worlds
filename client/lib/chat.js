@@ -283,9 +283,9 @@ export function logChat(who, text, kind = '', meta = {}) {
 // exactly like a mention arriving as its own line, and nothing counts twice
 // (the old split paths could double-increment when the frame was hidden AND
 // the log was scrolled up). `seen` means the reader is actually looking:
-// frame visible, not collapsed, pinned to the bottom. (Sol review, PR#7.)
+// frame visible, pinned to the bottom. (Sol review, PR#7.)
 function account(line, { who, text, merged, newlyPinged, wasAtBottom }) {
-  const seen = frame.visible && !frame.state.collapsed && wasAtBottom;
+  const seen = frame.visible && wasAtBottom;
   if (seen) scrollToEnd();
   else {
     if (!merged && line.dataset.kind !== 'system') unread++;
@@ -667,7 +667,6 @@ function runCommand(raw) {
 export const chat = {
   open() {
     frame.show();
-    if (frame.state.collapsed) frame.collapse(false);
     inputEl.focus();
     scrollToEnd();
   },

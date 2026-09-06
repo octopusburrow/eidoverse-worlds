@@ -6,7 +6,7 @@
 // wants almost nothing. A fixed rail can't serve all three.
 //
 // The model is the one MMO players already have in their hands: drag a frame
-// by its title, drag its corner to resize, collapse it to a title bar, lock
+// by its title, drag its corner to resize, lock
 // the whole layout when you're happy, and have it still be there tomorrow.
 
 import { bus } from './base.js';
@@ -232,7 +232,6 @@ export function makeFrame(id, opts = {}) {
     y: saved?.y ?? resolveAnchor(opts.y, h, innerHeight),
     w: saved?.w ?? w,
     h: saved?.h ?? h,
-    collapsed: saved?.collapsed ?? false,
     hidden: saved?.hidden ?? hidden,
   };
 
@@ -252,7 +251,6 @@ export function makeFrame(id, opts = {}) {
     hide() { state.hidden = true; paint(); save(); return api; },
     toggle() { state.hidden ? api.show() : api.hide(); return api; },
     get visible() { return !state.hidden; },
-    collapse(v = !state.collapsed) { state.collapsed = v; paint(); save(); return api; },
     setTitle(t) { ttl.textContent = t; return api; },
     /** decorate the title bar (unread counts, status pips, …) */
     badge(html) {
@@ -268,7 +266,7 @@ export function makeFrame(id, opts = {}) {
       Object.assign(state, {
         x: resolveAnchor(opts.x, w, innerWidth),
         y: resolveAnchor(opts.y, h, innerHeight),
-        w, h, collapsed: false, hidden,
+        w, h, hidden,
       });
       paint();
       if (!state.hidden) raise();
@@ -300,8 +298,7 @@ export function makeFrame(id, opts = {}) {
     root.style.left = `${state.x}px`;
     root.style.top = `${state.y}px`;
     root.style.width = `${state.w}px`;
-    root.classList.toggle('collapsed', state.collapsed);
-    body.style.height = state.collapsed ? '0' : `${state.h}px`;
+    body.style.height = `${state.h}px`;
     // arrange-mode affordances: which viewport edges hold this frame (glow),
     // and whether the floating label must sit below (frame hugs the top)
     const hgt = root.offsetHeight || state.h;
@@ -309,11 +306,11 @@ export function makeFrame(id, opts = {}) {
     root.classList.toggle('st-l', st.l); root.classList.toggle('st-r', st.r);
     root.classList.toggle('st-t', st.t); root.classList.toggle('st-b', st.b);
     root.classList.toggle('label-below', state.y < 46);
-    if (!state.collapsed) onResize?.(state.w, state.h);
+    onResize?.(state.w, state.h);
   }
 
-  // ---- buttons: name + ✕ only — the collapse chip retired;
-  // api.collapse() survives for code callers, the chrome just doesn't offer it
+  // ---- buttons: name + ✕ only. (Collapse/minimize is GONE — chip, verb, state and the dblclick that
+  // still fired it; R 09-06 12:47: frames 'disappearing forever' were minimized to a title bar.)
   if (closable) {
     const b = document.createElement('button');
     b.className = 'fr-btn';
@@ -373,10 +370,9 @@ export function makeFrame(id, opts = {}) {
   // OUTSIDE a frame's border without an overlay stealing its content's events
   // (the ::before halo painted over scrollbars and buttons).
   if (resizable) _resizables.push({ root, state, minW, minH, paint, save, raise,
-    active: () => !locked && !state.collapsed && !state.hidden });
+    active: () => !locked && !state.hidden });
 
   root.addEventListener('pointerdown', raise);
-  head.addEventListener('dblclick', () => api.collapse());
 
   frames.set(id, api);
   paint();
