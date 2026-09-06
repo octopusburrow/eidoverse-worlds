@@ -178,13 +178,19 @@ export const grid = new THREE.GridHelper(160, 80, 0x1e2328, 0x1e2328);
 export const axisLines = new THREE.LineSegments(
   new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-80, 0, 0), new THREE.Vector3(80, 0, 0), new THREE.Vector3(0, 0, -80), new THREE.Vector3(0, 0, 80)]),
   new THREE.LineBasicMaterial({ color: 0x6a7078 }));
-axisLines.position.y = 0.013; axisLines.renderOrder = 1; axisLines.frustumCulled = false;
+// Floor lines do not WRITE depth, and they sit clear of the ground: on the WebGL backend (every VR
+// session — no reversed-Z) the 3 mm between grid (0.01) and axes (0.013) was inside the 24-bit
+// depth error a few metres out, so the axis lines strobed and the grid cut through them (R in the
+// headset, 09-06 11:31). Testing against the ground only, at 2 cm / 4 cm, is stable on both backends.
+axisLines.material.depthWrite = false;
+grid.material.depthWrite = false;
+axisLines.position.y = 0.04; axisLines.renderOrder = 2; axisLines.frustumCulled = false;
 scene.add(axisLines);
 // XR per-eye frustum culling misjudges huge planes (in-headset 08-05: the
 // ground VANISHES at some head angles) — one draw call each, never cull them
 ground.frustumCulled = false;
 grid.frustumCulled = false;
-grid.position.y = 0.01;
+grid.position.y = 0.02; grid.renderOrder = 1;
 scene.add(grid);
 
 // ---------------------------------------------------------- eidoverse host
