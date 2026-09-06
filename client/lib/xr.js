@@ -143,13 +143,27 @@ const dead = (v, dz = DEADZONE) => {
 const pickAxis = (a, b) => (typeof a === 'number' && a !== 0 ? a : (b ?? 0));
 
 // ---- controllers -----------------------------------------------------------
-const hands = { left: null, right: null };   // {grip, ray, laser}
+const hands = { left: null, right: null };   // {grip, ray, laser} — resolved by HANDEDNESS
+// three's controller slots 0/1 are enumeration order, NOT left/right (porch-old
+// index.html:5395 learned this; R, 09-05 20:00: 'hands attached to the wrong
+// controller'). Each slot listens to its own 'connected' event and files itself
+// under e.data.handedness; until then slot 0 = left, 1 = right as a guess.
+const slots = [null, null];
+function fileHand(slotIdx, handedness) {
+  const h = slots[slotIdx]; if (!h) return;
+  if (handedness !== 'left' && handedness !== 'right') return;
+  for (const k of ['left', 'right']) if (hands[k] === h && k !== handedness) hands[k] = null;
+  hands[handedness] = h;
+  tee(`[xr] slot ${slotIdx} is the ${handedness} hand`);
+}
 const _v = new THREE.Vector3(); const _v2 = new THREE.Vector3();
 const _q = new THREE.Quaternion(); const _m = new THREE.Matrix4();
 
 function makeHand(i) {
   const grip = renderer.xr.getControllerGrip(i);
   const ray = renderer.xr.getController(i);
+  grip.addEventListener('connected', (e) => fileHand(i, e.data?.handedness));
+  ray.addEventListener('connected', (e) => fileHand(i, e.data?.handedness));
   // visible hand: a small warm knuckle-box (models can come later; presence first)
   const box = new THREE.Mesh(
     new THREE.BoxGeometry(0.05, 0.035, 0.09),
@@ -374,8 +388,8 @@ async function enterVR() {
     rig.rotation.y = myState.yaw;   // headset-forward = body-forward at entry (was 0: R saw the back of her avatar when she entered facing +Z)
     scene.add(rig);
     rig.add(camera);
-    hands.left ??= makeHand(0);
-    hands.right ??= makeHand(1);
+    slots[0] ??= makeHand(0); slots[1] ??= makeHand(1);
+    hands.left ??= slots[0]; hands.right ??= slots[1];   // guess until 'connected' files them by handedness
     presenting = true;
     xrIntent.active = true;
     selfFirstPerson(true);
@@ -417,6 +431,7 @@ async function enterVR() {
 
 /** Per-frame while presenting. Order matters: read hands → fill intent →
  *  (controller.updateMe moves the body with THEIR loco) → rig follows body. */
+function camYawWorld() { const e = renderer.xr.getCamera().matrixWorld.elements; return Math.atan2(-e[8], -e[10]); }   // world yaw of the HMD's -Z
 let turnMag = 0;                    // |stick-X| while smooth-turning — the vignette reads it
 export const turnMagnitude = () => turnMag;
 export function updateXR(dtSec = 1 / 72) {
@@ -548,6 +563,7 @@ export function updateXR(dtSec = 1 / 72) {
       fp: !!fpVrm, camMask: camera.layers.mask, rig: [+rig.position.x.toFixed(1), +rig.position.y.toFixed(1), +rig.position.z.toFixed(1)],
       hands: { L: !!sourceFor('left'), R: !!sourceFor('right') }, held: held?.id ?? null,
       me: [+myState.pos.x.toFixed(1), +myState.pos.y.toFixed(1), +myState.pos.z.toFixed(1)], clip: myState.clip, seat: myState.seat?.id ?? null, ring: radialOpen,
+      yaw: { cam: +camYawWorld().toFixed(2), rig: +rig.rotation.y.toFixed(2), root: +(av?.root?.rotation.y ?? 0).toFixed(2) },   // the facing triple (R's 'pop to origin' hunt, 09-05)
     });
     console.log('[xr:rec]', rec); tee(`[xr:rec] ${rec}`);
   }
@@ -569,8 +585,8 @@ export async function initXR() {
   // that is exactly the kind of frame whose camera matrix comes back NaN.
   // Build the hands now (controller groups exist without a session), park
   // them under the rig, and let the conductor compile them off-screen.
-  hands.left ??= makeHand(0);
-  hands.right ??= makeHand(1);
+  slots[0] ??= makeHand(0); slots[1] ??= makeHand(1);
+  hands.left ??= slots[0]; hands.right ??= slots[1];
   warm('xr hands', async () => {
     // the avatar warm's form: object + camera + the lit scene, frustumCulled
     // off so a parked (stale-matrix) mesh isn't culled out of the compile walk
