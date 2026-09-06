@@ -574,6 +574,10 @@ export function updateXR(dtSec = 1 / 72) {
       headLocal: [+camera.position.x.toFixed(2), +camera.position.y.toFixed(2), +camera.position.z.toFixed(2)],   // the HMD in rig space: a pop is a number here
       hips: { yaw: +(xrBodyDebug().hipsYaw ?? 0).toFixed(2), follow: +(xrBodyDebug().follow ?? 0).toFixed(2) },   // Basis latch state on the hips bone
       mirror: xrPrefs.mirror,   // is the desktop mirror pass running this session?
+      vignette: xrPrefs.vignette,
+      eyes: (() => { const xc = renderer.xr.getCamera(); return (xc.cameras ?? []).map((c) => { const e = c.matrixWorld.elements; return [+e[12].toFixed(2), +e[13].toFixed(2), +e[14].toFixed(2)]; }); })(),   // PER-EYE world positions — what actually renders
+      baseCam: (() => { const e = camera.matrixWorld.elements; return [+e[12].toFixed(2), +e[13].toFixed(2), +e[14].toFixed(2)]; })(),
+      pitch: +(() => { const e = renderer.xr.getCamera().matrixWorld.elements; return Math.asin(Math.max(-1, Math.min(1, -e[9]))); })().toFixed(2),   // HMD pitch (rad), + = looking up
       camWorld: (() => { const e = renderer.xr.getCamera().matrixWorld.elements; return [+e[12].toFixed(2), +e[13].toFixed(2), +e[14].toFixed(2)]; })(),   // the EYES in world space — a 'pop to origin' that the rig doesn't show
       rootPos: av ? [+av.root.position.x.toFixed(2), +av.root.position.y.toFixed(2), +av.root.position.z.toFixed(2)] : null,
       vrmOff: av?.vrm ? [+av.vrm.scene.position.x.toFixed(2), +av.vrm.scene.position.y.toFixed(2), +av.vrm.scene.position.z.toFixed(2)] : null,   // the eye anchor's offset inside the root   // the facing triple (R's 'pop to origin' hunt, 09-05)
