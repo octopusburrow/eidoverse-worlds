@@ -45,7 +45,7 @@ export function initEmoteBar() {
     onResize: (w) => { clearTimeout(snapT); snapT = setTimeout(() => snapTo(w), 180); },
   });
   const snapTo = (w) => {
-    const cols = Math.max(3, Math.min(EMOTE_ORDER.length, Math.floor((w - PAD * 2 - 2 + GAP) / (TILE + GAP))));
+    const cols = Math.max(3, Math.min(POSTURE_TILES + EMOTE_ORDER.length, Math.floor((w - PAD * 2 - 2 + GAP) / (TILE + GAP))));   // ONE BAR is reachable: the postures count as tiles too (R 09-05 21:40: "surely more than 6")
     f._state.w = widthFor(cols); f._state.h = heightFor(cols); f._paint();
   };
   // a saved size from an older layout (or any drift) refits the moment the menu opens
