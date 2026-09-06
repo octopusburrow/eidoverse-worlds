@@ -81,7 +81,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); }
    by the LIVE --brand (CSS url() can't read vars) and publishes it as
    --cur-loupe; the rule falls back to the native cursor until then. */
 button, .btn, select, a, label, .mrow, .mpin, .dbg-row, .ps-row, .card,
-.ac-row, .chat-gear, .fr-btn, .sec > .head, .chat-tabs button, .pf-tile,
+.ac-row, .chat-gear, .fr-btn, .sec > .head, .chat-tabs button,
 .chat-side-tog, .sp-skip { cursor: pointer; }
 body.loupe-on canvas { cursor: var(--cur-loupe, crosshair); }
 /* ONE house scrollbar — the standard properties, nothing else. On Chromium,
@@ -888,7 +888,6 @@ button.keybtn:active { box-shadow: inset 0 1px 3px rgb(0 0 0 / .6); }
 /* ------------------------------------------------------------- profile */
 .frame .profile-body { padding: 14px; gap: 12px; }
 .pf-id { display: flex; align-items: center; gap: 12px; }
-.pf-dot { width: 38px; height: 38px; border-radius: 50%; flex: none; opacity: .85; }
 .pf-who { display: flex; flex-direction: column; min-width: 0; }
 .pf-who > b { font-size: 17px; font-weight: 650; }
 .pf-who > span { color: var(--dim); font-size: var(--fs-sm); }
@@ -1223,7 +1222,6 @@ body.touch #touch { display: block; }
 .sp-empty { color: var(--dim); font-style: italic; padding: 4px 7px; }
 /* the VR chip beside the dock rail (xr.js seats it; only appears when the
    browser answers isSessionSupported('immersive-vr')) */
-.xr-chip { position: fixed; z-index: 30; font-size: 13px; padding: 5px 10px; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
 </style>
 <script>
 /* pre-paint token restore (the default accent flashed for a beat before

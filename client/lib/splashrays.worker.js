@@ -8,7 +8,7 @@
 // alpha eased from 0 over 1.5 s so it never pops in.
 let gl, prog, uT, uRes, uRamp, uCalm, canvas, t0, raf = 0, calm = 1, probe = false;
 // COST (09-05 A/B): full-res 60 Hz fbm per pixel added ~9 s to the load on a
-// CPU GL and a visible creep on R's GPU. Caustics are soft by nature: render
+// CPU GL and a visible creep on R's GPU. The gradient is soft by nature: render
 // at 1/3 resolution and 30 Hz; the compositor upscales.
 const RES_DIV = 3, FRAME_MS = 33;
 let lastFrame = 0;
