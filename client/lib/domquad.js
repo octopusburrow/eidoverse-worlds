@@ -94,7 +94,10 @@ export function domQuadsEnter(rig) {
   const list = [...apis, ...extra];
   quads = list.map((api, i) => mount(api, i, list.length));
   for (const q of quads) rig.add(q.mesh);
-  shown = true;
+  // OFF by default while the quads are still being worked on (R 09-06 12:49): mounted, paused, hidden;
+  // the ring's 'panels' slot (or a text-focus for the keyboard) shows them. ?quads=1 restores the old default.
+  shown = new URLSearchParams(location.search).get('quads') === '1';
+  for (const q of quads) { q.mesh.visible = shown; const t = q.mesh.material.map; if (shown) t.resume?.(); else t.pause?.(); }
   bus.emit('xr:domquads', quads.map((q) => q.id));
 }
 

@@ -331,67 +331,116 @@ function radialEntries() {
   return out;
 }
 const RECENTRE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="52" height="52" viewBox="0 0 26 26" fill="none" stroke="#f2f7f5" stroke-width="1.6" stroke-linecap="round"><circle cx="13" cy="13" r="7"/><circle cx="13" cy="13" r="1.6" fill="#f2f7f5"/><path d="M13 2v4M13 20v4M2 13h4M20 13h4"/></svg>';
-let radial = null;   // {group, slots[], entries[], sel}
+// THE RING as a MENU — porch-old's NESTED RADIAL v2 rules (index.html:7592–7770, Nix in-headset
+// 2026-07-12/14/15), eidoverse's tokens, the same slots as before (R 09-06 12:49–12:50):
+//   · rides the RIGHT GRIP, anchored over the THUMB (0, +5 cm, +1 cm) — the digit making the choice;
+//   · billboarded to the eyes every frame with HEADSET-up (wrist roll can't tilt it); de-rolled from the grip;
+//   · R = 7.5 cm, 5 cm icon planes (depthTest off, renderOrder 999) — it draws over the world;
+//   · focus: the slot scales 1.4× and swaps to the brand ink; a focus-label PILL under the ring names it
+//     (Nix 07-15: "add words to the hover menus when an option is focused");
+//   · deflect > 0.5 selects a sector, release < 0.35 commits (the stick driver below), hold-to-open (updateXR).
+// Ink from the page's tokens: brand seafoam #8fe8c8, fg #ebebe9, panel rgb(5 20 20).
+const RING_R = 0.075, RING_ICON = 0.05, RING_ANCHOR = { x: 0, y: 0.05, z: 0.01 };
+const INK = { brand: '#8fe8c8', fg: '#ebebe9', dim: 'rgba(235,235,233,.42)', panel: 'rgb(5, 20, 20)', rule: 'rgba(143,232,200,.45)' };
+let radial = null;   // {group, slots[], entries[], sel, label:{mesh,cv,tx}}
+function ringIconTexture(s, focused) {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 128;
+  const g = cv.getContext('2d'); const tex = new THREE.CanvasTexture(cv); tex.anisotropy = 4;
+  // eidoverse cap: a soft panel disc so glyphs read against any world; brand ring when focused/on
+  g.beginPath(); g.arc(64, 64, 58, 0, Math.PI * 2); g.fillStyle = INK.panel; g.fill();
+  g.lineWidth = focused ? 6 : 3; g.strokeStyle = focused ? INK.brand : INK.rule; g.stroke();
+  const on = !!s.on?.();
+  const ink = s.has === false ? INK.dim : (focused || on ? INK.brand : INK.fg);
+  g.save(); g.translate(64, 64); g.fillStyle = ink; g.strokeStyle = ink;
+  // drawn glyphs, never fillText(emoji) (icons.js header; discovered live 08-05). Phosphor at the
+  // dock's weights; the trio + recentre from their own SVGs via an Image (async — the texture updates).
+  if (s.svg) {
+    const img = new Image();
+    img.onload = () => { g.save(); g.translate(64, 64); g.drawImage(img, -30, -30, 60, 60); g.restore(); tex.needsUpdate = true; };
+    img.src = 'data:image/svg+xml;utf8,' + encodeURIComponent(s.svg.replace(/stroke="#f2f7f5"/g, `stroke="${ink}"`).replace(/fill="#f2f7f5"/g, `fill="${ink}"`));
+  } else if (!fillPath(g, s.icon, 60, (focused || on) ? 'fill' : 'line')) stroke(g, s.icon, 60);
+  g.restore();
+  return tex;
+}
+function ringLabel() {
+  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 64;
+  const tx = new THREE.CanvasTexture(cv); tx.anisotropy = 4;
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.11, 0.0275), new THREE.MeshBasicMaterial({ map: tx, transparent: true, depthTest: false }));
+  mesh.renderOrder = 1000; mesh.visible = false;
+  return { mesh, cv, tx };
+}
+function setRingLabel(text) {
+  const l = radial?.label; if (!l) return;
+  const g = l.cv.getContext('2d'); g.clearRect(0, 0, 256, 64);
+  if (text) {
+    g.fillStyle = INK.panel; g.beginPath(); g.roundRect(28, 10, 200, 44, 14); g.fill();
+    g.strokeStyle = INK.rule; g.lineWidth = 2; g.stroke();
+    g.font = '600 28px ui-monospace, monospace'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = INK.fg; g.fillText(text, 128, 33);
+  }
+  l.mesh.visible = !!text; l.tx.needsUpdate = true;
+}
 function makeRadial(entries) {
   const group = new THREE.Group();
   const N = Math.max(1, entries.length);
   const slots = entries.map((s, i) => {
-    const a = (i / N) * Math.PI * 2 - Math.PI / 2;
-    const cv = document.createElement('canvas'); cv.width = cv.height = 128;
-    const g = cv.getContext('2d');
-    const open = !!s.on?.();
-    const ink = s.has === false ? 'rgba(242,247,245,.45)' : (open ? '#8fe8c8' : '#f2f7f5');
-    const tex = new THREE.CanvasTexture(cv);
-    // drawn glyphs, never fillText(emoji): that call silently paints NOTHING
-    // on platforms missing the glyph (icons.js header; discovered live 08-05).
-    // Phosphor at the dock's own weights (line at rest, fill when open);
-    // the trio from its own SVG via an Image (async — the texture updates).
-    g.save(); g.translate(64, 52); g.fillStyle = ink; g.strokeStyle = ink;
-    if (s.svg) {
-      const img = new Image();
-      img.onload = () => { g.save(); g.translate(64, 52); g.drawImage(img, -26, -26, 52, 52); g.restore(); tex.needsUpdate = true; };
-      img.src = 'data:image/svg+xml;utf8,' + encodeURIComponent(s.svg);
-    } else if (!fillPath(g, s.icon, 52, open ? 'fill' : 'line')) stroke(g, s.icon, 52);
-    g.restore();
-    g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.font = '20px monospace'; g.fillStyle = s.has === false ? 'rgba(207,232,245,.45)' : '#cfe8f5'; g.fillText(s.label, 64, 104);
-    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
-    sp.scale.setScalar(0.075);
-    sp.position.set(Math.cos(a) * 0.13, Math.sin(a) * -0.13, 0);
-    group.add(sp);
-    return sp;
+    const a = -Math.PI / 2 + i * (2 * Math.PI / N);   // porch: -π/2 first (top), then clockwise, placed at (cos a, −sin a)
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(RING_ICON, RING_ICON), new THREE.MeshBasicMaterial({ map: ringIconTexture(s, false), transparent: true, depthTest: false }));
+    m.renderOrder = 999; m.position.set(Math.cos(a) * RING_R, -Math.sin(a) * RING_R, 0); m.userData.ring = a;
+    group.add(m); return m;
   });
-  return { group, slots, entries, sel: -1 };
+  const label = ringLabel(); label.mesh.position.set(0, -RING_R - 0.03, 0); group.add(label.mesh);
+  return { group, slots, entries, sel: -1, label };
+}
+function disposeRadial() {
+  if (!radial) return;
+  for (const m of radial.slots) { m.material.map?.dispose(); m.material.dispose(); m.geometry.dispose(); }
+  radial.label.mesh.material.map?.dispose(); radial.label.mesh.material.dispose();
+  radial.group.parent?.remove(radial.group); radial = null;
 }
 function openRadial() {
-  // rebuilt every open: the rail is the source of truth and it changes
-  if (radial) { for (const sp of radial.slots) { sp.material.map?.dispose(); sp.material.dispose(); } }
+  disposeRadial();                       // rebuilt every open: the rail is the source of truth and it changes
   radial = makeRadial(radialEntries());
-  radial.sel = -1;
-  hands.right.ray.add(radial.group);
-  radial.group.position.set(0, 0.02, -0.18);
+  hands.right.grip.add(radial.group);
+  radial.group.position.set(RING_ANCHOR.x, RING_ANCHOR.y, RING_ANCHOR.z);
+  radial.group.quaternion.identity();
+  tickRadial();
 }
 function closeRadial(commit) {
+  if (!radial) { radialOpen = false; return; }
+  const act = commit && radial.sel >= 0 ? radial.entries[radial.sel]?.act : null;
+  disposeRadial(); radialOpen = false;
+  if (act) act();
+}
+const _rc1 = new THREE.Vector3(), _rc2 = new THREE.Vector3(), _rq1 = new THREE.Quaternion(), _rq2 = new THREE.Quaternion(), _rm = new THREE.Matrix4();
+/** per frame while open: top-up billboard to the eyes, de-rolled from the grip (porch-old _radialTick) */
+function tickRadial() {
   if (!radial) return;
-  if (commit && radial.sel >= 0) radial.entries[radial.sel]?.act();
-  hands.right.ray.remove(radial.group);
-  radialOpen = false;
+  const grip = hands.right?.grip; if (!grip) return;
+  if (radial.group.parent !== grip) { grip.add(radial.group); radial.group.position.set(RING_ANCHOR.x, RING_ANCHOR.y, RING_ANCHOR.z); }
+  const xc = renderer.xr.getCamera();
+  _rc1.setFromMatrixPosition(xc.matrixWorld);                       // the eyes
+  radial.group.getWorldPosition(_rc2);
+  _rq1.setFromRotationMatrix(xc.matrixWorld);
+  const headUp = _v2.set(0, 1, 0).applyQuaternion(_rq1);
+  _rm.lookAt(_rc1, _rc2, headUp); _rq1.setFromRotationMatrix(_rm);   // eye=camera, target=group (porch's known-good order)
+  grip.getWorldQuaternion(_rq2).invert();
+  radial.group.quaternion.copy(_rq2.multiply(_rq1));
 }
 function aimRadial(x, y) {
-  // stick vector picks the slot; center = no selection
-  const m = Math.hypot(x, y);
-  // slot i sits at layout angle a_i = i·2π/N − π/2, placed at (cos a_i, −sin a_i):
-  // on screen that is θ_i = π/2 − i·2π/N — up for slot 0, then clockwise.
-  // The stick's screen angle is atan2(−y, x) (gamepad up is −y). Invert
-  // θ_i for i. (The old form added π/2 instead of subtracting: stick-up
-  // picked slot N/2 — R waved at the room for ten minutes, 09-04 23:43.)
-  radial.sel = m < 0.45 ? -1 : (() => {
-    const N = Math.max(1, radial.entries.length);
-    const theta = Math.atan2(-y, x);
-    const i = Math.round((Math.PI / 2 - theta) / (Math.PI * 2 / N));
-    return ((i % N) + N) % N;
-  })();
-  radial.slots.forEach((sp, i) => sp.scale.setScalar(i === radial.sel ? 0.105 : 0.075));
+  if (!radial) return;
+  const mag = Math.hypot(x, y);
+  let best = -1;
+  if (mag > 0.5) {
+    // porch: stick angle atan2(y, x) against each slot's ring angle (gamepad y is inverted, which matches the −sin placement)
+    const a = Math.atan2(y, x); let bd = 9;
+    radial.slots.forEach((m, i) => { const d = Math.abs(Math.atan2(Math.sin(a - m.userData.ring), Math.cos(a - m.userData.ring))); if (d < bd) { bd = d; best = i; } });
+  } else if (mag >= 0.35) best = radial.sel;   // hysteresis band: keep the selection, don't commit yet
+  if (best !== radial.sel) {
+    radial.slots.forEach((m, i) => { const foc = i === best; m.scale.setScalar(foc ? 1.4 : 1); m.material.map?.dispose(); m.material.map = ringIconTexture(radial.entries[i], foc); m.material.needsUpdate = true; });
+    radial.sel = best;
+    setRingLabel(best >= 0 ? radial.entries[best].label : null);
+    if (best >= 0) haptic('right', 0.15, 10);
+  }
 }
 let radialOpen = false, stickPressWas = false;
 const triggerWas = { left: false, right: false };
@@ -634,7 +683,7 @@ export function updateXR(dtSec = 1 / 72) {
     // Grip while held cancels. Nothing can stay open: no press, no ring.
     const gripNow = !!R.buttons[1]?.pressed;
     if (pressed && !stickPressWas && buttonsTrusted()) { radialOpen = true; openRadial(); haptic('right', 0.35, 30); tee('[xr] ring open'); }
-    else if (radialOpen && pressed) { if (gripNow) { closeRadial(false); tee('[xr] ring cancelled (grip)'); } else aimRadial(rx, ry); }
+    else if (radialOpen && pressed) { if (gripNow) { closeRadial(false); tee('[xr] ring cancelled (grip)'); } else { aimRadial(rx, ry); tickRadial(); } }
     else if (radialOpen && !pressed) { const sel = radial?.sel ?? -1; closeRadial(true); tee(`[xr] ring released${sel >= 0 ? ` → ${radial?.entries[sel]?.label}` : ' (nothing)'}`); }
     turnMag = 0;
     if (radialOpen) { /* the ring owns the stick */ }

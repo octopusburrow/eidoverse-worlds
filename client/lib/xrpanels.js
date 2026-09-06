@@ -18,7 +18,7 @@ const W = 0.58;                    // quad width, metres — an arm's-length rea
 
 const registry = [];               // [{id, title, fields, dispatch}]
 let panels = null;                 // live: [{mesh, canvas, tex, regions, def}]
-let shown = true;
+let shown = false;   // off by default in VR (R 09-06 12:49) — the ring's 'panels' slot shows them
 const _rc = new THREE.Raycaster();
 const _m = new THREE.Matrix4();
 
@@ -69,7 +69,7 @@ function repaintAll() {
 export function xrPanelsEnter(rig) {
   if (domQuadsEnabled()) return domQuadsEnter(rig);
   panels = registry.map((def, i) => makePanel(def, i, registry.length));
-  for (const p of panels) { rig.add(p.mesh); p.mesh.visible = shown; }
+  for (const p of panels) { rig.add(p.mesh); p.mesh.visible = shown; }   // shown starts false
   bus.on('entity', repaintAll);
   bus.on('comp', repaintAll);
   bus.on('presence', repaintAll);
