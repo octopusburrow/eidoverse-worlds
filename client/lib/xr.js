@@ -545,6 +545,7 @@ export function updateXR(dtSec = 1 / 72) {
   // porch-old's rule (index.html:11034–11072, verified 09-05): the RIG IS STICK-ONLY. Nothing reads the head
   // and writes the rig or the body root; the VRM chases the head INSIDE the root (xrbody.js).
   rig.position.set(myState.pos.x, myState.pos.y, myState.pos.z);
+  rig.updateMatrixWorld(true);   // three's XRManager builds cameraXR from camera.parent.matrixWorld — R's per-eye cameras sat at the playspace origin (05:09Z) while rig.position was (23.8, 9.6): the world matrix was stale/identity on her frame
 
   // three pushes camera.near/far into session.updateRenderState every frame
   // it changes; a non-finite value throws INSIDE render and the headset
@@ -575,6 +576,7 @@ export function updateXR(dtSec = 1 / 72) {
       hips: { yaw: +(xrBodyDebug().hipsYaw ?? 0).toFixed(2), follow: +(xrBodyDebug().follow ?? 0).toFixed(2) },   // Basis latch state on the hips bone
       mirror: xrPrefs.mirror,   // is the desktop mirror pass running this session?
       vignette: xrPrefs.vignette,
+      rigWorld: (() => { const e = rig.matrixWorld.elements; return [+e[12].toFixed(2), +e[13].toFixed(2), +e[14].toFixed(2)]; })(), rigAuto: rig.matrixAutoUpdate, rigWAuto: rig.matrixWorldAutoUpdate, sceneWAuto: scene.matrixWorldAutoUpdate,   // is the rig's WORLD matrix ever computed? (eyes at origin, 23:20)
       eyes: (() => { const xc = renderer.xr.getCamera(); return (xc.cameras ?? []).map((c) => { const e = c.matrixWorld.elements; return [+e[12].toFixed(2), +e[13].toFixed(2), +e[14].toFixed(2)]; }); })(),   // PER-EYE world positions — what actually renders
       baseCam: (() => { const e = camera.matrixWorld.elements; return [+e[12].toFixed(2), +e[13].toFixed(2), +e[14].toFixed(2)]; })(),
       pitch: +(() => { const e = renderer.xr.getCamera().matrixWorld.elements; return Math.asin(Math.max(-1, Math.min(1, -e[9]))); })().toFixed(2),   // HMD pitch (rad), + = looking up
