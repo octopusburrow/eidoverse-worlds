@@ -162,7 +162,7 @@ const _q = new THREE.Quaternion(); const _m = new THREE.Matrix4();
 function makeHand(i) {
   const grip = renderer.xr.getControllerGrip(i);
   const ray = renderer.xr.getController(i);
-  grip.addEventListener('connected', (e) => fileHand(i, e.data?.handedness));
+  grip.addEventListener('connected', (e) => { tee(`[xr] slot ${i} grip connected handedness=${e.data?.handedness} profiles=${JSON.stringify(e.data?.profiles ?? [])}`); fileHand(i, e.data?.handedness); });
   ray.addEventListener('connected', (e) => fileHand(i, e.data?.handedness));
   // visible hand: a small warm knuckle-box (models can come later; presence first)
   const box = new THREE.Mesh(
@@ -385,7 +385,7 @@ async function enterVR() {
     console.log(onLine); tee(onLine);
     try { renderer.xr.setFoveation(0); } catch { /* not all runtimes */ }
     rig.position.set(myState.pos.x, myState.pos.y, myState.pos.z);
-    rig.rotation.y = myState.yaw;   // headset-forward = body-forward at entry (was 0: R saw the back of her avatar when she entered facing +Z)
+    rig.rotation.y = wrapPi(myState.yaw);   // headset-forward = body-forward at entry, WRAPPED (R's recorder: root/rig 7.88 vs cam −1.6 → the pop)
     scene.add(rig);
     rig.add(camera);
     slots[0] ??= makeHand(0); slots[1] ??= makeHand(1);
@@ -414,6 +414,12 @@ async function enterVR() {
     // once. Devices with no registry entry (Steam Frame, 2026) still speak
     // xr-standard; this line is how we learn what they actually expose.
     session.addEventListener('inputsourceschange', (ev) => {
+      // HEURISTIC (R's Frame, 09-05: three's 'connected' never fired here and the
+      // runtime lists RIGHT first): if the first source is the right hand and the
+      // slots still hold the left-first guess, swap them. The robust path is
+      // porch's raw grip poses by handedness (?rawgrips) — queued.
+      { const first = session.inputSources?.[0]?.handedness;
+        if (first === 'right' && hands.left === slots[0]) { hands.left = slots[1]; hands.right = slots[0]; tee('[xr] slots swapped: first input source is the right hand'); } }
       for (const src of ev.added ?? []) {
         const g = src.gamepad;
         const inLine = `[xr] input: ${src.handedness} profiles=${JSON.stringify(src.profiles)} ${g ? `axes=${g.axes.length} buttons=${g.buttons.length} haptics=${g.hapticActuators?.length ?? 0}` : 'no-gamepad'}`;
@@ -432,6 +438,7 @@ async function enterVR() {
 /** Per-frame while presenting. Order matters: read hands → fill intent →
  *  (controller.updateMe moves the body with THEIR loco) → rig follows body. */
 function camYawWorld() { const e = renderer.xr.getCamera().matrixWorld.elements; return Math.atan2(-e[8], -e[10]); }   // world yaw of the HMD's -Z
+const wrapPi = (a) => Math.atan2(Math.sin(a), Math.cos(a));   // every yaw write wraps: an unwrapped body yaw (7.88 = 1.6 + 2π on R's recorder) met a wrapped camera yaw and 'popped' a full turn
 let turnMag = 0;                    // |stick-X| while smooth-turning — the vignette reads it
 export const turnMagnitude = () => turnMag;
 export function updateXR(dtSec = 1 / 72) {
@@ -487,14 +494,14 @@ export function updateXR(dtSec = 1 / 72) {
     else if (xrPrefs.turn === 'smooth') {
       // smooth turn: the rig yaws continuously with the stick (R's own mode)
       const d = dead(rx);
-      if (d) rig.rotation.y -= d * SMOOTH_TURN_RAD_S * (dtSec ?? 1 / 72);
+      if (d) rig.rotation.y = wrapPi(rig.rotation.y - d * SMOOTH_TURN_RAD_S * (dtSec ?? 1 / 72));
       turnMag = Math.abs(d);
     }
     else if (Math.abs(rx) > 0.6 && !snapState.cooling) {
       // snap turns the RIG — the world pivots around the body. camYaw belongs
       // to the head (head-following rewrites it every frame), and the camera
       // rides the rig, so the head's world yaw inherits the snap on its own.
-      rig.rotation.y -= Math.sign(rx) * (SNAP_DEG * Math.PI) / 180;
+      rig.rotation.y = wrapPi(rig.rotation.y - Math.sign(rx) * (SNAP_DEG * Math.PI) / 180);
       snapState.cooling = true;
     } else if (Math.abs(rx) < 0.3) snapState.cooling = false;
     stickPressWas = pressed;

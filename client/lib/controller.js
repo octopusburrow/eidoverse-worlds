@@ -894,6 +894,6 @@ export function updateSpectator(dt, remote) {
   camera.lookAt(eye.clone().addScaledVector(_facing, FP_GAZE_AHEAD).add(new THREE.Vector3(0, -FP_GAZE_DROP, 0)));
 }
 
-export function setCamYaw(v) { camYaw = v; }
+export function setCamYaw(v) { camYaw = Math.atan2(Math.sin(v), Math.cos(v)); }   // wrapped: the body's yaw must never carry a full turn (XR pop, 09-05)
 export function setPosture(p) { posture = p; }
 export const getPosture = () => posture;
