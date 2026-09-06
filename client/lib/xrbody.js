@@ -16,7 +16,7 @@
 import { THREE, renderer } from './core.js';
 import { CONFIG, tee } from './base.js';
 import { myState } from './controller.js';
-import { isPresenting, xrScale, puppetScale, xrRig, xrHands, xrFingerCurl } from './xr.js';
+import { isPresenting, xrScale, puppetScale, xrRig, xrHands, xrFingerCurl, syncRigToBody } from './xr.js';
 
 let getSelf = () => null;
 let hooked = null;
@@ -298,6 +298,7 @@ export function tickXRBody(dt) {
   if (!h || !av.root) { dbg.noSelf++; wire.on = false; return; }
   dbg.ran++; wire.on = true; wire.l = wire.r = null;
   const rig = xrRig();
+  if (!simHead) syncRigToBody();   // the rig (and the stereo camera) follow THIS frame's root before anything here reads them
 
   // the HMD in world, then scaled about the rig (DeviceScale: tracked targets, not the view)
   if (simHead) { hmdPos.fromArray(simHead.pos); hmdQ.fromArray(simHead.quat); }
