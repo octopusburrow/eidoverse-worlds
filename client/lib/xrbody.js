@@ -12,11 +12,11 @@
 //      the avatar's eyes coincide with the headset by construction; the body
 //      HANGS BENEATH the head. Order matters: after the look chain (the head
 //      pose moves the eyes), before any arm solve (shoulders under the head).
-// DeviceScale (xr.js) scales the tracked HMD target about the rig, not the view.
+// DeviceScale (xr.js) scales the PUPPET to the player (Basis); tracking stays 1:1.
 import { THREE, renderer } from './core.js';
 import { CONFIG, tee } from './base.js';
 import { myState } from './controller.js';
-import { isPresenting, xrScale, xrRig, xrHands, xrFingerCurl } from './xr.js';
+import { isPresenting, xrScale, puppetScale, xrRig, xrHands, xrFingerCurl } from './xr.js';
 
 let getSelf = () => null;
 let hooked = null;
@@ -302,8 +302,11 @@ export function tickXRBody(dt) {
   // the HMD in world, then scaled about the rig (DeviceScale: tracked targets, not the view)
   if (simHead) { hmdPos.fromArray(simHead.pos); hmdQ.fromArray(simHead.quat); }
   else renderer.xr.getCamera().matrixWorld.decompose(hmdPos, hmdQ, tmpS);
-  const k = xrScale().k;
-  if (k !== 1) hmdPos.sub(rig.position).multiplyScalar(k).add(rig.position);
+  // DeviceScale, Basis's way: the PUPPET wears the scale (vrm.scene.scale = 1/k), tracking stays 1:1 —
+  // hands land on the controllers by construction. A change re-measures the legs (ankle height and
+  // hip width are read in world units) and is announced once.
+  { const ps = simHead ? 1 : puppetScale(); const ud = vrm.userData = vrm.userData || {};
+    if (Math.abs(vrm.scene.scale.x - ps) > 1e-4) { vrm.scene.scale.setScalar(ps); ud.ankleH = null; ud._gait = null; tee(`[xr] puppet scale ${ps.toFixed(3)} (avatar sized to you; targets 1:1)`); } }
 
   // 1. distributed look-at
   // facing = the body's TRUE world yaw. The controller already turns the body to
@@ -391,10 +394,7 @@ export function tickXRBody(dt) {
     if (simGrip[side]) { gripP.fromArray(simGrip[side].pos); gripQ.fromArray(simGrip[side].quat); ok = solveArm(vrm, side, gripP, gripQ); }
     else if (grip) {
       grip.matrixWorld.decompose(gripP, gripQ, tmpS);
-      if (gripP.distanceToSquared(rig.position) > 1e-4) {
-        if (k !== 1) gripP.sub(rig.position).multiplyScalar(k).add(rig.position);
-        ok = solveArm(vrm, side, gripP, gripQ);
-      }
+      if (gripP.distanceToSquared(rig.position) > 1e-4) ok = solveArm(vrm, side, gripP, gripQ);   // 1:1 — the puppet is scaled, not the target
     }
     dbg.arms[side] = ok;
     if (ok) { fp.copy(gripP).sub(rootP).applyQuaternion(facingInv); fq.copy(facingInv).multiply(gripQ); wire[side[0]] = [...fp.toArray(), ...fq.toArray()].map(r4); }
