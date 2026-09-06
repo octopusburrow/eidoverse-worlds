@@ -59,10 +59,57 @@ function selfFirstPerson(on) {
 
 const lastGood = new THREE.Vector3();
 const rig = new THREE.Group();
+export const xrRig = () => rig;   // xrbody.js scales tracked targets about it
 rig.name = 'xr-rig';
 let presenting = false;
 let floorSpace = null;              // 'local-floor' | 'bounded-floor' | null (fell back to 'local')
 export const xrFloorSpace = () => floorSpace;
+
+// ---- DeviceScale (Tier A5; porch-old index.html:6045–6057, Basis's provenance)
+// Map the human's standing eye height onto the avatar's: median of the first
+// 120 in-session HMD heights (> 0.5 m — a seated start or tracking garbage
+// must not scale), k = avatarEyeY / median, clamped .6–1.6. Applied to the
+// TRACKED targets (head/hand IK), never to the view — the human sees 1:1, the
+// puppet's targets scale. Provenance says why you are this size; saved per
+// avatar so the next session starts right (Basis: Fallback/Measured/Saved).
+const SCALE_LS = 'ew-xr-scale';
+const scaleState = { k: 1, source: 'fallback', samples: [], eyeY: null, locked: false, firstAt: 0 };
+export const xrScale = () => ({ ...scaleState, samples: scaleState.samples.length });
+// harness hook (?xrsim only): feed HMD heights without waiting on a slow headless frame rate
+export const xrSimSample = (y) => { if (CONFIG.params.has('xrsim')) sampleDeviceScale(y); };
+function avatarEyeY() {
+  const av = getSelf(); const h = av?.vrm?.humanoid;
+  if (!h) return null;
+  const root = av.vrm.scene.getWorldPosition(new THREE.Vector3()).y;
+  const eye = h.getNormalizedBoneNode?.('leftEye') ?? h.getNormalizedBoneNode?.('rightEye');
+  if (eye) return eye.getWorldPosition(new THREE.Vector3()).y - root;
+  const head = h.getNormalizedBoneNode?.('head');
+  return head ? head.getWorldPosition(new THREE.Vector3()).y - root + 0.06 : null;   // eyes ≈ 6 cm above the head joint
+}
+function loadSavedScale() {
+  try { const all = JSON.parse(localStorage.getItem(SCALE_LS) || '{}'); const name = getSelf()?.name ?? CONFIG.avatar ?? '';
+    const v = all[name]; if (v && v.k > 0.5 && v.k < 1.7) { scaleState.k = v.k; scaleState.source = 'saved'; scaleState.eyeY = v.eyeY ?? null; } } catch {}
+}
+function saveScale() {
+  try { const all = JSON.parse(localStorage.getItem(SCALE_LS) || '{}'); const name = getSelf()?.name ?? CONFIG.avatar ?? '';
+    all[name] = { k: scaleState.k, eyeY: scaleState.eyeY, t: Date.now() }; localStorage.setItem(SCALE_LS, JSON.stringify(all)); } catch {}
+}
+function sampleDeviceScale(hmdY) {
+  if (scaleState.locked) return;
+  if (hmdY > 0.5) { if (!scaleState.samples.length) scaleState.firstAt = performance.now(); scaleState.samples.push(hmdY); }
+  // lock at 120 samples, or after 3 s with at least 30 (porch's floor) — a slow
+  // frame rate (SwiftShader headless: ~3 fps) must not postpone it forever
+  const n = scaleState.samples.length;
+  if (n < 120 && !(n >= 30 && performance.now() - scaleState.firstAt >= 3000)) return;
+  const s = [...scaleState.samples].sort((a, b) => a - b); const med = s[s.length >> 1];
+  const eye = avatarEyeY();
+  scaleState.locked = true;
+  if (!eye || med < 0.5) { tee(`[xr] scale not measured (eye=${eye?.toFixed?.(2)} med=${med.toFixed(2)}) — keeping ${scaleState.source} ${scaleState.k.toFixed(2)}`); return; }
+  scaleState.k = Math.min(1.6, Math.max(0.6, eye / med)); scaleState.source = 'measured'; scaleState.eyeY = eye;
+  saveScale();
+  tee(`[xr] scale=${scaleState.k.toFixed(3)} (measured: avatar eye ${eye.toFixed(2)} m / your eye ${med.toFixed(2)} m, ${s.length} samples)`);
+  bus.emit('xr:scale', xrScale());
+}
 let session = null;
 export const isPresenting = () => presenting;
 
@@ -305,6 +352,7 @@ async function enterVR() {
     const floor = feats.includes('local-floor') ? 'local-floor' : feats.includes('bounded-floor') ? 'bounded-floor' : null;
     try { renderer.xr.setReferenceSpaceType(floor ?? 'local'); } catch (e) { report('xr ref space', e); }
     floorSpace = floor;
+    scaleState.samples.length = 0; scaleState.locked = false; scaleState.firstAt = 0; scaleState.k = 1; scaleState.source = 'fallback'; loadSavedScale();
     await renderer.xr.setSession(session);
     if (!floor) tee('[xr] NO floor reference space granted — using local (eye-level origin); floor height is a guess');
     const onLine = `[xr] session on ${renderer.backend?.isWebGPUBackend ? 'WebGPU' : 'WebGL'} refspace=${floor ?? 'local'} features=${JSON.stringify(session.enabledFeatures ?? [])}`;
@@ -361,6 +409,7 @@ let turnMag = 0;                    // |stick-X| while smooth-turning — the vi
 export const turnMagnitude = () => turnMag;
 export function updateXR(dtSec = 1 / 72) {
   if (!presenting) { turnMag = 0; return; }
+  { const e = renderer.xr.getCamera().matrixWorld.elements; const hy = e[13] - rig.position.y; if (Number.isFinite(hy)) sampleDeviceScale(hy); }
 
   // head yaw becomes the movement frame: stick-forward = where you look.
   // Read the -Z column of matrixWorld DIRECTLY: getWorldDirection() calls
