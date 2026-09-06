@@ -15,6 +15,7 @@
 // DeviceScale (xr.js) scales the tracked HMD target about the rig, not the view.
 import { THREE, renderer } from './core.js';
 import { CONFIG, tee } from './base.js';
+import { myState } from './controller.js';
 import { isPresenting, xrScale, xrRig, xrHands, xrFingerCurl } from './xr.js';
 
 let getSelf = () => null;
@@ -29,7 +30,13 @@ export function ensureXRBodyHook() {
   hooked = av;
 }
 
-const FOLLOW_RATE = +(new URLSearchParams(location.search).get('bodyfollow') ?? 2.5) || 2.5;   // porch 2.5/s; Basis VR default is rigid (blend 8, deadband 0°) — ?bodyfollow=8 to feel that
+const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+const _qs = new URLSearchParams(location.search);
+const TORSO_DEADBAND = (+(_qs.get('torsoplay') ?? 0) || 0) * Math.PI / 180;   // Basis VR default 0° (rigid); 30° = VSpineTorsoYawPlayInVR; desktop 45°
+const TORSO_BLEND = 8;                                                          // BasisSettingsDefaults.cs:2111
+const TORSO_RELOCK = 6 * Math.PI / 180;                                         // TorsoYawRelockSpeedDeg (BasisVirtualSpineCore.cs:18)
+const latch = { anchor: null, broken: false, follow: 0, yaw: 0, lastHead: 0 };
+const hipsBase = new THREE.Quaternion(), qHip = new THREE.Quaternion();
 const CHAIN = ['spine', 'chest', 'upperChest', 'neck', 'head'];
 const wY = [.12, .12, .16, .25, .35],   // porch-old's twist share: the body chases the head slowly (below), the uncaught part rides the spine
  wP = [.10, .12, .16, .26, .36], wR = [.08, .10, .14, .28, .40];
@@ -42,7 +49,7 @@ const sa = (a) => Math.atan2(Math.sin(a), Math.cos(a));   // shortest-arc wrap
 
 const dbg = { ticks: 0, notPresenting: 0, noSelf: 0, ran: 0, sim: false, hmdQ: null, pitchRaw: 0, arms: { left: false, right: false } };
 const gripP = new THREE.Vector3(), gripQ = new THREE.Quaternion();
-export const xrAvatarYaw = () => { const av = getSelf(); const v = av?.vrm; return v ? (av.root.rotation.y + v.scene.rotation.y + (v.scene.userData.restYaw ?? 0)) : null; };
+export const xrAvatarYaw = () => { const av = getSelf(); const v = av?.vrm; return v ? (av.root.rotation.y + latch.yaw + (v.scene.userData.restYaw ?? 0)) : null; };
 export const xrLookPitch = () => dbg.look?.[0] ?? 0;
 export const xrBodyDebug = () => ({ look: look.toArray().map((v) => +v.toFixed(3)), ...dbg });
 // harness hook (?xrsim only): override the HMD pose xrbody reads. IWER's fake
@@ -154,28 +161,38 @@ export function tickXRBody(dt) {
   // entry) while the body faced her heading gave a constant residual ≈ her
   // heading — the spine twisted toward it, the anchor pulled, the controller
   // re-asserted: 'snap back' and 'the back of my avatar'.
-  // 1a. THE VRM CHASES THE HEAD INSIDE THE ROOT (porch-old index.html:6163–6175, R's
-  // call 09-05 20:30 after the first headset pass): the controller owns the root
-  // (stick); the VRM — its child — eases its OWN yaw toward the head's world yaw,
-  // catchup 2.5/s; what it hasn't caught up to is the residual twist the chain
-  // below spreads down the spine. The rest offset (which way THIS model faces
-  // at scene yaw 0, in root space) is measured once — no π guessing.
+  // 1a. THE HIPS CHASE THE HEAD — Basis's torso-yaw latch (BasisVirtualSpineCore.cs:246–284; R 09-05
+  // 21:15: "do Basis's hip IK method — their methods are hard-won"). The controller owns the root
+  // (stick); the HIPS bone — the humanoid root, legs come along — carries a yaw offset toward the
+  // head's world yaw: the torso holds an ANCHOR; the head roams freely inside a deadband (VR default
+  // 0° = rigid; ?torsoplay=30 is Basis's opt-in shoulder play; desktop 45°); exceeding it — or
+  // locomoting at all — breaks the anchor and `follow` ramps to 1 at blend 8/s; once fully
+  // followed and the head has slowed below 6°/s the anchor re-latches. Output = slerp(anchor, head,
+  // follow). The look chain below is the spine solver between hips and the tracked head. The rest
+  // offset (which way THIS model faces at hips identity, in root space) is measured once.
   av.root.getWorldQuaternion(qYaw); eul.setFromQuaternion(qYaw, 'YXZ'); const rootYaw = eul.y;
+  const hips = h.getNormalizedBoneNode('hips');
   if (vrm.scene.userData.restYaw == null) {
-    const sy = vrm.scene.rotation.y; vrm.scene.rotation.y = 0; vrm.scene.updateMatrixWorld(true);
-    const hb = h.getNormalizedBoneNode('hips') ?? h.getNormalizedBoneNode('head');
+    const hb = hips ?? h.getNormalizedBoneNode('head'); hb.updateWorldMatrix(true, false);
     const f = tmpS.set(0, 0, 1).applyQuaternion(hb.getWorldQuaternion(rigQ));   // eido's facing = (sin yaw, 0, cos yaw): +Z is forward
     av.root.getWorldQuaternion(rigQ).invert(); f.applyQuaternion(rigQ);
     vrm.scene.userData.restYaw = Math.atan2(f.x, f.z);
-    vrm.scene.rotation.y = sy;
     tee(`[xr] body rest yaw ${vrm.scene.userData.restYaw.toFixed(2)} (measured; VRM${vrm.meta?.metaVersion ?? '?'})`);
   }
-  { const hf = tmpS.set(0, 0, -1).applyQuaternion(hmdQ); const headYaw = Math.atan2(hf.x, hf.z);
-    const tgt = headYaw - rootYaw - vrm.scene.userData.restYaw;
-    const dy = Math.atan2(Math.sin(tgt - vrm.scene.rotation.y), Math.cos(tgt - vrm.scene.rotation.y));
-    vrm.scene.rotation.y += dy * (dt > 0 ? Math.min(1, dt * FOLLOW_RATE) : 0.5); }
-  // the look chain measures the head against the BODY'S ACTUAL FACING = root + scene + rest
-  const facing = rootYaw + vrm.scene.rotation.y + vrm.scene.userData.restYaw;
+  const restYaw = vrm.scene.userData.restYaw;
+  { const hf = tmpS.set(0, 0, -1).applyQuaternion(hmdQ); const headYaw = wrap(Math.atan2(hf.x, hf.z) - rootYaw - restYaw);   // head yaw as a hips OFFSET
+    const L = latch; const dtc = dt > 0 ? dt : 1 / 30;
+    if (L.anchor == null) { L.anchor = headYaw; L.lastHead = headYaw; }
+    const headSpeed = Math.abs(wrap(headYaw - L.lastHead)) / dtc; L.lastHead = headYaw;
+    const locomoting = (myState.speed ?? 0) > 0.05;
+    if (!L.broken && (Math.abs(wrap(headYaw - L.anchor)) > TORSO_DEADBAND || locomoting)) L.broken = true;
+    L.follow += ((L.broken ? 1 : 0) - L.follow) * (1 - Math.exp(-TORSO_BLEND * dtc));
+    if (L.broken && L.follow >= 0.999 && headSpeed <= TORSO_RELOCK) { L.broken = false; L.anchor = headYaw; }
+    L.yaw = wrap(L.anchor + wrap(headYaw - L.anchor) * L.follow);
+    if (hips) { hipsBase.copy(hips.quaternion); qHip.setFromEuler(eul.set(0, L.yaw, 0, 'YXZ')); hips.quaternion.copy(qHip).multiply(hipsBase); hips.updateWorldMatrix(true, true); }   // ASSIGN onto the animated pose, never accumulate
+    dbg.hipsYaw = L.yaw; dbg.follow = L.follow; }
+  // the look chain measures the head against the BODY'S ACTUAL FACING = root + hips offset + rest
+  const facing = rootYaw + latch.yaw + restYaw;
   qYaw.setFromEuler(eul.set(0, facing, 0, 'YXZ')).invert();
   // porch-old :6185 `qRel = R_y(rigY+sceneY)⁻¹ · hq · R_y(π)`: the HMD is a −Z-forward camera frame, the
   // body is +Z-forward (eido's facing = (sin yaw, 0, cos yaw); `restYaw` measured it). Conjugating through
