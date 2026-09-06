@@ -11,6 +11,7 @@
 import { THREE } from './core.js';
 import { bus } from './base.js';
 import { renderCanvas, hitRegion } from './panels.js';
+import { domQuadsEnabled, domQuadsEnter, domQuadsExit, domQuadsPick, domQuadsSetShown, domQuadShow } from './domquad.js';   // the REAL frames on quads (default); ?canvasquads=1 keeps these canvases
 
 const PX_PER_M = 900;              // canvas pixels per world metre of quad
 const W = 0.58;                    // quad width, metres — an arm's-length read
@@ -66,6 +67,7 @@ function repaintAll() {
 }
 
 export function xrPanelsEnter(rig) {
+  if (domQuadsEnabled()) return domQuadsEnter(rig);
   panels = registry.map((def, i) => makePanel(def, i, registry.length));
   for (const p of panels) { rig.add(p.mesh); p.mesh.visible = shown; }
   bus.on('entity', repaintAll);
@@ -76,6 +78,7 @@ export function xrPanelsEnter(rig) {
 }
 
 export function xrPanelsExit(rig) {
+  if (domQuadsEnabled()) return domQuadsExit(rig);
   bus.off?.('xr:panels', togglePanels);
   if (!panels) return;
   for (const p of panels) { rig.remove(p.mesh); p.tex.dispose(); p.mesh.geometry.dispose(); }
@@ -84,12 +87,14 @@ export function xrPanelsExit(rig) {
 
 function togglePanels() {
   shown = !shown;
+  if (domQuadsEnabled()) return domQuadsSetShown(shown);
   for (const p of panels ?? []) p.mesh.visible = shown;
 }
 
 /** One quad by id — what a ring slot does (R: each slot opens that frame's
  *  quad). `on` null toggles. */
 export function showXRPanel(id, on = null) {
+  if (domQuadsEnabled()) return domQuadShow(id, on);
   const p = panels?.find((q) => q.def.id === id);
   if (!p) return false;
   p.mesh.visible = on == null ? !p.mesh.visible : !!on;
@@ -103,6 +108,7 @@ export const xrPanelOpen = (id) => !!panels?.find((q) => q.def.id === id)?.mesh.
  *  null. When `click`, resolves the region and fires the panel's dispatcher —
  *  the same function the desktop frame calls. */
 export function xrPanelsPick(handRay, click = false) {
+  if (domQuadsEnabled()) return domQuadsPick(handRay, click);
   if (!panels || !shown) return null;
   _m.identity().extractRotation(handRay.matrixWorld);
   _rc.ray.origin.setFromMatrixPosition(handRay.matrixWorld);
