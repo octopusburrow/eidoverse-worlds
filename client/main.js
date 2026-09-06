@@ -50,6 +50,7 @@ import { initAudioPanel } from './lib/audiopanel.js';
 import { initSceneGraph, sceneSelect } from './lib/scenegraph.js';
 import { initXR, updateXR, bindXRSelf } from './lib/xr.js';
 import { tickXRMirror } from './lib/xrmirror.js';
+import { tickXRBody, bindXRBodySelf } from './lib/xrbody.js';
 import { tickXRVignette } from './lib/xrvignette.js';
 import { initVRPanel } from './lib/vrpanel.js';
 import { trySitOn as xrTrySitOn, dismountMe as xrDismountMe } from './lib/localbody.js';
@@ -486,6 +487,8 @@ registerSystem('held-pose', () => {
     if (myState.pose) me.setPose(myState.pose); else me.clearPose();
   }
 });
+// XR body BEFORE me-update: humanoid bone writes must precede vrm.update (normalized→raw copy) or they never reach the skeleton — avatar.js's own 'ordering trap' note
+registerSystem('xrbody', (dt) => tickXRBody(dt));
 registerSystem('me-update', (dt, t, now) => {
   updateVoiceMouths(now);        // BEFORE the avatar update that consumes it
   getMe()?.update(dt, now);
@@ -524,6 +527,7 @@ registerSystem('pulse', (dt, t, now) => {
 startFrame();   // explicit — the loop starts only after identity resolved
 initXR();               // the VR chip appears only where immersive-vr is supported
 bindXRSelf(() => getMe());   // first-person split + own-label hide need the body
+bindXRBodySelf(() => getMe());
 
 // Idle bandwidth streams the rest of the library into the HTTP cache — fire
 // and forget; it waits out the boot and yields to every real load on its own

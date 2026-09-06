@@ -60,6 +60,7 @@ function selfFirstPerson(on) {
 const lastGood = new THREE.Vector3();
 const rig = new THREE.Group();
 export const xrRig = () => rig;   // xrbody.js scales tracked targets about it
+export const xrHands = () => hands;   // { left, right }: { grip, ray, … } — xrbody.js reads grip world poses for arm IK
 rig.name = 'xr-rig';
 let presenting = false;
 let floorSpace = null;              // 'local-floor' | 'bounded-floor' | null (fell back to 'local')
