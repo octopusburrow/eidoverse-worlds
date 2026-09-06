@@ -253,7 +253,7 @@ a:hover { color: var(--fg); text-decoration-color: var(--brand); }
 /* what's LOADING, by name — surfaces only when something has been in flight
    for a while (R, 09-05 17:47: VRMs take a looooong time on weak hardware and
    a bar alone says nothing). Up to two items, most-remaining first. */
-.sp-items { width: var(--sp-w); min-height: 2.8em; display: flex; flex-direction: column; gap: 4px; margin-top: -8px; font-size: var(--fs-sm); color: var(--dim); font-variant-numeric: tabular-nums; }   /* two rows reserved always, so the column never jumps when names appear */
+.sp-items { width: var(--sp-w); min-height: 1.4em; display: flex; flex-direction: column; gap: 4px; margin-top: -8px; font-size: var(--fs-sm); color: var(--dim); font-variant-numeric: tabular-nums; }   /* two rows reserved always, so the column never jumps when names appear */
 /* .sp-load, not .sp-item — that name is the schema panel's list row (padding 3px 7px), and the collision
    indented these 7 px off the status row's edge (R, 09-05 17:58: "weird having those left-justified?") */
 .sp-load { display: flex; justify-content: space-between; gap: 12px; }

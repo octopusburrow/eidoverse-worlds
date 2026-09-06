@@ -58,7 +58,7 @@ function currentLabel() {
 
 // ---- what's loading: named items, once they have been in flight > 2 s
 const firstSeen = new Map();   // key → performance.now() when first seen in flight
-const SHOW_AFTER_MS = 2000, MAX_ITEMS = 2;
+const SHOW_AFTER_MS = 2000, MAX_ITEMS = 1;   // ONE line of load detail (R 09-06 13:24: two left a fat empty gap between the MB line and the tips)
 function paintItems() {
   if (!itemsEl || done) return;
   const now = performance.now();

@@ -30,7 +30,7 @@ import { registerXrGlyph, glyphPinned, micGlyph, earGlyph, xrGlyph, micLive, ear
 import { dockPins } from './ui.js';
 import { pushUndo } from './build.js';
 import { perf } from './perf.js';
-import { renderCensusTake, renderCensusTick, renderCensusPeek } from './render.js';
+import { renderCensusTake, renderCensusTick, renderCensusPeek, setXRCurtain } from './render.js';
 import { warm, P_AMBIENT } from './warmqueue.js';
 
 // ---- self-body in first person ---------------------------------------------
@@ -484,7 +484,17 @@ async function enterVR() {
     scaleState.samples.length = 0; scaleState.locked = false; scaleState.firstAt = 0; scaleState.k = 1; scaleState.source = 'fallback'; loadSavedScale();
     const tReq = performance.now();
     await renderer.xr.setSession(session);
-    entryClock = { t0: performance.now(), setSessionMs: +(performance.now() - tReq).toFixed(0), frames: [], last: 0 };
+    entryClock = { t0: performance.now(), setSessionMs: +(performance.now() - tReq).toFixed(0), frames: [], last: 0, programs: 0, programMs: 0, pipelines: 0 };
+    // ENTRY PROBE (R 09-06 13:35: 'might need a better probe'): count + time every program/pipeline the
+    // backend builds while the entry clock runs — the 3 s first frame becomes 'N programs in X ms'.
+    { const be = renderer.backend; if (be && !be.__entryProbe) { be.__entryProbe = true;
+        for (const [k, field] of [['createProgram', 'programs'], ['createRenderPipeline', 'pipelines']]) { const orig = be[k]?.bind(be); if (!orig) continue;
+          be[k] = (...a) => { const t = performance.now(); try { return orig(...a); } finally { if (entryClock) { entryClock[field]++; if (field === 'programs') entryClock.programMs += performance.now() - t; } } }; } } }
+    // ENTRY CURTAIN (R 09-06 13:34: 'a bespoke loading screen to cover the WebXR construct'): the first
+    // presenting frames draw a cheap curtain to the eyes while the WHOLE scene compiles against the real
+    // XR camera + target (compileAsync from inside an XR frame captures that context — the 13:20 pre-warm
+    // into a plain RT missed the pipeline key). The world appears when the compile resolves; 6 s fallback.
+    setXRCurtain(true); curtainState = { armed: true, t0: performance.now() };
     if (!floor) tee('[xr] NO floor reference space granted — using local (eye-level origin); floor height is a guess');
     const onLine = `[xr] session on ${renderer.backend?.isWebGPUBackend ? 'WebGPU' : 'WebGL'} refspace=${floor ?? 'local'} features=${JSON.stringify(session.enabledFeatures ?? [])}`;
     console.log(onLine); tee(onLine);
@@ -515,7 +525,7 @@ async function enterVR() {
     selfFirstPerson(true);
     xrPanelsEnter(rig);            // every registered frame as a physical surface
     session.addEventListener('end', () => {
-      presenting = false; bus.emit('xr:state'); eyeBase = null;
+      presenting = false; bus.emit('xr:state'); eyeBase = null; setXRCurtain(false); curtainState = null;
       renderer.xr.cameraAutoUpdate = true; if (renderer.shadowMap) renderer.shadowMap.enabled = shadowsWere;
       xrIntent.active = false;
       selfFirstPerson(false);
@@ -640,6 +650,7 @@ export function leaveVR(why = 'verb') {
 // resolving to our first presenting frame, then the first eight frame gaps — a compile stall shows as
 // one huge gap; a runtime stall shows as the t0→first gap. One tee line, then it retires.
 let entryClock = null;
+let curtainState = null;   // { armed, t0 } — the compile kicks off on the first presenting frame
 let eyeBase = null;
 let consoleTapped = false, shaderTees = 0;
 let turnMag = 0;                    // |stick-X| while smooth-turning — the vignette reads it
@@ -662,8 +673,15 @@ export function updateXR(dtSec = 1 / 72) {
         else if (!off && eyeBase.off) { tee('[xr] eyes back to baseline'); eyeBase.off = false; }
       }
     } }
+  if (curtainState?.armed) { curtainState.armed = false;
+    const t0 = performance.now(); let done = false;
+    const finish = (why) => { if (done) return; done = true; setXRCurtain(false); tee(`[xr] curtain down (${why}) after ${(performance.now() - t0).toFixed(0)} ms — programs ${entryClock?.programs ?? '?'} in ${(entryClock?.programMs ?? 0).toFixed(0)} ms, pipelines ${entryClock?.pipelines ?? '?'}`); };
+    try { renderer.compileAsync(scene, renderer.xr.getCamera(), scene).then(() => finish('compiled'), (e) => { report('xr entry compile', e); finish('compile rejected'); }); }
+    catch (e) { report('xr entry compile', e); finish('compile threw'); }
+    setTimeout(() => finish('6 s fallback'), 6000); }
   if (entryClock) { const now = performance.now(); entryClock.frames.push(+(now - (entryClock.last || entryClock.t0)).toFixed(0)); entryClock.last = now;
-    if (entryClock.frames.length >= 8) { tee(`[xr] entry: setSession ${entryClock.setSessionMs} ms; first frame +${entryClock.frames[0]} ms; next gaps ${entryClock.frames.slice(1).join(',')} ms`); entryClock = null; } }
+    if (entryClock.frames.length >= 8) { tee(`[xr] entry: setSession ${entryClock.setSessionMs} ms; first frame +${entryClock.frames[0]} ms; next gaps ${entryClock.frames.slice(1).join(',')} ms; programs so far ${entryClock.programs} (${entryClock.programMs.toFixed(0)} ms), pipelines ${entryClock.pipelines}`); } }
+  if (entryClock && performance.now() - entryClock.t0 > 12000) entryClock = null;   // the probe retires after 12 s
   if (!xrPrefs.seated) { const e = renderer.xr.getCamera().matrixWorld.elements; const hy = e[13] - rig.position.y - recentre.y; if (Number.isFinite(hy)) sampleDeviceScale(hy); }   // Basis: seated suppresses height capture
   sampleFingerCurl();
   if (recentre.pending) { recentre.pending = false; recentreXR('entry'); }
