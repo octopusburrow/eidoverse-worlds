@@ -15,10 +15,19 @@
 // DeviceScale (xr.js) scales the tracked HMD target about the rig, not the view.
 import { THREE, renderer } from './core.js';
 import { CONFIG } from './base.js';
-import { isPresenting, xrScale, xrRig } from './xr.js';
+import { isPresenting, xrScale, xrRig, xrHands } from './xr.js';
 
 let getSelf = () => null;
+let hooked = null;
 export const bindXRBodySelf = (fn) => { getSelf = fn; };
+// called each frame (system 'xrbody', early): make sure THIS frame's self avatar
+// carries the hook — the avatar object changes on every body swap
+export function ensureXRBodyHook() {
+  const av = getSelf();
+  if (!av || av === hooked) return;
+  av.onBeforeVrmUpdate = (dt) => tickXRBody(dt);
+  hooked = av;
+}
 
 const CHAIN = ['spine', 'chest', 'upperChest', 'neck', 'head'];
 const wY = [.12, .12, .16, .25, .35], wP = [.10, .12, .16, .26, .36], wR = [.08, .10, .14, .28, .40];
@@ -29,13 +38,16 @@ const eul = new THREE.Euler(0, 0, 0, 'YXZ');
 const eyeW = new THREE.Vector3(), delta = new THREE.Vector3(), rigQ = new THREE.Quaternion(), v1 = new THREE.Vector3();
 const sa = (a) => Math.atan2(Math.sin(a), Math.cos(a));   // shortest-arc wrap
 
-const dbg = { ticks: 0, notPresenting: 0, noSelf: 0, ran: 0, sim: false, hmdQ: null, pitchRaw: 0 };
+const dbg = { ticks: 0, notPresenting: 0, noSelf: 0, ran: 0, sim: false, hmdQ: null, pitchRaw: 0, arms: { left: false, right: false } };
+const gripP = new THREE.Vector3(), gripQ = new THREE.Quaternion();
 export const xrBodyDebug = () => ({ look: look.toArray().map((v) => +v.toFixed(3)), ...dbg });
 // harness hook (?xrsim only): override the HMD pose xrbody reads. IWER's fake
 // headset exposes no orientation setter, so the look-at math is tested by
 // feeding the pose directly — the one input this module consumes.
 let simHead = null;
 export const xrSimHead = (pos, quat) => { if (CONFIG.params.has('xrsim')) simHead = pos ? { pos, quat } : null; };
+const simGrip = { left: null, right: null };
+export const xrSimGrip = (side, pos, quat) => { if (CONFIG.params.has('xrsim')) simGrip[side] = pos ? { pos, quat } : null; };
 
 // ---- arm IK (Tier A3; porch-old index.html:5941 _solveArm + _aimBone) ------
 // Two-bone solve per side to the controller grip: elbow interior angle clamped
@@ -85,7 +97,10 @@ export function solveArm(vrm, side, targetPos, targetQuat) {
 
 export function tickXRBody(dt) {
   dbg.ticks++;
-  if (!isPresenting()) { dbg.notPresenting++; return; }
+  // ?xrsim with a fed head pose runs the chain WITHOUT a session: the headless
+  // fake session lives ~1 frame/2 s and drops unpredictably; the math and the
+  // frame ordering are what this path tests (the session itself is proven apart)
+  if (!isPresenting() && !simHead) { dbg.notPresenting++; return; }
   const av = getSelf(); const vrm = av?.vrm; const h = vrm?.humanoid;
   if (!h || !av.root) { dbg.noSelf++; return; }
   dbg.ran++;
@@ -123,4 +138,23 @@ export function tickXRBody(dt) {
   av.root.getWorldQuaternion(rigQ).invert();          // root-local: the controller owns the root; we offset the VRM inside it
   vrm.scene.position.copy(delta.applyQuaternion(rigQ));
   vrm.scene.updateMatrixWorld(true);
+
+  // 3. arms to the grips (A3) — emotes trump IK (R's rule: an emote you chose
+  // always wins); an untracked grip (sitting at the rig origin) leaves the arm
+  // to the clip. Targets are DeviceScaled about the rig like the head.
+  if (av.emote) { dbg.arms.left = dbg.arms.right = false; return; }
+  const hands = xrHands();
+  for (const side of ['left', 'right']) {
+    const grip = hands[side]?.grip;
+    let ok = false;
+    if (simGrip[side]) { gripP.fromArray(simGrip[side].pos); gripQ.fromArray(simGrip[side].quat); ok = solveArm(vrm, side, gripP, gripQ); }
+    else if (grip) {
+      grip.matrixWorld.decompose(gripP, gripQ, tmpS);
+      if (gripP.distanceToSquared(rig.position) > 1e-4) {
+        if (k !== 1) gripP.sub(rig.position).multiplyScalar(k).add(rig.position);
+        ok = solveArm(vrm, side, gripP, gripQ);
+      }
+    }
+    dbg.arms[side] = ok;
+  }
 }
