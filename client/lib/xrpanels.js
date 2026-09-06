@@ -104,6 +104,7 @@ export function showXRPanel(id, on = null) {
   return p.mesh.visible;
 }
 export const xrPanelHas = (id) => registry.some((d) => d.id === id);
+export const xrPanelsShown = () => (domQuadsEnabled() ? domQuadsShown() : (panels ?? []).some((p) => p.mesh.visible));
 export const xrPanelOpen = (id) => !!panels?.find((q) => q.def.id === id)?.mesh.visible;
 
 /** Laser test against the panels. Returns hit distance (for laser length) or

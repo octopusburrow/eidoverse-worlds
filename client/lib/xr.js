@@ -21,7 +21,7 @@ import { THREE, renderer, camera, scene, XR_BOOT } from './core.js';
 import { CONFIG, report, bus, tee } from './base.js';
 import { xrBodyDebug } from './xrbody.js';
 import { stroke, fillPath } from './icons.js';
-import { xrPanelsEnter, xrPanelsExit, xrPanelsPick, showXRPanel, xrPanelHas, xrPanelOpen, xrPanelsGrab, xrPanelRelease } from './xrpanels.js';
+import { xrPanelsEnter, xrPanelsExit, xrPanelsPick, showXRPanel, xrPanelHas, xrPanelOpen, xrPanelsGrab, xrPanelRelease, xrPanelsShown } from './xrpanels.js';
 import { myState, xrIntent, camYaw, setCamYaw, setXrProbe } from './controller.js';
 import { entities } from './world.js';
 import { sendVerb } from './net.js';
@@ -320,6 +320,7 @@ function radialEntries() {
   if (glyphPinned('ear')) out.push({ svg: earGlyph(52), label: 'ears', on: earOn, act: () => flipEar() });
   out.push({ svg: xrGlyph(52), label: 'leave VR', on: () => true, act: () => leaveVR('ring') });   // ALWAYS on the ring: an exit must not depend on a desktop pin (R 09-06 12:00: 'no way to leave VR at all')
   out.push({ svg: RECENTRE_SVG, label: 'recentre', on: () => false, act: () => recentreXR('ring') });   // C15: the playspace verb — always on the ring while presenting
+  out.push({ icon: 'boxes', label: 'panels', on: () => xrPanelsShown(), act: () => { bus.emit('xr:panels'); tee('[xr] panels toggled (ring)'); } });   // hide / show every quad
   for (const e of dockPins()) {
     const has = xrPanelHas(e.id);
     out.push({ icon: e.icon, label: e.id, has, on: () => xrPanelOpen(e.id),
@@ -390,7 +391,7 @@ function aimRadial(x, y) {
   })();
   radial.slots.forEach((sp, i) => sp.scale.setScalar(i === radial.sel ? 0.105 : 0.075));
 }
-let radialOpen = false, stickPressWas = false, radialAt = 0, lStickPressWas = false;
+let radialOpen = false, stickPressWas = false, radialAt = 0;
 const RADIAL_IDLE_MS = 5000;   // an open ring nobody aims at closes itself (R 09-06 11:31: opened by a stick click mid-turn, invisible, ate the right stick for 5 min)
 const triggerWas = { left: false, right: false };
 // Buttons are NOT trusted for the first 700 ms after an input source appears: the gamepad's first
@@ -618,13 +619,10 @@ export function updateXR(dtSec = 1 / 72) {
   if (L) {
     xrIntent.fwd = dead(-pickAxis(L.axes[3], L.axes[1]));
     xrIntent.strafe = dead(pickAxis(L.axes[2], L.axes[0]));
-    xrIntent.jump = !!L.buttons[4]?.pressed;
-    // LEFT stick click: hide / show every quad (R 09-06 11:31: 'a button to close/open the menu panels,
-    // they're in my way'). The same 'xr:panels' verb the ring speaks — porch-old used this click for its keyboard.
-    const lPressed = !!L.buttons[3]?.pressed;
-    if (lPressed && !lStickPressWas && buttonsTrusted()) { bus.emit('xr:panels'); haptic('left', 0.3, 25); tee('[xr] panels toggled (left stick click)'); }
-    lStickPressWas = lPressed;
-  } else { xrIntent.fwd = 0; xrIntent.strafe = 0; xrIntent.jump = false; }
+    // jump = A or X (porch-old: 'A / X = jump'; VRChat: A). No invented bindings on the sticks (R 09-06 12:37:
+    // 'we shouldn't mess with the default VR affordances') — panels live on the ring.
+    xrIntent.jump = !!L.buttons[4]?.pressed || !!R?.buttons[4]?.pressed;
+  } else { xrIntent.fwd = 0; xrIntent.strafe = 0; xrIntent.jump = !!R?.buttons[4]?.pressed; }
   if (R) {
     const rx = dead(pickAxis(R.axes[2], R.axes[0]));
     const ry = dead(pickAxis(R.axes[3], R.axes[1]));
@@ -741,7 +739,7 @@ export function updateXR(dtSec = 1 / 72) {
       lights: (() => { const l = []; scene.traverse((o) => { if (o.isLight) l.push(`${o.type.replace('Light', '')}:${+o.intensity.toFixed(2)}${o.visible ? '' : ':hidden'}`); }); return l.slice(0, 8); })(),
       env: !!scene.environment,
       fpSplit: (() => { const n = { fp: 0, tp: 0, both: 0, base: 0 }; av?.vrm?.scene?.traverse((o) => { if (!o.isMesh && !o.isSkinnedMesh) return; const f = o.layers.isEnabled(FP_LAYER), t = o.layers.isEnabled(TP_LAYER); n[f && t ? 'both' : f ? 'fp' : t ? 'tp' : 'base']++; }); return n; })(),   // a body whose meshes are ALL tp is invisible in FP by spec
-      controllers: { L: !!sourceFor('left'), R: !!sourceFor('right'), trusted: buttonsTrusted() }, rig: [+rig.position.x.toFixed(1), +rig.position.y.toFixed(1), +rig.position.z.toFixed(1)],
+      controllers: { L: !!sourceFor('left'), R: !!sourceFor('right'), trusted: buttonsTrusted(), bits: ['left', 'right'].map((h) => (sourceFor(h)?.gamepad?.buttons ?? []).map((b) => +!!b.pressed).join('')) },   // raw pressed bits per hand: a stuck-true button is visible here rig: [+rig.position.x.toFixed(1), +rig.position.y.toFixed(1), +rig.position.z.toFixed(1)],
       hands: { L: !!sourceFor('left'), R: !!sourceFor('right') }, held: held?.id ?? null,
       me: [+myState.pos.x.toFixed(1), +myState.pos.y.toFixed(1), +myState.pos.z.toFixed(1)], clip: myState.clip, seat: myState.seat?.id ?? null, ring: radialOpen,
       yaw: { cam: +camYawWorld().toFixed(2), rig: +rig.rotation.y.toFixed(2), root: +(av?.root?.rotation.y ?? 0).toFixed(2) },
