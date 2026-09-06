@@ -463,16 +463,19 @@ const wrapPi = (a) => Math.atan2(Math.sin(a), Math.cos(a));   // every yaw write
 // this the root stands on myState.pos while the visible body (eye-anchored under the head) stands
 // a step away — colliders, the wire `p`, and every turn pivot are off by the human's drift. Recentre
 // measures the head's RIG-LOCAL pose once and folds it into the rig every frame: head xz lands on
-// myState.pos (turns then pivot about the head), rig yaw turns so head-forward = body-forward, and
-// in seated mode the rig is lifted so the head reads at the avatar's standing eye height — the
-// body stands, the knees don't bend for the rest of the session. Runs once on entry, and on the
-// ring / Settings › VR verb. Pure math in recentreSolve (tested in tools/recentre-test.mjs).
+// myState.pos (turns then pivot about the head), and in seated mode the rig is lifted so the head
+// reads at the avatar's standing eye height — the body stands, the knees don't bend for the rest
+// of the session. Runs once on entry, and on the ring / Settings › VR verb. Pure math in
+// recentreSolve (smoke/recentre-probe.mjs).
+// NEVER yaw the rig for a body (Basis: the tracking space is only ever turned by the stick; a head
+// that faces away from the root is the torso latch's job). An earlier version rotated the rig by
+// (bodyYaw − headYaw) here — the camera is a child of the rig, so entering physically turned 60°
+// would have spun the world 60° on frame one. Removed 09-06 10:48 before it was ever felt.
 const recentre = { x: 0, y: 0, z: 0, pending: false };
-/** @returns {{x,z,y,dyaw}} rig-local head xz to fold in; y lift (seated only); yaw delta to apply to the rig */
-export function recentreSolve({ headLocal, headWorldYaw, bodyYaw, seated, standingEyeY }) {
-  const dyaw = wrapPi(bodyYaw - headWorldYaw);
+/** @returns {{x,z,y}} rig-local head xz to fold in; y lift (seated only). No yaw: the rig is stick-only. */
+export function recentreSolve({ headLocal, seated, standingEyeY }) {
   const y = seated && standingEyeY > 0.5 && headLocal.y > 0.3 ? standingEyeY - headLocal.y : 0;
-  return { x: headLocal.x, z: headLocal.z, y, dyaw };
+  return { x: headLocal.x, z: headLocal.z, y };
 }
 const _hl = new THREE.Vector3();
 export function recentreXR(why = 'verb') {
@@ -481,13 +484,11 @@ export function recentreXR(why = 'verb') {
   _hl.setFromMatrixPosition(cam.matrixWorld);
   rig.updateMatrixWorld(true); rig.worldToLocal(_hl);           // head in rig space (the playspace, pre-offset)
   _hl.x += recentre.x; _hl.z += recentre.z; _hl.y -= recentre.y;  // undo the offset already folded in: rig-local == playspace
-  const headWorldYaw = camYawWorld();
-  if (![_hl.x, _hl.y, _hl.z, headWorldYaw].every(Number.isFinite)) return false;
+  if (![_hl.x, _hl.y, _hl.z].every(Number.isFinite)) return false;
   const eye = avatarEyeY();
-  const r = recentreSolve({ headLocal: _hl, headWorldYaw, bodyYaw: myState.yaw, seated: !!xrPrefs.seated, standingEyeY: eye ? eye / scaleState.k : 0 });
+  const r = recentreSolve({ headLocal: _hl, seated: !!xrPrefs.seated, standingEyeY: eye ? eye / scaleState.k : 0 });
   recentre.x = r.x; recentre.z = r.z; recentre.y = r.y;
-  rig.rotation.y = wrapPi(rig.rotation.y + r.dyaw);
-  tee(`[xr] recentre (${why}): head at playspace ${r.x.toFixed(2)},${_hl.y.toFixed(2)},${r.z.toFixed(2)} folded in; yaw ${(r.dyaw * 180 / Math.PI).toFixed(0)}°${r.y ? `; seated lift ${r.y.toFixed(2)} m` : ''}`);
+  tee(`[xr] recentre (${why}): head at playspace ${r.x.toFixed(2)},${_hl.y.toFixed(2)},${r.z.toFixed(2)} folded in${r.y ? `; seated lift ${r.y.toFixed(2)} m` : ''}`);
   bus.emit('xr:recentre', { ...r, why });
   return true;
 }
