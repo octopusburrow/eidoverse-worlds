@@ -51,7 +51,7 @@ import { initAudioPanel } from './lib/audiopanel.js';
 import { initSceneGraph, sceneSelect } from './lib/scenegraph.js';
 import { initXR, updateXR, bindXRSelf, isPresenting } from './lib/xr.js';
 import { tickXRMirror } from './lib/xrmirror.js';
-import { ensureXRBodyHook, bindXRBodySelf, xrAvatarYaw, xrLookPitch } from './lib/xrbody.js';
+import { ensureXRBodyHook, bindXRBodySelf, xrAvatarYaw, xrLookPitch, xrWire, xrSimActive } from './lib/xrbody.js';
 import { tickXRVignette } from './lib/xrvignette.js';
 import { initVRPanel } from './lib/vrpanel.js';
 import { trySitOn as xrTrySitOn, dismountMe as xrDismountMe } from './lib/localbody.js';
@@ -529,7 +529,7 @@ startFrame();   // explicit — the loop starts only after identity resolved
 initXR();               // the VR chip appears only where immersive-vr is supported
 bindXRSelf(() => getMe());   // first-person split + own-label hide need the body
 bindXRBodySelf(() => getMe());
-setPoseOverride(() => (isPresenting() ? { yaw: xrAvatarYaw() ?? undefined, pitch: xrLookPitch() } : null));
+setPoseOverride(() => ((isPresenting() || xrSimActive()) ? { yaw: xrAvatarYaw() ?? undefined, pitch: xrLookPitch(), xr: xrWire() ?? undefined } : null));
 
 // Idle bandwidth streams the rest of the library into the HTTP cache — fire
 // and forget; it waits out the boot and yields to every real load on its own

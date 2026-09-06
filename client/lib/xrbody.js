@@ -56,6 +56,17 @@ export const xrBodyDebug = () => ({ look: look.toArray().map((v) => +v.toFixed(3
 // headset exposes no orientation setter, so the look-at math is tested by
 // feeding the pose directly — the one input this module consumes.
 let simHead = null;
+export const xrSimActive = () => !!simHead;
+// C18 (R 09-05 20:03: body root stays yaw-only; tracked head/hands ride the wire as full quaternions,
+// Basis's shape). Everything here is FACING-relative — the wire `yaw` IS the facing (xrAvatarYaw), and a
+// remote sets its root to it, so a receiver's root frame equals the sender's facing frame by construction:
+// h = qRel (the look-chain input), l/r = grip [px,py,pz,qx,qy,qz,qw] in that frame, c = curls [lI,lG,rI,rG].
+// Receivers RE-SOLVE (reach's pattern: a relation, not bones). Absent when not tracked; a side is absent
+// while an emote owns the arms or the grip is untracked.
+const wire = { on: false, h: null, l: null, r: null, c: null };
+const r4 = (v) => +v.toFixed(4);
+const facingQ = new THREE.Quaternion(), facingInv = new THREE.Quaternion(), rootP = new THREE.Vector3(), fp = new THREE.Vector3(), fq = new THREE.Quaternion();
+export const xrWire = () => wire.on ? { h: wire.h, ...(wire.l ? { l: wire.l } : {}), ...(wire.r ? { r: wire.r } : {}), c: wire.c } : null;
 export const xrSimHead = (pos, quat) => { if (CONFIG.params.has('xrsim')) simHead = pos ? { pos, quat } : null; };
 const simGrip = { left: null, right: null };
 export const xrSimGrip = (side, pos, quat) => { if (CONFIG.params.has('xrsim')) simGrip[side] = pos ? { pos, quat } : null; };
@@ -116,14 +127,13 @@ const CURL = [1.22, 1.57, 0.96];
 const curlQ = new THREE.Quaternion(), curlE = new THREE.Euler();
 const simCurl = { left: null, right: null };
 export const xrSimCurl = (side, c) => { if (CONFIG.params.has('xrsim')) simCurl[side] = c ? { ...c } : null; };
-function fingerTick(vrm) {
+function fingerTick(vrm, curls) {
   const h = vrm.humanoid; if (!h) return;
   const ud = vrm.userData = vrm.userData || {};
   const base = ud._fingerBase || (ud._fingerBase = new Map());
-  const live = xrFingerCurl();
   for (const side of ['left', 'right']) {
     const sgn = side === 'left' ? -1 : 1;
-    const cur = simCurl[side] ?? live[side];
+    const cur = curls[side] || {};
     for (const [finger, key] of [['Index', 'index'], ['Middle', 'grip'], ['Ring', 'grip'], ['Little', 'grip']]) {
       const amt = Math.min(1, Math.max(0, cur[key] || 0));
       ['Proximal', 'Intermediate', 'Distal'].forEach((seg, i) => {
@@ -136,15 +146,53 @@ function fingerTick(vrm) {
   }
 }
 
+/** The distributed look-at, given the head in the body's facing frame. `lk` is the caller's damped
+ *  pitch/yaw/roll state (one per body). Returns the raw clamped pitch. */
+function applyLookChain(h, qIn, lk, dt) {
+  eul.setFromQuaternion(qIn, 'YXZ');
+  const pitch = THREE.MathUtils.clamp(eul.x, -0.7, 0.7), roll = THREE.MathUtils.clamp(eul.z, -0.5, 0.5), yaw = sa(eul.y);
+  // dt is 0 after a >2 s hitch (frame.js clamps it) — headless XR runs at ~0.5 fps and
+  // every frame is one; a zero step would freeze the chain, so take a half step instead
+  const s = dt > 0 ? Math.min(1, dt * 9) : 0.5;
+  lk.x += (pitch - lk.x) * s; lk.y += (yaw - lk.y) * s; lk.z += (roll - lk.z) * s;
+  const yawFade = Math.max(0, Math.cos(lk.x));
+  const bones = CHAIN.map((n) => h.getNormalizedBoneNode(n));
+  let sY = 0, sP = 0, sR = 0; bones.forEach((b, i) => { if (b) { sY += wY[i]; sP += wP[i]; sR += wR[i]; } });
+  bones.forEach((b, i) => { if (!b) return; b.quaternion.setFromEuler(eul.set(lk.x * (wP[i] / sP), lk.y * (wY[i] / sY) * yawFade, lk.z * (wR[i] / sR), 'YXZ')); });
+  return pitch;
+}
+
+/** C18 receiver: pose a REMOTE body from its wire sample — same look chain, same arm solve, same curls,
+ *  in the remote root's frame (== the sender's facing frame). No latch (the wire yaw already carries it),
+ *  no eye anchor (the remote stands on its root). `st` = per-remote state { look: Vector3 }. */
+export function applyRemoteXR(av, xr, st, dt) {
+  const vrm = av?.vrm, h = vrm?.humanoid;
+  if (!h || !xr || !Array.isArray(xr.h) || xr.h.length !== 4) return;
+  qRel.fromArray(xr.h);
+  applyLookChain(h, qRel, st.look, dt);
+  if (!av.emote) {
+    av.root.getWorldQuaternion(facingQ); av.root.getWorldPosition(rootP);
+    for (const side of ['left', 'right']) {
+      const g = xr[side[0]];
+      if (!Array.isArray(g) || g.length !== 7) continue;
+      fp.set(g[0], g[1], g[2]).applyQuaternion(facingQ).add(rootP);
+      fq.set(g[3], g[4], g[5], g[6]).premultiply(facingQ);
+      solveArm(vrm, side, fp, fq);
+    }
+  }
+  const c = Array.isArray(xr.c) && xr.c.length === 4 ? xr.c : [0, 0, 0, 0];
+  fingerTick(vrm, { left: { index: c[0], grip: c[1] }, right: { index: c[2], grip: c[3] } });
+}
+
 export function tickXRBody(dt) {
   dbg.ticks++;
   // ?xrsim with a fed head pose runs the chain WITHOUT a session: the headless
   // fake session lives ~1 frame/2 s and drops unpredictably; the math and the
   // frame ordering are what this path tests (the session itself is proven apart)
-  if (!isPresenting() && !simHead) { dbg.notPresenting++; return; }
+  if (!isPresenting() && !simHead) { dbg.notPresenting++; wire.on = false; return; }
   const av = getSelf(); const vrm = av?.vrm; const h = vrm?.humanoid;
-  if (!h || !av.root) { dbg.noSelf++; return; }
-  dbg.ran++;
+  if (!h || !av.root) { dbg.noSelf++; wire.on = false; return; }
+  dbg.ran++; wire.on = true; wire.l = wire.r = null;
   const rig = xrRig();
 
   // the HMD in world, then scaled about the rig (DeviceScale: tracked targets, not the view)
@@ -205,17 +253,9 @@ export function tickXRBody(dt) {
   // R_y(π) expresses the head in the body's frame — and negates pitch/roll correctly (the two frames call
   // 'up' opposite X rotations; porch's inversion fix 2026-07-09). Probe 09-05 20:58 without it: residual yaw −π.
   qRel.copy(qYaw).multiply(hmdQ).multiply(qFlip);
-  eul.setFromQuaternion(qRel, 'YXZ');
-  const pitch = THREE.MathUtils.clamp(eul.x, -0.7, 0.7), roll = THREE.MathUtils.clamp(eul.z, -0.5, 0.5), yaw = sa(eul.y);
-  dbg.sim = !!simHead; dbg.hmdQ = hmdQ.toArray().map((v) => +v.toFixed(3)); dbg.pitchRaw = +pitch.toFixed(3);
-  // dt is 0 after a >2 s hitch (frame.js clamps it) — headless XR runs at ~0.5 fps and
-  // every frame is one; a zero step would freeze the chain, so take a half step instead
-  const s = dt > 0 ? Math.min(1, dt * 9) : 0.5;
-  look.x += (pitch - look.x) * s; look.y += (yaw - look.y) * s; look.z += (roll - look.z) * s;
-  const yawFade = Math.max(0, Math.cos(look.x));
-  const bones = CHAIN.map((n) => h.getNormalizedBoneNode(n));
-  let sY = 0, sP = 0, sR = 0; bones.forEach((b, i) => { if (b) { sY += wY[i]; sP += wP[i]; sR += wR[i]; } });
-  bones.forEach((b, i) => { if (!b) return; b.quaternion.setFromEuler(eul.set(look.x * (wP[i] / sP), look.y * (wY[i] / sY) * yawFade, look.z * (wR[i] / sR), 'YXZ')); });
+  wire.h = qRel.toArray().map(r4);
+  dbg.sim = !!simHead; dbg.hmdQ = hmdQ.toArray().map((v) => +v.toFixed(3));
+  dbg.pitchRaw = +applyLookChain(h, qRel, look, dt).toFixed(3);
 
   // 2. eye anchor — measured eye if the VRM has eye bones, else head + (0, .06, .10)
   vrm.scene.position.set(0, 0, 0); vrm.scene.updateMatrixWorld(true);
@@ -231,8 +271,12 @@ export function tickXRBody(dt) {
   // 3. arms to the grips (A3) — emotes trump IK (R's rule: an emote you chose
   // always wins); an untracked grip (sitting at the rig origin) leaves the arm
   // to the clip. Targets are DeviceScaled about the rig like the head.
-  if (av.emote) { dbg.arms.left = dbg.arms.right = false; return; }
+  const live = xrFingerCurl();
+  const curls = { left: simCurl.left ?? live.left ?? {}, right: simCurl.right ?? live.right ?? {} };
+  wire.c = [curls.left.index, curls.left.grip, curls.right.index, curls.right.grip].map((v) => r4(Math.min(1, Math.max(0, v || 0))));
+  if (av.emote) { dbg.arms.left = dbg.arms.right = false; fingerTick(vrm, curls); return; }
   const hands = xrHands();
+  facingQ.setFromEuler(eul.set(0, facing, 0, 'YXZ')); facingInv.copy(facingQ).invert(); av.root.getWorldPosition(rootP);
   for (const side of ['left', 'right']) {
     const grip = hands[side]?.grip;
     let ok = false;
@@ -245,6 +289,7 @@ export function tickXRBody(dt) {
       }
     }
     dbg.arms[side] = ok;
+    if (ok) { fp.copy(gripP).sub(rootP).applyQuaternion(facingInv); fq.copy(facingInv).multiply(gripQ); wire[side[0]] = [...fp.toArray(), ...fq.toArray()].map(r4); }
   }
-  fingerTick(vrm);   // after the arms: curls compose onto the solved pose
+  fingerTick(vrm, curls);   // after the arms: curls compose onto the solved pose
 }
