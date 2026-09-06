@@ -15,7 +15,7 @@
 // DeviceScale (xr.js) scales the tracked HMD target about the rig, not the view.
 import { THREE, renderer } from './core.js';
 import { CONFIG } from './base.js';
-import { isPresenting, xrScale, xrRig, xrHands } from './xr.js';
+import { isPresenting, xrScale, xrRig, xrHands, xrFingerCurl } from './xr.js';
 
 let getSelf = () => null;
 let hooked = null;
@@ -95,6 +95,36 @@ export function solveArm(vrm, side, targetPos, targetQuat) {
   return true;
 }
 
+// ---- finger curl (Tier A4; porch-old :5917–5939 verbatim) ------------------
+// Index ← trigger, Middle/Ring/Little ← grip, across Proximal/Intermediate/
+// Distal at [1.22, 1.57, 0.96] rad for a full fist, handed sign. ASSIGN base×
+// curl every frame — never multiply onto last frame's result: nothing resets
+// finger bones in VR, so an accumulated curl integrates into spin (porch's
+// spinning-fingertips bug). Base quats are captured on first touch.
+const CURL = [1.22, 1.57, 0.96];
+const curlQ = new THREE.Quaternion(), curlE = new THREE.Euler();
+const simCurl = { left: null, right: null };
+export const xrSimCurl = (side, c) => { if (CONFIG.params.has('xrsim')) simCurl[side] = c ? { ...c } : null; };
+function fingerTick(vrm) {
+  const h = vrm.humanoid; if (!h) return;
+  const ud = vrm.userData = vrm.userData || {};
+  const base = ud._fingerBase || (ud._fingerBase = new Map());
+  const live = xrFingerCurl();
+  for (const side of ['left', 'right']) {
+    const sgn = side === 'left' ? -1 : 1;
+    const cur = simCurl[side] ?? live[side];
+    for (const [finger, key] of [['Index', 'index'], ['Middle', 'grip'], ['Ring', 'grip'], ['Little', 'grip']]) {
+      const amt = Math.min(1, Math.max(0, cur[key] || 0));
+      ['Proximal', 'Intermediate', 'Distal'].forEach((seg, i) => {
+        const b = h.getNormalizedBoneNode(side + finger + seg); if (!b) return;
+        let b0 = base.get(b); if (!b0) { b0 = b.quaternion.clone(); base.set(b, b0); }
+        curlQ.setFromEuler(curlE.set(0, 0, sgn * CURL[i] * amt));
+        b.quaternion.copy(b0).multiply(curlQ);
+      });
+    }
+  }
+}
+
 export function tickXRBody(dt) {
   dbg.ticks++;
   // ?xrsim with a fed head pose runs the chain WITHOUT a session: the headless
@@ -157,4 +187,5 @@ export function tickXRBody(dt) {
     }
     dbg.arms[side] = ok;
   }
+  fingerTick(vrm);   // after the arms: curls compose onto the solved pose
 }

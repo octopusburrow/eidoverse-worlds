@@ -61,6 +61,17 @@ const lastGood = new THREE.Vector3();
 const rig = new THREE.Group();
 export const xrRig = () => rig;   // xrbody.js scales tracked targets about it
 export const xrHands = () => hands;   // { left, right }: { grip, ray, … } — xrbody.js reads grip world poses for arm IK
+// finger curl surrogate (Tier A4; porch-old :10933): trigger value → index, grip value → the other three
+const fingerCurl = { left: { index: 0, grip: 0 }, right: { index: 0, grip: 0 } };
+export const xrFingerCurl = () => fingerCurl;
+function sampleFingerCurl() {
+  for (const hand of ['left', 'right']) {
+    const gp = sourceFor(hand)?.gamepad; const b = gp?.buttons;
+    if (!b) continue;
+    fingerCurl[hand].index = b[0]?.value ?? (b[0]?.pressed ? 1 : 0);
+    fingerCurl[hand].grip = b[1]?.value ?? (b[1]?.pressed ? 1 : 0);
+  }
+}
 rig.name = 'xr-rig';
 let presenting = false;
 let floorSpace = null;              // 'local-floor' | 'bounded-floor' | null (fell back to 'local')
@@ -411,6 +422,7 @@ export const turnMagnitude = () => turnMag;
 export function updateXR(dtSec = 1 / 72) {
   if (!presenting) { turnMag = 0; return; }
   { const e = renderer.xr.getCamera().matrixWorld.elements; const hy = e[13] - rig.position.y; if (Number.isFinite(hy)) sampleDeviceScale(hy); }
+  sampleFingerCurl();
 
   // head yaw becomes the movement frame: stick-forward = where you look.
   // Read the -Z column of matrixWorld DIRECTLY: getWorldDirection() calls
