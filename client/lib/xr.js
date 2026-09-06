@@ -19,6 +19,7 @@
 
 import { THREE, renderer, camera, scene, XR_BOOT } from './core.js';
 import { CONFIG, report, bus, tee } from './base.js';
+import { xrBodyDebug } from './xrbody.js';
 import { stroke, fillPath } from './icons.js';
 import { xrPanelsEnter, xrPanelsExit, xrPanelsPick, showXRPanel, xrPanelHas, xrPanelOpen } from './xrpanels.js';
 import { myState, xrIntent, setCamYaw, setXrProbe } from './controller.js';
@@ -570,7 +571,7 @@ export function updateXR(dtSec = 1 / 72) {
       me: [+myState.pos.x.toFixed(1), +myState.pos.y.toFixed(1), +myState.pos.z.toFixed(1)], clip: myState.clip, seat: myState.seat?.id ?? null, ring: radialOpen,
       yaw: { cam: +camYawWorld().toFixed(2), rig: +rig.rotation.y.toFixed(2), root: +(av?.root?.rotation.y ?? 0).toFixed(2) },
       headLocal: [+camera.position.x.toFixed(2), +camera.position.y.toFixed(2), +camera.position.z.toFixed(2)],   // the HMD in rig space: a pop is a number here
-      sceneYaw: +(av?.vrm?.scene?.rotation.y ?? 0).toFixed(2),   // the VRM's own chase of the head, inside the root   // the facing triple (R's 'pop to origin' hunt, 09-05)
+      hips: { yaw: +(xrBodyDebug().hipsYaw ?? 0).toFixed(2), follow: +(xrBodyDebug().follow ?? 0).toFixed(2) },   // Basis latch state on the hips bone   // the facing triple (R's 'pop to origin' hunt, 09-05)
     });
     console.log('[xr:rec]', rec); tee(`[xr:rec] ${rec}`);
   }
