@@ -392,12 +392,12 @@ async function enterVR() {
     rig.add(camera);
     slots[0] ??= makeHand(0); slots[1] ??= makeHand(1);
     hands.left ??= slots[0]; hands.right ??= slots[1];   // guess until 'connected' files them by handedness
-    presenting = true;
+    presenting = true; bus.emit('xr:state');   // the HUD visor repaints (R 22:04: 'VR icon still inactive')
     xrIntent.active = true;
     selfFirstPerson(true);
     xrPanelsEnter(rig);            // every registered frame as a physical surface
     session.addEventListener('end', () => {
-      presenting = false;
+      presenting = false; bus.emit('xr:state');
       xrIntent.active = false;
       camera.layers.enable(TP_LAYER); camera.layers.disable(FP_LAYER);
       selfFirstPerson(false);
