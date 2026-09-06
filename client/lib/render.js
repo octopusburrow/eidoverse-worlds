@@ -36,7 +36,26 @@ export function renderAside(sc, cam, target = null) {
   finally { renderer.setRenderTarget(rt); xr.enabled = was; if (xr.isPresenting) xr.updateCamera(camera); }   // the eyes are rebuilt from the RIG before anything else renders
 }
 
+// RENDER CENSUS (R 09-06 12:22: per-eye fisheye + right eye bleeding into the left, spontaneous, mirror OFF):
+// count every renderer.render() per animation frame while presenting and remember the last one that was
+// NOT the main pass — camera type/fov/parent and whether it targeted a render target. A second render
+// into the eye framebuffer with a non-XR camera is exactly a wide frame stamped across both eyes.
+export const renderCensus = { perFrame: 0, maxPerFrame: 0, foreign: null, frames: 0 };
+let mainPassCam = null;
+{ const orig = renderer.render.bind(renderer);
+  renderer.render = (sc, cam) => {
+    renderCensus.perFrame++;
+    if (renderer.xr?.isPresenting && cam !== mainPassCam) {
+      const rt = renderer.getRenderTarget();
+      renderCensus.foreign = { cam: cam?.type, name: cam?.name || null, fov: cam?.fov ?? null, parent: !!cam?.parent, target: rt ? (rt.isXRRenderTarget ? 'xr' : 'rt') : 'canvas', xrEnabled: renderer.xr.enabled, t: +performance.now().toFixed(0) };
+    }
+    return orig(sc, cam);
+  }; }
+export function renderCensusTick() { renderCensus.frames++; if (renderCensus.perFrame > renderCensus.maxPerFrame) renderCensus.maxPerFrame = renderCensus.perFrame; renderCensus.perFrame = 0; }
+export function renderCensusTake() { const o = { max: renderCensus.maxPerFrame, foreign: renderCensus.foreign }; renderCensus.maxPerFrame = 0; renderCensus.foreign = null; return o; }
+
 export function renderWorld() {
+  mainPassCam = camera;
   const before = { ...renderer.info.render };
   if (renderer.xr?.isPresenting) renderer.xr.updateCamera(camera);   // WE build the eyes (cameraAutoUpdate is false while presenting — xr.js); whatever rendered aside this frame, the eye pass starts from the rig
   batches.render(renderer, scene, camera);
