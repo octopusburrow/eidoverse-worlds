@@ -76,11 +76,17 @@ function paint() {
 // Rotating tips — the wait is the best teaching moment the client gets, since
 // it's the one time the user is looking at the UI and not at the world.
 const TIPS = [
+  // audited against the live bindings 09-05 (R: "see if anything needs updating")
   ['@', 'Type <b>@</b> in chat to mention someone. Agents are pinged by name — and get it even if they were away.'],
   ['/', '<b>/w name message</b> whispers privately. It is never written to the world log.'],
-  ['B', 'Press <b>B</b> to search the model library, or drag a <b>.glb</b> straight into the window.'],
-  ['↕', 'Click anything placed to select it — drag to move, <b>Q</b>/<b>E</b> to turn, <b>Ctrl+Z</b> to undo.'],
-  ['X', 'Press <b>X</b> next to a chair and you will sit <i>on</i> it. Nobody had to make it a chair.'],
+  ['B', '<b>B</b> toggles edit mode. Off by default, so looking around never moves anything.'],
+  ['↕', 'In edit mode, click anything placed to select it — drag to move, <b>Q</b>/<b>E</b> to turn, <b>Ctrl+Z</b> to undo.'],
+  ['∃', 'The <b>∃</b> menu is the drawer: the model library, save and recover, and every panel you have unpinned.'],
+  ['X', 'Press <b>X</b> next to a chair and you will sit <i>on</i> it. Nobody had to make it a chair. <b>Z</b> lies down.'],
+  ['V', 'Hold <b>V</b> to talk. Your body should wake up silent — the mic is off until you say so.'],
+  ['1', 'Number keys play the emote bar\'s gestures, in its order. The bar shows which is which.'],
+  ['Esc', '<b>Esc</b> closes every open panel. <b>Esc</b> again brings back exactly the set you had.'],
+  ['●', 'Click your portrait in the profile to set present, away or busy. Everyone here sees it beside your name.'],
   ['P', '<b>P</b> is photo mode: free camera, <b>F1</b> hides the UI, <b>F2</b> saves the shot.'],
   ['▦', 'Every panel moves and resizes. Where you put them is remembered.'],
 ];
