@@ -11,7 +11,7 @@
 import { THREE } from './core.js';
 import { bus } from './base.js';
 import { renderCanvas, hitRegion } from './panels.js';
-import { domQuadsEnabled, domQuadsEnter, domQuadsExit, domQuadsPick, domQuadsSetShown, domQuadShow } from './domquad.js';   // the REAL frames on quads (default); ?canvasquads=1 keeps these canvases
+import { domQuadsEnabled, domQuadsEnter, domQuadsExit, domQuadsPick, domQuadsSetShown, domQuadShow, domQuadsGrab, domQuadRelease } from './domquad.js';   // the REAL frames on quads (default); ?canvasquads=1 keeps these canvases
 
 const PX_PER_M = 900;              // canvas pixels per world metre of quad
 const W = 0.58;                    // quad width, metres — an arm's-length read
@@ -123,6 +123,21 @@ export function xrPanelsPick(handRay, click = false) {
   }
   return hit.distance;
 }
+
+/** C17: the panel under the laser, as a grabbable — {id, mesh} or null. Canvas quads grab too. */
+export function xrPanelsGrab(handRay) {
+  if (domQuadsEnabled()) return domQuadsGrab(handRay);
+  if (!panels || !shown) return null;
+  _m.identity().extractRotation(handRay.matrixWorld);
+  _rc.ray.origin.setFromMatrixPosition(handRay.matrixWorld);
+  _rc.ray.direction.set(0, 0, -1).applyMatrix4(_m);
+  _rc.far = 3;
+  const hit = _rc.intersectObjects(panels.filter((p) => p.mesh.visible).map((p) => p.mesh), false)[0];
+  if (!hit) return null;
+  const p = panels.find((q) => q.mesh === hit.object);
+  return p ? { id: p.def.id, mesh: p.mesh } : null;
+}
+export const xrPanelRelease = (q, rig) => domQuadRelease(q, rig);   // uprighting is the same for either kind
 
 /** harness window */
 export const xrPanelsDebug = () => ({
