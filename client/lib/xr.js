@@ -560,7 +560,14 @@ export function updateXR(dtSec = 1 / 72) {
   if (fpVrm) { camera.layers.enable(FP_LAYER); camera.layers.disable(TP_LAYER); }
 
   // the body moved by THEIR controller code; the rig goes where the body is
-  rig.position.set(myState.pos.x, myState.pos.y, myState.pos.z);
+  // THE RIG SITS UNDER THE HEAD, NOT AT THE BODY (porch-old): the HMD's
+  // playspace offset is subtracted so the eyes land over myState.pos. With the
+  // rig AT the body (R, 09-05 20:23: 'headset behind my body'), the eye anchor
+  // had to shove the whole VRM a metre inside the root, and every yaw of the
+  // root swung it on that arc — the 'jog' and the 45° 'snap'.
+  { const hx = camera.position.x, hz = camera.position.z, ry = rig.rotation.y;
+    const wx = hx * Math.cos(ry) + hz * Math.sin(ry), wz = -hx * Math.sin(ry) + hz * Math.cos(ry);
+    rig.position.set(myState.pos.x - wx, myState.pos.y, myState.pos.z - wz); }
 
   // three pushes camera.near/far into session.updateRenderState every frame
   // it changes; a non-finite value throws INSIDE render and the headset
