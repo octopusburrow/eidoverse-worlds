@@ -424,7 +424,9 @@ async function enterVR() {
     try { renderer.xr.setReferenceSpaceType(floor ?? 'local'); } catch (e) { report('xr ref space', e); }
     floorSpace = floor;
     scaleState.samples.length = 0; scaleState.locked = false; scaleState.firstAt = 0; scaleState.k = 1; scaleState.source = 'fallback'; loadSavedScale();
+    const tReq = performance.now();
     await renderer.xr.setSession(session);
+    entryClock = { t0: performance.now(), setSessionMs: +(performance.now() - tReq).toFixed(0), frames: [], last: 0 };
     if (!floor) tee('[xr] NO floor reference space granted — using local (eye-level origin); floor height is a guess');
     const onLine = `[xr] session on ${renderer.backend?.isWebGPUBackend ? 'WebGPU' : 'WebGL'} refspace=${floor ?? 'local'} features=${JSON.stringify(session.enabledFeatures ?? [])}`;
     console.log(onLine); tee(onLine);
@@ -543,10 +545,16 @@ export function leaveVR(why = 'verb') {
   try { const p = session.end(); p?.catch?.((e) => tee(`[xr] leave (${why}) rejected: ${e?.message ?? e}`)); } catch (e) { tee(`[xr] leave (${why}) threw: ${e?.message ?? e}`); }
   return true;
 }
+// ENTRY CLOCK (R 09-06 12:08: 'a LONG time to enter VR, 5–6 s of bare WebXR construct'): from setSession
+// resolving to our first presenting frame, then the first eight frame gaps — a compile stall shows as
+// one huge gap; a runtime stall shows as the t0→first gap. One tee line, then it retires.
+let entryClock = null;
 let turnMag = 0;                    // |stick-X| while smooth-turning — the vignette reads it
 export const turnMagnitude = () => turnMag;
 export function updateXR(dtSec = 1 / 72) {
   if (!presenting) { turnMag = 0; return; }
+  if (entryClock) { const now = performance.now(); entryClock.frames.push(+(now - (entryClock.last || entryClock.t0)).toFixed(0)); entryClock.last = now;
+    if (entryClock.frames.length >= 8) { tee(`[xr] entry: setSession ${entryClock.setSessionMs} ms; first frame +${entryClock.frames[0]} ms; next gaps ${entryClock.frames.slice(1).join(',')} ms`); entryClock = null; } }
   if (!xrPrefs.seated) { const e = renderer.xr.getCamera().matrixWorld.elements; const hy = e[13] - rig.position.y - recentre.y; if (Number.isFinite(hy)) sampleDeviceScale(hy); }   // Basis: seated suppresses height capture
   sampleFingerCurl();
   if (recentre.pending) { recentre.pending = false; recentreXR('entry'); }
