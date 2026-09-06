@@ -14,7 +14,7 @@
 //      pose moves the eyes), before any arm solve (shoulders under the head).
 // DeviceScale (xr.js) scales the tracked HMD target about the rig, not the view.
 import { THREE, renderer } from './core.js';
-import { CONFIG } from './base.js';
+import { CONFIG, tee } from './base.js';
 import { isPresenting, xrScale, xrRig, xrHands, xrFingerCurl } from './xr.js';
 
 let getSelf = () => null;
@@ -29,8 +29,9 @@ export function ensureXRBodyHook() {
   hooked = av;
 }
 
+const FOLLOW_RATE = +(new URLSearchParams(location.search).get('bodyfollow') ?? 2.5) || 2.5;   // porch 2.5/s; Basis VR default is rigid (blend 8, deadband 0°) — ?bodyfollow=8 to feel that
 const CHAIN = ['spine', 'chest', 'upperChest', 'neck', 'head'];
-const wY = [0, 0, 0, .4, .6],   // residual yaw: neck + head only — the BODY already turned to the HMD (eido's controller does that); porch's torso share fought it
+const wY = [.12, .12, .16, .25, .35],   // porch-old's twist share: the body chases the head slowly (below), the uncaught part rides the spine
  wP = [.10, .12, .16, .26, .36], wR = [.08, .10, .14, .28, .40];
 const look = new THREE.Vector3();          // damped pitch / yaw / roll
 const hmdPos = new THREE.Vector3(), hmdQ = new THREE.Quaternion(), tmpS = new THREE.Vector3();
@@ -41,6 +42,8 @@ const sa = (a) => Math.atan2(Math.sin(a), Math.cos(a));   // shortest-arc wrap
 
 const dbg = { ticks: 0, notPresenting: 0, noSelf: 0, ran: 0, sim: false, hmdQ: null, pitchRaw: 0, arms: { left: false, right: false } };
 const gripP = new THREE.Vector3(), gripQ = new THREE.Quaternion();
+export const xrAvatarYaw = () => { const av = getSelf(); const v = av?.vrm; return v ? (av.root.rotation.y + v.scene.rotation.y + (v.scene.userData.restYaw ?? 0)) : null; };
+export const xrLookPitch = () => dbg.look?.[0] ?? 0;
 export const xrBodyDebug = () => ({ look: look.toArray().map((v) => +v.toFixed(3)), ...dbg });
 // harness hook (?xrsim only): override the HMD pose xrbody reads. IWER's fake
 // headset exposes no orientation setter, so the look-at math is tested by
@@ -151,10 +154,34 @@ export function tickXRBody(dt) {
   // entry) while the body faced her heading gave a constant residual ≈ her
   // heading — the spine twisted toward it, the anchor pulled, the controller
   // re-asserted: 'snap back' and 'the back of my avatar'.
-  av.root.getWorldQuaternion(qYaw); eul.setFromQuaternion(qYaw, 'YXZ');
-  const facing = eul.y + (vrm.meta?.metaVersion === '0' ? Math.PI : 0);
+  // 1a. THE VRM CHASES THE HEAD INSIDE THE ROOT (porch-old index.html:6163–6175, R's
+  // call 09-05 20:30 after the first headset pass): the controller owns the root
+  // (stick); the VRM — its child — eases its OWN yaw toward the head's world yaw,
+  // catchup 2.5/s; what it hasn't caught up to is the residual twist the chain
+  // below spreads down the spine. The rest offset (which way THIS model faces
+  // at scene yaw 0, in root space) is measured once — no π guessing.
+  av.root.getWorldQuaternion(qYaw); eul.setFromQuaternion(qYaw, 'YXZ'); const rootYaw = eul.y;
+  if (vrm.scene.userData.restYaw == null) {
+    const sy = vrm.scene.rotation.y; vrm.scene.rotation.y = 0; vrm.scene.updateMatrixWorld(true);
+    const hb = h.getNormalizedBoneNode('hips') ?? h.getNormalizedBoneNode('head');
+    const f = tmpS.set(0, 0, 1).applyQuaternion(hb.getWorldQuaternion(rigQ));   // eido's facing = (sin yaw, 0, cos yaw): +Z is forward
+    av.root.getWorldQuaternion(rigQ).invert(); f.applyQuaternion(rigQ);
+    vrm.scene.userData.restYaw = Math.atan2(f.x, f.z);
+    vrm.scene.rotation.y = sy;
+    tee(`[xr] body rest yaw ${vrm.scene.userData.restYaw.toFixed(2)} (measured; VRM${vrm.meta?.metaVersion ?? '?'})`);
+  }
+  { const hf = tmpS.set(0, 0, -1).applyQuaternion(hmdQ); const headYaw = Math.atan2(hf.x, hf.z);
+    const tgt = headYaw - rootYaw - vrm.scene.userData.restYaw;
+    const dy = Math.atan2(Math.sin(tgt - vrm.scene.rotation.y), Math.cos(tgt - vrm.scene.rotation.y));
+    vrm.scene.rotation.y += dy * (dt > 0 ? Math.min(1, dt * FOLLOW_RATE) : 0.5); }
+  // the look chain measures the head against the BODY'S ACTUAL FACING = root + scene + rest
+  const facing = rootYaw + vrm.scene.rotation.y + vrm.scene.userData.restYaw;
   qYaw.setFromEuler(eul.set(0, facing, 0, 'YXZ')).invert();
-  qRel.copy(qYaw).multiply(hmdQ);   // porch's Ry(π) flip is already carried by `facing` (VRM0 rest faces +Z); probe 09-05: with both, residual yaw read π and pitch vanished
+  // porch-old :6185 `qRel = R_y(rigY+sceneY)⁻¹ · hq · R_y(π)`: the HMD is a −Z-forward camera frame, the
+  // body is +Z-forward (eido's facing = (sin yaw, 0, cos yaw); `restYaw` measured it). Conjugating through
+  // R_y(π) expresses the head in the body's frame — and negates pitch/roll correctly (the two frames call
+  // 'up' opposite X rotations; porch's inversion fix 2026-07-09). Probe 09-05 20:58 without it: residual yaw −π.
+  qRel.copy(qYaw).multiply(hmdQ).multiply(qFlip);
   eul.setFromQuaternion(qRel, 'YXZ');
   const pitch = THREE.MathUtils.clamp(eul.x, -0.7, 0.7), roll = THREE.MathUtils.clamp(eul.z, -0.5, 0.5), yaw = sa(eul.y);
   dbg.sim = !!simHead; dbg.hmdQ = hmdQ.toArray().map((v) => +v.toFixed(3)); dbg.pitchRaw = +pitch.toFixed(3);

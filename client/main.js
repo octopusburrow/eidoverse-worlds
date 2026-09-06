@@ -39,6 +39,7 @@ import {
 import { remotes, updateRemotes, updateGaze } from './lib/remotes.js';
 import {
   net, connect, initIdentity, loginUrl, wireNet, sendVerb, sendPose, sendWhisper, sendTyping,
+  setPoseOverride,
 } from './lib/net.js';
 import { updateBuild, toggleEditMode, isEditing } from './lib/build.js';
 import { escapeToggle, escapeIsClaimed } from './lib/frames.js';
@@ -48,9 +49,9 @@ import { initConjure } from './lib/conjure.js';
 import './lib/mictoggle.js'; // mic + headphone toggles beside the HUD, both off by default
 import { initAudioPanel } from './lib/audiopanel.js';
 import { initSceneGraph, sceneSelect } from './lib/scenegraph.js';
-import { initXR, updateXR, bindXRSelf } from './lib/xr.js';
+import { initXR, updateXR, bindXRSelf, isPresenting } from './lib/xr.js';
 import { tickXRMirror } from './lib/xrmirror.js';
-import { ensureXRBodyHook, bindXRBodySelf } from './lib/xrbody.js';
+import { ensureXRBodyHook, bindXRBodySelf, xrAvatarYaw, xrLookPitch } from './lib/xrbody.js';
 import { tickXRVignette } from './lib/xrvignette.js';
 import { initVRPanel } from './lib/vrpanel.js';
 import { trySitOn as xrTrySitOn, dismountMe as xrDismountMe } from './lib/localbody.js';
@@ -528,6 +529,7 @@ startFrame();   // explicit — the loop starts only after identity resolved
 initXR();               // the VR chip appears only where immersive-vr is supported
 bindXRSelf(() => getMe());   // first-person split + own-label hide need the body
 bindXRBodySelf(() => getMe());
+setPoseOverride(() => (isPresenting() ? { yaw: xrAvatarYaw() ?? undefined, pitch: xrLookPitch() } : null));
 
 // Idle bandwidth streams the rest of the library into the HTTP cache — fire
 // and forget; it waits out the boot and yields to every real load on its own
