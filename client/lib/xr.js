@@ -414,12 +414,6 @@ async function enterVR() {
     // once. Devices with no registry entry (Steam Frame, 2026) still speak
     // xr-standard; this line is how we learn what they actually expose.
     session.addEventListener('inputsourceschange', (ev) => {
-      // HEURISTIC (R's Frame, 09-05: three's 'connected' never fired here and the
-      // runtime lists RIGHT first): if the first source is the right hand and the
-      // slots still hold the left-first guess, swap them. The robust path is
-      // porch's raw grip poses by handedness (?rawgrips) — queued.
-      { const first = session.inputSources?.[0]?.handedness;
-        if (first === 'right' && hands.left === slots[0]) { hands.left = slots[1]; hands.right = slots[0]; tee('[xr] slots swapped: first input source is the right hand'); } }
       for (const src of ev.added ?? []) {
         const g = src.gamepad;
         const inLine = `[xr] input: ${src.handedness} profiles=${JSON.stringify(src.profiles)} ${g ? `axes=${g.axes.length} buttons=${g.buttons.length} haptics=${g.hapticActuators?.length ?? 0}` : 'no-gamepad'}`;
@@ -439,7 +433,6 @@ async function enterVR() {
  *  (controller.updateMe moves the body with THEIR loco) → rig follows body. */
 function camYawWorld() { const e = renderer.xr.getCamera().matrixWorld.elements; return Math.atan2(-e[8], -e[10]); }   // world yaw of the HMD's -Z
 const wrapPi = (a) => Math.atan2(Math.sin(a), Math.cos(a));   // every yaw write wraps: an unwrapped body yaw (7.88 = 1.6 + 2π on R's recorder) met a wrapped camera yaw and 'popped' a full turn
-let followTeed = false;
 let turnMag = 0;                    // |stick-X| while smooth-turning — the vignette reads it
 export const turnMagnitude = () => turnMag;
 export function updateXR(dtSec = 1 / 72) {
@@ -460,20 +453,7 @@ export function updateXR(dtSec = 1 / 72) {
   // (R's recorder, 09-04 23:50). Keep the last good yaw on a bad frame.
   const yaw = Math.atan2(_v.x, _v.z) + Math.PI;
   if (Number.isFinite(yaw) && _v.lengthSq() > 1e-6) {
-    setCamYaw(yaw);
-    // THE BODY FOLLOWS THE HEAD (porch-old: body yaw = HMD yaw). eido's
-    // controller only turns the body while WALKING (camYaw steers the walk
-    // direction); standing still in XR the body never turned — R's recorder,
-    // 09-05 20:15: root fixed at 7.62 while cam swept −0.9…−3.1. She saw its
-    // back, and the look-at was fed a 140° residual: the 'pop'.
-    // camYaw is the ORBIT yaw (the follow camera sits behind the body: facing + π);
-    // the body's own convention is atan2(dir.x, dir.z) with no π — so the body
-    // target is yaw − π. (First cut used yaw itself: body faced AWAY from her gaze.)
-    const dtb = Math.min(0.05, dtSec ?? 1 / 72);
-    const bodyTarget = wrapPi(yaw - Math.PI);
-    const step = wrapPi(bodyTarget - myState.yaw) * Math.min(1, 10 * dtb);
-    myState.yaw = wrapPi(myState.yaw + step);
-    if (!followTeed && Math.abs(step) > 0.02) { followTeed = true; tee(`[xr] body follows head: first step ${step.toFixed(3)} toward ${bodyTarget.toFixed(2)}`); }
+    setCamYaw(yaw);   // orbit yaw (= facing + π) for the walk direction ONLY; the body's yaw is not driven from here
   }
 
   // and if a NaN slipped into the body anyway, put it back on the last good
@@ -560,14 +540,9 @@ export function updateXR(dtSec = 1 / 72) {
   if (fpVrm) { camera.layers.enable(FP_LAYER); camera.layers.disable(TP_LAYER); }
 
   // the body moved by THEIR controller code; the rig goes where the body is
-  // THE RIG SITS UNDER THE HEAD, NOT AT THE BODY (porch-old): the HMD's
-  // playspace offset is subtracted so the eyes land over myState.pos. With the
-  // rig AT the body (R, 09-05 20:23: 'headset behind my body'), the eye anchor
-  // had to shove the whole VRM a metre inside the root, and every yaw of the
-  // root swung it on that arc — the 'jog' and the 45° 'snap'.
-  { const hx = camera.position.x, hz = camera.position.z, ry = rig.rotation.y;
-    const wx = hx * Math.cos(ry) + hz * Math.sin(ry), wz = -hx * Math.sin(ry) + hz * Math.cos(ry);
-    rig.position.set(myState.pos.x - wx, myState.pos.y, myState.pos.z - wz); }
+  // porch-old's rule (index.html:11034–11072, verified 09-05): the RIG IS STICK-ONLY. Nothing reads the head
+  // and writes the rig or the body root; the VRM chases the head INSIDE the root (xrbody.js).
+  rig.position.set(myState.pos.x, myState.pos.y, myState.pos.z);
 
   // three pushes camera.near/far into session.updateRenderState every frame
   // it changes; a non-finite value throws INSIDE render and the headset
@@ -594,7 +569,8 @@ export function updateXR(dtSec = 1 / 72) {
       hands: { L: !!sourceFor('left'), R: !!sourceFor('right') }, held: held?.id ?? null,
       me: [+myState.pos.x.toFixed(1), +myState.pos.y.toFixed(1), +myState.pos.z.toFixed(1)], clip: myState.clip, seat: myState.seat?.id ?? null, ring: radialOpen,
       yaw: { cam: +camYawWorld().toFixed(2), rig: +rig.rotation.y.toFixed(2), root: +(av?.root?.rotation.y ?? 0).toFixed(2) },
-      headLocal: [+camera.position.x.toFixed(2), +camera.position.y.toFixed(2), +camera.position.z.toFixed(2)],   // the HMD in rig space: a pop is a number here   // the facing triple (R's 'pop to origin' hunt, 09-05)
+      headLocal: [+camera.position.x.toFixed(2), +camera.position.y.toFixed(2), +camera.position.z.toFixed(2)],   // the HMD in rig space: a pop is a number here
+      sceneYaw: +(av?.vrm?.scene?.rotation.y ?? 0).toFixed(2),   // the VRM's own chase of the head, inside the root   // the facing triple (R's 'pop to origin' hunt, 09-05)
     });
     console.log('[xr:rec]', rec); tee(`[xr:rec] ${rec}`);
   }

@@ -1,0 +1,15 @@
+import { chromium } from '/home/claude/eido/staging/node_modules/playwright/index.mjs';
+const b = await chromium.launch(); const page = await b.newPage({ viewport: { width: 1280, height: 720 } }); const errs = []; page.on('pageerror', (e) => errs.push(String(e).slice(0, 120)));
+await page.addInitScript(() => { try { localStorage.setItem('ew-name-set', '1'); } catch {} });
+await page.goto(process.argv[2]); await page.waitForFunction(() => globalThis.__ewEngineUp === true, { timeout: 120000 });
+await page.waitForFunction(async () => { const m = await import('/lib/mybody.js'); return !!m.getMe()?.vrm?.humanoid; }, { timeout: 120000 }); await page.waitForTimeout(800);
+const snap = async () => page.evaluate(async () => { const c = await import('/lib/controller.js'); const m = await import('/lib/mybody.js'); const me = m.getMe(); return { pos: c.myState.pos.toArray().map(v => +v.toFixed(2)), yaw: +c.myState.yaw.toFixed(3), rootY: +me.root.rotation.y.toFixed(3), camYaw: +c.camYaw.toFixed(3), sceneY: +me.vrm.scene.rotation.y.toFixed(3) }; });
+await page.click('canvas', { position: { x: 640, y: 360 } });
+const out = { start: await snap() };
+const hold = async (key, ms) => { await page.keyboard.down(key); await page.waitForTimeout(ms); await page.keyboard.up(key); await page.waitForTimeout(300); };
+await hold('KeyW', 1500); out.afterW = await snap();
+await hold('KeyD', 1000); out.afterD = await snap();
+await page.mouse.move(640, 360); await page.mouse.down(); await page.mouse.move(840, 360, { steps: 10 }); await page.mouse.up(); await page.waitForTimeout(300); out.afterDrag = await snap();
+await hold('KeyW', 800); out.afterW2 = await snap();
+await page.keyboard.press('Space'); await page.waitForTimeout(250); out.midJump = await snap(); await page.waitForTimeout(1200); out.landed = await snap();
+console.log(JSON.stringify({ ...out, errs })); await b.close();

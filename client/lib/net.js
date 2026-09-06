@@ -184,14 +184,18 @@ export function sendLease(op, id, payload = {}) {
   }
 }
 
+// XR: the wire carries the AVATAR's actual yaw (root + its own chase of the head) and the look
+// pitch while presenting — porch-old sent head yaw (index.html:11066–11072); remotes turn with the head.
+let poseOverride = null;
+export const setPoseOverride = (fn) => { poseOverride = fn; };
 export function sendPose(now) {
   const s = hooks.myState;
   if (!net.joined || !hooks.me() || !s || now - lastPoseSent < 66) return;
   lastPoseSent = now;
   const pose = {
     p: [s.pos.x, s.pos.y, s.pos.z],
-    yaw: s.yaw, speed: s.speed, clip: s.clip,
-    pitch: Math.round((s.pitch ?? 0) * 100) / 100,
+    yaw: poseOverride?.()?.yaw ?? s.yaw, speed: s.speed, clip: s.clip,
+    pitch: Math.round((poseOverride?.()?.pitch ?? s.pitch ?? 0) * 100) / 100,
     ...wingFoldPresence(s.wingsFolded),
     ...presenceWire(presence()),        // present / away / busy — for the Who panel (R, 09-05)
   };
