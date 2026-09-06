@@ -648,10 +648,10 @@ body.arranging #dock #hud.emark {
 #dock button[data-toggles="profile"] { position: relative; }
 #dock button[data-toggles="profile"]::after {
   content: ''; position: absolute; right: 4px; bottom: 4px; width: 8px; height: 8px; border-radius: 50%;
-  background: var(--ok); box-shadow: 0 0 0 2px rgb(var(--panel-rgb));
+  background: #3ddc84; box-shadow: 0 0 0 2px rgb(var(--panel-rgb));   /* FIXED green (R 09-05 16:47 + 21:38: presence is never the accent) */
 }
 #dock button[data-toggles="profile"][data-presence="away"]::after { background: #f5b83d; border-radius: 2px; transform: rotate(45deg) scale(.85); }   /* fixed colours + shapes, as on the profile (R, 09-05) */
-#dock button[data-toggles="profile"][data-presence="busy"]::after { background: #ef5b5b; border-radius: 2px; }
+#dock button[data-toggles="profile"][data-presence="busy"]::after { background: linear-gradient(rgb(var(--panel-rgb)), rgb(var(--panel-rgb))) center / 60% 20% no-repeat, #ef5b5b; border-radius: 2px; }   /* square-with-bar, like the profile's (the pseudo IS the dot, so the bar is a gradient) */
 /* profile (09-05 redesign): portrait = presence control; top tabs; one pane */
 .pf-portrait { position: relative; width: 40px; height: 40px; border-radius: 50%; flex: none; display: grid; place-items: center; padding: 0;
   background: color-mix(in srgb, var(--who) 55%, rgb(var(--panel-rgb))); color: var(--fg); border: 1px solid transparent; cursor: pointer; }
