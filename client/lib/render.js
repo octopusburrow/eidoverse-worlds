@@ -55,8 +55,27 @@ export function renderCensusTick() { renderCensus.frames++; if (renderCensus.per
 export const renderCensusPeek = () => renderCensus.foreign;
 export function renderCensusTake() { const o = { max: renderCensus.maxPerFrame, foreign: renderCensus.foreign }; renderCensus.maxPerFrame = 0; renderCensus.foreign = null; return o; }
 
+// ENTRY CURTAIN: while up, the eye pass draws a closed dark sphere around the head (the page's own
+// --bg) instead of the world — cheap, one material — so the headset gets frames (no runtime construct)
+// while the scene compiles behind it (xr.js). Not a splash: no text yet; the world simply arrives.
+let curtain = null, curtainOn = false;
+export function setXRCurtain(on) {
+  curtainOn = !!on;
+  if (curtainOn && !curtain) {
+    curtain = new THREE.Scene();
+    const shell = new THREE.Mesh(new THREE.SphereGeometry(4, 24, 16), new THREE.MeshBasicNodeMaterial({ color: 0x0b0f12, side: THREE.BackSide }));
+    shell.frustumCulled = false; curtain.add(shell); curtain.userData.shell = shell;
+  }
+}
+export const xrCurtainOn = () => curtainOn;
 export function renderWorld() {
   mainPassCam = camera;
+  if (curtainOn && renderer.xr?.isPresenting) {
+    renderer.xr.updateCamera(camera);
+    const xc = renderer.xr.getCamera(); const e = xc.matrixWorld.elements; curtain.userData.shell.position.set(e[12], e[13], e[14]);
+    renderer.render(curtain, camera);
+    return;
+  }
   const before = { ...renderer.info.render };
   if (renderer.xr?.isPresenting) renderer.xr.updateCamera(camera);   // WE build the eyes (cameraAutoUpdate is false while presenting — xr.js); whatever rendered aside this frame, the eye pass starts from the rig
   batches.render(renderer, scene, camera);
