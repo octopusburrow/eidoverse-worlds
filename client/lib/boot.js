@@ -70,7 +70,7 @@ function paintItems() {
     .filter((it) => now - (firstSeen.get(it.label) ?? now) > SHOW_AFTER_MS)
     .sort((a, b) => ((b.total || 0) - b.done) - ((a.total || 0) - a.done))
     .slice(0, MAX_ITEMS);
-  itemsEl.innerHTML = shown.map((it) => `<div class="sp-item"><span class="sp-item-name">${escapeHtml(prettyLabel(it.label))}</span><span class="sp-item-bytes">${it.total > 0 ? `${(it.done / 1048576).toFixed(1)} / ${(it.total / 1048576).toFixed(1)} MB` : it.done > 0 ? `${(it.done / 1048576).toFixed(1)} MB…` : ''}</span></div>`).join('');
+  itemsEl.innerHTML = shown.map((it) => `<div class="sp-load"><span class="sp-load-name">${escapeHtml(prettyLabel(it.label))}</span><span class="sp-load-bytes">${it.total > 0 ? `${(it.done / 1048576).toFixed(1)} / ${(it.total / 1048576).toFixed(1)} MB` : it.done > 0 ? `${(it.done / 1048576).toFixed(1)} MB…` : ''}</span></div>`).join('');
 }
 const prettyLabel = (l) => String(l).split('/').pop().replace(/\.(vrm|glb|gltf|png|jpg|ktx2|json|g|gl)(\?.*)?$/i, '').replace(/[_-]+/g, ' ');   // some labels arrive pre-truncated ('desk.g')
 const escapeHtml = (v) => String(v).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
