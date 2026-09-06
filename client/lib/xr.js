@@ -30,6 +30,7 @@ import { registerXrGlyph, glyphPinned, micGlyph, earGlyph, xrGlyph, micLive, ear
 import { dockPins } from './ui.js';
 import { pushUndo } from './build.js';
 import { perf } from './perf.js';
+import { renderCensusTake, renderCensusTick } from './render.js';
 import { warm, P_AMBIENT } from './warmqueue.js';
 
 // ---- self-body in first person ---------------------------------------------
@@ -66,8 +67,15 @@ function selfFirstPerson(on) {
     tee(`[xr] head chop on (${raw.name}, Basis ScaleHeadToZero)`);
   }
   if (!on && choppedHead) { choppedHead.bone.scale.copy(choppedHead.scale); choppedHead = null; fpVrm = null; tee('[xr] head chop off'); }
+  // MToon OUTLINES are a second, back-face, black hull per mesh whose width (screen mode) comes from the
+  // render resolution; in the eye buffers that hull can swallow the body (R 09-06 12:08: 'the claudesona
+  // is pitch black' — and probably 11:31's 'no avatar' against a near-black construct). Off on MY body
+  // while presenting; remotes keep theirs until this is proven. Restored on exit.
+  if (on && !outlinesOff.has(av.vrm)) { let n = 0; av.vrm.scene.traverse((o) => { if (o.isMesh && o.material?.isOutline && o.visible) { o.visible = false; n++; } }); outlinesOff.set(av.vrm, n); tee(`[xr] ${n} outline hulls hidden on my body (MToon isOutline)`); }
+  if (!on) { for (const [v] of outlinesOff) v.scene.traverse((o) => { if (o.isMesh && o.material?.isOutline) o.visible = true; }); outlinesOff.clear(); }
   if (av.label) av.label.visible = !on; // your own name is for OTHER eyes
 }
+const outlinesOff = new Map();   // vrm → count hidden
 // how many of MY meshes the renderer actually drew this frame (all eyes) — 'invisible' becomes a number
 let selfDrawn = 0, selfDrawnLast = 0, drawHookVrm = null;
 function hookSelfDraws() {
@@ -553,6 +561,7 @@ let turnMag = 0;                    // |stick-X| while smooth-turning — the vi
 export const turnMagnitude = () => turnMag;
 export function updateXR(dtSec = 1 / 72) {
   if (!presenting) { turnMag = 0; return; }
+  renderCensusTick();
   if (entryClock) { const now = performance.now(); entryClock.frames.push(+(now - (entryClock.last || entryClock.t0)).toFixed(0)); entryClock.last = now;
     if (entryClock.frames.length >= 8) { tee(`[xr] entry: setSession ${entryClock.setSessionMs} ms; first frame +${entryClock.frames[0]} ms; next gaps ${entryClock.frames.slice(1).join(',')} ms`); entryClock = null; } }
   if (!xrPrefs.seated) { const e = renderer.xr.getCamera().matrixWorld.elements; const hy = e[13] - rig.position.y - recentre.y; if (Number.isFinite(hy)) sampleDeviceScale(hy); }   // Basis: seated suppresses height capture
@@ -703,6 +712,13 @@ export function updateXR(dtSec = 1 / 72) {
       body: av ? (av.vrm?.scene?.visible ? 'visible' : 'HIDDEN') : 'NONE',
       fp: !!fpVrm, headChop: !!choppedHead, selfDrawn: selfDrawnLast, camMask: camera.layers.mask,
       eyeMasks: (renderer.xr.getCamera().cameras ?? []).map((c) => c.layers.mask),   // what each eye may SEE
+      eyeFov: (renderer.xr.getCamera().cameras ?? []).map((c) => +(2 * Math.atan(1 / c.projectionMatrix.elements[5]) * 180 / Math.PI).toFixed(1)),   // vertical fov per eye from the projection — a fisheye is a number here
+      eyeVp: (renderer.xr.getCamera().cameras ?? []).map((c) => c.viewport ? [c.viewport.x, c.viewport.y, c.viewport.z, c.viewport.w].map((v) => +v.toFixed(0)) : null),
+      renders: renderCensusTake(),   // max renderer.render() calls in one frame since the last line + the last foreign camera
+      // 'pitch black' as numbers: my body's materials and the lights that should be lighting them
+      mats: (() => { const out = {}; av?.vrm?.scene?.traverse((o) => { if (!o.isMesh || !o.visible) return; const m = o.material; if (!m) return; const k = `${m.type}${m.isOutline ? ':outline' : ''}`; const e = out[k] ||= { n: 0, tex: 0, opaque: 0, needsUpdate: 0 }; e.n++; if (m.map?.image) e.tex++; if (!m.transparent || m.opacity >= 0.99) e.opaque++; if (m.needsUpdate) e.needsUpdate++; }); return out; })(),
+      lights: (() => { const l = []; scene.traverse((o) => { if (o.isLight) l.push(`${o.type.replace('Light', '')}:${+o.intensity.toFixed(2)}${o.visible ? '' : ':hidden'}`); }); return l.slice(0, 8); })(),
+      env: !!scene.environment,
       fpSplit: (() => { const n = { fp: 0, tp: 0, both: 0, base: 0 }; av?.vrm?.scene?.traverse((o) => { if (!o.isMesh && !o.isSkinnedMesh) return; const f = o.layers.isEnabled(FP_LAYER), t = o.layers.isEnabled(TP_LAYER); n[f && t ? 'both' : f ? 'fp' : t ? 'tp' : 'base']++; }); return n; })(),   // a body whose meshes are ALL tp is invisible in FP by spec
       controllers: { L: !!sourceFor('left'), R: !!sourceFor('right'), trusted: buttonsTrusted() }, rig: [+rig.position.x.toFixed(1), +rig.position.y.toFixed(1), +rig.position.z.toFixed(1)],
       hands: { L: !!sourceFor('left'), R: !!sourceFor('right') }, held: held?.id ?? null,
