@@ -49,6 +49,9 @@ import './lib/mictoggle.js'; // mic + headphone toggles beside the HUD, both off
 import { initAudioPanel } from './lib/audiopanel.js';
 import { initSceneGraph, sceneSelect } from './lib/scenegraph.js';
 import { initXR, updateXR, bindXRSelf } from './lib/xr.js';
+import { tickXRMirror } from './lib/xrmirror.js';
+import { tickXRVignette } from './lib/xrvignette.js';
+import { initVRPanel } from './lib/vrpanel.js';
 import { trySitOn as xrTrySitOn, dismountMe as xrDismountMe } from './lib/localbody.js';
 import {
   toast, setHint, flashHint, buildHelp, toggleHelp,
@@ -150,6 +153,7 @@ initProfile();
 initWorldQuad();
 initStylePanel();
 initVideoPanel();
+initVRPanel();
 initCapNotice();
 settingsFrame();               // exists (hidden) so the ∃ menu can open it
 initDock([
@@ -500,8 +504,10 @@ registerSystem('promote-tail', () => drainPromoteTail());        // §16.2.C: pr
 registerSystem('debug', (dt, t, now) => updateDebug(now));       // F3 wireframes
 registerSystem('send-pose', (dt, t, now) => sendPose(now));
 // XR: read hands → fill intent (updateMe already moved the body) → rig follows
-registerSystem('xr', () => updateXR());
+registerSystem('xr', (dt) => updateXR(dt));
+registerSystem('xrvignette', (dt) => tickXRVignette(dt));   // comfort tunnel, on the XR camera (Settings › VR)
 registerSystem('render', renderWorld);
+registerSystem('xrmirror', () => tickXRMirror());           // desktop view while presenting (Settings › VR)
 // radial-menu actions: the ring speaks through the same flows the keyboard does
 bus.on('xr:sit', () => { if (!xrTrySitOn(null)) setPosture('sit'); });
 bus.on('xr:stand', () => xrDismountMe());

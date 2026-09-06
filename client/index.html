@@ -711,6 +711,8 @@ body.arranging #dock #hud.emark {
 }
 #emenu .fr-head .fr-title { cursor: grab; }
 #emenu .fr-head .fr-btns { padding: 3px 5px; }
+#emenu .mrow.dead { opacity: .42; cursor: not-allowed; }   /* listed, not offered: no headset sensed */
+#emenu .mrow.dead .mpin { pointer-events: none; }
 #emenu .mrow {
   display: flex; align-items: center; gap: 9px; padding: 7px 9px;
   background: none; border: none; border-radius: 6px; color: var(--dim);

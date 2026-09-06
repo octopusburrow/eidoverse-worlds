@@ -65,8 +65,15 @@ let session = null;
 export const isPresenting = () => presenting;
 
 // ---- tuning (exultation XR_DEFAULTS, ported values) ------------------------
+// ---- VR preferences (Settings › VR; R, 09-05 18:22). Persisted per browser.
+// turn: 'snap' | 'smooth' · vignette: comfort tunnel on move/turn · mirror:
+// what the desktop window shows while presenting — 'off' | 'first' | 'third'.
+const PREF_XR = 'ew-xr-prefs';
+export const xrPrefs = (() => { try { return { turn: 'snap', vignette: false, mirror: 'off', ...JSON.parse(localStorage.getItem(PREF_XR) || '{}') }; } catch { return { turn: 'snap', vignette: false, mirror: 'off' }; } })();
+export function setXrPref(k, v) { xrPrefs[k] = v; try { localStorage.setItem(PREF_XR, JSON.stringify(xrPrefs)); } catch {} bus.emit('xr:prefs', xrPrefs); }
 const DEADZONE = 0.18;
 const SNAP_DEG = 30;
+const SMOOTH_TURN_RAD_S = 2.2;   // ~126°/s at full deflection
 const snapState = { cooling: false };
 const dead = (v, dz = DEADZONE) => {
   const m = Math.abs(v);
@@ -339,8 +346,10 @@ async function enterVR() {
 
 /** Per-frame while presenting. Order matters: read hands → fill intent →
  *  (controller.updateMe moves the body with THEIR loco) → rig follows body. */
-export function updateXR() {
-  if (!presenting) return;
+let turnMag = 0;                    // |stick-X| while smooth-turning — the vignette reads it
+export const turnMagnitude = () => turnMag;
+export function updateXR(dtSec = 1 / 72) {
+  if (!presenting) { turnMag = 0; return; }
 
   // head yaw becomes the movement frame: stick-forward = where you look.
   // Read the -Z column of matrixWorld DIRECTLY: getWorldDirection() calls
@@ -385,7 +394,15 @@ export function updateXR() {
       else if (gripNow) closeRadial(false);
       else aimRadial(rx, ry);
     }
-    if (radialOpen) { /* the ring owns the stick */ } else if (Math.abs(rx) > 0.6 && !snapState.cooling) {
+    turnMag = 0;
+    if (radialOpen) { /* the ring owns the stick */ }
+    else if (xrPrefs.turn === 'smooth') {
+      // smooth turn: the rig yaws continuously with the stick (R's own mode)
+      const d = dead(rx);
+      if (d) rig.rotation.y -= d * SMOOTH_TURN_RAD_S * (dtSec ?? 1 / 72);
+      turnMag = Math.abs(d);
+    }
+    else if (Math.abs(rx) > 0.6 && !snapState.cooling) {
       // snap turns the RIG — the world pivots around the body. camYaw belongs
       // to the head (head-following rewrites it every frame), and the camera
       // rides the rig, so the head's world yaw inherits the snap on its own.
