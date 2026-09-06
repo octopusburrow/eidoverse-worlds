@@ -11,7 +11,7 @@
 import { THREE } from './core.js';
 import { bus } from './base.js';
 import { renderCanvas, hitRegion } from './panels.js';
-import { domQuadsEnabled, domQuadsEnter, domQuadsExit, domQuadsPick, domQuadsSetShown, domQuadShow, domQuadsGrab, domQuadRelease } from './domquad.js';   // the REAL frames on quads (default); ?canvasquads=1 keeps these canvases
+import { domQuadsEnabled, domQuadsEnter, domQuadsExit, domQuadsPick, domQuadsSetShown, domQuadsShown, domQuadShow, domQuadsGrab, domQuadRelease } from './domquad.js';   // the REAL frames on quads (default); ?canvasquads=1 keeps these canvases
 
 const PX_PER_M = 900;              // canvas pixels per world metre of quad
 const W = 0.58;                    // quad width, metres — an arm's-length read
@@ -86,8 +86,10 @@ export function xrPanelsExit(rig) {
 }
 
 function togglePanels() {
-  shown = !shown;
-  if (domQuadsEnabled()) return domQuadsSetShown(shown);
+  // derive from what is actually on screen: a flag of our own drifted from the quads' real state
+  // (a phantom press flipped it while the quads didn't exist yet — R 09-06 11:35, 'can't close the menus')
+  if (domQuadsEnabled()) { shown = !domQuadsShown(); return domQuadsSetShown(shown); }
+  shown = !(panels ?? []).some((p) => p.mesh.visible);
   for (const p of panels ?? []) p.mesh.visible = shown;
 }
 
