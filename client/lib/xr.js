@@ -679,7 +679,12 @@ export async function initXR() {
   }, { p: P_AMBIENT });
 
   registerXrGlyph({
-    onclick: () => { if (presenting) session?.end?.(); else if (XR_BOOT) enterVR(); else { const u = new URL(location.href); u.searchParams.set('xr', '1'); location.href = u; } },
+    // The XR boot goes to the WebGL backend EXPLICITLY. ?xr=1 alone sets renderer.xr.enabled before
+    // init(), which on a WebGPU backend asks for an xrCompatible adapter — and on R's RTX / Chrome 152
+    // that request never resolves (09-06 11:12: splash 'still waking after 20s', no engine, twice).
+    // Every session that worked (09-05 evening, 8 boots) carried webgl=1; Chrome's WebGPU-XR is
+    // still behind flags. When that changes, drop the second param here and in enterVR's fallback.
+    onclick: () => { if (presenting) session?.end?.(); else if (XR_BOOT) enterVR(); else { const u = new URL(location.href); u.searchParams.set('xr', '1'); u.searchParams.set('webgl', '1'); location.href = u; } },
     live: () => presenting,
   });
   setXrProbe(() => presenting);
