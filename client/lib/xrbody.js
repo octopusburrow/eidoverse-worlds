@@ -80,6 +80,8 @@ export const xrSimGrip = (side, pos, quat) => { if (CONFIG.params.has('xrsim')) 
 const WRIST_R = new THREE.Quaternion(0.5812875774993174, 0.7123369384133019, 0.08586779365740962, -0.38380664895827776);
 const WRIST_L = new THREE.Quaternion(-WRIST_R.x, WRIST_R.y, WRIST_R.z, -WRIST_R.w).normalize();   // mirror across YZ
 const _p = new THREE.Vector3(), _q = new THREE.Quaternion(), _d = new THREE.Vector3(), _pole = new THREE.Vector3(), _axis = new THREE.Vector3(), _u = new THREE.Vector3(), _elbow = new THREE.Vector3(), _rest = new THREE.Vector3();
+// solver scratch — these run per side, per body (remotes too since C18), per frame: nothing here may allocate
+const _uPos = new THREE.Vector3(), _toT = new THREE.Vector3(), _fwd = new THREE.Vector3(), _fq2 = new THREE.Quaternion(), _e2 = new THREE.Euler();
 function aimBone(bone, targetWorld, childRestLocal) {
   bone.getWorldPosition(_p);
   bone.parent.getWorldQuaternion(_q).invert();
@@ -92,14 +94,14 @@ export function solveArm(vrm, side, targetPos, targetQuat) {
   if (!U || !L || !H) return false;
   U.quaternion.identity(); L.quaternion.identity(); H.quaternion.identity();
   vrm.scene.updateMatrixWorld(true);
-  const uPos = U.getWorldPosition(new THREE.Vector3());
+  const uPos = U.getWorldPosition(_uPos);
   const l1 = L.position.length(), l2 = H.position.length();
-  const toT = new THREE.Vector3().subVectors(targetPos, uPos);
+  const toT = _toT.subVectors(targetPos, uPos);
   let d = THREE.MathUtils.clamp(toT.length(), Math.abs(l1 - l2) + 0.02, l1 + l2 - 0.02);
   const E = Math.acos(THREE.MathUtils.clamp((l1 * l1 + l2 * l2 - d * d) / (2 * l1 * l2), -1, 1));
   const Ec = THREE.MathUtils.clamp(E, 23 * Math.PI / 180, 178 * Math.PI / 180);
   if (Ec !== E) d = Math.sqrt(Math.max(1e-6, l1 * l1 + l2 * l2 - 2 * l1 * l2 * Math.cos(Ec)));
-  const dir = toT.normalize();
+  const dir = toT.normalize();   // aliases _toT; not read again after the pole
   const a = Math.acos(THREE.MathUtils.clamp((l1 * l1 + d * d - l2 * l2) / (2 * l1 * d), -1, 1));
   const chest = h.getNormalizedBoneNode('upperChest') || h.getNormalizedBoneNode('chest') || h.getNormalizedBoneNode('spine');
   chest ? chest.getWorldQuaternion(_q) : _q.identity();
@@ -250,26 +252,26 @@ export function solveLeg(vrm, side, targetPos, footYaw) {
   if (!U || !L || !F) return false;
   U.quaternion.identity(); L.quaternion.identity(); F.quaternion.identity();
   vrm.scene.updateMatrixWorld(true);
-  const uPos = U.getWorldPosition(new THREE.Vector3());
+  const uPos = U.getWorldPosition(_uPos);
   const l1 = L.position.length(), l2 = F.position.length();
-  const toT = new THREE.Vector3().subVectors(targetPos, uPos);
+  const toT = _toT.subVectors(targetPos, uPos);
   let d = THREE.MathUtils.clamp(toT.length(), Math.abs(l1 - l2) + 0.02, l1 + l2 - 0.01);
   const K = Math.acos(THREE.MathUtils.clamp((l1 * l1 + l2 * l2 - d * d) / (2 * l1 * l2), -1, 1));
   const Kc = THREE.MathUtils.clamp(K, 25 * Math.PI / 180, 178 * Math.PI / 180);   // no hyperextension snap
   if (Kc !== K) d = Math.sqrt(Math.max(1e-6, l1 * l1 + l2 * l2 - 2 * l1 * l2 * Math.cos(Kc)));
-  const dir = toT.clone().normalize();
+  const dir = toT.normalize();
   const a = Math.acos(THREE.MathUtils.clamp((l1 * l1 + d * d - l2 * l2) / (2 * l1 * d), -1, 1));
   const hips = h.getNormalizedBoneNode('hips'); hips ? hips.getWorldQuaternion(_fq) : _fq.identity();
-  const pole = new THREE.Vector3(0, -0.15, 1).normalize().applyQuaternion(_fq);   // knees forward-and-slightly-down
-  const axis = new THREE.Vector3().crossVectors(dir, pole);
+  const pole = _pole.set(0, -0.15, 1).normalize().applyQuaternion(_fq);   // knees forward-and-slightly-down
+  const axis = _axis.crossVectors(dir, pole);
   if (axis.lengthSq() < 1e-6) axis.set(1, 0, 0); else axis.normalize();
-  const knee = uPos.clone().addScaledVector(dir.clone().applyAxisAngle(axis, a), l1);
+  const knee = _elbow.copy(uPos).addScaledVector(_u.copy(dir).applyAxisAngle(axis, a), l1);
   aimBone(U, knee, L.position); vrm.scene.updateMatrixWorld(true);
   aimBone(L, targetPos, F.position); vrm.scene.updateMatrixWorld(true);
-  const fwd = footYaw !== undefined ? new THREE.Vector3(Math.sin(footYaw), 0, Math.cos(footYaw)) : new THREE.Vector3(0, 0, 1).applyQuaternion(_fq); fwd.y = 0;
+  const fwd = footYaw !== undefined ? _fwd.set(Math.sin(footYaw), 0, Math.cos(footYaw)) : _fwd.set(0, 0, 1).applyQuaternion(_fq); fwd.y = 0;
   if (fwd.lengthSq() > 1e-6) { fwd.normalize();
     F.parent.getWorldQuaternion(_fq).invert();
-    F.quaternion.copy(_fq.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.atan2(fwd.x, fwd.z), 0)))); }   // flat foot, toes along the planted yaw
+    F.quaternion.copy(_fq.multiply(_fq2.setFromEuler(_e2.set(0, Math.atan2(fwd.x, fwd.z), 0)))); }   // flat foot, toes along the planted yaw
   return true;
 }
 function feetTick(vrm, av, dt) {
