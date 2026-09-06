@@ -61,6 +61,8 @@ const lastGood = new THREE.Vector3();
 const rig = new THREE.Group();
 rig.name = 'xr-rig';
 let presenting = false;
+let floorSpace = null;              // 'local-floor' | 'bounded-floor' | null (fell back to 'local')
+export const xrFloorSpace = () => floorSpace;
 let session = null;
 export const isPresenting = () => presenting;
 
@@ -295,8 +297,17 @@ async function enterVR() {
       return;
     }
     renderer.xr.enabled = true;
+    // Tier A6 (gap list 09-05): CHOOSE the floor reference space — before this it
+    // was only requested, and three's default is 'local' (eye-level origin), so
+    // the world's floor could sit anywhere relative to the real one. The type
+    // must be set BEFORE setSession (three reads it as the session starts).
+    const feats = session.enabledFeatures ?? [];
+    const floor = feats.includes('local-floor') ? 'local-floor' : feats.includes('bounded-floor') ? 'bounded-floor' : null;
+    try { renderer.xr.setReferenceSpaceType(floor ?? 'local'); } catch (e) { report('xr ref space', e); }
+    floorSpace = floor;
     await renderer.xr.setSession(session);
-    const onLine = `[xr] session on ${renderer.backend?.isWebGPUBackend ? 'WebGPU' : 'WebGL'} features=${JSON.stringify(session.enabledFeatures ?? [])}`;
+    if (!floor) tee('[xr] NO floor reference space granted — using local (eye-level origin); floor height is a guess');
+    const onLine = `[xr] session on ${renderer.backend?.isWebGPUBackend ? 'WebGPU' : 'WebGL'} refspace=${floor ?? 'local'} features=${JSON.stringify(session.enabledFeatures ?? [])}`;
     console.log(onLine); tee(onLine);
     try { renderer.xr.setFoveation(0); } catch { /* not all runtimes */ }
     rig.position.set(myState.pos.x, myState.pos.y, myState.pos.z);
