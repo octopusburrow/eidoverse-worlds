@@ -29,7 +29,12 @@ const r = await page.evaluate(async () => {
   const e = new THREE.Euler().setFromQuaternion(g.mesh.quaternion, 'YXZ'); T('roll stripped', Math.abs(e.z) < 1e-6); T('pitch clamped', Math.abs(e.x) <= 0.6 + 1e-6);
   out.release = p; out.euler = [e.x, e.y, e.z].map(v => +v.toFixed(3));
   T('miss returns null', dq.domQuadsGrab(grip) === null || true);
-  dq.domQuadsExit(rig); scene.remove(rig);
+  dq.domQuadsExit(rig);
+  // placement remembered: re-enter → the grabbed quad comes back where it was left (rig-local)
+  dq.domQuadsEnter(rig); const again = rig.children.find(c => c.userData.noCamCollide);
+  T('placement persists', again && again.position.toArray().every((v, i) => Math.abs(v - p.pos[i]) < 1e-3) && Math.abs(again.rotation.y - p.yaw) < 1e-3);
+  out.persisted = JSON.parse(localStorage.getItem('ew-xr-quads') || '{}');
+  dq.domQuadsExit(rig); dq.resetQuadPlaces(); scene.remove(rig);
   T('frames restored', !!document.querySelector('[data-frame=chat]') && !document.querySelector('#xr-stage [data-frame]'));
   return out;
 });

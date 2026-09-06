@@ -17,6 +17,11 @@ const XR_FRAMES = ['world', 'emotes', 'settings', 'chat', 'debug', 'profile'];  
 const LIVE_MIN_MS = { debug: 250, chat: 250 };   // live panels re-rasterise at most 4 Hz; others at 16 ms
 
 let stage = null; let quads = null; let shown = false;
+// where you put each panel (rig-local pos + yaw/pitch), per browser — a grabbed panel (C17) stays put next session
+const PLACE_LS = 'ew-xr-quads';
+const loadPlaces = () => { try { return JSON.parse(localStorage.getItem(PLACE_LS) || '{}'); } catch { return {}; } };
+const savePlace = (id, p) => { try { const all = loadPlaces(); all[id] = p; localStorage.setItem(PLACE_LS, JSON.stringify(all)); } catch {} };
+export const resetQuadPlaces = () => { try { localStorage.removeItem(PLACE_LS); } catch {} };
 const _rc = new THREE.Raycaster(); const _m = new THREE.Matrix4();
 
 function ensureStage() {
@@ -64,6 +69,10 @@ function mount(api, i, n) {
   const a = (i - (n - 1) / 2) * 0.55;
   mesh.position.set(Math.sin(a) * 0.85, 1.15, -Math.cos(a) * 0.85);
   mesh.rotation.y = -a;
+  const saved = loadPlaces()[api.id];
+  if (saved && Array.isArray(saved.pos) && saved.pos.length === 3 && saved.pos.every(Number.isFinite) && Number.isFinite(saved.yaw)) {
+    mesh.position.fromArray(saved.pos); mesh.rotation.set(Number.isFinite(saved.pitch) ? saved.pitch : 0, saved.yaw, 0, 'YXZ');
+  }
   mesh.userData.noCamCollide = true;
   return { id: api.id, api, el, mesh, restore };
 }
@@ -150,6 +159,8 @@ export function domQuadRelease(q, rig) {
   _e.z = 0; _e.x = THREE.MathUtils.clamp(_e.x, -0.6, 0.6);
   q.mesh.quaternion.setFromEuler(_e);
   q.mesh.updateMatrixWorld(true);
-  return { pos: q.mesh.position.toArray().map((v) => +v.toFixed(3)), yaw: +_e.y.toFixed(3), pitch: +_e.x.toFixed(3) };
+  const p = { pos: q.mesh.position.toArray().map((v) => +v.toFixed(3)), yaw: +_e.y.toFixed(3), pitch: +_e.x.toFixed(3) };
+  savePlace(q.id, p);
+  return p;
 }
 export const domQuadTexture = (id) => quads?.find((q) => q.id === id)?.mesh.material.map ?? null;
