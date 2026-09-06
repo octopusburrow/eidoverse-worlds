@@ -1392,9 +1392,19 @@ try { const o = JSON.parse(localStorage.getItem('ew-style-tokens') || '{}');
       `the engine failed to load — ${e.message || (e.target && e.target.src) || 'see the console'}`));
     addEventListener('unhandledrejection', (e) => fail(
       `the engine failed to start — ${(e.reason && e.reason.message) || e.reason || 'see the console'}`));
+    // An XR boot (?xr=1) asks for an XR-compatible GL context inside renderer.init(), and that call
+    // blocks on the OpenXR runtime: SteamVR started after Chrome, or a runtime mid-handshake, hangs the
+    // engine before ANY module can report (09-06 11:12–11:22, three loads, no tee line). Name it early.
+    const xrBoot = new URLSearchParams(location.search).has('xr');
+    if (xrBoot) setTimeout(() => {
+      if (globalThis.__ewEngineUp) return;
+      fail('VR boot: waiting on the headset runtime for an XR-compatible GPU context (8 s). If SteamVR started after Chrome: chrome://restart, then this link again. To get in without VR, drop xr=1 from the URL.');
+    }, 8000);
     setTimeout(() => {
       if (globalThis.__ewEngineUp) return;
-      fail('still waking after 20s — open the console. Fresh checkout? run: cd client && bun install. And the client needs WebGPU (current Chrome).');
+      fail(xrBoot
+        ? 'still no XR-compatible context after 20 s — chrome://restart with SteamVR already running, or drop xr=1 from the URL. F12 → Console shows what init is waiting on.'
+        : 'still waking after 20s — open the console. Fresh checkout? run: cd client && bun install. And the client needs WebGPU (current Chrome).');
     }, 20000);
   })();
 </script>
