@@ -59,7 +59,10 @@ function mount(api, i, n) {
 function unmount(q) {
   q.mesh.material.map?.dispose?.(); q.mesh.geometry.dispose(); q.mesh.material.dispose();
   const r = q.restore;
-  if (r.parent) r.parent.insertBefore(q.el, r.next); else document.body.appendChild(q.el);
+  // the desktop DOM may have re-ordered while we were presenting: the saved sibling is only usable if it is
+  // still that parent's child (R, 09-05 22:20: 'error when I try to leave VR' — insertBefore NotFoundError)
+  const parent = r.parent ?? document.body;
+  if (r.next && r.next.parentNode === parent) parent.insertBefore(q.el, r.next); else parent.appendChild(q.el);
   q.el.style.display = r.display; q.el.style.left = r.left; q.el.style.top = r.top; q.el.style.width = r.width; q.el.style.height = r.height; if (r.collapsed) q.el.classList.add('collapsed');
 }
 
@@ -77,7 +80,7 @@ export function domQuadsEnter(rig) {
 
 export function domQuadsExit(rig) {
   if (!quads) return;
-  for (const q of quads) { rig.remove(q.mesh); unmount(q); }
+  for (const q of quads) { rig.remove(q.mesh); try { unmount(q); } catch (e) { console.warn('[domquad] unmount', q.id, e); } }   // one bad restore must not strand the others (or the session teardown)
   quads = null; shown = false;
 }
 
