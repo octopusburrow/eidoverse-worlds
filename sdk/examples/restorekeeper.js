@@ -49,7 +49,11 @@ world.every(TICK_S, () => {
   let home = read("home", null);
   if (!home) { home = [me.pos[0], me.pos[1], me.pos[2]]; write("home", home); write("yaw", me.yaw || 0); world.log("home set", fmt(home)); return; }
   const d = dist(me.pos, home);
-  if (d < STEP_M) return;                                        // where it belongs; a quiet tick costs the fold nothing
+  if (d < STEP_M) {                                              // where it belongs; a quiet tick costs the fold nothing
+    // a lift or a settle is not a walk (a builder raising it out of the grass, physics finding the ground): adopt the height
+    if (Math.abs((me.pos[1] || 0) - (home[1] || 0)) > 0.05) { home[1] = me.pos[1]; write("home", home); world.log("height adopted", home[1].toFixed(2)); }
+    return;
+  }
   if (d > FAR_M) { world.log("moved far; not mine to fetch", fmt(me.pos)); return; }
   const n = Number(world.kv.get("count") || 0) + 1;
   // the odds are per attempt, not a schedule — the landing cannot be counted to
