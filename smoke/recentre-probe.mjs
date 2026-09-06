@@ -9,18 +9,15 @@ const r = await page.evaluate(async () => {
   const xr = await import('/lib/xr.js');
   const P = Math.PI, near = (a, b, e = 1e-6) => Math.abs(a - b) < e;
   const out = { errs: [] }, T = (name, ok) => { if (!ok) out.errs.push(name); };
-  // standing: head 0.4 m right, 0.3 m back in the playspace, facing 90° off the body → fold xz, yaw delta = −90°, no lift
-  let s = xr.recentreSolve({ headLocal: { x: 0.4, y: 1.7, z: 0.3 }, headWorldYaw: P / 2, bodyYaw: 0, seated: false, standingEyeY: 1.6 });
-  T('stand xz', s.x === 0.4 && s.z === 0.3); T('stand yaw', near(s.dyaw, -P / 2)); T('stand no lift', s.y === 0);
-  // wrap: body 3.0, head −3.0 → shortest arc is +0.28, not −6
-  s = xr.recentreSolve({ headLocal: { x: 0, y: 1.7, z: 0 }, headWorldYaw: -3.0, bodyYaw: 3.0, seated: false, standingEyeY: 1.6 });
-  T('yaw wraps', near(s.dyaw, 6.0 - 2 * P, 1e-9));
+  // standing: head 0.4 m right, 0.3 m back in the playspace → fold xz, no lift, and NO yaw field (the rig is stick-only; Basis)
+  let s = xr.recentreSolve({ headLocal: { x: 0.4, y: 1.7, z: 0.3 }, seated: false, standingEyeY: 1.6 });
+  T('stand xz', s.x === 0.4 && s.z === 0.3); T('stand no lift', s.y === 0); T('never yaws the rig', !('dyaw' in s));
   // seated: head at 1.2 m, avatar standing eye 1.6 → lift 0.4
-  s = xr.recentreSolve({ headLocal: { x: 0.1, y: 1.2, z: -0.1 }, headWorldYaw: 0, bodyYaw: 0, seated: true, standingEyeY: 1.6 });
+  s = xr.recentreSolve({ headLocal: { x: 0.1, y: 1.2, z: -0.1 }, seated: true, standingEyeY: 1.6 });
   T('seated lift', near(s.y, 0.4));
   // seated but no eye known / head garbage → no lift
-  T('seated no eye', xr.recentreSolve({ headLocal: { x: 0, y: 1.2, z: 0 }, headWorldYaw: 0, bodyYaw: 0, seated: true, standingEyeY: 0 }).y === 0);
-  T('seated bad head', xr.recentreSolve({ headLocal: { x: 0, y: 0.05, z: 0 }, headWorldYaw: 0, bodyYaw: 0, seated: true, standingEyeY: 1.6 }).y === 0);
+  T('seated no eye', xr.recentreSolve({ headLocal: { x: 0, y: 1.2, z: 0 }, seated: true, standingEyeY: 0 }).y === 0);
+  T('seated bad head', xr.recentreSolve({ headLocal: { x: 0, y: 0.05, z: 0 }, seated: true, standingEyeY: 1.6 }).y === 0);
   T('not presenting → false', xr.recentreXR('probe') === false);
   T('pref default', xr.xrPrefs.seated === false);
   // Settings › VR rows
