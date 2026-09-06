@@ -184,6 +184,108 @@ export function applyRemoteXR(av, xr, st, dt) {
   fingerTick(vrm, { left: { index: c[0], grip: c[1] }, right: { index: c[2], grip: c[3] } });
 }
 
+// ---- foot IK + gait (Tier C14; porch-old index.html:6068–6163, Nix's 2026-07-09 gait v1, ported
+// whole) — only with real HMD data (desktop keeps the mixer's legs); ?nofootik opts out. Feet are
+// PLANTED in the world and STEP when the desired spot (under the hips at rest hip-width, on the
+// root's floor) drifts past STEP or the body twists past YAWT; a stride is a 0.28 s sine-lift toward
+// desired + velocity-lead; a foot won't step while its partner is airborne unless past EMERG (both
+// airborne = running). Deterministic. When the eye anchor lifts the body beyond leg reach the feet
+// dangle (reach-clamped); when it lowers the body the knees bend — that is how crouching reads.
+const NOFOOT = _qs.has('nofootik');
+const GAIT = { STEP: 0.16, EMERG: 0.42, YAWT: 0.7, DUR: 0.28, LIFT: 0.055, LEAD: 0.15, LEADMAX: 0.35, SNAP: 1.5 };
+const _fv = new THREE.Vector3(), _fq = new THREE.Quaternion();
+function measureLegs(vrm) {
+  const h = vrm.humanoid, ud = vrm.userData = vrm.userData || {};
+  if (ud.ankleH != null) return true;
+  const hips = h.getNormalizedBoneNode('hips'), uL = h.getNormalizedBoneNode('leftUpperLeg'), fL = h.getNormalizedBoneNode('leftFoot');
+  if (!hips || !uL || !fL) return false;
+  vrm.scene.updateMatrixWorld(true);
+  const floorY = vrm.scene.getWorldPosition(_fv).y;
+  ud.ankleH = Math.max(0.02, fL.getWorldPosition(new THREE.Vector3()).y - floorY);   // near-straight idle legs ≈ rest
+  ud.hipHalfW = Math.max(0.04, uL.getWorldPosition(new THREE.Vector3()).distanceTo(hips.getWorldPosition(new THREE.Vector3())) * 0.95);
+  tee(`[xr] legs: ankleH ${ud.ankleH.toFixed(3)} hipHalfW ${ud.hipHalfW.toFixed(3)} (measured)`);
+  return true;
+}
+function footTargets(vrm, floorY) {
+  const h = vrm.humanoid, hips = h.getNormalizedBoneNode('hips');
+  if (!hips) return null;
+  const hp = hips.getWorldPosition(new THREE.Vector3()), hq = hips.getWorldQuaternion(new THREE.Quaternion());
+  const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(hq); fwd.y = 0;
+  if (fwd.lengthSq() < 1e-6) fwd.set(0, 0, 1); else fwd.normalize();
+  const left = new THREE.Vector3(fwd.z, 0, -fwd.x);   // +x is the model's left at rest (porch: sign locked by test)
+  const w = vrm.userData.hipHalfW, y = floorY + vrm.userData.ankleH;
+  return { left: new THREE.Vector3(hp.x + left.x * w, y, hp.z + left.z * w), right: new THREE.Vector3(hp.x - left.x * w, y, hp.z - left.z * w), yaw: Math.atan2(fwd.x, fwd.z) };
+}
+function gaitLead(des, vel) { const l = vel.clone().multiplyScalar(GAIT.LEAD); if (l.length() > GAIT.LEADMAX) l.setLength(GAIT.LEADMAX); l.y = 0; return des.clone().add(l); }
+function gaitInit(desL, desR, yaw) { return { L: { p: desL.clone(), yaw, step: null }, R: { p: desR.clone(), yaw, step: null }, vel: new THREE.Vector3(), lastMid: null }; }
+function gaitTick(g, desL, desR, bodyYaw, t, dt) {
+  const mid = desL.clone().add(desR).multiplyScalar(0.5);
+  if (g.lastMid) g.vel.copy(mid).sub(g.lastMid).divideScalar(Math.max(dt, 1e-4)); else g.lastMid = new THREE.Vector3();
+  g.lastMid.copy(mid);
+  const D = { L: desL, R: desR };
+  for (const sd of ['L', 'R']) {
+    const f = g[sd], o = g[sd === 'L' ? 'R' : 'L'], des = D[sd];
+    if (f.step) {
+      const p = (t - f.step.t0) / f.step.dur;
+      if (p >= 1) { f.p.copy(f.step.to); f.yaw = f.step.toYaw; f.step = null; }
+      else { if (p < 0.5) f.step.to.copy(gaitLead(des, g.vel)); continue; }
+    }
+    const err = Math.hypot(f.p.x - des.x, f.p.z - des.z);
+    if (err > GAIT.SNAP) { f.p.copy(des); f.yaw = bodyYaw; continue; }   // teleport: re-plant, no cross-room glide
+    const yerr = Math.abs(wrap(bodyYaw - f.yaw));
+    if ((err > GAIT.STEP || yerr > GAIT.YAWT) && (!o.step || err > GAIT.EMERG))
+      f.step = { from: f.p.clone(), fromYaw: f.yaw, to: gaitLead(des, g.vel), toYaw: bodyYaw, t0: t, dur: GAIT.DUR };
+  }
+  const out = {};
+  for (const sd of ['L', 'R']) { const f = g[sd];
+    if (f.step) { const p = Math.min(1, (t - f.step.t0) / f.step.dur), e = p * p * (3 - 2 * p), dy = wrap(f.step.toYaw - f.step.fromYaw);
+      out[sd] = { pos: f.step.from.clone().lerp(f.step.to, e), yaw: f.step.fromYaw + dy * e, lift: GAIT.LIFT * Math.sin(Math.PI * p) }; }
+    else out[sd] = { pos: f.p.clone(), yaw: f.yaw, lift: 0 };
+  }
+  return out;
+}
+export function solveLeg(vrm, side, targetPos, footYaw) {
+  const h = vrm.humanoid;
+  const U = h.getNormalizedBoneNode(side + 'UpperLeg'), L = h.getNormalizedBoneNode(side + 'LowerLeg'), F = h.getNormalizedBoneNode(side + 'Foot');
+  if (!U || !L || !F) return false;
+  U.quaternion.identity(); L.quaternion.identity(); F.quaternion.identity();
+  vrm.scene.updateMatrixWorld(true);
+  const uPos = U.getWorldPosition(new THREE.Vector3());
+  const l1 = L.position.length(), l2 = F.position.length();
+  const toT = new THREE.Vector3().subVectors(targetPos, uPos);
+  let d = THREE.MathUtils.clamp(toT.length(), Math.abs(l1 - l2) + 0.02, l1 + l2 - 0.01);
+  const K = Math.acos(THREE.MathUtils.clamp((l1 * l1 + l2 * l2 - d * d) / (2 * l1 * l2), -1, 1));
+  const Kc = THREE.MathUtils.clamp(K, 25 * Math.PI / 180, 178 * Math.PI / 180);   // no hyperextension snap
+  if (Kc !== K) d = Math.sqrt(Math.max(1e-6, l1 * l1 + l2 * l2 - 2 * l1 * l2 * Math.cos(Kc)));
+  const dir = toT.clone().normalize();
+  const a = Math.acos(THREE.MathUtils.clamp((l1 * l1 + d * d - l2 * l2) / (2 * l1 * d), -1, 1));
+  const hips = h.getNormalizedBoneNode('hips'); hips ? hips.getWorldQuaternion(_fq) : _fq.identity();
+  const pole = new THREE.Vector3(0, -0.15, 1).normalize().applyQuaternion(_fq);   // knees forward-and-slightly-down
+  const axis = new THREE.Vector3().crossVectors(dir, pole);
+  if (axis.lengthSq() < 1e-6) axis.set(1, 0, 0); else axis.normalize();
+  const knee = uPos.clone().addScaledVector(dir.clone().applyAxisAngle(axis, a), l1);
+  aimBone(U, knee, L.position); vrm.scene.updateMatrixWorld(true);
+  aimBone(L, targetPos, F.position); vrm.scene.updateMatrixWorld(true);
+  const fwd = footYaw !== undefined ? new THREE.Vector3(Math.sin(footYaw), 0, Math.cos(footYaw)) : new THREE.Vector3(0, 0, 1).applyQuaternion(_fq); fwd.y = 0;
+  if (fwd.lengthSq() > 1e-6) { fwd.normalize();
+    F.parent.getWorldQuaternion(_fq).invert();
+    F.quaternion.copy(_fq.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.atan2(fwd.x, fwd.z), 0)))); }   // flat foot, toes along the planted yaw
+  return true;
+}
+function feetTick(vrm, av, dt) {
+  if (NOFOOT || !measureLegs(vrm)) return;
+  const floorY = av.root.getWorldPosition(_fv).y;
+  const ft = footTargets(vrm, floorY); if (!ft) return;
+  const ud = vrm.userData;
+  ud._gaitT = (ud._gaitT || 0) + (dt > 0 ? dt : 1 / 30);
+  if (!ud._gait) ud._gait = gaitInit(ft.left, ft.right, ft.yaw);
+  const gp = gaitTick(ud._gait, ft.left, ft.right, ft.yaw, ud._gaitT, dt > 0 ? dt : 1 / 30);
+  gp.L.pos.y += gp.L.lift; gp.R.pos.y += gp.R.lift;
+  solveLeg(vrm, 'left', gp.L.pos, gp.L.yaw); solveLeg(vrm, 'right', gp.R.pos, gp.R.yaw);
+  dbg.feet = { L: gp.L.pos.toArray().map((v) => +v.toFixed(3)), R: gp.R.pos.toArray().map((v) => +v.toFixed(3)), stepping: !!(ud._gait.L.step || ud._gait.R.step) };
+}
+export const xrGaitDebug = () => dbg.feet ?? null;
+
 export function tickXRBody(dt) {
   dbg.ticks++;
   // ?xrsim with a fed head pose runs the chain WITHOUT a session: the headless
@@ -267,6 +369,10 @@ export function tickXRBody(dt) {
   av.root.getWorldQuaternion(rigQ).invert();          // root-local: the controller owns the root; we offset the VRM inside it
   vrm.scene.position.copy(delta.applyQuaternion(rigQ));
   vrm.scene.updateMatrixWorld(true);
+
+  // 2b. feet planted on the floor (C14) — after the anchor moved the hips, before the arms; stays
+  //     tracked through emotes like the head does (porch's rule)
+  feetTick(vrm, av, dt);
 
   // 3. arms to the grips (A3) — emotes trump IK (R's rule: an emote you chose
   // always wins); an untracked grip (sitting at the rig origin) leaves the arm
