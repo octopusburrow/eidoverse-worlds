@@ -27,7 +27,7 @@ const GLYPH = { wave: '👋', cheer: '🙌', dance: '💃', point: '👉', salut
 
 export function initEmoteBar() {
   // geometry the CSS owns too: .tiles.fixed → 68px tiles, 6px gap, 8px body pad
-  const TILE = 30, GAP = 6, PAD = 7, ROW_H = 30;   // 09-05 22:00: slim buttons, real gutters — must match .tiles.fixed in index.html   // glyph-only tiles; name + key are the tooltip (R, 09-04)
+  const TILE = 32, GAP = 6, PAD = 7, ROW_H = 32;   // 09-05 22:00: slim buttons, real gutters — must match .tiles.fixed in index.html   // glyph-only tiles; name + key are the tooltip (R, 09-04)
   const widthFor = (cols) => cols * TILE + (cols - 1) * GAP + PAD * 2 + 2;   // +2: frame edges
   const POSTURE_TILES = 3;   // sit / stand / lie lead the grid (R, 09-05) — they count toward the rows
   const rowsFor = (cols) => Math.ceil((POSTURE_TILES + EMOTE_ORDER.length) / cols);

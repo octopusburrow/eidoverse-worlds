@@ -36,9 +36,9 @@ function ensureStage() {
 
 function mount(api, i, n) {
   const el = api.el;
-  const restore = { parent: el.parentNode, next: el.nextSibling, display: el.style.display, left: el.style.left, top: el.style.top, width: el.style.width, height: el.style.height, collapsed: el.classList.contains('collapsed') };
+  const restore = { parent: el.parentNode, next: el.nextSibling, display: el.style.display, left: el.style.left, top: el.style.top, width: el.style.width, height: el.style.height, position: el.style.position, collapsed: el.classList.contains('collapsed') };
   ensureStage().appendChild(el);
-  el.style.display = 'flex'; el.style.left = '0px'; el.style.top = '0px';   // laid out, visible, at the stage origin
+  el.style.display = 'flex'; el.style.left = '0px'; el.style.top = '0px'; el.style.position = 'absolute';   // laid out, visible, INSIDE the offscreen stage (frames are position:fixed — left at that they piled up in the desktop's corner while presenting; R 22:25)
   el.classList.remove('collapsed');
   if (el.offsetWidth < 40 || el.offsetHeight < 40) {   // a frame that has never been shown may carry no size yet
     const st = api._state ?? api.state ?? {}; el.style.width = `${st.w ?? 300}px`; el.style.height = `${st.h ?? 220}px`;
@@ -63,7 +63,7 @@ function unmount(q) {
   // still that parent's child (R, 09-05 22:20: 'error when I try to leave VR' — insertBefore NotFoundError)
   const parent = r.parent ?? document.body;
   if (r.next && r.next.parentNode === parent) parent.insertBefore(q.el, r.next); else parent.appendChild(q.el);
-  q.el.style.display = r.display; q.el.style.left = r.left; q.el.style.top = r.top; q.el.style.width = r.width; q.el.style.height = r.height; if (r.collapsed) q.el.classList.add('collapsed');
+  q.el.style.display = r.display; q.el.style.left = r.left; q.el.style.top = r.top; q.el.style.width = r.width; q.el.style.height = r.height; q.el.style.position = r.position; if (r.collapsed) q.el.classList.add('collapsed');
 }
 
 export const domQuadsEnabled = () => !new URLSearchParams(location.search).has('canvasquads');
