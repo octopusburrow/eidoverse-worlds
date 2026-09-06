@@ -15,6 +15,7 @@ got = json.loads(sys.stdin.read().strip().splitlines()[-1])
 exp = json.load(open(__file__.rsplit('/', 1)[0] + '/desktop-baseline.expected.json'))
 bad = []
 for k, e in exp.items():
+    if not isinstance(e, dict): continue   # errs/meta lists are not poses
     g = got.get(k)
     if g is None: bad.append(f"{k}: missing"); continue
     for f in ('yaw', 'rootY', 'camYaw', 'sceneY'):

@@ -43,19 +43,37 @@ import { warm, P_AMBIENT } from './warmqueue.js';
 let getSelf = () => null;
 export const bindXRSelf = (fn) => { getSelf = fn; };
 const FP_LAYER = 9, TP_LAYER = 10;
-let fpVrm = null;   // which vrm the split ran on — re-runs after avatar swap,
-                    // and retries from the frame loop when entry beat the load
+let fpVrm = null;   // which vrm the head-chop is applied to — re-applied after an avatar swap
+// HEAD CHOP, Basis's way (BasisLocalAvatarDriver.ScaleHeadToZero: Mapping.head.localScale = 0;
+// porch-old did the same). ONE mechanism for every avatar: the RAW head bone is scaled to ~0 while
+// presenting, so everything skinned to the head and its children collapses to a point behind the
+// eyes, and the rest of the body draws through the ordinary path. Replaces the three-vrm layer split
+// (09-04 → 09-06): that made a second skinned mesh per body part on layer 9 at enter-VR time, and R's
+// own body was invisible in the headset all morning with every layer number reading correct
+// (09-06 11:31–11:53) — a mechanism that can disagree with the camera is one mechanism too many.
+// three-vrm's normalized rig copies ROTATIONS raw←normalized in humanoid.update(); raw scale is ours.
+const HEAD_CHOP = 0.0001;
+let choppedHead = null;   // { bone, scale: Vector3 }
 function selfFirstPerson(on) {
   const av = getSelf();
   if (!av?.vrm) return;
-  if (on && av.vrm.firstPerson && fpVrm !== av.vrm) {
-    try {
-      av.vrm.firstPerson.setup({ firstPersonOnlyLayer: FP_LAYER, thirdPersonOnlyLayer: TP_LAYER });
-      camera.layers.enable(TP_LAYER);   // desktop view keeps seeing the head
-      fpVrm = av.vrm;
-    } catch (e) { report('firstPerson setup', e); }
+  const raw = av.vrm.humanoid?.getRawBoneNode?.('head');
+  if (on && raw && (fpVrm !== av.vrm || choppedHead?.bone !== raw)) {
+    if (choppedHead) choppedHead.bone.scale.copy(choppedHead.scale);   // a swap: restore the old body's head first
+    choppedHead = { bone: raw, scale: raw.scale.clone() };
+    raw.scale.setScalar(HEAD_CHOP);
+    fpVrm = av.vrm;
+    tee(`[xr] head chop on (${raw.name}, Basis ScaleHeadToZero)`);
   }
+  if (!on && choppedHead) { choppedHead.bone.scale.copy(choppedHead.scale); choppedHead = null; fpVrm = null; tee('[xr] head chop off'); }
   if (av.label) av.label.visible = !on; // your own name is for OTHER eyes
+}
+// how many of MY meshes the renderer actually drew this frame (all eyes) — 'invisible' becomes a number
+let selfDrawn = 0, selfDrawnLast = 0, drawHookVrm = null;
+function hookSelfDraws() {
+  const av = getSelf(); const vrm = av?.vrm; if (!vrm || drawHookVrm === vrm) return;
+  vrm.scene.traverse((o) => { if (o.isMesh) { const prev = o.onAfterRender; o.onAfterRender = function (...a) { selfDrawn++; prev?.apply(this, a); }; } });
+  drawHookVrm = vrm;
 }
 
 const lastGood = new THREE.Vector3();
@@ -284,7 +302,7 @@ function radialEntries() {
   const out = [];
   if (glyphPinned('mic')) out.push({ svg: micGlyph(52), label: 'mic', on: micLive, act: () => bus.emit('xr:mic') });
   if (glyphPinned('ear')) out.push({ svg: earGlyph(52), label: 'ears', on: earOn, act: () => flipEar() });
-  if (glyphPinned('xr')) out.push({ svg: xrGlyph(52), label: 'leave VR', on: () => true, act: () => { try { session?.end?.(); } catch { /* already gone */ } } });
+  out.push({ svg: xrGlyph(52), label: 'leave VR', on: () => true, act: () => leaveVR('ring') });   // ALWAYS on the ring: an exit must not depend on a desktop pin (R 09-06 12:00: 'no way to leave VR at all')
   out.push({ svg: RECENTRE_SVG, label: 'recentre', on: () => false, act: () => recentreXR('ring') });   // C15: the playspace verb — always on the ring while presenting
   for (const e of dockPins()) {
     const has = xrPanelHas(e.id);
@@ -428,7 +446,6 @@ async function enterVR() {
       presenting = false; bus.emit('xr:state');
       renderer.xr.cameraAutoUpdate = true; if (renderer.shadowMap) renderer.shadowMap.enabled = shadowsWere;
       xrIntent.active = false;
-      camera.layers.enable(TP_LAYER); camera.layers.disable(FP_LAYER);
       selfFirstPerson(false);
       xrPanelsExit(rig);
       releaseGrab();
@@ -510,6 +527,14 @@ export function recentreXR(why = 'verb') {
   return true;
 }
 export const xrRecentre = () => ({ ...recentre });
+/** The one exit. Every path (visor glyph, ring, controller hold) ends here and says so. */
+export function leaveVR(why = 'verb') {
+  if (!session) { tee(`[xr] leave (${why}): no session`); return false; }
+  tee(`[xr] leave (${why})`);
+  try { const p = session.end(); p?.catch?.((e) => tee(`[xr] leave (${why}) rejected: ${e?.message ?? e}`)); } catch (e) { tee(`[xr] leave (${why}) threw: ${e?.message ?? e}`); }
+  return true;
+}
+let leaveHoldAt = 0;   // left B/Y held ≥ 1 s = leave VR (hardware exit — porch-old had B/Y for mic; a hold can't fire by accident)
 let turnMag = 0;                    // |stick-X| while smooth-turning — the vignette reads it
 export const turnMagnitude = () => turnMag;
 export function updateXR(dtSec = 1 / 72) {
@@ -550,6 +575,9 @@ export function updateXR(dtSec = 1 / 72) {
     xrIntent.jump = !!L.buttons[4]?.pressed;
     // LEFT stick click: hide / show every quad (R 09-06 11:31: 'a button to close/open the menu panels,
     // they're in my way'). The same 'xr:panels' verb the ring speaks — porch-old used this click for its keyboard.
+    const by = !!L.buttons[5]?.pressed;
+    if (by && buttonsTrusted()) { if (!leaveHoldAt) leaveHoldAt = performance.now(); else if (performance.now() - leaveHoldAt > 1000) { leaveHoldAt = -1e12; haptic('left', 0.6, 60); leaveVR('left B/Y hold'); } }
+    else leaveHoldAt = 0;
     const lPressed = !!L.buttons[3]?.pressed;
     if (lPressed && !lStickPressWas && buttonsTrusted()) { bus.emit('xr:panels'); haptic('left', 0.3, 25); tee('[xr] panels toggled (left stick click)'); }
     lStickPressWas = lPressed;
@@ -627,8 +655,8 @@ export function updateXR(dtSec = 1 / 72) {
   // (XRManager: cameraXR.layers.mask = camera.layers.mask | 0b110), so the
   // r184-era per-eye enable() was stomped one frame later. Drive the BASE
   // camera instead and let three propagate. Restored on session end.
-  if (fpVrm !== getSelf()?.vrm) selfFirstPerson(true);
-  if (fpVrm) { camera.layers.enable(FP_LAYER); camera.layers.disable(TP_LAYER); }
+  if (fpVrm !== getSelf()?.vrm) selfFirstPerson(true);   // avatar swapped mid-session → chop the new head
+  hookSelfDraws(); selfDrawnLast = selfDrawn; selfDrawn = 0;
 
   // the body moved by THEIR controller code; the rig goes where the body is
   // porch-old's rule (index.html:11034–11072, verified 09-05): the RIG IS STICK-ONLY. Nothing reads the head
@@ -660,7 +688,7 @@ export function updateXR(dtSec = 1 / 72) {
       backend: renderer.backend?.isWebGPUBackend ? 'webgpu' : 'webgl',
       fps: perf.fps, ms: +perf.ms.toFixed(1), worst: +perf.worst.toFixed(0), spikes: perf.spikes,
       body: av ? (av.vrm?.scene?.visible ? 'visible' : 'HIDDEN') : 'NONE',
-      fp: !!fpVrm, camMask: camera.layers.mask,
+      fp: !!fpVrm, headChop: !!choppedHead, selfDrawn: selfDrawnLast, camMask: camera.layers.mask,
       eyeMasks: (renderer.xr.getCamera().cameras ?? []).map((c) => c.layers.mask),   // what each eye may SEE
       fpSplit: (() => { const n = { fp: 0, tp: 0, both: 0, base: 0 }; av?.vrm?.scene?.traverse((o) => { if (!o.isMesh && !o.isSkinnedMesh) return; const f = o.layers.isEnabled(FP_LAYER), t = o.layers.isEnabled(TP_LAYER); n[f && t ? 'both' : f ? 'fp' : t ? 'tp' : 'base']++; }); return n; })(),   // a body whose meshes are ALL tp is invisible in FP by spec
       controllers: { L: !!sourceFor('left'), R: !!sourceFor('right'), trusted: buttonsTrusted() }, rig: [+rig.position.x.toFixed(1), +rig.position.y.toFixed(1), +rig.position.z.toFixed(1)],
@@ -714,7 +742,7 @@ export async function initXR() {
     // that request never resolves (09-06 11:12: splash 'still waking after 20s', no engine, twice).
     // Every session that worked (09-05 evening, 8 boots) carried webgl=1; Chrome's WebGPU-XR is
     // still behind flags. When that changes, drop the second param here and in enterVR's fallback.
-    onclick: () => { if (presenting) session?.end?.(); else if (XR_BOOT) enterVR(); else { const u = new URL(location.href); u.searchParams.set('xr', '1'); u.searchParams.set('webgl', '1'); location.href = u; } },
+    onclick: () => { if (presenting) leaveVR('visor'); else if (XR_BOOT) enterVR(); else { const u = new URL(location.href); u.searchParams.set('xr', '1'); u.searchParams.set('webgl', '1'); location.href = u; } },
     live: () => presenting,
   });
   setXrProbe(() => presenting);
