@@ -371,7 +371,7 @@ async function enterVR() {
     console.log(onLine); tee(onLine);
     try { renderer.xr.setFoveation(0); } catch { /* not all runtimes */ }
     rig.position.set(myState.pos.x, myState.pos.y, myState.pos.z);
-    rig.rotation.y = 0;
+    rig.rotation.y = myState.yaw;   // headset-forward = body-forward at entry (was 0: R saw the back of her avatar when she entered facing +Z)
     scene.add(rig);
     rig.add(camera);
     hands.left ??= makeHand(0);
