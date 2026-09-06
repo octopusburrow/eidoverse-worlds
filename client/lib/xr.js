@@ -132,6 +132,7 @@ export const isPresenting = () => presenting;
 // what the desktop window shows while presenting — 'off' | 'first' | 'third'.
 const PREF_XR = 'ew-xr-prefs';
 export const xrPrefs = (() => { try { return { turn: 'snap', vignette: false, mirror: 'off', ...JSON.parse(localStorage.getItem(PREF_XR) || '{}') }; } catch { return { turn: 'snap', vignette: false, mirror: 'off' }; } })();
+{ const m = new URLSearchParams(location.search).get('mirror'); if (m === 'off' || m === 'first' || m === 'third') xrPrefs.mirror = m; }   // URL override for A/B (R's 'pop to origin' hunt, 09-05 21:46)
 export function setXrPref(k, v) { xrPrefs[k] = v; try { localStorage.setItem(PREF_XR, JSON.stringify(xrPrefs)); } catch {} bus.emit('xr:prefs', xrPrefs); }
 const DEADZONE = 0.18;
 const SNAP_DEG = 30;
