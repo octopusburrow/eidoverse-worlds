@@ -458,7 +458,16 @@ export function updateXR(dtSec = 1 / 72) {
   // → myState.pos = [NaN, 0, NaN] → camera.far NaN → three threw in render
   // (R's recorder, 09-04 23:50). Keep the last good yaw on a bad frame.
   const yaw = Math.atan2(_v.x, _v.z) + Math.PI;
-  if (Number.isFinite(yaw) && _v.lengthSq() > 1e-6) setCamYaw(yaw);
+  if (Number.isFinite(yaw) && _v.lengthSq() > 1e-6) {
+    setCamYaw(yaw);
+    // THE BODY FOLLOWS THE HEAD (porch-old: body yaw = HMD yaw). eido's
+    // controller only turns the body while WALKING (camYaw steers the walk
+    // direction); standing still in XR the body never turned — R's recorder,
+    // 09-05 20:15: root fixed at 7.62 while cam swept −0.9…−3.1. She saw its
+    // back, and the look-at was fed a 140° residual: the 'pop'.
+    const dtb = Math.min(0.05, dtSec ?? 1 / 72);
+    myState.yaw = wrapPi(myState.yaw + wrapPi(yaw - myState.yaw) * Math.min(1, 10 * dtb));
+  }
 
   // and if a NaN slipped into the body anyway, put it back on the last good
   // spot rather than let it poison every matrix downstream
