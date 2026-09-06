@@ -33,12 +33,12 @@ export function renderAside(sc, cam, target = null) {
   const was = xr.enabled, rt = renderer.getRenderTarget();
   xr.enabled = false;
   try { renderer.setRenderTarget(target); return renderer.render(sc, cam); }
-  finally { renderer.setRenderTarget(rt); xr.enabled = was; if (xr.cameraAutoUpdate) xr.updateCamera(camera); }   // the eyes are rebuilt from the RIG before anything else renders
+  finally { renderer.setRenderTarget(rt); xr.enabled = was; if (xr.isPresenting) xr.updateCamera(camera); }   // the eyes are rebuilt from the RIG before anything else renders
 }
 
 export function renderWorld() {
   const before = { ...renderer.info.render };
-  if (renderer.xr?.isPresenting && renderer.xr.cameraAutoUpdate) renderer.xr.updateCamera(camera);   // belt and braces: whatever rendered aside this frame, the eye pass starts from the rig
+  if (renderer.xr?.isPresenting) renderer.xr.updateCamera(camera);   // WE build the eyes (cameraAutoUpdate is false while presenting — xr.js); whatever rendered aside this frame, the eye pass starts from the rig
   batches.render(renderer, scene, camera);
   const after = renderer.info.render;
   // Count this render and its nested shadow/output passes, independently of
