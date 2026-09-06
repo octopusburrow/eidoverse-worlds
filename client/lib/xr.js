@@ -30,7 +30,7 @@ import { registerXrGlyph, glyphPinned, micGlyph, earGlyph, xrGlyph, micLive, ear
 import { dockPins } from './ui.js';
 import { pushUndo } from './build.js';
 import { perf } from './perf.js';
-import { renderCensusTake, renderCensusTick } from './render.js';
+import { renderCensusTake, renderCensusTick, renderCensusPeek } from './render.js';
 import { warm, P_AMBIENT } from './warmqueue.js';
 
 // ---- self-body in first person ---------------------------------------------
@@ -447,6 +447,10 @@ async function enterVR() {
     slots[0] ??= makeHand(0); slots[1] ??= makeHand(1);
     hands.left ??= slots[0]; hands.right ??= slots[1];   // guess until 'connected' files them by handedness
     presenting = true; bus.emit('xr:state');
+    // SHADER ERROR TEE: a material that fails to compile/link in the eye buffers' context draws black
+    // and the WebGL backend only console.error()s it — invisible from Burrow. First 6 such lines tee.
+    if (!consoleTapped) { consoleTapped = true; for (const k of ['error', 'warn']) { const orig = console[k].bind(console);
+      console[k] = (...a) => { try { const m = a.map((x) => (typeof x === 'string' ? x : x?.message ?? '')).join(' '); if (presenting && shaderTees < 6 && /shader|program|link|compile|GLSL|uniform|invalid/i.test(m)) { shaderTees++; tee(`[xr] console.${k}: ${m.slice(0, 300)}`); } } catch {} orig(...a); }; } }
     // WE own the stereo camera update (render.js renderWorld → xr.updateCamera(camera)). With
     // cameraAutoUpdate on, three rebuilt cameraXR inside EVERY renderer.render() while presenting —
     // including ShadowNode's nested render with the light camera (parent null) → the eyes at the
@@ -461,7 +465,7 @@ async function enterVR() {
     selfFirstPerson(true);
     xrPanelsEnter(rig);            // every registered frame as a physical surface
     session.addEventListener('end', () => {
-      presenting = false; bus.emit('xr:state');
+      presenting = false; bus.emit('xr:state'); eyeBase = null;
       renderer.xr.cameraAutoUpdate = true; if (renderer.shadowMap) renderer.shadowMap.enabled = shadowsWere;
       xrIntent.active = false;
       selfFirstPerson(false);
@@ -557,11 +561,28 @@ export function leaveVR(why = 'verb') {
 // resolving to our first presenting frame, then the first eight frame gaps — a compile stall shows as
 // one huge gap; a runtime stall shows as the t0→first gap. One tee line, then it retires.
 let entryClock = null;
+let eyeBase = null;
+let consoleTapped = false, shaderTees = 0;
 let turnMag = 0;                    // |stick-X| while smooth-turning — the vignette reads it
 export const turnMagnitude = () => turnMag;
 export function updateXR(dtSec = 1 / 72) {
   if (!presenting) { turnMag = 0; return; }
   renderCensusTick();
+  // EYE WATCH (R 09-06 12:22: 'spontaneously each eye becomes extremely fish-eyed; right eye visible in the
+  // left'): per frame, not per 5 s — the first sample is the baseline; any eye whose vertical fov moves
+  // more than 5° or whose viewport changes shape tees ONE line with both eyes' fov, viewport, and the last
+  // foreign render, then re-arms when it returns to baseline.
+  { const cams = renderer.xr.getCamera().cameras ?? [];
+    if (cams.length === 2) {
+      const fov = cams.map((c) => 2 * Math.atan(1 / c.projectionMatrix.elements[5]) * 180 / Math.PI);
+      const vp = cams.map((c) => c.viewport ? `${c.viewport.x | 0},${c.viewport.y | 0},${c.viewport.z | 0},${c.viewport.w | 0}` : '-').join(' | ');
+      if (!eyeBase && fov.every(Number.isFinite)) eyeBase = { fov, vp, off: false };
+      else if (eyeBase) {
+        const off = fov.some((f, i) => Math.abs(f - eyeBase.fov[i]) > 5) || vp !== eyeBase.vp;
+        if (off && !eyeBase.off) { tee(`[xr] EYES OFF: fov ${fov.map((f) => f.toFixed(1)).join('/')} (was ${eyeBase.fov.map((f) => f.toFixed(1)).join('/')}) vp ${vp} (was ${eyeBase.vp}) foreign ${JSON.stringify(renderCensusPeek())} camPlanes ${camera.near}/${camera.far}`); eyeBase.off = true; }
+        else if (!off && eyeBase.off) { tee('[xr] eyes back to baseline'); eyeBase.off = false; }
+      }
+    } }
   if (entryClock) { const now = performance.now(); entryClock.frames.push(+(now - (entryClock.last || entryClock.t0)).toFixed(0)); entryClock.last = now;
     if (entryClock.frames.length >= 8) { tee(`[xr] entry: setSession ${entryClock.setSessionMs} ms; first frame +${entryClock.frames[0]} ms; next gaps ${entryClock.frames.slice(1).join(',')} ms`); entryClock = null; } }
   if (!xrPrefs.seated) { const e = renderer.xr.getCamera().matrixWorld.elements; const hy = e[13] - rig.position.y - recentre.y; if (Number.isFinite(hy)) sampleDeviceScale(hy); }   // Basis: seated suppresses height capture
@@ -716,7 +737,7 @@ export function updateXR(dtSec = 1 / 72) {
       eyeVp: (renderer.xr.getCamera().cameras ?? []).map((c) => c.viewport ? [c.viewport.x, c.viewport.y, c.viewport.z, c.viewport.w].map((v) => +v.toFixed(0)) : null),
       renders: renderCensusTake(),   // max renderer.render() calls in one frame since the last line + the last foreign camera
       // 'pitch black' as numbers: my body's materials and the lights that should be lighting them
-      mats: (() => { const out = {}; av?.vrm?.scene?.traverse((o) => { if (!o.isMesh || !o.visible) return; const m = o.material; if (!m) return; const k = `${m.type}${m.isOutline ? ':outline' : ''}`; const e = out[k] ||= { n: 0, tex: 0, opaque: 0, needsUpdate: 0 }; e.n++; if (m.map?.image) e.tex++; if (!m.transparent || m.opacity >= 0.99) e.opaque++; if (m.needsUpdate) e.needsUpdate++; }); return out; })(),
+      mats: (() => { const out = {}; av?.vrm?.scene?.traverse((o) => { if (!o.isMesh || !o.visible) return; for (const m of [].concat(o.material ?? [])) { const k = `${m.constructor?.name ?? m.type}${m.isOutline ? ':outline' : ''}`; const e = out[k] ||= { n: 0, tex: 0, opaque: 0, needsUpdate: 0 }; e.n++; if (m.map) e.tex++; if (!m.transparent || m.opacity >= 0.99) e.opaque++; if (m.needsUpdate) e.needsUpdate++; } }); return out; })(),   // arrays flattened (multi-material bodies): 12:34's 'undefined / tex 0' was this counter, not the body
       lights: (() => { const l = []; scene.traverse((o) => { if (o.isLight) l.push(`${o.type.replace('Light', '')}:${+o.intensity.toFixed(2)}${o.visible ? '' : ':hidden'}`); }); return l.slice(0, 8); })(),
       env: !!scene.environment,
       fpSplit: (() => { const n = { fp: 0, tp: 0, both: 0, base: 0 }; av?.vrm?.scene?.traverse((o) => { if (!o.isMesh && !o.isSkinnedMesh) return; const f = o.layers.isEnabled(FP_LAYER), t = o.layers.isEnabled(TP_LAYER); n[f && t ? 'both' : f ? 'fp' : t ? 'tp' : 'base']++; }); return n; })(),   // a body whose meshes are ALL tp is invisible in FP by spec
@@ -741,6 +762,24 @@ export function updateXR(dtSec = 1 / 72) {
 }
 let recAt = 0;
 
+// XR PIPELINE PRE-WARM (entry clock, R 09-06 12:33: setSession 4 ms, first frame +45 ms, then ONE 5524 ms
+// frame — every material compiling for the eye buffers' render context on the first presenting draw).
+// On an XR boot, once my body is in, compile the whole scene ONCE into a render target shaped like the
+// eye buffers (RGBA8, depth, 4× MSAA) while the desktop is still idle-waiting on the visor. If the
+// pipeline cache keys match, entry loses the 5 s frame; the entry clock is the verdict either way.
+let xrWarmed = false;
+function warmXRPipelines() {
+  if (xrWarmed || !XR_BOOT || presenting || !getSelf()?.vrm) return;
+  xrWarmed = true;
+  warm('xr pipelines', async () => {
+    const rt = new THREE.RenderTarget(64, 64, { samples: 4, depthBuffer: true, stencilBuffer: false });
+    const prev = renderer.getRenderTarget(); const t0 = performance.now();
+    try { renderer.setRenderTarget(rt); await renderer.compileAsync(scene, camera, scene); }
+    catch (e) { report('xr pipeline warm', e); }
+    finally { renderer.setRenderTarget(prev); rt.dispose(); }
+    tee(`[xr] pipelines pre-warmed for the eye buffers in ${(performance.now() - t0).toFixed(0)} ms`);
+  }, { p: P_AMBIENT });
+}
 export async function initXR() {
   if (!navigator.xr) return;
   let supported = false;
@@ -765,6 +804,7 @@ export async function initXR() {
     for (const m of meshes) { m.frustumCulled = false; try { await renderer.compileAsync(m, camera, scene); } catch { /* fine */ } }
   }, { p: P_AMBIENT });
 
+  if (XR_BOOT) { const iv = setInterval(() => { warmXRPipelines(); if (xrWarmed) clearInterval(iv); }, 500); }   // body arrives seconds after boot; poll until it does
   registerXrGlyph({
     // The XR boot goes to the WebGL backend EXPLICITLY. ?xr=1 alone sets renderer.xr.enabled before
     // init(), which on a WebGPU backend asks for an xrCompatible adapter — and on R's RTX / Chrome 152
