@@ -258,6 +258,7 @@ let vy = 0, grounded = true, mantle = null, airborneFor = 0;
 
 // camera
 export let camYaw = 0, camPitch = 0.32, camDist = 4.2;
+const _lastFinitePos = new THREE.Vector3();
 let dragging = false, dragBtn = 0;
 export const mouse = new THREE.Vector2();
 export let firstPerson = false;
@@ -515,6 +516,12 @@ export function updateMe(dt, me) {
     if (xrIntent.yawDelta) { camYaw += xrIntent.yawDelta; xrIntent.yawDelta = 0; }
   }
 
+  // a NaN that got into the accumulators in VR (a stick axis on wake, 09-05 23:13) survives the
+  // session end and blacks out the desktop view: the orbit camera reads camYaw. Every compare
+  // with NaN is false, so nothing below would ever clear it.
+  if (!Number.isFinite(myState.speed)) myState.speed = 0;
+  if (!Number.isFinite(camYaw)) camYaw = 0;
+  if (!(Number.isFinite(myState.pos.x) && Number.isFinite(myState.pos.y) && Number.isFinite(myState.pos.z))) myState.pos.copy(_lastFinitePos); else _lastFinitePos.copy(myState.pos);
   const moving = Math.abs(fwd) > 0.08 || Math.abs(strafe) > 0.08;
   const running = keys.has('ShiftLeft') || keys.has('ShiftRight');
   // A slow walk for precise positioning — placing a chair exactly where you
