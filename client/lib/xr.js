@@ -195,7 +195,6 @@ function rayHitEntity(handRay, far = 24) {
   return n ? { id: n.userData.entityId, dist: hit.distance, point: hit.point } : null;
 }
 
-let triggerWasDown = false;
 
 // ---- grab: grip+trigger chord (HIGGS — grip aims, chord takes) -------------
 let held = null;   // {id, hand, prevParent, prevPlace}
@@ -331,6 +330,7 @@ function aimRadial(x, y) {
   radial.slots.forEach((sp, i) => sp.scale.setScalar(i === radial.sel ? 0.105 : 0.075));
 }
 let radialOpen = false, stickPressWas = false;
+const triggerWas = { left: false, right: false };
 
 // ---- session ---------------------------------------------------------------
 async function enterVR() {
@@ -463,7 +463,7 @@ export function updateXR(dtSec = 1 / 72) {
       if (!radialOpen) { radialOpen = true; openRadial(); }
       else closeRadial(true);
     } else if (radialOpen) {
-      if (trigNow && !triggerWasDown) closeRadial(true);
+      if (trigNow && !triggerWas.right) closeRadial(true);
       else if (gripNow) closeRadial(false);
       else aimRadial(rx, ry);
     }
@@ -484,27 +484,33 @@ export function updateXR(dtSec = 1 / 72) {
     } else if (Math.abs(rx) < 0.3) snapState.cooling = false;
     stickPressWas = pressed;
 
-    // pointer + grab chord on the right hand
-    const grip = !!R.buttons[1]?.pressed, trig = !!R.buttons[0]?.pressed;
-    hands.right.laser.visible = grip || trig;
-    if (grip && trig && !held) tryGrab('right');
-    if (!grip && held) releaseGrab();
-    if (trig && !triggerWasDown && !grip && !radialOpen) {
-      // panels claim the laser before the world does — a click meant for a
-      // stepper must never select the mountain behind it
-      const panelDist = xrPanelsPick(hands.right.ray, true);
-      if (panelDist != null) haptic('right', 0.3, 18);   // a button, felt
-      if (panelDist == null) {
-        const hit = rayHitEntity(hands.right.ray);
-        if (hit) { bus.emit('xr:select', hit.id); flashHint(`→ ${hit.id}`); }
+    // pointer + grab chord on BOTH hands (Tier B7 — the left was a stick and one
+    // button). Either hand can aim, select, and grab; one thing held at a time
+    // (tryGrab knows which hand holds it). The ring stays on the right.
+    for (const side of ['right', 'left']) {
+      const G = side === 'right' ? R : L; const hand = hands[side];
+      if (!G || !hand) continue;
+      const grip = !!G.buttons[1]?.pressed, trig = !!G.buttons[0]?.pressed;
+      hand.laser.visible = grip || trig;
+      if (grip && trig && !held) tryGrab(side);
+      if (!grip && held?.hand === side) releaseGrab();
+      if (trig && !triggerWas[side] && !grip && !(radialOpen && side === 'right')) {
+        // panels claim the laser before the world does — a click meant for a
+        // stepper must never select the mountain behind it
+        const panelDist = xrPanelsPick(hand.ray, true);
+        if (panelDist != null) haptic(side, 0.3, 18);   // a button, felt
+        if (panelDist == null) {
+          const hit = rayHitEntity(hand.ray);
+          if (hit) { bus.emit('xr:select', hit.id); flashHint(`→ ${hit.id}`); }
+        }
       }
+      if (hand.laser.visible) {
+        const panelDist = xrPanelsPick(hand.ray, false);
+        const hit = panelDist == null ? rayHitEntity(hand.ray, 40) : null;
+        hand.laser.scale.z = panelDist ?? (hit ? hit.dist : 24);
+      }
+      triggerWas[side] = trig;
     }
-    if (hands.right.laser.visible) {
-      const panelDist = xrPanelsPick(hands.right.ray, false);
-      const hit = panelDist == null ? rayHitEntity(hands.right.ray, 40) : null;
-      hands.right.laser.scale.z = panelDist ?? (hit ? hit.dist : 24);
-    }
-    triggerWasDown = trig;
   }
 
   // eye cameras see the first-person split, never the third-person head.
