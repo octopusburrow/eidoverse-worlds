@@ -1056,7 +1056,7 @@ bus.on('pinged', () => {
 // Honest about the gap in its title.
 const CANNED = ['hello', 'yes', 'no', 'one moment', 'come here', 'thank you'];
 registerXRPanel({
-  id: 'chat', title: 'chat (read · canned replies — keyboard soon)',
+  id: 'chat', title: 'chat',
   fields: () => [
     ...(recent.length ? recent.slice(-8).map((l, i) => ({ t: 'info', label: l.who === '*' ? '·' : String(l.who).slice(0, 12), value: l.text }))
                       : [{ t: 'info', label: '·', value: 'nothing said yet' }]),

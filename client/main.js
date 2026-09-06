@@ -100,6 +100,7 @@ import {
 import { posable, pushable, setPosable, setPushable } from './lib/consent.js';
 import { updateVoiceMouths } from './lib/voicemouths.js';
 import { initEmoteBar } from './lib/emotebar.js';
+import { initXRKeyboard } from './lib/xrkeyboard.js';
 import { initCommands, saveScreenshot } from './lib/commands/handlers.js';
 import { deriveLandmarks, debugMarkers, landmarkWorld } from './lib/landmarks.js';
 import { measureChain, solveChain } from './lib/reachbone.js';
@@ -151,6 +152,7 @@ initChat({
   people,
 });
 initEmoteBar();
+initXRKeyboard();   // C16: types into the last-focused text input; a quad in VR
 initProfile();
 initWorldQuad();
 initStylePanel();
