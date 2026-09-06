@@ -311,7 +311,13 @@ function html2canvas( element, scale = 1 ) {   // EIDO (1)
 				const cs = window.getComputedStyle( element );
 				clone.setAttribute( 'xmlns', 'http://www.w3.org/2000/svg' );
 				if ( ! clone.getAttribute( 'width' ) ) clone.setAttribute( 'width', w ); if ( ! clone.getAttribute( 'height' ) ) clone.setAttribute( 'height', h );
-				clone.style.color = cs.color;   // currentColor resolves against this
+				// Chrome computes a color-mix() token as color(srgb …), which the SVG-as-image rasteriser
+				// rejects → currentColor fell to BLACK (settings icons missing on the quad, 09-05 23:38).
+				// A 2D-context fillStyle round-trip normalises any colour to #rrggbb / rgba().
+				const norm = document.createElement( 'canvas' ).getContext( '2d' ); norm.fillStyle = cs.color; const col = norm.fillStyle;
+				clone.style.color = col;   // currentColor resolves against this
+				for ( const n of clone.querySelectorAll( '[fill="currentColor"], [stroke="currentColor"]' ) ) { if ( n.getAttribute( 'fill' ) === 'currentColor' ) n.setAttribute( 'fill', col ); if ( n.getAttribute( 'stroke' ) === 'currentColor' ) n.setAttribute( 'stroke', col ); }
+				if ( clone.getAttribute( 'fill' ) === 'currentColor' ) clone.setAttribute( 'fill', col ); if ( clone.getAttribute( 'stroke' ) === 'currentColor' ) clone.setAttribute( 'stroke', col );
 				img.onload = () => { element.__eidoReady = true; element.setAttribute( 'data-eido-raster', '1' ); };   // the attribute change wakes the observer → re-raster
 				img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent( new XMLSerializer().serializeToString( clone ) );
 				element.__eidoImg = img;

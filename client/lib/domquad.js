@@ -29,8 +29,15 @@ function ensureStage() {
   // 09-05 23:17: "the panel colour might not have come through"). Lift toward the text tone, opaque.
   // ?quadlift=N is the mix percent (default 18; 0 = the desktop colour as-is).
   const lift = Math.max(0, Math.min(60, Number(new URLSearchParams(location.search).get('quadlift') ?? 18)));
-  css.textContent = `#xr-stage .frame.panel { box-shadow: none; backdrop-filter: none; background: color-mix(in srgb, var(--panel) ${100 - lift}%, var(--text, #dfe8e8)); }
-#xr-stage .fr-head { background: color-mix(in srgb, var(--panel) ${100 - Math.round(lift * 0.6)}%, var(--text, #dfe8e8)); backdrop-filter: none; }
+  // Plain rgb() strings: HTMLMesh parses computed colours itself, and Chrome serialises a
+  // color-mix() result as color(srgb …), which that parser mangled to PURPLE (pairs probe, 23:40).
+  const cs = getComputedStyle(document.documentElement);
+  const rgb = (cs.getPropertyValue('--panel-rgb').trim().split(/\s+/).map(Number));
+  const base = rgb.length === 3 && rgb.every(Number.isFinite) ? rgb : [5, 20, 20];
+  const tone = [223, 232, 232];   // the text tone the panel is lifted toward
+  const mix = (pct) => `rgb(${base.map((v, i) => Math.round(v + (tone[i] - v) * pct / 100)).join(' ')})`;
+  css.textContent = `#xr-stage .frame.panel { box-shadow: none; backdrop-filter: none; background: ${mix(lift)}; }
+#xr-stage .fr-head { background: ${mix(Math.round(lift * 0.6))}; backdrop-filter: none; }
 #xr-stage .fr-btns { display: none; }`;
   document.head.appendChild(css);
   stage = document.createElement('div'); stage.id = 'xr-stage';
