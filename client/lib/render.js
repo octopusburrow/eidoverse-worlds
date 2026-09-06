@@ -52,6 +52,7 @@ let mainPassCam = null;
     return orig(sc, cam);
   }; }
 export function renderCensusTick() { renderCensus.frames++; if (renderCensus.perFrame > renderCensus.maxPerFrame) renderCensus.maxPerFrame = renderCensus.perFrame; renderCensus.perFrame = 0; }
+export const renderCensusPeek = () => renderCensus.foreign;
 export function renderCensusTake() { const o = { max: renderCensus.maxPerFrame, foreign: renderCensus.foreign }; renderCensus.maxPerFrame = 0; renderCensus.foreign = null; return o; }
 
 export function renderWorld() {
