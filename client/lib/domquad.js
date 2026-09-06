@@ -127,4 +127,29 @@ export function domQuadShow(id, on = null) {
   return q.mesh.visible;
 }
 export const domQuadIds = () => (quads ?? []).map((q) => q.id);
+
+// ---- grabbable, following panels (gap list C17; Basis's design over rig-locked quads). The
+// grip+trigger chord on a quad takes the QUAD (xr.js asks here before it asks the world, the same
+// order a click uses): the mesh rides the hand; on release it goes back to the rig where it
+// visually is, roll stripped so text stays upright, pitch clamped so it never lies flat. Where you
+// put a panel is remembered for the session (rig-local), not across sessions — yet.
+const _e = new THREE.Euler(0, 0, 0, 'YXZ');
+export function domQuadsGrab(handRay) {
+  if (!quads || !shown) return null;
+  _m.identity().extractRotation(handRay.matrixWorld);
+  _rc.ray.origin.setFromMatrixPosition(handRay.matrixWorld);
+  _rc.ray.direction.set(0, 0, -1).applyMatrix4(_m);
+  _rc.far = 3;
+  const hit = _rc.intersectObjects(quads.filter((q) => q.mesh.visible).map((q) => q.mesh), false)[0];
+  return hit ? quads.find((q) => q.mesh === hit.object) ?? null : null;
+}
+/** Hand the quad back to `rig` where it visually is; upright it. Returns the quad's rig-local pose. */
+export function domQuadRelease(q, rig) {
+  rig.attach(q.mesh);
+  _e.setFromQuaternion(q.mesh.quaternion, 'YXZ');
+  _e.z = 0; _e.x = THREE.MathUtils.clamp(_e.x, -0.6, 0.6);
+  q.mesh.quaternion.setFromEuler(_e);
+  q.mesh.updateMatrixWorld(true);
+  return { pos: q.mesh.position.toArray().map((v) => +v.toFixed(3)), yaw: +_e.y.toFixed(3), pitch: +_e.x.toFixed(3) };
+}
 export const domQuadTexture = (id) => quads?.find((q) => q.id === id)?.mesh.material.map ?? null;

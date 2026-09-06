@@ -21,7 +21,7 @@ import { THREE, renderer, camera, scene, XR_BOOT } from './core.js';
 import { CONFIG, report, bus, tee } from './base.js';
 import { xrBodyDebug } from './xrbody.js';
 import { stroke, fillPath } from './icons.js';
-import { xrPanelsEnter, xrPanelsExit, xrPanelsPick, showXRPanel, xrPanelHas, xrPanelOpen } from './xrpanels.js';
+import { xrPanelsEnter, xrPanelsExit, xrPanelsPick, showXRPanel, xrPanelHas, xrPanelOpen, xrPanelsGrab, xrPanelRelease } from './xrpanels.js';
 import { myState, xrIntent, camYaw, setCamYaw, setXrProbe } from './controller.js';
 import { entities } from './world.js';
 import { sendVerb } from './net.js';
@@ -217,6 +217,9 @@ function rayHitEntity(handRay, far = 24) {
 let held = null;   // {id, hand, prevParent, prevPlace}
 function tryGrab(hand) {
   const h = hands[hand];
+  // a panel under the laser is taken before the world is (C17) — same precedence as a click
+  { const q = xrPanelsGrab(h.ray);
+    if (q) { held = { quad: q, hand }; haptic(hand, 0.4, 30); h.grip.attach(q.mesh); flashHint(`holding the ${q.id} panel — release grip to place it`); return; } }
   // near first (within reach of the grip), then ray (far-grab glides to hand)
   let target = null;
   h.grip.getWorldPosition(_v);
@@ -244,6 +247,11 @@ function tryGrab(hand) {
 
 function releaseGrab() {
   if (!held) return;
+  if (held.quad) {   // a panel: back to the rig where it visually is, uprighted; no verb — panels aren't world entities
+    const p = xrPanelRelease(held.quad, rig);
+    tee(`[xr] panel ${held.quad.id} placed at rig ${p.pos.join(',')} yaw ${p.yaw} pitch ${p.pitch}`);
+    held = null; return;
+  }
   const obj = entities.get(held.id);
   const { prevParent, prevPlace } = held;
   if (obj) {
