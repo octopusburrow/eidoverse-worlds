@@ -485,6 +485,16 @@ export function recentreXR(why = 'verb') {
   rig.updateMatrixWorld(true); rig.worldToLocal(_hl);           // head in rig space (the playspace, pre-offset)
   _hl.x += recentre.x; _hl.z += recentre.z; _hl.y -= recentre.y;  // undo the offset already folded in: rig-local == playspace
   if (![_hl.x, _hl.y, _hl.z].every(Number.isFinite)) return false;
+  // A tracked head stands on a floor-referenced space at ~1–2 m and within a room of the origin. On the
+  // first presenting frames the XR camera has NO pose yet — its matrix is still the desktop camera at the
+  // world origin, so 'rig-local head' comes out as minus the rig's own position (R, 09-06 11:24: 'head at
+  // playspace 3.43,0.00,-43.50' — 43 m folded into the rig on entry). Not a head: refuse, and if this was
+  // the entry pass, try again next frame.
+  if (_hl.y < 0.3 || _hl.y > 3 || Math.hypot(_hl.x, _hl.z) > 10) {
+    if (why === 'entry') recentre.pending = true;
+    else tee(`[xr] recentre (${why}) refused: head at playspace ${_hl.x.toFixed(2)},${_hl.y.toFixed(2)},${_hl.z.toFixed(2)} is not a tracked pose`);
+    return false;
+  }
   const eye = avatarEyeY();
   const r = recentreSolve({ headLocal: _hl, seated: !!xrPrefs.seated, standingEyeY: eye ? eye / scaleState.k : 0 });
   recentre.x = r.x; recentre.z = r.z; recentre.y = r.y;
