@@ -592,17 +592,22 @@ function buildEMenu(m) {
   m.querySelector('.fr-btn').onclick = () => toggleEMenu(false);
   // voice first: mic + ears lead the menu in their own section — they matter
   // more than any window, and they wear the SAME glyphs as the floating pair
-  const voiceRows = [['mic', 'mic', micGlyph, flipMic], ['ears', 'ear', earGlyph, flipEar]];
-  if (xrGlyphAvailable()) voiceRows.push(['VR', 'xr', xrGlyph, flipXr]);   // third of the trio, only where a headset can answer
+  const voiceRows = [['mic', 'mic', micGlyph, flipMic], ['ears', 'ear', earGlyph, flipEar], ['VR', 'xr', xrGlyph, flipXr]];
   for (const [nm, key, glyph, flip] of voiceRows) {
+    // VR: the row is always LISTED, but greyed with an explainer when no headset
+    // can present — and its pin is dead, so an absent glyph cannot be pinned to
+    // the rail (R, 09-05 18:22). The HUD itself never shows the visor unsensed.
+    const dead = key === 'xr' && !xrGlyphAvailable();
     const row = document.createElement('button');
-    row.className = 'mrow'; row.dataset.row = `glyph:${key}`;
+    row.className = `mrow${dead ? ' dead' : ''}`; row.dataset.row = `glyph:${key}`;
     row.innerHTML = `${glyph(16)}<span class="mname">${nm}</span>`;
-    row.onclick = async () => { await flip(); paintEMenu(); };
+    if (dead) { row.disabled = true; row.title = 'no headset sensed — Chrome finds the OpenXR runtime only at browser start (chrome://restart after SteamVR is up)'; }
+    else row.onclick = async () => { await flip(); paintEMenu(); };
     const pin = document.createElement('button');
     pin.className = 'mpin'; pin.dataset.pin = `glyph:${key}`; pin.dataset.nm = nm;
     pin.innerHTML = fsvg('push-pin', 13);
-    pin.onclick = (e) => { e.stopPropagation(); setGlyphPinned(key, !glyphPinned(key)); paintEMenu(); };
+    if (dead) { pin.disabled = true; pin.title = 'nothing to pin until a headset is sensed'; }
+    else pin.onclick = (e) => { e.stopPropagation(); setGlyphPinned(key, !glyphPinned(key)); paintEMenu(); };
     row.appendChild(pin);
     m.appendChild(row);
   }
