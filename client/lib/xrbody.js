@@ -30,7 +30,8 @@ export function ensureXRBodyHook() {
 }
 
 const CHAIN = ['spine', 'chest', 'upperChest', 'neck', 'head'];
-const wY = [.12, .12, .16, .25, .35], wP = [.10, .12, .16, .26, .36], wR = [.08, .10, .14, .28, .40];
+const wY = [0, 0, 0, .4, .6],   // residual yaw: neck + head only — the BODY already turned to the HMD (eido's controller does that); porch's torso share fought it
+ wP = [.10, .12, .16, .26, .36], wR = [.08, .10, .14, .28, .40];
 const look = new THREE.Vector3();          // damped pitch / yaw / roll
 const hmdPos = new THREE.Vector3(), hmdQ = new THREE.Quaternion(), tmpS = new THREE.Vector3();
 const qRel = new THREE.Quaternion(), qYaw = new THREE.Quaternion(), qFlip = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI, 0));
@@ -143,7 +144,15 @@ export function tickXRBody(dt) {
   if (k !== 1) hmdPos.sub(rig.position).multiplyScalar(k).add(rig.position);
 
   // 1. distributed look-at
-  const facing = rig.rotation.y + av.root.rotation.y + (vrm.meta?.metaVersion === '0' ? Math.PI : 0);
+  // facing = the body's TRUE world yaw. The controller already turns the body to
+  // the HMD's yaw every frame (setCamYaw → myState.yaw → root.rotation.y), so the
+  // residual here is only what the head has turned beyond the body. R's first
+  // headset read (09-05 19:55): computing this against rig.rotation.y (0 at
+  // entry) while the body faced her heading gave a constant residual ≈ her
+  // heading — the spine twisted toward it, the anchor pulled, the controller
+  // re-asserted: 'snap back' and 'the back of my avatar'.
+  av.root.getWorldQuaternion(qYaw); eul.setFromQuaternion(qYaw, 'YXZ');
+  const facing = eul.y + (vrm.meta?.metaVersion === '0' ? Math.PI : 0);
   qYaw.setFromEuler(eul.set(0, facing, 0, 'YXZ')).invert();
   qRel.copy(qYaw).multiply(hmdQ);   // porch's Ry(π) flip is already carried by `facing` (VRM0 rest faces +Z); probe 09-05: with both, residual yaw read π and pitch vanished
   eul.setFromQuaternion(qRel, 'YXZ');
