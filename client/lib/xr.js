@@ -22,7 +22,7 @@ import { CONFIG, report, bus, tee } from './base.js';
 import { xrBodyDebug } from './xrbody.js';
 import { stroke, fillPath } from './icons.js';
 import { xrPanelsEnter, xrPanelsExit, xrPanelsPick, showXRPanel, xrPanelHas, xrPanelOpen } from './xrpanels.js';
-import { myState, xrIntent, setCamYaw, setXrProbe } from './controller.js';
+import { myState, xrIntent, camYaw, setCamYaw, setXrProbe } from './controller.js';
 import { entities } from './world.js';
 import { sendVerb } from './net.js';
 import { flashHint, toast } from './ui.js';
@@ -139,6 +139,7 @@ const SNAP_DEG = 30;
 const SMOOTH_TURN_RAD_S = 2.2;   // ~126°/s at full deflection
 const snapState = { cooling: false };
 const dead = (v, dz = DEADZONE) => {
+  if (!Number.isFinite(v)) return 0;   // a NaN axis (Frame controller waking, 09-05 23:13) must read as centred, not poison the walk
   const m = Math.abs(v);
   return m < dz ? 0 : Math.sign(v) * ((m - dz) / (1 - dz));
 };
@@ -472,7 +473,10 @@ export function updateXR(dtSec = 1 / 72) {
   // and if a NaN slipped into the body anyway, put it back on the last good
   // spot rather than let it poison every matrix downstream
   if (Number.isFinite(myState.pos.x) && Number.isFinite(myState.pos.z)) lastGood.copy(myState.pos);
-  else { tee(`[xr] myState.pos NaN — restored to ${lastGood.x.toFixed(1)},${lastGood.z.toFixed(1)}`); myState.pos.copy(lastGood); }
+  else { tee(`[xr] myState.pos NaN — restored to ${lastGood.x.toFixed(1)},${lastGood.z.toFixed(1)} (speed ${myState.speed}, camYaw ${camYaw}, intent ${xrIntent.fwd},${xrIntent.strafe})`); myState.pos.copy(lastGood); }
+  // speed is a lerp accumulator: one NaN in it is permanent (every compare with NaN is false), and re-poisons pos every frame
+  if (!Number.isFinite(myState.speed)) myState.speed = 0;
+  if (!Number.isFinite(camYaw)) setCamYaw(0);
 
   // sticks → intent (deadzone-with-rescale; snap cooldown — exultation math)
   const L = sourceFor('left')?.gamepad, R = sourceFor('right')?.gamepad;
