@@ -192,13 +192,15 @@ export function sendPose(now) {
   const s = hooks.myState;
   if (!net.joined || !hooks.me() || !s || now - lastPoseSent < 66) return;
   lastPoseSent = now;
+  const ov = poseOverride?.();
   const pose = {
     p: [s.pos.x, s.pos.y, s.pos.z],
-    yaw: poseOverride?.()?.yaw ?? s.yaw, speed: s.speed, clip: s.clip,
-    pitch: Math.round((poseOverride?.()?.pitch ?? s.pitch ?? 0) * 100) / 100,
+    yaw: ov?.yaw ?? s.yaw, speed: s.speed, clip: s.clip,
+    pitch: Math.round((ov?.pitch ?? s.pitch ?? 0) * 100) / 100,
     ...wingFoldPresence(s.wingsFolded),
     ...presenceWire(presence()),        // present / away / busy — for the Who panel (R, 09-05)
   };
+  if (ov?.xr) pose.xr = ov.xr;   // C18: tracked head/hands, facing-relative (xrbody.js) — presence, never the log
   if (s.emote) { pose.emote = s.emote; s.emote = null; } // one-shot: send once
   // A held custom pose rides the presence packet (and therefore lastPose, so
   // late joiners see it) — but never the log. `null` explicitly clears it.
