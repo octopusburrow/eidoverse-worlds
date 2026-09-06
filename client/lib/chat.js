@@ -705,7 +705,7 @@ function initSidePane() {
   });
   bus.on('roster', paintSide);
   bus.on('presence:me', paintSide);                                   // my own mark flips at once
-  setInterval(() => { if (frame?.visible && !side.hidden) paintSide(); }, 2000);   // remote presence rides pose packets; a 2 s repaint is plenty
+  setInterval(() => { if (frame?.visible && sideSt.open) paintSide(); }, 2000);   // remote presence rides pose packets; a 2 s repaint is plenty. (`side` was out of scope here — the first tick threw and the interval died: marks froze on their first value)
   applySide();
 }
 const saveSide = () => { try { localStorage.setItem(SIDE_LS, JSON.stringify(sideSt)) } catch {} };
