@@ -96,26 +96,34 @@ let presenting = false; let shadowsWere = false;
 let floorSpace = null;              // 'local-floor' | 'bounded-floor' | null (fell back to 'local')
 export const xrFloorSpace = () => floorSpace;
 
-// ---- DeviceScale (Tier A5; porch-old index.html:6045–6057, Basis's provenance)
+// ---- DeviceScale (Tier A5; Basis BasisHeightDriver — the AVATAR is scaled to the player)
 // Map the human's standing eye height onto the avatar's: median of the first
 // 120 in-session HMD heights (> 0.5 m — a seated start or tracking garbage
-// must not scale), k = avatarEyeY / median, clamped .6–1.6. Applied to the
-// TRACKED targets (head/hand IK), never to the view — the human sees 1:1, the
-// puppet's targets scale. Provenance says why you are this size; saved per
-// avatar so the next session starts right (Basis: Fallback/Measured/Saved).
+// must not scale), k = avatarEyeY / median, clamped .6–1.6. Provenance says why
+// you are this size; saved per avatar (Basis: Fallback/Measured/Saved).
+// HOW it is applied changed 09-06 12:10 (R: 'hands 8 inches from my controllers'): porch-old and
+// the first port scaled the TRACKED TARGETS toward the rig by k and left the puppet at its authored
+// size — so a controller 1.3 m from the rig landed 0.15 × 1.3 ≈ 20 cm short at k = 0.85, by
+// construction. Basis scales the PUPPET (BasisHeightDriver.ApplyAvatarScale: the avatar root, its
+// T-pose offsets, the capsule) and never the tracking. So: vrm.scene.scale = 1/k while presenting,
+// targets stay 1:1, hands sit ON the controllers. xrbody reads puppetScale(); xrScale().k stays the
+// measured ratio for anyone who wants the number. Restored to 1 on session end.
 const SCALE_LS = 'ew-xr-scale';
 const scaleState = { k: 1, source: 'fallback', samples: [], eyeY: null, locked: false, firstAt: 0 };
 export const xrScale = () => ({ ...scaleState, samples: scaleState.samples.length });
+/** The multiplier the self puppet wears while presenting (Basis: avatar scaled to the player). 1 when unmeasured. */
+export const puppetScale = () => (presenting && scaleState.k > 0 ? 1 / scaleState.k : 1);
 // harness hook (?xrsim only): feed HMD heights without waiting on a slow headless frame rate
 export const xrSimSample = (y) => { if (CONFIG.params.has('xrsim')) sampleDeviceScale(y); };
 function avatarEyeY() {
   const av = getSelf(); const h = av?.vrm?.humanoid;
   if (!h) return null;
   const root = av.vrm.scene.getWorldPosition(new THREE.Vector3()).y;
+  const ps = av.vrm.scene.scale.y || 1;   // AUTHORED height: undo the puppet scale the body may already be wearing (a saved k would otherwise re-measure as 1)
   const eye = h.getNormalizedBoneNode?.('leftEye') ?? h.getNormalizedBoneNode?.('rightEye');
-  if (eye) return eye.getWorldPosition(new THREE.Vector3()).y - root;
+  if (eye) return (eye.getWorldPosition(new THREE.Vector3()).y - root) / ps;
   const head = h.getNormalizedBoneNode?.('head');
-  return head ? head.getWorldPosition(new THREE.Vector3()).y - root + 0.06 : null;   // eyes ≈ 6 cm above the head joint
+  return head ? (head.getWorldPosition(new THREE.Vector3()).y - root) / ps + 0.06 : null;   // eyes ≈ 6 cm above the head joint
 }
 function loadSavedScale() {
   try { const all = JSON.parse(localStorage.getItem(SCALE_LS) || '{}'); const name = getSelf()?.name ?? CONFIG.avatar ?? '';
@@ -447,6 +455,7 @@ async function enterVR() {
       renderer.xr.cameraAutoUpdate = true; if (renderer.shadowMap) renderer.shadowMap.enabled = shadowsWere;
       xrIntent.active = false;
       selfFirstPerson(false);
+      { const v = getSelf()?.vrm; if (v) { v.scene.scale.setScalar(1); if (v.userData) { v.userData.ankleH = null; v.userData._gait = null; } } }   // the puppet scale is a presenting thing
       xrPanelsExit(rig);
       releaseGrab();
       rig.remove(camera);
@@ -520,7 +529,7 @@ export function recentreXR(why = 'verb') {
     return false;
   }
   const eye = avatarEyeY();
-  const r = recentreSolve({ headLocal: _hl, seated: !!xrPrefs.seated, standingEyeY: eye ? eye / scaleState.k : 0 });
+  const r = recentreSolve({ headLocal: _hl, seated: !!xrPrefs.seated, standingEyeY: eye ? eye * puppetScale() : 0 });
   recentre.x = r.x; recentre.z = r.z; recentre.y = r.y;
   tee(`[xr] recentre (${why}): head at playspace ${r.x.toFixed(2)},${_hl.y.toFixed(2)},${r.z.toFixed(2)} folded in${r.y ? `; seated lift ${r.y.toFixed(2)} m` : ''}`);
   bus.emit('xr:recentre', { ...r, why });
@@ -534,7 +543,6 @@ export function leaveVR(why = 'verb') {
   try { const p = session.end(); p?.catch?.((e) => tee(`[xr] leave (${why}) rejected: ${e?.message ?? e}`)); } catch (e) { tee(`[xr] leave (${why}) threw: ${e?.message ?? e}`); }
   return true;
 }
-let leaveHoldAt = 0;   // left B/Y held ≥ 1 s = leave VR (hardware exit — porch-old had B/Y for mic; a hold can't fire by accident)
 let turnMag = 0;                    // |stick-X| while smooth-turning — the vignette reads it
 export const turnMagnitude = () => turnMag;
 export function updateXR(dtSec = 1 / 72) {
@@ -575,9 +583,6 @@ export function updateXR(dtSec = 1 / 72) {
     xrIntent.jump = !!L.buttons[4]?.pressed;
     // LEFT stick click: hide / show every quad (R 09-06 11:31: 'a button to close/open the menu panels,
     // they're in my way'). The same 'xr:panels' verb the ring speaks — porch-old used this click for its keyboard.
-    const by = !!L.buttons[5]?.pressed;
-    if (by && buttonsTrusted()) { if (!leaveHoldAt) leaveHoldAt = performance.now(); else if (performance.now() - leaveHoldAt > 1000) { leaveHoldAt = -1e12; haptic('left', 0.6, 60); leaveVR('left B/Y hold'); } }
-    else leaveHoldAt = 0;
     const lPressed = !!L.buttons[3]?.pressed;
     if (lPressed && !lStickPressWas && buttonsTrusted()) { bus.emit('xr:panels'); haptic('left', 0.3, 25); tee('[xr] panels toggled (left stick click)'); }
     lStickPressWas = lPressed;
