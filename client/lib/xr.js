@@ -391,8 +391,7 @@ function aimRadial(x, y) {
   })();
   radial.slots.forEach((sp, i) => sp.scale.setScalar(i === radial.sel ? 0.105 : 0.075));
 }
-let radialOpen = false, stickPressWas = false, radialAt = 0;
-const RADIAL_IDLE_MS = 5000;   // an open ring nobody aims at closes itself (R 09-06 11:31: opened by a stick click mid-turn, invisible, ate the right stick for 5 min)
+let radialOpen = false, stickPressWas = false;
 const triggerWas = { left: false, right: false };
 // Buttons are NOT trusted for the first 700 ms after an input source appears: the gamepad's first
 // frames report pressed=true garbage (R 09-06 11:35: 'panels toggled' fired by itself, sandwiched
@@ -627,23 +626,14 @@ export function updateXR(dtSec = 1 / 72) {
     const rx = dead(pickAxis(R.axes[2], R.axes[0]));
     const ry = dead(pickAxis(R.axes[3], R.axes[1]));
     const pressed = !!R.buttons[3]?.pressed;              // thumbstick click
-    // CLICK-TOGGLE, not hold (R in-headset 09-04: "small hands — hard to keep
-    // it down and select"): one click opens the ring and it STAYS; aim with
-    // the stick at leisure; a second click or the trigger commits; grip
-    // cancels. Nothing commits on a release, so a spring-back can't pick.
-    const trigNow = !!R.buttons[0]?.pressed, gripNow = !!R.buttons[1]?.pressed;
-    if (pressed && !stickPressWas && buttonsTrusted()) {
-      if (!radialOpen) { radialOpen = true; radialAt = performance.now(); openRadial(); haptic('right', 0.35, 30); tee('[xr] ring open'); }
-      else { closeRadial(true); tee('[xr] ring closed (click)'); }
-    } else if (radialOpen) {
-      if (trigNow && !triggerWas.right) { closeRadial(true); tee('[xr] ring closed (trigger)'); }
-      else if (gripNow) { closeRadial(false); tee('[xr] ring closed (grip)'); }
-      else {
-        aimRadial(rx, ry);
-        if (radial?.sel >= 0 || Math.hypot(rx, ry) > 0.45) radialAt = performance.now();   // aiming keeps it alive
-        else if (performance.now() - radialAt > RADIAL_IDLE_MS) { closeRadial(false); haptic('right', 0.2, 20); tee('[xr] ring closed (idle 5 s)'); }
-      }
-    }
+    // HOLD / AIM / RELEASE — the standard ring (porch-old, VRChat): the ring is open exactly while the
+    // stick is held; aim with the stick; releasing on a slot commits it, releasing on the centre cancels.
+    // (R 09-06 12:40: back to standard — the 09-04 click-toggle stuck open for five minutes this morning.)
+    // Grip while held cancels. Nothing can stay open: no press, no ring.
+    const gripNow = !!R.buttons[1]?.pressed;
+    if (pressed && !stickPressWas && buttonsTrusted()) { radialOpen = true; openRadial(); haptic('right', 0.35, 30); tee('[xr] ring open'); }
+    else if (radialOpen && pressed) { if (gripNow) { closeRadial(false); tee('[xr] ring cancelled (grip)'); } else aimRadial(rx, ry); }
+    else if (radialOpen && !pressed) { const sel = radial?.sel ?? -1; closeRadial(true); tee(`[xr] ring released${sel >= 0 ? ` → ${radial?.entries[sel]?.label}` : ' (nothing)'}`); }
     turnMag = 0;
     if (radialOpen) { /* the ring owns the stick */ }
     else if (xrPrefs.turn === 'smooth') {
