@@ -356,7 +356,8 @@ function aimRadial(x, y) {
   })();
   radial.slots.forEach((sp, i) => sp.scale.setScalar(i === radial.sel ? 0.105 : 0.075));
 }
-let radialOpen = false, stickPressWas = false;
+let radialOpen = false, stickPressWas = false, radialAt = 0, lStickPressWas = false;
+const RADIAL_IDLE_MS = 5000;   // an open ring nobody aims at closes itself (R 09-06 11:31: opened by a stick click mid-turn, invisible, ate the right stick for 5 min)
 const triggerWas = { left: false, right: false };
 
 // ---- session ---------------------------------------------------------------
@@ -541,6 +542,11 @@ export function updateXR(dtSec = 1 / 72) {
     xrIntent.fwd = dead(-pickAxis(L.axes[3], L.axes[1]));
     xrIntent.strafe = dead(pickAxis(L.axes[2], L.axes[0]));
     xrIntent.jump = !!L.buttons[4]?.pressed;
+    // LEFT stick click: hide / show every quad (R 09-06 11:31: 'a button to close/open the menu panels,
+    // they're in my way'). The same 'xr:panels' verb the ring speaks — porch-old used this click for its keyboard.
+    const lPressed = !!L.buttons[3]?.pressed;
+    if (lPressed && !lStickPressWas) { bus.emit('xr:panels'); haptic('left', 0.3, 25); tee('[xr] panels toggled (left stick click)'); }
+    lStickPressWas = lPressed;
   } else { xrIntent.fwd = 0; xrIntent.strafe = 0; xrIntent.jump = false; }
   if (R) {
     const rx = dead(pickAxis(R.axes[2], R.axes[0]));
@@ -552,12 +558,16 @@ export function updateXR(dtSec = 1 / 72) {
     // cancels. Nothing commits on a release, so a spring-back can't pick.
     const trigNow = !!R.buttons[0]?.pressed, gripNow = !!R.buttons[1]?.pressed;
     if (pressed && !stickPressWas) {
-      if (!radialOpen) { radialOpen = true; openRadial(); }
-      else closeRadial(true);
+      if (!radialOpen) { radialOpen = true; radialAt = performance.now(); openRadial(); haptic('right', 0.35, 30); tee('[xr] ring open'); }
+      else { closeRadial(true); tee('[xr] ring closed (click)'); }
     } else if (radialOpen) {
-      if (trigNow && !triggerWas.right) closeRadial(true);
-      else if (gripNow) closeRadial(false);
-      else aimRadial(rx, ry);
+      if (trigNow && !triggerWas.right) { closeRadial(true); tee('[xr] ring closed (trigger)'); }
+      else if (gripNow) { closeRadial(false); tee('[xr] ring closed (grip)'); }
+      else {
+        aimRadial(rx, ry);
+        if (radial?.sel >= 0 || Math.hypot(rx, ry) > 0.45) radialAt = performance.now();   // aiming keeps it alive
+        else if (performance.now() - radialAt > RADIAL_IDLE_MS) { closeRadial(false); haptic('right', 0.2, 20); tee('[xr] ring closed (idle 5 s)'); }
+      }
     }
     turnMag = 0;
     if (radialOpen) { /* the ring owns the stick */ }
