@@ -24,8 +24,13 @@ function ensureStage() {
   // XR-only chrome for the staged frames: HTMLMesh's mini-renderer has no blur/shadow, so the head
   // strip gets a solid token blend; desktop-only furniture (✕, resize, collapse) is hidden on the quad
   const css = document.createElement('style'); css.id = 'xr-stage-css';
-  css.textContent = `#xr-stage .frame.panel { box-shadow: none; backdrop-filter: none; background: color-mix(in srgb, var(--panel) 92%, black); }
-#xr-stage .fr-head { background: color-mix(in srgb, var(--panel) 70%, black); backdrop-filter: none; }
+  // The desktop panel is a dark translucency over a bright viewport; on a quad it composites over
+  // nothing and then sits unlit in a lit world, so the same colour reads near-black (R in the Frame,
+  // 09-05 23:17: "the panel colour might not have come through"). Lift toward the text tone, opaque.
+  // ?quadlift=N is the mix percent (default 18; 0 = the desktop colour as-is).
+  const lift = Math.max(0, Math.min(60, Number(new URLSearchParams(location.search).get('quadlift') ?? 18)));
+  css.textContent = `#xr-stage .frame.panel { box-shadow: none; backdrop-filter: none; background: color-mix(in srgb, var(--panel) ${100 - lift}%, var(--text, #dfe8e8)); }
+#xr-stage .fr-head { background: color-mix(in srgb, var(--panel) ${100 - Math.round(lift * 0.6)}%, var(--text, #dfe8e8)); backdrop-filter: none; }
 #xr-stage .fr-btns { display: none; }`;
   document.head.appendChild(css);
   stage = document.createElement('div'); stage.id = 'xr-stage';
