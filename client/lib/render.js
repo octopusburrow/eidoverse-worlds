@@ -1,6 +1,6 @@
 // The live world's render path, shared by animation and frame capture.
 import { THREE, renderer, scene, camera } from './core.js';
-import { CONFIG, bus } from './base.js';
+import { CONFIG, bus, tee } from './base.js';
 import { DrawBatches } from './draw_batches.js';
 import { warm, warmDepth, P_AMBIENT } from './warmqueue.js';
 
@@ -68,8 +68,17 @@ export function setXRCurtain(on) {
   }
 }
 export const xrCurtainOn = () => curtainOn;
+let healed = 0;
 export function renderWorld() {
   mainPassCam = camera;
+  // SELF-HEAL (09-07 00:30, the black desktop's second half): three captures `outputRenderTarget = _renderTarget || …`
+  // at the top of every render. A frame that aborts between binding its frame-buffer target and restoring leaves
+  // that target bound; every later frame then renders INTO it and blits it onto ITSELF — the canvas never sees a
+  // pixel again, with no further errors. Off-XR, a bound target at the top of the main pass can only be that.
+  if (!renderer.xr?.isPresenting && renderer.getRenderTarget() !== null) {
+    const rt = renderer.getRenderTarget(); renderer.setRenderTarget(null);
+    if (healed++ < 3) tee(`[render] unbound a stale target at frame start (${rt.constructor.name} ${rt.width}x${rt.height}) — an earlier frame aborted mid-render`);
+  }
   if (curtainOn && renderer.xr?.isPresenting) {
     renderer.xr.updateCamera(camera);
     const xc = renderer.xr.getCamera(); const e = xc.matrixWorld.elements; curtain.userData.shell.position.set(e[12], e[13], e[14]);

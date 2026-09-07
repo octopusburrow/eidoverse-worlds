@@ -60,7 +60,12 @@ let windowWorst = 0;
 let windowDoubled = 0;
 let windowSpikes = 0;
 function frame(now) {
+  // The first tick after an XR session ends arrives with a non-finite `now` (three re-arms the loop; 09-07 00:20,
+  // emulated headset): dtMs went NaN straight through the guard below, the follow camera lerped by NaN once and
+  // stayed NaN forever — R's BLACK DESKTOP AFTER LEAVING VR (09-06 12:46 → 23:43). A frame with no clock is a resume.
+  if (!Number.isFinite(now)) now = performance.now();
   let dtMs = now - last;
+  if (!Number.isFinite(dtMs)) dtMs = 0;
   // A RESUME is not a frame. Under an XR session the loop ticks on the
   // session's clock and stops while the session is blurred (SteamVR
   // dashboard, headset off); the first tick back arrived with dtMs = -72464

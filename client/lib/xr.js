@@ -26,6 +26,7 @@ import { myState, xrIntent, camYaw, setCamYaw, setXrProbe } from './controller.j
 import { entities } from './world.js';
 import { sendVerb } from './net.js';
 import { flashHint, toast } from './ui.js';
+import { makePointerLine } from './pointer.js';
 import { registerXrGlyph, glyphPinned, micGlyph, earGlyph, xrGlyph, micLive, earOn, flipEar } from './mictoggle.js';
 import { dockPins } from './ui.js';
 import { pushUndo } from './build.js';
@@ -67,6 +68,14 @@ function selfFirstPerson(on) {
     tee(`[xr] head chop on (${raw.name}, Basis ScaleHeadToZero)`);
   }
   if (!on && choppedHead) { choppedHead.bone.scale.copy(choppedHead.scale); choppedHead = null; fpVrm = null; tee('[xr] head chop off'); }
+}
+/** Run fn with the first-person head chop lifted — a mirror's reflection pass shows the whole head
+ *  (porch-old's __setHeadScale(1) inside the Reflector's onBeforeRender). Restores after. */
+export function withHeadShown(fn) {
+  if (!choppedHead) return fn();
+  const b = choppedHead.bone, kept = b.scale.clone();
+  b.scale.copy(choppedHead.scale);
+  try { return fn(); } finally { b.scale.copy(kept); }
   // MToon OUTLINES are a second, back-face, black hull per mesh whose width (screen mode) comes from the
   // render resolution; in the eye buffers that hull can swallow the body (R 09-06 12:08: 'the claudesona
   // is pitch black' — and probably 11:31's 'no avatar' against a near-black construct). Off on MY body
@@ -202,19 +211,18 @@ function makeHand(i) {
   const ray = renderer.xr.getController(i);
   grip.addEventListener('connected', (e) => { tee(`[xr] slot ${i} grip connected handedness=${e.data?.handedness} profiles=${JSON.stringify(e.data?.profiles ?? [])}`); fileHand(i, e.data?.handedness); });
   ray.addEventListener('connected', (e) => fileHand(i, e.data?.handedness));
-  // visible hand: a small warm knuckle-box (models can come later; presence first)
+  // visible hand: a small warm knuckle-box — only until a body owns the hands (R 09-06 23:38:
+  // 'we don't need the test-boxes if they're bound to an avatar'); the tick hides it once one does
   const box = new THREE.Mesh(
     new THREE.BoxGeometry(0.05, 0.035, 0.09),
     new THREE.MeshStandardMaterial({ color: 0xe8c9a0, roughness: 0.8 }));
   grip.add(box);
-  // the pointer: a thin laser that only shows on the right hand when aiming
-  const laser = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.0022, 0.0022, 1, 6).rotateX(Math.PI / 2).translate(0, 0, -0.5),
-    new THREE.MeshBasicMaterial({ color: 0x9fd8ff, transparent: true, opacity: 0.65 }));
+  // the pointer: porch-old's fading beam (R 09-06 23:38: the cylinder was distracting)
+  const laser = makePointerLine();
   laser.visible = false;
   ray.add(laser);
   rig.add(grip); rig.add(ray);
-  return { grip, ray, laser };
+  return { grip, ray, laser, box };
 }
 
 /** Guarded rumble (porch-old _haptic): silently a no-op on pads without
@@ -525,6 +533,8 @@ async function enterVR() {
     selfFirstPerson(true);
     xrPanelsEnter(rig);            // every registered frame as a physical surface
     session.addEventListener('end', () => {
+      tee('[xr] session end — teardown begins');   // 09-06 23:43: a leave with no after-exit lines at all → was this handler even reached?
+      try {
       presenting = false; bus.emit('xr:state'); eyeBase = null; setXRCurtain(false); curtainState = null;
       renderer.xr.cameraAutoUpdate = true; if (renderer.shadowMap) renderer.shadowMap.enabled = shadowsWere;
       xrIntent.active = false;
@@ -542,6 +552,13 @@ async function enterVR() {
       camera.updateProjectionMatrix();
       // Defensive: the canvas back to the window's size and ratio (three restores its own record; ours is the truth)
       try { renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(innerWidth, innerHeight); } catch (e) { report('xr exit resize', e); }
+      // THE BLACK DESKTOP (R 09-06 12:46 → 23:43; reproduced 09-07 00:05 with an emulated headset, smoke/xr-exit-probe.mjs):
+      // three 0.185's WebGL backend keeps `_currentContext` = the last XR frame's render context after the session
+      // ends (that frame's finishRender never ran). Every desktop render then ends with finishRender → _setFramebuffer
+      // (deadXRContext) → drawBuffers → `WeakMap.set(undefined)` THROWS — nothing reaches the canvas while the HUD (DOM)
+      // lives on. Drop the dead context; the next render starts clean. (Upstream: report against Renderer/XRManager.)
+      try { const be = renderer.backend; if (be && be._currentContext && be._currentContext !== null) { const rt = be._currentContext.renderTarget; tee(`[xr] exit: dropping stale backend context (${rt?.isXRRenderTarget ? 'XR' : rt?.constructor?.name ?? 'canvas'})`); be._currentContext = null; } renderer.setRenderTarget(null); } catch (e) { report('xr exit context', e); }
+      camera.quaternion.identity(); camera.scale.setScalar(1); camera.updateMatrixWorld(true);   // 00:05 trap: pos+quat were NaN after exit (follow-camera lerp from XR-era numbers)
       // AFTER-EXIT INSTRUMENT (R 09-06 12:46 + 13:20: 'black desktop after leaving VR, the world is inoperable'):
       // at +0.5 s and +3 s, tee what the desktop actually is — is the loop running, what did the last frame
       // draw, where is the camera, what size is the canvas, and a REAL pixel read of the canvas centre.
@@ -555,6 +572,7 @@ async function enterVR() {
         } catch (e) { tee(`[xr] after-exit ${tag} probe threw: ${e?.message ?? e}`); }
       };
       setTimeout(() => probe('+0.5s'), 500); setTimeout(() => probe('+3s'), 3000);
+      } catch (e) { tee(`[xr] session end teardown THREW: ${e?.message ?? e} @ ${e?.stack?.split('\n')[1]?.trim() ?? '?'}`); report('xr end', e); }
     });
     // Controller census: log each input source's claimed profiles + layout
     // once. Devices with no registry entry (Steam Frame, 2026) still speak
@@ -680,8 +698,8 @@ export function updateXR(dtSec = 1 / 72) {
     catch (e) { report('xr entry compile', e); finish('compile threw'); }
     setTimeout(() => finish('6 s fallback'), 6000); }
   if (entryClock) { const now = performance.now(); entryClock.frames.push(+(now - (entryClock.last || entryClock.t0)).toFixed(0)); entryClock.last = now;
-    if (entryClock.frames.length >= 8) { tee(`[xr] entry: setSession ${entryClock.setSessionMs} ms; first frame +${entryClock.frames[0]} ms; next gaps ${entryClock.frames.slice(1).join(',')} ms; programs so far ${entryClock.programs} (${entryClock.programMs.toFixed(0)} ms), pipelines ${entryClock.pipelines}`); } }
-  if (entryClock && performance.now() - entryClock.t0 > 12000) entryClock = null;   // the probe retires after 12 s
+    if (entryClock.frames.length === 8) { tee(`[xr] entry: setSession ${entryClock.setSessionMs} ms; first frame +${entryClock.frames[0]} ms; next gaps ${entryClock.frames.slice(1).join(',')} ms; programs so far ${entryClock.programs} (${entryClock.programMs.toFixed(0)} ms), pipelines ${entryClock.pipelines}`); } }
+  if (entryClock && (entryClock.frames.length > 120 || performance.now() - entryClock.t0 > 12000)) entryClock = null;   // the probe retires after 12 s (the line above tees ONCE, at frame 8 — it teed every frame for 12 s on 09-06 23:34)
   if (!xrPrefs.seated) { const e = renderer.xr.getCamera().matrixWorld.elements; const hy = e[13] - rig.position.y - recentre.y; if (Number.isFinite(hy)) sampleDeviceScale(hy); }   // Basis: seated suppresses height capture
   sampleFingerCurl();
   if (recentre.pending) { recentre.pending = false; recentreXR('entry'); }
@@ -756,6 +774,7 @@ export function updateXR(dtSec = 1 / 72) {
       if (!G || !hand) continue;
       const grip = !!G.buttons[1]?.pressed, trig = !!G.buttons[0]?.pressed;
       hand.laser.visible = grip || trig;
+      hand.box.visible = !getSelf()?.vrm;   // a body owns the hands → no test box
       if (!buttonsTrusted()) { triggerWas[side] = trig; continue; }
       if (grip && trig && !held) tryGrab(side);
       if (!grip && held?.hand === side) releaseGrab();

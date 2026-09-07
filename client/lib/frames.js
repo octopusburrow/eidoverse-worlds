@@ -198,8 +198,21 @@ document.body.classList.toggle('ui-locked', locked);
  *                   closable, hidden, onResize }
  *                 x/y accept negatives to anchor from the right/bottom edge.
  */
+// The newcomer's layout is a hand-arranged one, not the panels' individual guesses: R's desktop
+// (1904×844, 09-06 23:2x) read off the tee via ?sendlayout=1 and anchored to edges so it holds on
+// other screens. Only world + chat are open; everything else is closed but pinned to the dock.
+// A frame's own saved state (its owner's moves) still wins; resetLayout returns HERE.
+const DEFAULT_LAYOUT = {
+  world:    { x: -8,  y: 8,   w: 407, h: 363, hidden: false },
+  chat:     { x: 10,  y: -10, w: 545, h: 307, hidden: false },
+  settings: { x: -8,  y: 381, w: 407, h: 443, hidden: true },
+  profile:  { x: 48,  y: 46,  w: 505, h: 452, hidden: true },
+  debug:    { x: -414, y: 8,  w: 342, h: 453, hidden: true },
+  emotes:   { x: 'center', y: -10, hidden: true },   // one bar across the bottom; the bar sizes itself
+};
 export function makeFrame(id, opts = {}) {
   if (frames.has(id)) return frames.get(id);
+  opts = { ...opts, ...(DEFAULT_LAYOUT[id] ?? {}) };
   const {
     title = id, w = 300, h = 220, minW = 170, minH = 90,
     resizable = true, collapsible = true, closable = true,
@@ -391,6 +404,7 @@ export function makeFrame(id, opts = {}) {
     if (!hh) return;
     if (opts.y != null && opts.y < 0) state.y = Math.max(8, innerHeight + opts.y - hh);
     state.y = clamp(state.y, 8, Math.max(8, innerHeight - hh - 8));
+    if (opts.x === 'center' && !saved) state.x = Math.round((innerWidth - state.w) / 2);
     state.x = clamp(state.x, 8, Math.max(8, innerWidth - state.w - 8));
     paint();
   }
@@ -400,6 +414,7 @@ export function makeFrame(id, opts = {}) {
 
 function resolveAnchor(v, size, extent) {
   if (v == null) return 40;
+  if (v === 'center') return Math.max(8, Math.round((extent - size) / 2));
   return v < 0 ? Math.max(8, extent + v - size) : v;
 }
 

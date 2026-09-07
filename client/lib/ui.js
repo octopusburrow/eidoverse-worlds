@@ -292,7 +292,9 @@ export const escapeHtml = (v) => String(v).replace(/[&<>"]/g, (c) => (
 // ∃ menu. Layout lock also lives there — the rail carries only windows.
 const PINS_LS = 'ew-dock-pins';
 let pins = new Set();
-try { pins = new Set(JSON.parse(localStorage.getItem(PINS_LS) || '[]')) } catch {}
+// every panel starts pinned to the dock; unpinning is the personal choice, not pinning (R, 09-06 23:34)
+const DEFAULT_PINS = ['profile', 'world', 'chat', 'emotes', 'debug', 'settings'];
+try { pins = new Set(JSON.parse(localStorage.getItem(PINS_LS) ?? JSON.stringify(DEFAULT_PINS))) } catch { pins = new Set(DEFAULT_PINS); }
 const savePins = () => { try { localStorage.setItem(PINS_LS, JSON.stringify([...pins])) } catch {} };
 let dockEntries = [];
 
