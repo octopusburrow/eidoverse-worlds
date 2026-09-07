@@ -429,8 +429,9 @@ function snapPosition(id, state, height) {
   for (const o of frames.values()) {
     if (o.id === id || !o.visible) continue;
     const r = o.el.getBoundingClientRect();
-    edges.push({ x: r.left }, { x: r.right - state.w }, { x: r.right + 6 }, { x: r.left - state.w - 6 });
-    edges.push({ y: r.top }, { y: r.bottom - height }, { y: r.bottom + 6 }, { y: r.top - height - 6 });
+    // neighbours snap EDGE TO EDGE — no 6 px gutter between panels (R 09-06 23:42: "directly stick edges together")
+    edges.push({ x: r.left }, { x: r.right - state.w }, { x: r.right }, { x: r.left - state.w });
+    edges.push({ y: r.top }, { y: r.bottom - height }, { y: r.bottom }, { y: r.top - height });
   }
   for (const e of edges) {
     if (e.x != null && Math.abs(state.x - e.x) < SNAP) state.x = e.x;
