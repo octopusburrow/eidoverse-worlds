@@ -4,6 +4,7 @@
 // frame loop reads them without a round trip. Visible whether or not a
 // headset is sensed — the first row says which, so the rest make sense.
 import { makeSection, flashHint } from './ui.js';
+import { PREF_XR_BACKEND } from './core.js';
 import { checkRow, selectRow, btn } from './rows.js';
 import { xrPrefs, setXrPref, recentreXR, isPresenting } from './xr.js';
 import { xrGlyphAvailable } from './mictoggle.js';
@@ -21,6 +22,21 @@ export function initVRPanel() {
       ? 'A headset can present from this browser. The visor glyph in the HUD enters and leaves VR.'
       : 'No headset sensed. Chrome finds the OpenXR runtime only at browser start — if SteamVR came up after Chrome, use chrome://restart. These settings apply once one is found.';
     body.appendChild(note);
+
+    // VR renderer (moved from Video, R 09-07: it belongs here). auto = most advanced enabled path (WebGPU-XR
+    // if the browser exposes XRGPUBinding, else WebGL); Force WebGL = stand up WebGL from boot when a headset
+    // is present so entry/leave is instant, no page reload; WebGPU = force experimental WebGPU-XR.
+    const canGpuXR = 'XRGPUBinding' in globalThis;
+    const { row: vrr } = selectRow('VR renderer',
+      [['auto', 'auto (most advanced)'], ['webgl', 'Force WebGL (fast entry)'], ['webgpu', 'WebGPU (experimental)']],
+      localStorage.getItem(PREF_XR_BACKEND) || 'auto',
+      (v) => {
+        if (v === 'auto') localStorage.removeItem(PREF_XR_BACKEND); else localStorage.setItem(PREF_XR_BACKEND, v);
+        flashHint(`VR renderer: ${v} — reload to apply`);
+        if (!vrr.querySelector('.reload')) { const b = document.createElement('button'); b.className = 'reload'; b.textContent = 'reload'; b.style.cssText = 'margin-left:8px;padding:2px 7px'; b.onclick = () => location.reload(); vrr.appendChild(b); }
+      });
+    vrr.title = `Which renderer carries a VR session, and how you get in. auto: the most advanced option this browser has enabled${canGpuXR ? '' : ' (no WebGPU-to-VR binding here, so auto uses WebGL)'} — WebGPU-XR if available, else WebGL. Force WebGL: if a headset is present, stand up a WebGL session from the very start so entering and leaving VR is instant — no page reload, no cold recompile (costs nothing visible on desktop). WebGPU: force the experimental WebGPU-XR path — newest, but on some GPUs the VR boot hangs waiting for an XR-compatible adapter. On auto or WebGPU, entering VR from a WebGPU desktop page restarts the page onto WebGL first; Force WebGL skips that.`;
+    body.appendChild(vrr);
 
     // rows.js: selectRow(label, options, value, onChange) RETURNS { row, select }; checkRow(label, get, set) returns the element
     const { row: turn } = selectRow('turning', [['snap', 'snap (30°)'], ['smooth', 'smooth']], xrPrefs.turn,

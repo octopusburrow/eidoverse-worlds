@@ -12,7 +12,7 @@ import { RENDER_SCALES, getRenderScale, setRenderScale,
   PARTICLE_TIERS, getParticleTier, setParticleTier,
   AVATAR_DETAILS, getAvatarDetail, setAvatarDetail } from './governor.js';
 import { shadowsOn, setShadows } from './lightrig.js';
-import { backendName, PREF_MSAA, PREF_BACKEND, PREF_XR_BACKEND, XR_BOOT } from './core.js';
+import { backendName, PREF_MSAA, PREF_BACKEND, XR_BOOT } from './core.js';
 import { CONFIG, bus } from './base.js';
 import { registerXRPanel } from './xrpanels.js';
 import { WEBGL } from './capnotice.js';
@@ -95,25 +95,13 @@ export function initVideoPanel() {
     const forced = CONFIG.params.has('webgl');   // a URL param outranks the choice below, this session
     const pref = localStorage.getItem(PREF_BACKEND) || 'auto';
     const why = forced ? `Set by ?webgl=${CONFIG.params.get('webgl')} for this session, overriding the choice below.`
-      : backend === 'webgl' ? (pref === 'webgl' ? 'Chosen below.' : XR_BOOT ? 'VR runs on WebGL 2 here — see VR renderer below.' : WEBGL.body)
+      : backend === 'webgl' ? (pref === 'webgl' ? 'Chosen below.' : XR_BOOT ? 'VR runs on WebGL 2 here — see VR renderer in Settings › VR.' : WEBGL.body)
       : 'WebGPU is available and in use — the full version of the renderer.';
     body.appendChild(selectRow('renderer',
       `Running on ${backend === 'webgl' ? 'WebGL 2' : 'WebGPU'}. ${why} Applies on reload.`,
       [['auto', 'auto'], ['webgl', 'WebGL 2']],
       pref,
       (v, row) => { if (v === 'auto') localStorage.removeItem(PREF_BACKEND); else localStorage.setItem(PREF_BACKEND, v); needsReload(row); }));
-
-    const xrPref = localStorage.getItem(PREF_XR_BACKEND) || 'auto';
-    const canGpuXR = 'XRGPUBinding' in globalThis;
-    body.appendChild(selectRow('VR renderer',
-      `Which renderer carries a VR session, and how you get in. `
-      + `auto: use the most advanced option this browser has enabled — WebGPU-XR if the flags expose it${canGpuXR ? '' : ' (not on this browser)'}, otherwise WebGL 2. `
-      + `Force WebGL: if a headset is present, stand up a WebGL session from the very start so entering and leaving VR is instant — no page reload, no cold recompile (the fast path; costs nothing visible on desktop). `
-      + `WebGPU: force the experimental WebGPU-XR path — newest, but on some GPUs the VR boot hangs waiting for an XR-compatible adapter. `
-      + `On auto or WebGPU, entering VR from a WebGPU desktop page restarts the page onto WebGL first (the load screen says so); Force WebGL skips that.`,
-      [['auto', 'auto (most advanced)'], ['webgl', 'Force WebGL (fast entry)'], ['webgpu', 'WebGPU (experimental)']],
-      xrPref,
-      (v, row) => { if (v === 'auto') localStorage.removeItem(PREF_XR_BACKEND); else localStorage.setItem(PREF_XR_BACKEND, v); needsReload(row); }));
 
     body.appendChild(selectRow('render scale',
       'Resolution the world is drawn at, as a share of your screen. The single biggest lever on a pixel-bound machine. auto lets the engine step it down when the frame rate sags and back up when it recovers; a pinned value is yours and the engine leaves it alone.',
