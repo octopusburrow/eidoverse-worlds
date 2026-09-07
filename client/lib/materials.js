@@ -45,7 +45,7 @@ import { effectiveSky } from '../../shared/forecast.js';
 
 const {
   uniform, texture, float, vec2, vec3, vec4, mix, clamp, smoothstep,
-  fract, floor, dot, length, positionWorld, normalWorld, cameraPosition,
+  fract, floor, dot, length, positionWorld, positionView, normalWorld,
   materialColor, materialRoughness, materialMetalness,
 } = TSL;
 
@@ -188,7 +188,11 @@ function wrapMaterial(mat, receiver, pbr) {
   // 09-06 12:08–13:20, four entries; tigerbee — no MToon — was fine). Reproduced and bisected headless
   // (stereo probe: with the node the whole stereo pass drew nothing; without it both eyes lit). Puddles
   // on a body were nonsense anyway; darkening and tint (no camera terms) stay.
-  const pDist = pbr ? length(positionWorld.sub(cameraPosition)) : null;
+  // Eye distance as view-space length, NOT positionWorld − cameraPosition: `cameraPosition` is a camera accessor
+  // (Fn(({camera}) => …)) that has no camera under per-view (stereo) rendering, so the whole program failed to
+  // build and the object drew NOTHING in VR — the body on 09-06 (MToon, fixed by never building the term), and the
+  // construct floor on 09-07 02:40 (PBR; stereo readback 0 vs 31 mono). positionView is per sub-camera by design.
+  const pDist = pbr ? length(positionView) : null;
   // shape × gate, always: sharpening after the wetness multiply would zero
   // all puddles in any state below full wet
   const pShape = pbr
