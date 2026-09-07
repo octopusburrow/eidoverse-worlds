@@ -897,7 +897,7 @@ function warmXRPipelines() {
     try { renderer.setRenderTarget(rt); await renderer.compileAsync(scene, camera, scene); }
     catch (e) { report('xr pipeline warm', e); }
     finally { renderer.setRenderTarget(prev); rt.dispose(); }
-    tee(`[xr] pipelines pre-warmed for the eye buffers in ${(performance.now() - t0).toFixed(0)} ms`);
+    tee(`[xr] pipelines pre-warmed for the eye buffers in ${(performance.now() - t0).toFixed(0)} ms — warm RT: samples=${rt.samples} fmt=${rt.texture?.format} type=${rt.texture?.type} cs=${rt.texture?.colorSpace} depth=${rt.depthBuffer} stencil=${rt.stencilBuffer}`);   // 09-07: does this match three's XR target? (cache key = fmt+cs+samples+depthStencil). If not → 37 programs rebuild at entry
   }, { p: P_AMBIENT });
 }
 export async function initXR() {
