@@ -106,8 +106,12 @@ export function initVideoPanel() {
     const xrPref = localStorage.getItem(PREF_XR_BACKEND) || 'auto';
     const canGpuXR = 'XRGPUBinding' in globalThis;
     body.appendChild(selectRow('VR renderer',
-      `Which renderer carries a VR session. auto: WebGL 2, the path every headset browser presents from today${canGpuXR ? '' : ' (this browser has no WebGPU-to-VR binding, so WebGPU here would fall back to WebGL anyway)'}. WebGPU: try presenting from WebGPU — experimental in Chrome, and on some GPUs the VR boot hangs waiting for an XR-compatible adapter. Entering VR from a WebGPU desktop session restarts the page onto the chosen renderer; the load screen says so.`,
-      [['auto', 'auto (WebGL 2)'], ['webgpu', 'WebGPU (experimental)']],
+      `Which renderer carries a VR session, and how you get in. `
+      + `auto: use the most advanced option this browser has enabled — WebGPU-XR if the flags expose it${canGpuXR ? '' : ' (not on this browser)'}, otherwise WebGL 2. `
+      + `Force WebGL: if a headset is present, stand up a WebGL session from the very start so entering and leaving VR is instant — no page reload, no cold recompile (the fast path; costs nothing visible on desktop). `
+      + `WebGPU: force the experimental WebGPU-XR path — newest, but on some GPUs the VR boot hangs waiting for an XR-compatible adapter. `
+      + `On auto or WebGPU, entering VR from a WebGPU desktop page restarts the page onto WebGL first (the load screen says so); Force WebGL skips that.`,
+      [['auto', 'auto (most advanced)'], ['webgl', 'Force WebGL (fast entry)'], ['webgpu', 'WebGPU (experimental)']],
       xrPref,
       (v, row) => { if (v === 'auto') localStorage.removeItem(PREF_XR_BACKEND); else localStorage.setItem(PREF_XR_BACKEND, v); needsReload(row); }));
 
