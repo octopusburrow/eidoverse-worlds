@@ -947,7 +947,9 @@ body.altgrab .frame:active { cursor: grabbing; }
 .scrim.open { display: flex; }
 /* The front door sits ON the splash — arriving is one continuous moment, not a
    dialog that appears after a loading screen. Above #splash's z-index. */
-#door { z-index: 120; background: rgb(128 128 128 / .45); }
+/* the door's veil is near-black, not mid-grey: the sheet is translucent and a grey veil
+   under it read as dingy (R, 09-06 22:37) */
+#door { z-index: 120; background: rgb(8 12 14 / .62); }
 .sheet {
   width: min(560px, 100%); max-height: 100%; overflow-y: auto;
   padding: 20px 22px; box-sizing: border-box; position: relative;
@@ -956,12 +958,15 @@ body.altgrab .frame:active { cursor: grabbing; }
 .sheet h1 { font-size: var(--fs-sm); margin: 0 0 6px; color: var(--dim); font-weight: 600; text-transform: uppercase; letter-spacing: .085em; }
 /* the door wears the frames' own header: a title chip on the top edge (the
    fr-head/fr-title grammar), then the panel body — not a headline in a box */
-#door .sheet { padding: 0; overflow: visible; }
+#door .sheet { padding: 0; overflow: visible; background: rgb(var(--panel-rgb) / .94); box-shadow: 0 24px 60px rgb(0 0 0 / .45); }   /* the one surface on screen at arrival — solid, not glass over a veil */
 #door .sheet .fr-head { position: static; display: flex; align-items: center; padding: 6px 12px; border-bottom: 1px solid var(--edge); border-radius: var(--r) var(--r) 0 0; background: rgb(var(--panel-rgb) / .35); cursor: default; }
 #door .sheet .fr-title { flex: 1; font-size: var(--fs-sm); color: var(--dim); text-transform: none; letter-spacing: .02em; font-weight: 500; }
 #door .sheet .fr-title b { color: var(--fg); font-weight: 600; }
 #door .sheet .door-body { padding: 16px 18px 18px; max-height: calc(100vh - 120px); overflow-y: auto; }
-#door .sheet h2 { margin: 14px 0 8px; }
+#door .sheet h2 { margin: 16px 0 8px; }
+#door .sheet h2:first-child { margin-top: 0; }
+#door .sheet label { margin-bottom: 4px; }
+#door .sheet label input::placeholder { color: color-mix(in srgb, var(--dim) 70%, transparent); }
 #door .sheet label input { background: var(--well); border: 1px solid var(--edge); border-radius: 7px; color: var(--fg); }
 #door .sheet label input:focus { outline: none; border-color: color-mix(in srgb, var(--brand) 60%, var(--edge)); }
 #door .sheet p.sub a { color: var(--brand); }
@@ -975,7 +980,7 @@ body.altgrab .frame:active { cursor: grabbing; }
 .av-shot { position: relative; width: 100%; aspect-ratio: 3 / 4; border-radius: 4px; overflow: hidden; background: rgba(0,0,0,.35); }   /* World › avatar: the box sizes the card; the image only fills it */
 .av-shot .ph { display: grid; position: absolute; inset: 0; width: auto; aspect-ratio: auto; }
 .av-shot img { position: absolute; inset: 0; width: 100%; height: 100%; aspect-ratio: auto; object-fit: cover; }
-#door .sheet .go b { color: inherit; font-weight: 700; }
+#door .sheet .go b { font-weight: 700; }
 #door .card:hover { border-color: var(--edge); color: var(--fg); }
 #door .card.on { border-color: var(--brand); }
 .sheet h2 {
@@ -987,13 +992,15 @@ body.altgrab .frame:active { cursor: grabbing; }
 .sheet label .lbl { display: block; font-size: var(--fs-sm); color: var(--dim); margin-bottom: 4px; }
 .sheet label input { width: 100%; box-sizing: border-box; font-size: var(--fs); padding: 8px 10px; }
 .sheet .go {
-  width: 100%; text-align: center; font-size: var(--fs); padding: 10px;
-  /* the one action on the sheet wears the brand, dark ink on it — the same
-     chip grammar as .sp-btn; the amber lane is for ATTENTION, not for 'go'
-     (R, 09-05: the door still read as the old UI) */
-  background: var(--brand); border: none; color: var(--ink-on-brand); font-weight: 600; border-radius: 7px;
+  width: 100%; text-align: center; font-size: var(--fs); padding: 12px 16px; margin-top: 22px;
+  /* the one action on the sheet: outlined in the brand, a light brand wash, the text free to wrap —
+     an outline says 'important' without a slab of colour (R, 09-06 22:37; supersedes the 09-05 solid fill) */
+  background: color-mix(in srgb, var(--brand) 12%, transparent); border: 1.5px solid var(--brand);
+  color: var(--fg); font-weight: 600; border-radius: 8px; white-space: normal; line-height: 1.35;
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--brand) 30%, transparent); transition: background .15s, box-shadow .15s;
 }
-.sheet .go:hover { background: color-mix(in srgb, var(--brand) 82%, white); }
+.sheet .go:hover, .sheet .go:focus-visible { background: color-mix(in srgb, var(--brand) 22%, transparent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 18%, transparent); outline: none; }
+#door .sheet .go b { color: var(--brand); }
 .keys {
   display: grid; grid-template-columns: max-content 1fr;
   gap: 7px 14px; align-items: baseline;
