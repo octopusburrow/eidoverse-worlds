@@ -549,7 +549,30 @@ export function toggleEMenu(force) {
       m.style.bottom = below ? 'auto' : `${Math.round(innerHeight - h.bottom)}px`;
     }
     paintEMenu();
+    dodgeEMenu(m);
   }
+}
+// The menu opens onto the nearest EMPTY spot (R 09-07 11:07: it opened over the profile panel). Its remembered
+// or default position is kept when clear; otherwise candidate positions spiral outward from it on a 40 px grid
+// and the closest one that overlaps no visible frame wins. Never persisted — a dodge is not a choice.
+function dodgeEMenu(m) {
+  const r = m.getBoundingClientRect(); if (!r.width) return;
+  const frames = [...document.querySelectorAll('.frame')].filter((f) => f.style.display !== 'none')   // frames are position:fixed — offsetParent is null for them, so don't test it
+    .map((f) => f.getBoundingClientRect()).filter((b) => b.width && b.height);
+  const hits = (x, y) => frames.some((b) => x < b.right + 6 && x + r.width > b.left - 6 && y < b.bottom + 6 && y + r.height > b.top - 6);
+  if (!hits(r.left, r.top)) return;
+  const W = innerWidth, H = innerHeight, step = 40;
+  let best = null;
+  for (let dy = 0; dy <= H; dy += step) for (const sy of dy ? [-1, 1] : [1]) {
+    const y = Math.round(r.top + sy * dy); if (y < 34 || y + r.height > H - 4) continue;
+    for (let dx = 0; dx <= W; dx += step) for (const sx of dx ? [-1, 1] : [1]) {
+      const x = Math.round(r.left + sx * dx); if (x < 4 || x + r.width > W - 4) continue;
+      const d = dx * dx + dy * dy; if (best && d >= best.d) continue;
+      if (!hits(x, y)) best = { x, y, d };
+    }
+  }
+  if (!best) return;
+  m.style.left = `${best.x}px`; m.style.top = `${best.y}px`; m.style.right = m.style.bottom = 'auto';
 }
 function fsvgOrStroke(name, size) {
   if (hasFill(name)) return fsvg(name, size);
