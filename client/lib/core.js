@@ -73,11 +73,22 @@ const pref = (k) => { try { return localStorage.getItem(k); } catch { return nul
 // ?webgpu=1 AND the browser exposes XRGPUBinding; when Chrome ships WebGPU-XR
 // unflagged, flip the default here and nowhere else.
 export const XR_BOOT = CONFIG.params.has('xr');
-export const PREF_XR_BACKEND = 'ew-xr-backend';   // VR renderer (Video settings): unset/'auto' = most advanced enabled path; 'webgpu' = force WebGPU-XR; 'webgl' = force WebGL (fast entry, no reload)
-// 'auto' now tries WebGPU-XR whenever the browser exposes the binding — the "most advanced enabled option"
-// (R 09-07). Explicit 'webgl' opts out of WebGPU-XR for fast in-place entry; explicit 'webgpu' forces it.
-const _xrPref = CONFIG.params.get('webgpu') === '1' ? 'webgpu' : CONFIG.params.get('webgl') === '1' ? 'webgl' : (pref(PREF_XR_BACKEND) || 'auto');
-const xrOnWebGPU = XR_BOOT && _xrPref !== 'webgl' && 'XRGPUBinding' in globalThis;
+// ONE renderer control (R 09-07). PREF_BACKEND: unset/'auto' | 'webgpu' | 'webgl'.
+//   auto  — pick the backend that needs NO VR-entry reload. Headset seen here + WebGPU-XR flags (XRGPUBinding)
+//           → WebGPU (VR enters on WebGPU-XR). Headset seen + no flags → WebGL (VR enters in place). No headset
+//           → WebGPU if the machine can, else WebGL (best desktop). three falls back to WebGL on its own if WebGPU init fails.
+//   webgpu — force WebGPU (VR uses WebGPU-XR if flags, else reloads to WebGL to enter — the panel warns).
+//   webgl  — force WebGL always (guaranteed WebGL; A/B, or a machine where WebGPU misbehaves).
+export const WEBGPU_XR = 'XRGPUBinding' in globalThis;               // WebGPU can present VR here (Chrome flags)
+export const WEBGPU_POSSIBLE = typeof navigator !== 'undefined' && !!navigator.gpu;   // WebGPU API exists at all
+const _backendPref = CONFIG.params.get('webgl') === '1' ? 'webgl' : CONFIG.params.get('webgpu') === '1' ? 'webgpu' : (pref(PREF_BACKEND) || 'auto');
+const _headsetSeen = pref(PREF_HEADSET_SEEN) === '1';
+// forceWebGL is true when: explicit webgl; OR auto with a headset seen but no WebGPU-XR flags (so VR enters
+// without a reload); OR an XR boot that isn't going to use WebGPU-XR.
+const xrOnWebGPU = _backendPref !== 'webgl' && WEBGPU_XR;            // will a VR session ride WebGPU-XR?
+const _forceWebGL = _backendPref === 'webgl'
+  || (_backendPref === 'auto' && _headsetSeen && !WEBGPU_XR)
+  || (XR_BOOT && !xrOnWebGPU);
 // TOLERANT RENDER LIST (XR strobe, 08-05): something leaves holes in the
 // per-eye render list mid-session ("Cannot destructure 'object' of
 // renderList[i]"), and the stock loop throws — one hole kills the whole
@@ -113,12 +124,7 @@ if (XR_BOOT) {
 
 export const renderer = new THREE.WebGPURenderer({ canvas,
   antialias: (CONFIG.params.get('msaa') ?? pref(PREF_MSAA)) !== '0',
-  forceWebGL: CONFIG.params.get('webgl') === '1'
-    || (XR_BOOT && !xrOnWebGPU)    || (CONFIG.params.get('webgl') == null && pref(PREF_BACKEND) === 'webgl')
-    // VR renderer = "Force WebGL": a headset was seen here before, so boot WebGL up front and the
-    // visor ENTERS in place (no reload). Only when the user opted in — 'auto' keeps the most advanced
-    // path (WebGPU-XR if the flags expose XRGPUBinding, else WebGL). R 09-07: don't stomp WebGPU-XR.
-    || (CONFIG.params.get('webgl') == null && !XR_BOOT && pref(PREF_XR_BACKEND) === 'webgl' && pref(PREF_HEADSET_SEEN) === '1') });
+  forceWebGL: _forceWebGL });
 /** 'webgpu' | 'webgl' — known once renderer.init() resolves. */
 export const backendName = () => (renderer.backend?.isWebGLBackend ? 'webgl' : 'webgpu');
 // Still in 0.185.1; FIXED on three dev (db1daf163, 2026-07-24, #34088 —
