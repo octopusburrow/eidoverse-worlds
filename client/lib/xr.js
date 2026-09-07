@@ -32,7 +32,7 @@ import { dockPins } from './ui.js';
 import { pushUndo } from './build.js';
 import { perf } from './perf.js';
 import { renderCensusTake, renderCensusTick, renderCensusPeek, setXRCurtain } from './render.js';
-import { warm, P_MODEL, P_AMBIENT } from './warmqueue.js';
+import { warm, P_AMBIENT } from './warmqueue.js';
 
 // ---- self-body in first person ---------------------------------------------
 // R's first headset session (23:22): own body invisible (she stood INSIDE it,
@@ -887,13 +887,10 @@ let recAt = 0;
 // On an XR boot, once my body is in, compile the whole scene ONCE into a render target shaped like the
 // eye buffers (RGBA8, depth, 4× MSAA) while the desktop is still idle-waiting on the visor. If the
 // pipeline cache keys match, entry loses the 5 s frame; the entry clock is the verdict either way.
-let xrWarming = false;
+let xrWarmed = false;
 function warmXRPipelines() {
-  // Re-armable, not one-shot: a single early warm races scene loading (bodies/props stream in AFTER it,
-  // and each later arrival is an entry-time cache miss). Gate only on a warm being IN FLIGHT; lanes-idle
-  // re-triggers this each time the scene settles, so the settled scene — and later joiners — are covered.
-  if (xrWarming || presenting || !getSelf()?.vrm) return;
-  xrWarming = true;
+  if (xrWarmed || !XR_BOOT || presenting || !getSelf()?.vrm) return;
+  xrWarmed = true;
   warm('xr pipelines', async () => {
     // R's headset 09-07 19:00 settled it: three builds its WebGL-XR target at samples=0 (attributes.antialias
     // came back false for the XR context) with colorSpace=renderer.outputColorSpace. Our warm RT was samples=4,
@@ -904,9 +901,9 @@ function warmXRPipelines() {
     const t0 = performance.now();
     try { renderer.setRenderTarget(rt); await renderer.compileAsync(scene, renderer.xr.getCamera?.() ?? camera, scene); }
     catch (e) { report('xr pipeline warm', e); }
-    finally { renderer.setRenderTarget(prev); renderer._samples = prevSamples; rt.dispose(); xrWarming = false; }
+    finally { renderer.setRenderTarget(prev); renderer._samples = prevSamples; rt.dispose(); }
     tee(`[xr] pipelines pre-warmed for the eye buffers in ${(performance.now() - t0).toFixed(0)} ms — warm RT: samples=${rt.samples} fmt=${rt.texture?.format} type=${rt.texture?.type} cs=${rt.texture?.colorSpace} depth=${rt.depthBuffer} stencil=${rt.stencilBuffer} (matched to three XR target; entry should now show programs≈0)`);
-  }, { p: P_MODEL });
+  }, { p: P_AMBIENT });
 }
 export async function initXR() {
   if (!navigator.xr) return;
@@ -933,16 +930,7 @@ export async function initXR() {
     for (const m of meshes) { m.frustumCulled = false; try { await renderer.compileAsync(m, camera, scene); } catch { /* fine */ } }
   }, { p: P_AMBIENT });
 
-  // Headset confirmed → warm the XR-target pipelines DURING LOAD, behind the splash, so entering VR is a
-  // cache hit (bench: a primed entry-shape compile drops 11.4s→5ms, 0 new programs). No ?xr=1 needed — this
-  // is why no social-VR platform pays its compile at entry (R 09-07): move the storm off the entry path.
-  // Priority P_MODEL, not P_AMBIENT: it must finish during load, ahead of pure ambience, not last in line.
-  // Two triggers, because the body arrives seconds after boot and the scene keeps loading after that:
-  //   • poll until the body exists, so a first warm runs as soon as there's anything to warm; and
-  //   • re-warm every time load work settles (lanes-idle) — the settled scene, plus any later joiner's
-  //     body/props, gets covered. warmXRPipelines self-gates on xrWarming, so overlapping triggers are safe.
-  { let n = 0; const iv = setInterval(() => { warmXRPipelines(); if (getSelf()?.vrm || ++n > 60) clearInterval(iv); }, 500); }
-  bus.on('lanes-idle', () => warmXRPipelines());
+  if (XR_BOOT) { const iv = setInterval(() => { warmXRPipelines(); if (xrWarmed) clearInterval(iv); }, 500); }   // body arrives seconds after boot; poll until it does
   registerXrGlyph({
     // ?xr=1 alone is enough: core.js picks the backend that can present (WebGL until Chrome's
     // WebGPU-XR ships unflagged; ?webgpu=1 opts in early).
