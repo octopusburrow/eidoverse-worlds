@@ -17,6 +17,8 @@ import { previewSky, skyArgs, skyImpl, WEATHERS, CLOUDS, SKY_WORLDS,
   CLOUD_QUALITY, getCloudQuality, setCloudQuality } from './sky.js';
 import { GRASS_QUALITY, getGrassQuality, setGrassQuality,
   getGrassDensity, getGrassShed, getGrassApplied } from './terrain.js';
+import { MODEL_QUALITY } from './lod_policy.js';
+import { modelQuality, dialModelQuality } from './realize/models.js';
 
 const SLIDERS = [
   ['hours', 'time', 0, 24, 0.1, 12],
@@ -174,6 +176,22 @@ export function paintSky(body) {
 
   // render scale moved to Settings › Video (videopanel.js) in the 09-04 UI pass —
   // a local performance dial, not a sky property
+
+  // The geometry tier is YOURS too (#156): which version of each placed
+  // object THIS machine fetches. 'auto' reduces far objects, sooner under
+  // GPU pressure; 'full' never reduces; 'eco' reduces sooner always (the
+  // pressured band) — no dial reduces what you stand beside. Bodies are
+  // never reduced (server contract). Persisted; never a verb.
+  const { row: mqRow, select: mq } = selectRow('models⚙',
+    MODEL_QUALITY.map((v) => [v, v === 'auto' ? 'auto' : v === 'full' ? 'full detail' : 'eco (reduce sooner)']),
+    modelQuality.quality,
+    // the whole behaviour lives in models.js (dialModelQuality: set, persist,
+    // and say whether a reduced tier can be asked from this browser at all)
+    // so the product-door harness gates it; this row only binds and shows
+    (v) => flashHint(dialModelQuality(v)));
+  mq.setAttribute('aria-label', 'model detail tier — local only, never shared with the world');
+  mqRow.title = 'local performance setting — not shared with the world';
+  body.appendChild(mqRow);
 
   // Sliders that only the BASIC sky answers. On the real sky the engine owns
   // sun direction and supplies its own bounce fill (sky.js documents the

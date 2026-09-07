@@ -42,7 +42,7 @@ import { plugin } from "bun";
 import { fileURLToPath } from "node:url";
 import { isFiniteVec3 } from "./shape.ts";
 // pure shared geometry — no client import cone, safe to load eagerly
-import { CONTACT_POINTS } from "../shared/contact.js";
+import { CONTACT_POINTS, contactSeed } from "../shared/contact.js";
 // The aerodynamics of a limp fall -- forces, not a scripted path.
 import { leafForceFor, DEFAULT_LEAF_FORCE } from "../shared/leafforce.js";
 import { bodyFrame, fromBody } from "../shared/joints.js";
@@ -614,8 +614,10 @@ export class ReachBody {
     const scale = hips && head
       ? Math.max(0.2, Math.hypot(head[0] - hips[0], head[1] - hips[1], head[2] - hips[2]))
       : 0.6;
-    const at = P[spec.bone];
-    const r = scale * 0.18 + standoff;
+    const seed = contactSeed(P, spec, F, scale);
+    if (!seed) return null;
+    const at = seed.at;
+    const r = Math.min(scale * 0.18, scale * (spec.radius ?? 0.45) * 0.5) + standoff;
     return {
       pos: [at[0] + dir[0] * r, at[1] + dir[1] * r, at[2] + dir[2] * r],
       normal: dir,

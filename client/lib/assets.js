@@ -8,7 +8,8 @@
 //   vrmPool    whole parsed VRM instances at rest (§19b — no clone exists
 //              for a bound rig, so released bodies are reworn intact)
 
-import { keyFromVersion, negotiate } from '../../shared/ktx2.js';
+import { keyFromVersion, negotiate, lodFromVersion } from '../../shared/ktx2.js';
+import { tierOf, askFor } from './lod_policy.js';
 import { bodyGate, bodyGateOpen } from './bodygate.js';
 // ?bodyfirst=0 — the escape hatch (same convention as ?batching=0): world parses
 // no longer wait for the body; for A/B measurement and for a body-less test
@@ -170,8 +171,44 @@ export const ktx2Capable = () => !!ktx2.workerConfig;
 // wrong, on any deploy, in any order. One fetch per page, awaited by every
 // negotiating load (they are all async already; the prefetcher awaits it
 // once before building its queue).
-export const ktx2KeyReady = fetch('/version', { cache: 'no-store' })
-  .then((r) => (r.ok ? r.json() : null)).then(keyFromVersion).catch(() => null);
+const versionReady = fetch('/version', { cache: 'no-store' })
+  .then((r) => (r.ok ? r.json() : null)).catch(() => null);
+export const ktx2KeyReady = versionReady.then(keyFromVersion);
+/** The geometry-LOD recipe the running sequencer bakes (#156, lodFromVersion)
+ *  — or null: no tier is ever asked for that the running process did not
+ *  declare, the same split-brain gate as the key. */
+export const lodRecipeReady = versionReady.then(lodFromVersion);
+// the resolved answers, for SYNCHRONOUS policy reads (the residency sweep
+// runs at 2Hz and cannot await): null until /version answers, null forever
+// when it published nothing
+let ktx2Key = null, lodRecipe = null;
+ktx2KeyReady.then((k) => { ktx2Key = k; }).catch(() => {});
+lodRecipeReady.then((r) => { lodRecipe = r; }).catch(() => {});
+/** Settles once /version has answered (or failed) — a tier choice made
+ *  after this knows whether a lod ask can cross the wire. Never rejects. */
+export const negotiationReady = Promise.all([ktx2KeyReady, lodRecipeReady]).then(() => {}, () => {});
+/** Can a lod ask for this lib CROSS THE WIRE from this browser, right now
+ *  (review of #170, point 2)? The reduced variant's textures are KTX2, so
+ *  the ask rides the ktx2 negotiation: the transcoder must have detected
+ *  support, the running sequencer must have published a key AND a recipe,
+ *  and only bare .glb paths negotiate. The policy treats "no" as no recipe
+ *  — nothing is asked that could not be, and nothing is reported as asked. */
+export const lodNegotiable = (libPath) => resolveLoadRequest(libPath, 'lod').tier === 'lod';
+/** THE decision seam of a tiered load (review of #170, round three): from a
+ *  tier wish to everything loadGLB derives from it — the URL it fetches, the
+ *  tier that URL asks (askFor over this module's LIVE state: the running key
+ *  and recipe, this GPU's transcoder) and the cache identity it keys. One
+ *  function, exported, so the product-door gate executes the real seam and
+ *  never a restatement of it: tools/lod-loader-probe.ts runs THIS module
+ *  against an owned sequencer, and a mutation here fails it. */
+export function resolveLoadRequest(libPath, tier = 'full') {
+  const ask = askFor({ libPath, key: ktx2Key, capable: !!ktx2.workerConfig, recipe: lodRecipe, tier });
+  return { url: ask.url, tier: ask.tier, glbKey: ask.tier === 'lod' ? `${libPath}#lod` : libPath };
+}
+/** GPU memory against the proto budget — the policy's "device pressure". */
+export const gpuPressure = () => (renderer.info?.memory?.total ?? 0) / GPU_BUDGET;
+/** Tiered loading, one seam (#156 client contract): `loadGLB(lib, { tier })`
+ *  — 'full' or 'lod' — is the only place a tier turns into bytes. */
 /** The path a negotiating load fetches: the running server's key appended
  *  when this GPU decodes KTX2 and `eligible` (the asset class negotiates),
  *  the bare path otherwise. */
@@ -488,24 +525,31 @@ export const poolStats = () => ({
 export const libLabels = new Map();
 
 const glbCache = new Map();
-export async function loadGLB(libPath) {
-  const short = (libLabels.get(libPath) ?? libPath.split('/').pop()).slice(0, 28);
-  loadsInFlight.set(libPath, (loadsInFlight.get(libPath) ?? 0) + 1);
+export async function loadGLB(libPath, { tier = 'full' } = {}) {
+  // the WIRE decides which tier this load IS (review of #170, point 2): a
+  // lod wish that cannot negotiate — no transcoder, no key, no recipe, not
+  // a .glb — is a full load, keyed, fetched, and reported as one
+  await negotiationReady;
+  const req = resolveLoadRequest(libPath, tier);
+  tier = req.tier;
+  const glbKey = req.glbKey;
+  const short = (libLabels.get(libPath) ?? libPath.split('/').pop()).slice(0, 28) + (tier === 'lod' ? '·lod' : '');
+  loadsInFlight.set(glbKey, (loadsInFlight.get(glbKey) ?? 0) + 1);
   try {
-  if (!glbCache.has(libPath)) {
+  if (!glbCache.has(glbKey)) {
     const key = `glb:${short}`;
     loadTrack(key, short);
     const p = (async () => {
       const work = beginWork(`glb ${short}`);
       try {
         work.phase('download');
-        // §20: ask for the KTX2 variant only when the transcoder detected
-        // support (detectSupport stamps workerConfig) and only for bare .glb
-        // paths — the server answers with the variant when one exists, the
-        // original otherwise. The full URL keys byteCache, so variant and
-        // original are distinct entries, which is correct.
-        const url = await negotiated(libPath, libPath.endsWith('.glb'));
-        const buf = await fetchBytes(`/library/${url}`);
+        // §20 + #156: the URL was decided above (resolveLoadRequest) — the running
+        // server's key when this GPU decodes KTX2 and the path negotiates,
+        // the lod recipe on top only when the ask is real. The server answers
+        // the variant when one exists, the original chain otherwise
+        // (provisional): a lod request is never a worse model. The full URL
+        // keys byteCache, so variant and original are distinct entries.
+        const buf = await fetchBytes(`/library/${req.url}`);
         // body first: bytes are in hand, but the PARSE waits for your own
         // body (bodygate.js) — capped at 12 s so nothing can hold the world
         if (!bodyGateOpen() && BODY_FIRST) {
@@ -520,6 +564,11 @@ export async function loadGLB(libPath) {
           // shares its wrapped materials and copies its mesh markers
           prepareObject(gltf.scene, { kind: 'model' });
           markDrawBatchSource(gltf.scene);
+          // identity the realizer reads: which cache entry this proto is (for
+          // retain/release/eviction) and which tier the SERVER actually sent
+          gltf.scene.userData.glbKey = glbKey;
+          gltf.scene.userData.tierServed = tierOf(gltf.parser?.json, lodRecipe);   // the reducer's stamp, this recipe
+          gltf.scene.userData.tierAsked = tier;   // what crossed the wire — the sweep compares against THIS
           await work.yield();
           work.phase('textures');
           await primeTextures(gltf.scene, work);
@@ -530,10 +579,10 @@ export async function loadGLB(libPath) {
     // a REJECTED promise must not be the lib's answer forever — the residency
     // sweep re-promotes near placeholders, and a cached rejection turned one
     // bad fetch into an instant-fail loop (review S3; models backs off too)
-    p.catch(() => { if (glbCache.get(libPath) === p) glbCache.delete(libPath); });
-    glbCache.set(libPath, p);
+    p.catch(() => { if (glbCache.get(glbKey) === p) glbCache.delete(glbKey); });
+    glbCache.set(glbKey, p);
   }
-  const proto = await glbCache.get(libPath);
+  const proto = await glbCache.get(glbKey);
   const obj = skeletonClone(proto); // safe for rigged + static alike
   // Precompile pipelines OFF the render path — otherwise the first frame that
   // sees a new material stalls the main thread (the ~1.5s spawn freeze).
@@ -544,7 +593,7 @@ export async function loadGLB(libPath) {
   // even the laned ones fight each other. Only the FIRST use of a model pays
   // real codegen + pipeline creation; repeats are cache hits — prod trace:
   // "queued 19311ms · compile 5ms".
-  if (compiledLibs.has(libPath)) {
+  if (compiledLibs.has(glbKey)) {
     await warm(`compile ${short}`, () => renderer.compileAsync(obj, camera, scene).catch(() => {}));
     return obj;
   }
@@ -553,12 +602,12 @@ export async function loadGLB(libPath) {
   // for one model). Clones share material references, so one compile warms
   // them all: the first caller compiles, everyone else awaits it and then
   // cache-hits.
-  if (!libCompiles.has(libPath)) {
+  if (!libCompiles.has(glbKey)) {
     // In the loading tray too: on Safari a single material graph compiles for
     // SECONDS — a spinner named after the model turns that from mystery jank
     // into visible progress. (The conductor's own beginWork carries the
     // queued/warm phases the old record here tracked.)
-    loadTrack(`compile:${libPath}`, `⚙ ${short}`);
+    loadTrack(`compile:${glbKey}`, `⚙ ${short}`);
     // Per-MESH inside the item, a real frame between: one compileAsync over a
     // multi-material object batches every pipeline into one GPU-process gulp
     // (the CRT monitor's 1123ms warm still stalled a frame 617ms even
@@ -576,9 +625,9 @@ export async function loadGLB(libPath) {
         await nextFrame();
       }
     })
-      .then(() => compiledLibs.add(libPath))
-      .finally(() => { libCompiles.delete(libPath); loadDone(`compile:${libPath}`); });
-    libCompiles.set(libPath, p);
+      .then(() => compiledLibs.add(glbKey))
+      .finally(() => { libCompiles.delete(glbKey); loadDone(`compile:${glbKey}`); });
+    libCompiles.set(glbKey, p);
     await p;
     return obj;
   }
@@ -586,12 +635,12 @@ export async function loadGLB(libPath) {
   // conductor (a conductor item must never await another conductor item —
   // that is item-awaits-item, a deadlock at concurrency 1), then queues its
   // own now-cheap warm.
-  await libCompiles.get(libPath).catch(() => {});
+  await libCompiles.get(glbKey).catch(() => {});
   await warm(`compile ${short}`, () => renderer.compileAsync(obj, camera, scene).catch(() => {}));
   return obj;
   } finally {
-    const n = (loadsInFlight.get(libPath) ?? 1) - 1;
-    if (n <= 0) loadsInFlight.delete(libPath); else loadsInFlight.set(libPath, n);
+    const n = (loadsInFlight.get(glbKey) ?? 1) - 1;
+    if (n <= 0) loadsInFlight.delete(glbKey); else loadsInFlight.set(glbKey, n);
   }
 }
 // Libs whose pipelines have been compiled once this session — repeat spawns
