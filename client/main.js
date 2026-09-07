@@ -9,7 +9,7 @@
 
 import { THREE, scene, camera, renderer } from './lib/core.js';
 import { releaseBodyGate } from './lib/bodygate.js';
-import { CONFIG, bus, report } from './lib/base.js';
+import { CONFIG, bus, report, tee } from './lib/base.js';
 import { contributeThumbnail, makeAvatar, EMOTE_ORDER } from './lib/avatar.js';
 import { updateSky, updateAutoSystems, skyArgs, setCloudQuality } from './lib/sky.js';
 import { setSkyArgsSource, entities, buildsPending, avatarMounts, roleOf, worldHasOwner } from './lib/world.js';
@@ -232,6 +232,21 @@ if (isViewer) {
       },
     }));
   } else start();
+}
+
+// ?sendlayout=1 — post this browser's saved panel layout (every ew-frame-* key + the viewport it
+// was arranged in) to the host tee, so a hand-arranged layout can be read off the log and baked in
+// as the default (R 09-06 23:16: 'copy my menu layout so we can propagate it as the default').
+if (CONFIG.params.has('sendlayout')) {
+  bus.on('booted', () => setTimeout(() => {
+    const frames = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k?.startsWith('ew-frame-')) { try { frames[k.slice(9)] = JSON.parse(localStorage.getItem(k)); } catch { /* skip a bad row */ } }
+    }
+    tee(`[layout] ${JSON.stringify({ vw: innerWidth, vh: innerHeight, dpr: devicePixelRatio, locked: localStorage.getItem('ew-ui-locked') === '1', frames })}`);
+    toast?.(`layout sent — ${Object.keys(frames).length} panels`, 'info', 4000);
+  }, 1500));
 }
 
 // A rejected door key re-opens the door with a key field instead of retrying
