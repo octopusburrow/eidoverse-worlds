@@ -44,7 +44,7 @@ import { state } from './state.js';
 import { effectiveSky } from '../../shared/forecast.js';
 
 const {
-  uniform, texture, float, vec2, vec3, vec4, mix, clamp, smoothstep,
+  Fn, uniform, texture, float, vec2, vec3, vec4, mix, clamp, smoothstep,
   fract, floor, dot, length, positionWorld, positionView, normalWorld,
   materialColor, materialRoughness, materialMetalness,
 } = TSL;
@@ -138,19 +138,24 @@ const CLOUD_H = 300;   // nominal cloud-base height the sun projection assumes
 // Structure kept 1:1 with upstream's wrapMaterial (hash2/vnoise2 included)
 // so the LOOK is the look worlds already have — only the uniforms are ours.
 
-const hash2 = (p) => {
+// hash2 / vnoise2 were plain JS closures — in TSL a layout-less function is INLINED and re-parsed at
+// every call site, every compile. vnoise2 calls hash2 ×4 and the puddle graph calls vnoise2 ~5×, so
+// each wrapped material re-emitted the hash2 arithmetic ~20× — seconds of NodeBuilder source-gen PER
+// material, the entry/exit-VR stall (R 09-07; three forum #86524, PavelBoytchev 0.2s→10s for 5 mats).
+// Declaring an Fn() LAYOUT makes TSL emit each as ONE called function, compiled once. Types: vec2→float.
+const hash2 = Fn(([p]) => {
   const a = fract(vec3(p.x, p.y, p.x).mul(0.1031));
   const d = dot(a, vec3(a.y, a.z, a.x).add(33.33));
   const b = a.add(d);
   return fract(b.x.add(b.y).mul(b.z));
-};
-const vnoise2 = (p) => {
+}, { name: 'ewHash2', type: 'float', inputs: [{ name: 'p', type: 'vec2' }] });
+const vnoise2 = Fn(([p]) => {
   const i = floor(p), f = fract(p);
   const sm = f.mul(f).mul(f).mul(f.mul(f.mul(6).sub(15)).add(10)); // quintic: C2, no lattice creases
   const a = hash2(i), b = hash2(i.add(vec2(1, 0)));
   const c = hash2(i.add(vec2(0, 1))), d = hash2(i.add(vec2(1, 1)));
   return mix(mix(a, b, sm.x), mix(c, d, sm.x), sm.y);
-};
+}, { name: 'ewVnoise2', type: 'float', inputs: [{ name: 'p', type: 'vec2' }] });
 
 /** The cloud-shade factor for one material: 1.0 where the sky is open,
  *  dipping toward (1 - strength) under a cloud. Fresh subtree per material
