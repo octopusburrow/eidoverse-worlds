@@ -911,6 +911,7 @@ export async function initXR() {
   try { supported = await navigator.xr.isSessionSupported('immersive-vr'); }
   catch (e) { report('xr support probe', e); }
   if (!supported) return;
+  try { localStorage.setItem('ew-headset-seen', '1'); } catch {}   // next boot picks WebGL up front → visor enters, no reload (R 09-07)
 
   // the third glyph of the mic/ear trio — the same ink, the same slot
   // layout, the same pin row in the ∃ menu (R, 09-04). Exists only here,
@@ -936,6 +937,8 @@ export async function initXR() {
     onclick: () => {
       if (presenting) { leaveVR('visor'); return; }
       if (XR_BOOT) { enterVR(); return; }
+      // Already on WebGL? Nothing to swap — enter in place, no page reload (R 09-07: kill the reload tax).
+      if (!renderer.backend?.isWebGPUBackend) { tee('[xr] visor: enter in place (WebGL, no reload)'); enterVR(); return; }
       const swap = !!renderer.backend?.isWebGPUBackend;
       const why = swap ? 'vr-webgl' : 'vr';
       toast(swap ? 'restarting on WebGL 2 for VR — this browser can\'t present VR from WebGPU yet' : 'restarting in VR mode', 'info', 4000);
