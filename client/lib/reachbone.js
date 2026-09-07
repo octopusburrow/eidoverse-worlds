@@ -14,7 +14,7 @@ import { solveTwoBone, solveTwoBoneClear, penetration, chainLocalQuats, orientPa
          qConj, qMulq, qRot } from '../../shared/reach.js';
 import { bodyFrame, limitsFor, coneAxisBody, toBody, fromBody, REACH_CHAINS,
          torsoRadius, boneRadius, GUARD_SEGMENTS } from '../../shared/joints.js';
-import { torsoHalfDepth } from './landmarks.js';
+import { torsoHalfDepth, derivePalmAnchor } from './landmarks.js';
 
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
@@ -173,10 +173,15 @@ export function measureChain(avatar, key) {
     guards.push(g);
   }
 
+  const side = spec.root.startsWith('left') ? 'left' : 'right';
+  const palmAnchor = spec.end.endsWith('Hand') ? derivePalmAnchor(avatar, side) : null;
+  const palmScale = nodes.end.getWorldScale(new THREE.Vector3())
+    .divide(avatar.root.getWorldScale(new THREE.Vector3()));
   return {
+    palmOffset: palmAnchor?.offset.clone().multiply(palmScale).toArray() ?? null,
     key, spec, nodes, L1: up.l, L2: lo.l, dRestU: up.u, dRestL: lo.u, lim,
     fwd: F.f, up: F.u, right: F.r, rUpper, rLower, guards, restQ, halfDepth,
-    palmRest: palmRestNormal(P, F, spec.root.startsWith('left') ? 'left' : 'right'),
+    palmRest: palmAnchor ? qRot(restQ.qH, palmAnchor.normal.toArray()) : palmRestNormal(P, F, side),
     // toward the body's midline from THIS shoulder: the rest direction points
     // laterally outward, so the midline is the other way along the body's
     // lateral axis
@@ -201,6 +206,28 @@ export function measureChain(avatar, key) {
  * @param {number[]|null} poleHint previous elbow offset, for continuity
  */
 export function solveChain(chain, avatar, targetWorld, poleHint = null, opts = {}) {
+  if (!opts.palm || !chain.palmOffset) return solveWristChain(chain, avatar, targetWorld, poleHint, opts);
+  const target = avatar.root.worldToLocal(new THREE.Vector3(...targetWorld));
+  let wrist = target.clone(), best = null;
+  // Wrist orientation changes the palm offset. Re-solve a bounded number of
+  // times from the same target each frame, without history-dependent drift.
+  for (let i = 0; i < 5; i++) {
+    const world = avatar.root.localToWorld(wrist.clone()).toArray();
+    const out = solveWristChain(chain, avatar, world, poleHint, opts);
+    if (!out.ok) return best ?? out;
+    const offset = new THREE.Vector3(...qRot(out.handFrame, chain.palmOffset));
+    const contact = new THREE.Vector3(...out.res.hand).add(offset);
+    const gap = avatar.root.localToWorld(contact.clone()).distanceTo(new THREE.Vector3(...targetWorld));
+    out.res = { ...out.res, gap };
+    out.contact = contact.toArray();
+    if (!best || gap < best.res.gap) best = out;
+    if (gap < 0.001) break;
+    wrist.lerp(target.clone().sub(offset), 0.6);
+  }
+  return best;
+}
+
+function solveWristChain(chain, avatar, targetWorld, poleHint = null, opts = {}) {
   const palmWant = opts.palm ?? null;
   const root = avatar.root;
   const qRootInv = qConj(root.getWorldQuaternion(_q).toArray());
@@ -254,7 +281,7 @@ export function solveChain(chain, avatar, targetWorld, poleHint = null, opts = {
   //
   // Only when the caller says which way; a reach with no surface to meet has
   // no business inventing a wrist angle, and would only fight the clip.
-  let lower = q.lower, hand = null, palmResidual = null;
+  let lower = q.lower, hand = null, handFrame = null, palmResidual = null;
   if (palmWant) {
     const op = orientPalm({
       lowerFrame: q.lowerFrame, dLower: res.lower, palmRest: chain.palmRest,
@@ -271,10 +298,11 @@ export function solveChain(chain, avatar, targetWorld, poleHint = null, opts = {
     });
     lower = qMulq(qConj(q.upperFrame), op.lowerFrame);
     hand = op.handLocal;
+    handFrame = qMulq(op.lowerFrame, hand);
     palmResidual = op.residualDeg;
   }
   return {
-    ok: true, res, upper: q.upper, lower, hand, palmResidual, pick: res.pick ?? null,
+    ok: true, res, upper: q.upper, lower, hand, handFrame, palmResidual, pick: res.pick ?? null,
     swivelUsed: res.swivel ?? 0,
     swivel: res.swivel ?? 0, penetration: res.penetration ?? 0,
     elbowOffset: [res.elbow[0] - shoulder[0], res.elbow[1] - shoulder[1], res.elbow[2] - shoulder[2]],
