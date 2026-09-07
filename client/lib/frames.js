@@ -12,6 +12,26 @@
 import { bus } from './base.js';
 
 const LS = (id) => `ew-frame-${id}`;
+
+// Layout-version guard. DEFAULT_LAYOUT is a hand-arranged default (R's, edge-anchored). A frame's own
+// saved moves win over it — but that means when the DEFAULT changes, anyone with older per-frame saves
+// stays stuck on stale positions (R 09-07: maximized and found world/settings NOT right-docked because an
+// old save overrode the re-baked default). Bump this whenever DEFAULT_LAYOUT changes materially: on load,
+// a mismatch discards every ew-frame-* save ONCE, so the new default actually takes, then stamps the new
+// version. A user's deliberate arrangement after the bump is saved and kept as normal.
+const LAYOUT_VERSION = '2026-09-07-rightdock';
+const LAYOUT_VER_KEY = 'ew-frame-layout-ver';
+(() => {
+  try {
+    if (localStorage.getItem(LAYOUT_VER_KEY) === LAYOUT_VERSION) return;
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('ew-frame-') && k !== LAYOUT_VER_KEY) localStorage.removeItem(k);
+    }
+    localStorage.setItem(LAYOUT_VER_KEY, LAYOUT_VERSION);
+  } catch { /* private mode / no storage — frames just use defaults, which is correct */ }
+})();
+
 const frames = new Map();
 
 // ---- edge-resize: one document-level hit-tester for all frames -------------
@@ -404,6 +424,11 @@ export function makeFrame(id, opts = {}) {
     if (!hh) return;
     if (opts.y != null && opts.y < 0) state.y = Math.max(8, innerHeight + opts.y - hh);
     state.y = clamp(state.y, 8, Math.max(8, innerHeight - hh - 8));
+    // A frame created hidden gets its x from resolveAnchor at CREATION width. If it's first shown after a
+    // resize/maximize, a negative-x (right-edge) anchor must re-resolve to the CURRENT width, or it strands
+    // at its old absolute x (R 09-07: debug, x:-414, opened after maximizing and sat far left instead of
+    // flush-left of the right-docked panels). Only when there's no saved override.
+    if (!saved && typeof opts.x === 'number' && opts.x < 0) state.x = Math.max(8, innerWidth + opts.x - state.w);
     if (opts.x === 'center' && !saved) state.x = Math.round((innerWidth - state.w) / 2);
     state.x = clamp(state.x, 8, Math.max(8, innerWidth - state.w - 8));
     paint();
