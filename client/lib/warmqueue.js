@@ -53,21 +53,10 @@ export function warm(label, fn, { p = P_MODEL } = {}) {
   });
 }
 
-// Pause gate: while paused, pump() stops pulling NEW items (an in-flight item runs to completion — we
-// don't interrupt a compile mid-flight, but we don't start another). VR entry pauses the conductor while
-// the curtain is up (R 09-07): otherwise the queue's heavy background compiles (terrain shadow-depth, GLB
-// LODs) block the XR frame loop for seconds each — a 6.4 s block was tripping SteamVR/'Page Isn't
-// Responding' even though the entry curtain held. With the queue paused, the ONLY thing compiling during
-// entry is the paced loader, so a frame actually submits between each batch. resume() re-pumps.
-let paused = false;
-export function pauseWarm() { paused = true; }
-export function resumeWarm() { if (!paused) return; paused = false; pump(); }
-export const warmPaused = () => paused;
-
 async function pump() {
   if (running) return;
   running = true;
-  while (queue.length && !paused) {
+  while (queue.length) {
     const item = queue.shift();
     stats.lastLabel = item.label;
     item.work.phase('warm');
