@@ -892,12 +892,17 @@ function warmXRPipelines() {
   if (xrWarmed || !XR_BOOT || presenting || !getSelf()?.vrm) return;
   xrWarmed = true;
   warm('xr pipelines', async () => {
-    const rt = new THREE.RenderTarget(64, 64, { samples: 4, depthBuffer: true, stencilBuffer: false });
-    const prev = renderer.getRenderTarget(); const t0 = performance.now();
-    try { renderer.setRenderTarget(rt); await renderer.compileAsync(scene, camera, scene); }
+    // R's headset 09-07 19:00 settled it: three builds its WebGL-XR target at samples=0 (attributes.antialias
+    // came back false for the XR context) with colorSpace=renderer.outputColorSpace. Our warm RT was samples=4,
+    // cs=(default) → every pipeline key missed → all ~44 programs rebuilt at ENTRY, on the session rAF, starving
+    // three's parallel-compile poller (56–73 s to finish). Match three's target so the warm actually primes the cache.
+    const rt = new THREE.RenderTarget(64, 64, { samples: 0, depthBuffer: true, stencilBuffer: renderer.stencil, colorSpace: renderer.outputColorSpace });
+    const prev = renderer.getRenderTarget(); const prevSamples = renderer._samples; renderer._samples = 0;   // the cache key reads renderer.currentSamples when no RT is bound; the XR session runs at 0, so warm at 0
+    const t0 = performance.now();
+    try { renderer.setRenderTarget(rt); await renderer.compileAsync(scene, renderer.xr.getCamera?.() ?? camera, scene); }
     catch (e) { report('xr pipeline warm', e); }
-    finally { renderer.setRenderTarget(prev); rt.dispose(); }
-    tee(`[xr] pipelines pre-warmed for the eye buffers in ${(performance.now() - t0).toFixed(0)} ms — warm RT: samples=${rt.samples} fmt=${rt.texture?.format} type=${rt.texture?.type} cs=${rt.texture?.colorSpace} depth=${rt.depthBuffer} stencil=${rt.stencilBuffer}`);   // 09-07: does this match three's XR target? (cache key = fmt+cs+samples+depthStencil). If not → 37 programs rebuild at entry
+    finally { renderer.setRenderTarget(prev); renderer._samples = prevSamples; rt.dispose(); }
+    tee(`[xr] pipelines pre-warmed for the eye buffers in ${(performance.now() - t0).toFixed(0)} ms — warm RT: samples=${rt.samples} fmt=${rt.texture?.format} type=${rt.texture?.type} cs=${rt.texture?.colorSpace} depth=${rt.depthBuffer} stencil=${rt.stencilBuffer} (matched to three XR target; entry should now show programs≈0)`);
   }, { p: P_AMBIENT });
 }
 export async function initXR() {
