@@ -32,7 +32,7 @@ import { dockPins } from './ui.js';
 import { pushUndo } from './build.js';
 import { perf } from './perf.js';
 import { renderCensusTake, renderCensusTick, renderCensusPeek, setXRCurtain, setXRCurtainProgress } from './render.js';
-import { warm, P_AMBIENT } from './warmqueue.js';
+import { warm, P_AMBIENT, pauseWarm, resumeWarm } from './warmqueue.js';
 
 // ---- self-body in first person ---------------------------------------------
 // R's first headset session (23:22): own body invisible (she stood INSIDE it,
@@ -550,6 +550,8 @@ async function enterVR() {
       tee('[xr] session end — teardown begins');   // 09-06 23:43: a leave with no after-exit lines at all → was this handler even reached?
       try {
       presenting = false; bus.emit('xr:state'); eyeBase = null; setXRCurtain(false); curtainState = null;
+      if (entryCompile) { entryCompile.done = true; entryCompile = null; }   // leaving mid-curtain: abandon the driver
+      resumeWarm();   // safety: never leave the background conductor paused if the session ended during the curtain
       renderer.xr.cameraAutoUpdate = true; if (renderer.shadowMap) renderer.shadowMap.enabled = shadowsWere;
       xrIntent.active = false;
       selfFirstPerson(false);
@@ -724,12 +726,13 @@ export function updateXR(dtSec = 1 / 72) {
       BATCH: 2,               // meshes compiled per frame — small enough that a frame still presents between
       SAFETY_MS: 45000,       // absolute cap: never trap the user behind a hung compile
       finish(why) {
-        if (this.done) return; this.done = true; entryCompile = null; setXRCurtain(false);
+        if (this.done) return; this.done = true; entryCompile = null; setXRCurtain(false); resumeWarm();
         tee(`[xr] curtain #${sessionNo} down (${why}) after ${(performance.now() - this.t0).toFixed(0)} ms — frames under it ${(perf.frameNo ?? 0) - this.f0}, compiled ${this.i}/${this.total}`);
       },
     };
     setXRCurtainProgress('stepping into ' + (CONFIG.world ?? 'the world'), 0);
-    tee(`[xr] curtain #${sessionNo}: chunked entry compile armed — ${total} meshes, batch ${entryCompile.BATCH}`); }
+    pauseWarm();   // stop the background conductor's heavy compiles from blocking the XR frame loop while the curtain is up
+    tee(`[xr] curtain #${sessionNo}: chunked entry compile armed — ${total} meshes, batch ${entryCompile.BATCH} (warm queue paused)`); }
   // Drive it: at most ONE batch compiling at a time (compileAsync is genuinely async — it returns a
   // promise and does no synchronous program work), advancing the bar and the index only when a batch
   // RESOLVES. Between kicking off a batch and its resolution, this frame falls through to renderWorld,
