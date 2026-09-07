@@ -458,6 +458,7 @@ let inputsSettledAt = 0;
 const buttonsTrusted = () => performance.now() > inputsSettledAt;
 
 // ---- session ---------------------------------------------------------------
+let sessionNo = 0;   // per page: tee() folds byte-identical lines (repeats 2–19 are DROPPED), so every entry line carries its number
 async function enterVR() {
   try {
     // THE LADDER (R's first tee line, 09-04 23:20: Chrome 152 granted the
@@ -468,6 +469,8 @@ async function enterVR() {
     // three's classic XRWebGLLayer path runs (and keeps MSAA — the porch A/B).
     // 'layers' deliberately absent on that path.
     const gpu = !!renderer.backend?.isWebGPUBackend;
+    sessionNo++;
+    tee(`[xr] enter #${sessionNo}: requesting session (${gpu ? 'WebGPU' : 'WebGL'}; renderer.xr.enabled=${renderer.xr.enabled}; presenting=${renderer.xr.isPresenting})`);   // 09-07 11:20: a re-entry went silent between here and 'session on' — which await hangs?
     const optionalFeatures = ['local-floor', 'bounded-floor', 'hand-tracking'];
     try {
       session = await navigator.xr.requestSession('immersive-vr',
@@ -487,6 +490,7 @@ async function enterVR() {
       setTimeout(() => { location.href = u; }, 1200);
       return;
     }
+    tee(`[xr] enter #${sessionNo}: session granted (${session.enabledFeatures?.length ?? '?'} features)`);
     renderer.xr.enabled = true;
     // Tier A6 (gap list 09-05): CHOOSE the floor reference space — before this it
     // was only requested, and three's default is 'local' (eye-level origin), so
@@ -499,6 +503,9 @@ async function enterVR() {
     scaleState.samples.length = 0; scaleState.locked = false; scaleState.firstAt = 0; scaleState.k = 1; scaleState.source = 'fallback'; loadSavedScale();
     const tReq = performance.now();
     await renderer.xr.setSession(session);
+    tee(`[xr] enter #${sessionNo}: setSession resolved in ${(performance.now() - tReq).toFixed(0)} ms`);
+    { const t = renderer.xr._xrRenderTarget; const fb = renderer._frameBufferTargets;
+      tee(`[xr] enter #${sessionNo}: xrTarget ${t ? `${t.width}x${t.height} samples=${t.samples} type=${t.texture?.type} fmt=${t.texture?.format} cs=${t.texture?.colorSpace} multiview=${!!t.multiview}` : 'none'} renderer.samples=${renderer.samples}/${renderer._samples} fbts=${fb?.constructor?.name}:${fb?.size ?? '?'} layers=${renderer.xr._layers?.length ?? '?'} usesLayers=${renderer.xr._sessionUsesLayers}`); }
     entryClock = { t0: performance.now(), setSessionMs: +(performance.now() - tReq).toFixed(0), frames: [], last: 0, programs: 0, programMs: 0, pipelines: 0 };
     // ENTRY PROBE (R 09-06 13:35: 'might need a better probe'): count + time every program/pipeline the
     // backend builds while the entry clock runs — the 3 s first frame becomes 'N programs in X ms'.
@@ -564,7 +571,9 @@ async function enterVR() {
       // ends (that frame's finishRender never ran). Every desktop render then ends with finishRender → _setFramebuffer
       // (deadXRContext) → drawBuffers → `WeakMap.set(undefined)` THROWS — nothing reaches the canvas while the HUD (DOM)
       // lives on. Drop the dead context; the next render starts clean. (Upstream: report against Renderer/XRManager.)
-      try { const be = renderer.backend; if (be && be._currentContext && be._currentContext !== null) { const rt = be._currentContext.renderTarget; tee(`[xr] exit: dropping stale backend context (${rt?.isXRRenderTarget ? 'XR' : rt?.constructor?.name ?? 'canvas'})`); be._currentContext = null; } renderer.setRenderTarget(null); } catch (e) { report('xr exit context', e); }
+      try { const be = renderer.backend; if (be && be._currentContext && be._currentContext !== null) { const rt = be._currentContext.renderTarget; tee(`[xr] exit: dropping stale backend context (${rt?.isXRRenderTarget ? 'XR' : rt?.constructor?.name ?? 'canvas'})`); be._currentContext = null; }
+        renderer.setRenderTarget(null);
+      } catch (e) { report('xr exit context', e); }
       camera.quaternion.identity(); camera.scale.setScalar(1); camera.updateMatrixWorld(true);   // 00:05 trap: pos+quat were NaN after exit (follow-camera lerp from XR-era numbers)
       // AFTER-EXIT INSTRUMENT (R 09-06 12:46 + 13:20: 'black desktop after leaving VR, the world is inoperable'):
       // at +0.5 s and +3 s, tee what the desktop actually is — is the loop running, what did the last frame
@@ -700,10 +709,12 @@ export function updateXR(dtSec = 1 / 72) {
     } }
   if (curtainState?.armed) { curtainState.armed = false;
     const t0 = performance.now(); let done = false;
-    const finish = (why) => { if (done) return; done = true; setXRCurtain(false); tee(`[xr] curtain down (${why}) after ${(performance.now() - t0).toFixed(0)} ms — programs ${entryClock?.programs ?? '?'} in ${(entryClock?.programMs ?? 0).toFixed(0)} ms, pipelines ${entryClock?.pipelines ?? '?'}`); };
-    try { renderer.compileAsync(scene, renderer.xr.getCamera(), scene).then(() => finish('compiled'), (e) => { report('xr entry compile', e); finish('compile rejected'); }); }
+    const f0 = perf.frameNo ?? 0; const clock = entryClock;   // keep a handle: the clock retires on its own schedule, the curtain must still read it
+    const finish = (why) => { if (done) return; done = true; setXRCurtain(false); tee(`[xr] curtain #${sessionNo} down (${why}) after ${(performance.now() - t0).toFixed(0)} ms — frames under it ${(perf.frameNo ?? 0) - f0}, programs ${clock?.programs ?? '?'} in ${(clock?.programMs ?? 0).toFixed(0)} ms, pipelines ${clock?.pipelines ?? '?'}`); };
+    let compiled = false;
+    try { renderer.compileAsync(scene, renderer.xr.getCamera(), scene).then(() => { compiled = true; if (done) tee(`[xr] curtain #${sessionNo}: compile resolved LATE, ${(performance.now() - t0).toFixed(0)} ms after arm`); finish('compiled'); }, (e) => { report('xr entry compile', e); finish('compile rejected'); }); }
     catch (e) { report('xr entry compile', e); finish('compile threw'); }
-    setTimeout(() => finish('6 s fallback'), 6000); }
+    setTimeout(() => { if (!compiled) finish('6 s fallback — compileAsync still pending'); }, 6000); }
   if (entryClock) { const now = performance.now(); entryClock.frames.push(+(now - (entryClock.last || entryClock.t0)).toFixed(0)); entryClock.last = now;
     if (entryClock.frames.length === 8) { tee(`[xr] entry: setSession ${entryClock.setSessionMs} ms; first frame +${entryClock.frames[0]} ms; next gaps ${entryClock.frames.slice(1).join(',')} ms; programs so far ${entryClock.programs} (${entryClock.programMs.toFixed(0)} ms), pipelines ${entryClock.pipelines}`); } }
   if (entryClock && (entryClock.frames.length > 120 || performance.now() - entryClock.t0 > 12000)) entryClock = null;   // the probe retires after 12 s (the line above tees ONCE, at frame 8 — it teed every frame for 12 s on 09-06 23:34)
