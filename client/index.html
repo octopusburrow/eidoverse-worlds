@@ -958,7 +958,7 @@ body.altgrab .frame:active { cursor: grabbing; }
 .sheet h1 { font-size: var(--fs-sm); margin: 0 0 6px; color: var(--dim); font-weight: 600; text-transform: uppercase; letter-spacing: .085em; }
 /* the door wears the frames' own header: a title chip on the top edge (the
    fr-head/fr-title grammar), then the panel body — not a headline in a box */
-#door .sheet { padding: 0; overflow: visible; background: rgb(var(--panel-rgb) / .94); box-shadow: 0 24px 60px rgb(0 0 0 / .45); }   /* the one surface on screen at arrival — solid, not glass over a veil */
+#door .sheet { padding: 0; overflow: visible; background: rgb(var(--panel-rgb) / .94); border: 1px solid rgb(255 255 255 / .14); box-shadow: 0 0 0 1px rgb(0 0 0 / .5), 0 24px 60px rgb(0 0 0 / .5); }   /* the one surface at arrival — solid, with a modest rim so it holds against a dark world (R, 09-06 23:08) */
 #door .sheet .fr-head { position: static; display: flex; align-items: center; padding: 6px 12px; border-bottom: 1px solid var(--edge); border-radius: var(--r) var(--r) 0 0; background: rgb(var(--panel-rgb) / .35); cursor: default; }
 #door .sheet .fr-title { flex: 1; font-size: var(--fs-sm); color: var(--dim); text-transform: none; letter-spacing: .02em; font-weight: 500; }
 #door .sheet .fr-title b { color: var(--fg); font-weight: 600; }
@@ -971,7 +971,10 @@ body.altgrab .frame:active { cursor: grabbing; }
 #door .sheet label input:focus { outline: none; border-color: color-mix(in srgb, var(--brand) 60%, var(--edge)); }
 #door .sheet p.sub a { color: var(--brand); }
 #door .grid.dense { gap: 6px; }
-#door .card { background: var(--well); border: 1px solid transparent; border-radius: 7px; padding: 5px; color: var(--dim); }
+/* cards sit a step LIGHTER than the sheet, not sunk into it; the name is body-size, not caption-size (R, 09-06 23:08) */
+#door .card { background: color-mix(in srgb, rgb(var(--panel-rgb)) 78%, white 6%); border: 1px solid rgb(255 255 255 / .09); border-radius: 7px; padding: 5px 5px 6px; color: var(--fg); font-size: 13px; line-height: 1.25; }
+#door .card span { opacity: .85; }
+#door .card.on span { opacity: 1; color: var(--brand); }
 /* portraits are people: 3:4, not squares — and the grid is always five across
    so a second row lines up under the first */
 #door .grid.dense { display: grid; grid-template-columns: repeat(5, 1fr); }
