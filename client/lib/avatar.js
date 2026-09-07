@@ -1899,6 +1899,27 @@ export async function contributeThumbnail(name, vrm, token = '', { force = false
     key.position.set(1.4, 2.2, 2.4);
     sub.add(key);
 
+    // Pose it FIRST — before the precompile below. The compile uploads the skeleton's bone
+    // matrices for the frame; if the pose and the render then land in that same frame, the
+    // skinning node skips its per-frame skeleton update and draws the compile-time pose. That
+    // was a coin flip per body (09-06: claude/tigerbee T-posed, claude-toon/aporia fine, order
+    // and timing dependent). Posing before the compile makes whatever it caches the idle pose.
+    // A VRM at rest is in a T-pose, which reads as a mannequin on a shelf rather than a person
+    // you might be; one frame of the idle clip is a single cached download.
+    let poseMixer = null;
+    try {
+      const clip = await clipFor(vrm, 'idle');
+      poseMixer = new THREE.AnimationMixer(vrm.scene);
+      const act = poseMixer.clipAction(clip);
+      act.play();
+      poseMixer.update(0.6);        // a little way in, past the settling frames
+      vrm.update(0.6);
+      // say what the pose did — 09-06: four portraits came out T-posed while this block 'succeeded'
+      const arm = vrm.humanoid.getRawBoneNode('leftUpperArm');
+      const deg = arm ? Math.round(arm.quaternion.angleTo(new THREE.Quaternion()) * 180 / Math.PI) : -1;
+      tee(`[thumb] ${name}: posed (${clip.tracks.length} tracks, raw arm ${deg}°, autoUpdate ${vrm.humanoid.autoUpdateHumanBones})`);
+    } catch (e) { tee(`[thumb] ${name}: pose failed — ${e?.message ?? e}`); /* T-pose is survivable; a missing portrait is worse */ }
+
     // Precompile the portrait's pipelines BEFORE borrowing the body. This
     // render target + these lights are a brand-new pipeline context (different
     // lightsNode, different color format and sample count than the canvas), so
@@ -1935,19 +1956,6 @@ export async function contributeThumbnail(name, vrm, token = '', { force = false
     const keptPos = vrm.scene.position.clone();
     const keptRot = vrm.scene.rotation.clone();
 
-    // Pose it first. A VRM at rest is in a T-pose, which reads as a mannequin
-    // on a shelf rather than a person you might be. One frame of the idle clip
-    // costs a single already-cached download and makes the roster look alive.
-    let poseMixer = null;
-    try {
-      const clip = await clipFor(vrm, 'idle');
-      poseMixer = new THREE.AnimationMixer(vrm.scene);
-      const act = poseMixer.clipAction(clip);
-      act.play();
-      poseMixer.update(0.6);        // a little way in, past the settling frames
-      vrm.update(0.6);
-    } catch { /* T-pose is survivable; a missing portrait is worse */ }
-
     // Frame the WHOLE figure, identically for every body. Framing on the head
     // sounds better and isn't: these avatars range from a human silhouette to
     // something that is mostly mane, so a head-relative crop gave each one a
@@ -1966,7 +1974,10 @@ export async function contributeThumbnail(name, vrm, token = '', { force = false
       const rootY = vrm.scene.getWorldPosition(new THREE.Vector3()).y;
       const headY = vrm.humanoid.getNormalizedBoneNode('head').getWorldPosition(new THREE.Vector3()).y;
       const stature = headY - rootY + 0.13; // crown ≈ head joint + a forehead
-      if (stature > 0.2) height = stature;
+      // ...unless the mesh really does go higher: claude's head joint sits at 1.37 m under a
+      // 2.21 m crown of tentacles, and a stature frame cut it off (R, 09-06 22:37). Let the
+      // bbox raise the top by up to 60 % of stature — enough for any head, not for a particle shell.
+      if (stature > 0.2) height = Math.min(Math.max(stature, dims.y), stature * 1.6);
     } catch { /* bbox fallback */ }
     const fov = 30;
     // fit the taller of (height, width) into a square frame, with headroom

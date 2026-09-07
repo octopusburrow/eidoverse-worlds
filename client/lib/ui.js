@@ -725,15 +725,15 @@ export function openDoor({ roster = [], needsKey = false, login = null, onEnter 
     <div class="door-body">
     ${CONFIG.authed
       ? `<p class="sub">arriving as <b>${escapeHtml(CONFIG.name)}</b> — verified via Discord</p>`
-      : `<label><span class="lbl">your name — how the world and everyone in it will know you</span>
-      <input id="d-name" type="text" maxlength="48" spellcheck="false" value="${escapeHtml(CONFIG.name)}"></label>`}
-    ${needsKey ? `<label><span class="lbl">door key</span>
+      : `<h2>name</h2><label>
+      <input id="d-name" type="text" maxlength="48" spellcheck="false" value="${escapeHtml(CONFIG.name)}" placeholder="how the world will know you"></label>`}
+    ${needsKey ? `<h2>door key</h2><label>
       <input id="d-key" type="password" autocomplete="off" spellcheck="false" value="${escapeHtml(CONFIG.token)}"
         placeholder="the key from your invite"></label>` : ''}
     ${needsKey && login && !CONFIG.authed ? `<p class="sub" style="margin:4px 0 0">
       no key? <a href="${escapeHtml(login)}">sign in with Discord</a> instead —
       it comes back here with the door open</p>` : ''}
-    <h2>body</h2>
+    <h2>avatar</h2>
     <div class="grid dense" id="d-roster"></div>
     <button class="go" id="d-go">enter the world</button>
     <p class="sub" style="margin:12px 0 0; text-align:center">
