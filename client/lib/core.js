@@ -63,10 +63,17 @@ const pref = (k) => { try { return localStorage.getItem(k); } catch { return nul
 // ?xr=1 is a BOOT flag, not a runtime toggle: three 0.185's XRManager rides
 // WebGPU (XRGPUBinding — Chrome, flags today) but only if the adapter was
 // requested xrCompatible, which the backend reads off renderer.xr.enabled at
-// init() time. So the flag sets xr.enabled BEFORE init below. Where the
-// browser has no XRGPUBinding three falls back to the WebGL path on its own.
-// The r184-era "VR = WebGL2 only" rule is gone with the bump.
+// init() time. So the flag sets xr.enabled BEFORE init below.
+// The backend is a CONSTRUCTION choice, so "WebGPU if it can do VR, else
+// WebGL" has to be decided here, not at the visor button: on a WebGPU backend
+// the xrCompatible adapter request never resolved on Chrome 152 + RTX
+// (09-06 11:12, splash 'still waking after 20s', twice) — three did NOT fall
+// back on its own. An XR boot therefore takes WebGL unless the page opts into
+// ?webgpu=1 AND the browser exposes XRGPUBinding; when Chrome ships WebGPU-XR
+// unflagged, flip the default here and nowhere else.
 export const XR_BOOT = CONFIG.params.has('xr');
+export const PREF_XR_BACKEND = 'ew-xr-backend';   // 'webgpu' = try WebGPU-XR (Video settings › VR renderer)
+const xrOnWebGPU = XR_BOOT && (CONFIG.params.get('webgpu') === '1' || pref(PREF_XR_BACKEND) === 'webgpu') && 'XRGPUBinding' in globalThis;
 // TOLERANT RENDER LIST (XR strobe, 08-05): something leaves holes in the
 // per-eye render list mid-session ("Cannot destructure 'object' of
 // renderList[i]"), and the stock loop throws — one hole kills the whole
@@ -103,6 +110,7 @@ if (XR_BOOT) {
 export const renderer = new THREE.WebGPURenderer({ canvas,
   antialias: (CONFIG.params.get('msaa') ?? pref(PREF_MSAA)) !== '0',
   forceWebGL: CONFIG.params.get('webgl') === '1'
+    || (XR_BOOT && !xrOnWebGPU)
     || (CONFIG.params.get('webgl') == null && pref(PREF_BACKEND) === 'webgl') });
 /** 'webgpu' | 'webgl' — known once renderer.init() resolves. */
 export const backendName = () => (renderer.backend?.isWebGLBackend ? 'webgl' : 'webgpu');

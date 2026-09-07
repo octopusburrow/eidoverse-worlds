@@ -127,6 +127,11 @@ export function initBoot({ world, name }) {
   phaseEl = el.querySelector('.sp-phase');
   detailEl = el.querySelector('.sp-detail');
   itemsEl = el.querySelector('.sp-items');
+  const WHY = {
+    'vr-webgl': 'restarted on WebGL 2 for VR — this browser can\'t present VR from WebGPU yet (Video settings › VR renderer)',
+    'vr': 'restarted in VR mode',
+  }[new URLSearchParams(location.search).get('why')];
+  if (WHY) { const w = document.createElement('div'); w.className = 'sp-why'; w.textContent = WHY; el.querySelector('.sp-status')?.after(w); }
   bus.on('loading', paintItems);
   itemsTimer = setInterval(paintItems, 500);   // the > 2 s gate needs a clock, not just events
   tipEl = el.querySelector('.sp-tip');
