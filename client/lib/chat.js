@@ -684,7 +684,7 @@ const open = chat.open;
 // precious, so the collapse must cost one click and the collapsed cost is a
 // 14px strip). Toggler rides the pane's left edge: › closes, ‹ opens.
 const SIDE_LS = 'ew-chat-side';
-let sideSt = { w: 118, open: false };
+let sideSt = { w: 150, open: false, pos: 'left' };   // people pane on the LEFT by default (R 09-07 10:55 reference HUD)
 function initSidePane() {
   try { sideSt = { ...sideSt, ...JSON.parse(localStorage.getItem(SIDE_LS) || '{}') } } catch {}
   const tog = frame.body.querySelector('.chat-side-tog');

@@ -208,7 +208,7 @@ const DEFAULT_LAYOUT = {
   settings: { x: -8,  y: 381, w: 407, h: 443, hidden: true },
   profile:  { x: 48,  y: 46,  w: 505, h: 452, hidden: true },
   debug:    { x: -414, y: 8,  w: 342, h: 453, hidden: true },
-  emotes:   { x: 'center', y: -10, hidden: true },   // one bar across the bottom; the bar sizes itself
+  emotes:   { x: 'center', y: -10, hidden: false },  // one bar across the bottom, OPEN by default (R 09-07 10:55 reference HUD); the bar sizes itself
 };
 export function makeFrame(id, opts = {}) {
   if (frames.has(id)) return frames.get(id);

@@ -293,7 +293,7 @@ export const escapeHtml = (v) => String(v).replace(/[&<>"]/g, (c) => (
 const PINS_LS = 'ew-dock-pins';
 let pins = new Set();
 // every panel starts pinned to the dock; unpinning is the personal choice, not pinning (R, 09-06 23:34)
-const DEFAULT_PINS = ['profile', 'world', 'chat', 'emotes', 'debug', 'settings'];
+const DEFAULT_PINS = ['profile', 'world', 'chat', 'emotes', 'debug', 'settings', 'edit'];   // 'edit' too (R 09-07 10:55) — its ownership gate still decides visibility
 try { pins = new Set(JSON.parse(localStorage.getItem(PINS_LS) ?? JSON.stringify(DEFAULT_PINS))) } catch { pins = new Set(DEFAULT_PINS); }
 const savePins = () => { try { localStorage.setItem(PINS_LS, JSON.stringify([...pins])) } catch {} };
 let dockEntries = [];
