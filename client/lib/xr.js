@@ -473,6 +473,13 @@ async function enterVR() {
       session = await navigator.xr.requestSession('immersive-vr',
         gpu ? { requiredFeatures: ['webgpu'], optionalFeatures } : { optionalFeatures });
     } catch (e) {
+      // R 09-07 10:46: a tab that reloaded into ?xr=1 while the previous page's session was still alive got
+      // "already an active, immersive XRSession". The browser owns that session and offers no handle to it,
+      // so the honest path is: say so, and retry once after a short wait for the old page to release it.
+      if (e?.name === 'InvalidStateError' && /already an active/i.test(e?.message ?? '')) {
+        if (!enterVR._retried) { enterVR._retried = true; tee('[xr] session busy (another page holds it) — retrying in 1500 ms'); toast('a previous VR session is still closing — retrying', 'info', 3000); setTimeout(() => { enterVR._retried = false; enterVR(); }, 1500); return; }
+        toast('VR is still held by another tab — close it, then click the visor again', 'warn', 8000); tee('[xr] session busy after retry — giving up until the visor is clicked again'); return;
+      }
       if (!gpu) throw e;
       tee(`[xr] webgpu session refused (${e?.name ?? ''} ${e?.message ?? e}) — reloading on the WebGL backend`);
       toast('no WebGPU VR here — reloading on WebGL', 'info', 6000);
