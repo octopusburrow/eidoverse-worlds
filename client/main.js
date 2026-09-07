@@ -217,7 +217,8 @@ if (isViewer) {
   // The front door: ask once for a name and a body, remember, never ask again.
   // A person handed a bare link used to become `guest-a1b2` in the default body
   // with no way to change either and no idea what the keys were.
-  const firstRun = !CONFIG.params.has('name') && localStorage.getItem('ew-name-set') !== '1';
+  // ?door=1 re-opens it on demand (R 09-06 23:14: 'revoke my entry so I hit the step-in panel again')
+  const firstRun = CONFIG.params.has('door') || (!CONFIG.params.has('name') && localStorage.getItem('ew-name-set') !== '1');
   if (firstRun) {
     // the door is already an interactive pause — its roster fetch is lazy,
     // and the choice is cached so the NEXT boot needs no fetch at all
