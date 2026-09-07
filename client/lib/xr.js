@@ -569,13 +569,13 @@ async function enterVR() {
       // AFTER-EXIT INSTRUMENT (R 09-06 12:46 + 13:20: 'black desktop after leaving VR, the world is inoperable'):
       // at +0.5 s and +3 s, tee what the desktop actually is — is the loop running, what did the last frame
       // draw, where is the camera, what size is the canvas, and a REAL pixel read of the canvas centre.
-      const f0 = perf.frames ?? 0;
+      const f0 = perf.frameNo ?? 0;
       const probe = (tag) => {
         try {
           const cv = renderer.domElement; const ctx = document.createElement('canvas').getContext('2d'); ctx.canvas.width = 8; ctx.canvas.height = 8;
           let mean = null; try { ctx.drawImage(cv, cv.width * 0.4, cv.height * 0.4, cv.width * 0.2, cv.height * 0.2, 0, 0, 8, 8); const d = ctx.getImageData(0, 0, 8, 8).data; let a = 0; for (let i = 0; i < d.length; i += 4) a += d[i] + d[i + 1] + d[i + 2]; mean = +(a / (d.length / 4) / 3).toFixed(1); } catch (e) { mean = `err:${e?.name}`; }
           const e = camera.matrixWorld.elements;
-          tee(`[xr] after-exit ${tag}: frames+${(perf.frames ?? 0) - f0} draws ${renderer.info.render.calls} canvas ${cv.width}x${cv.height} css ${cv.clientWidth}x${cv.clientHeight} pr ${renderer.getPixelRatio()} cam ${[e[12], e[13], e[14]].map((v) => v.toFixed(1)).join(',')} parent ${camera.parent?.name ?? camera.parent?.type ?? 'none'} fov ${camera.fov} near/far ${camera.near}/${camera.far} rt ${renderer.getRenderTarget() ? 'SET' : 'canvas'} xr.enabled ${renderer.xr.enabled} presenting ${renderer.xr.isPresenting} hidden ${document.hidden} centrePx ${mean}`);
+          tee(`[xr] after-exit ${tag}: frames+${(perf.frameNo ?? 0) - f0} draws ${renderer.info.render.calls} canvas ${cv.width}x${cv.height} css ${cv.clientWidth}x${cv.clientHeight} pr ${renderer.getPixelRatio()} cam ${[e[12], e[13], e[14]].map((v) => v.toFixed(1)).join(',')} parent ${camera.parent?.name ?? camera.parent?.type ?? 'none'} fov ${camera.fov} near/far ${camera.near}/${camera.far} rt ${renderer.getRenderTarget() ? 'SET' : 'canvas'} xr.enabled ${renderer.xr.enabled} presenting ${renderer.xr.isPresenting} hidden ${document.hidden} centrePx ${mean}`);
         } catch (e) { tee(`[xr] after-exit ${tag} probe threw: ${e?.message ?? e}`); }
       };
       setTimeout(() => probe('+0.5s'), 500); setTimeout(() => probe('+3s'), 3000);
