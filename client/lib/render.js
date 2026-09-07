@@ -59,13 +59,57 @@ export function renderCensusTake() { const o = { max: renderCensus.maxPerFrame, 
 // --bg) instead of the world — cheap, one material — so the headset gets frames (no runtime construct)
 // while the scene compiles behind it (xr.js). Not a splash: no text yet; the world simply arrives.
 let curtain = null, curtainOn = false;
+let curtainCanvas = null, curtainCtx = null, curtainTex = null, curtainPanel = null;
+let curtainMsg = 'stepping in', curtainFrac = 0;
+
+// The loading surface the eyes see while the entry compile runs (xr.js drives it in chunks so a frame
+// submits between compiles and SteamVR doesn't drop the session — VR loading was painfully janky, R 09-07).
+// A dark shell so there's no runtime construct, plus a curved panel: world name + a progress bar that
+// fills by MATERIALS COMPILED (honest N-of-M), redrawn each chunk. Not wall-clock — a wall-clock bar would
+// freeze during a compile block, the exact thing we're covering.
+function paintCurtain() {
+  if (!curtainCtx) return;
+  const c = curtainCanvas, x = curtainCtx, W = c.width, H = c.height;
+  x.clearRect(0, 0, W, H);
+  x.fillStyle = 'rgb(11,15,18)'; x.fillRect(0, 0, W, H);
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillStyle = 'rgb(150,210,205)'; x.font = `600 ${Math.round(H * 0.11)}px system-ui, sans-serif`;
+  x.fillText(curtainMsg, W / 2, H * 0.34);
+  // bar
+  const bw = W * 0.62, bh = H * 0.075, bx = (W - bw) / 2, by = H * 0.56, r = bh / 2;
+  const round = (xx, yy, ww, hh, rr) => { x.beginPath(); x.moveTo(xx + rr, yy); x.arcTo(xx + ww, yy, xx + ww, yy + hh, rr); x.arcTo(xx + ww, yy + hh, xx, yy + hh, rr); x.arcTo(xx, yy + hh, xx, yy, rr); x.arcTo(xx, yy, xx + ww, yy, rr); x.closePath(); };
+  x.fillStyle = 'rgba(255,255,255,0.10)'; round(bx, by, bw, bh, r); x.fill();
+  const f = Math.max(0.02, Math.min(1, curtainFrac));
+  x.fillStyle = 'rgb(88,200,190)'; round(bx, by, bw * f, bh, r); x.fill();
+  x.fillStyle = 'rgba(180,220,216,0.65)'; x.font = `500 ${Math.round(H * 0.055)}px system-ui, sans-serif`;
+  x.fillText(`${Math.round(f * 100)}%`, W / 2, by + bh + H * 0.06);
+  if (curtainTex) curtainTex.needsUpdate = true;
+}
+
+/** xr.js calls this each chunk: msg = phase label, frac = materials-done fraction (0..1). */
+export function setXRCurtainProgress(msg, frac) {
+  if (msg != null) curtainMsg = msg;
+  if (frac != null) curtainFrac = frac;
+  paintCurtain();
+}
+
 export function setXRCurtain(on) {
   curtainOn = !!on;
   if (curtainOn && !curtain) {
     curtain = new THREE.Scene();
     const shell = new THREE.Mesh(new THREE.SphereGeometry(4, 24, 16), new THREE.MeshBasicNodeMaterial({ color: 0x0b0f12, side: THREE.BackSide }));
     shell.frustumCulled = false; curtain.add(shell); curtain.userData.shell = shell;
+    // progress panel — a slightly-curved plane 1.4 m ahead at eye height, canvas-textured
+    curtainCanvas = document.createElement('canvas'); curtainCanvas.width = 1024; curtainCanvas.height = 512;
+    curtainCtx = curtainCanvas.getContext('2d');
+    curtainTex = new THREE.CanvasTexture(curtainCanvas); curtainTex.colorSpace = THREE.SRGBColorSpace;
+    curtainPanel = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.45),
+      new THREE.MeshBasicNodeMaterial({ map: curtainTex, transparent: true, depthTest: false, depthWrite: false, side: THREE.DoubleSide }));
+    curtainPanel.frustumCulled = false; curtainPanel.renderOrder = 999;
+    curtain.add(curtainPanel); curtain.userData.panel = curtainPanel;
+    curtainFrac = 0; curtainMsg = 'stepping in'; paintCurtain();
   }
+  if (curtainOn) { curtainFrac = 0; paintCurtain(); }
 }
 export const xrCurtainOn = () => curtainOn;
 let healed = 0;
@@ -81,7 +125,16 @@ export function renderWorld() {
   }
   if (curtainOn && renderer.xr?.isPresenting) {
     renderer.xr.updateCamera(camera);
-    const xc = renderer.xr.getCamera(); const e = xc.matrixWorld.elements; curtain.userData.shell.position.set(e[12], e[13], e[14]);
+    const xc = renderer.xr.getCamera(); const e = xc.matrixWorld.elements;
+    const hx = e[12], hy = e[13], hz = e[14];
+    curtain.userData.shell.position.set(hx, hy, hz);
+    // panel 1.4 m ahead along the head's forward (-Z of the XR camera world matrix), facing the head
+    const panel = curtain.userData.panel;
+    if (panel) {
+      const fx = -e[8], fy = -e[9], fz = -e[10];   // forward = -Z column
+      panel.position.set(hx + fx * 1.4, hy + fy * 1.4, hz + fz * 1.4);
+      panel.quaternion.setFromRotationMatrix(xc.matrixWorld);   // face the head
+    }
     renderer.render(curtain, camera);
     return;
   }

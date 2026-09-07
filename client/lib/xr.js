@@ -31,7 +31,7 @@ import { registerXrGlyph, glyphPinned, micGlyph, earGlyph, xrGlyph, micLive, ear
 import { dockPins } from './ui.js';
 import { pushUndo } from './build.js';
 import { perf } from './perf.js';
-import { renderCensusTake, renderCensusTick, renderCensusPeek, setXRCurtain } from './render.js';
+import { renderCensusTake, renderCensusTick, renderCensusPeek, setXRCurtain, setXRCurtainProgress } from './render.js';
 import { warm, P_AMBIENT } from './warmqueue.js';
 
 // ---- self-body in first person ---------------------------------------------
@@ -684,6 +684,7 @@ export function leaveVR(why = 'verb') {
 // resolving to our first presenting frame, then the first eight frame gaps — a compile stall shows as
 // one huge gap; a runtime stall shows as the t0→first gap. One tee line, then it retires.
 let entryClock = null;
+let entryCompile = null;   // { meshes, i, total, ... } — the chunked entry-compile driver (holds the session)
 let curtainState = null;   // { armed, t0 } — the compile kicks off on the first presenting frame
 let eyeBase = null;
 let consoleTapped = false, shaderTees = 0;
@@ -707,14 +708,45 @@ export function updateXR(dtSec = 1 / 72) {
         else if (!off && eyeBase.off) { tee('[xr] eyes back to baseline'); eyeBase.off = false; }
       }
     } }
+  // CHUNKED ENTRY COMPILE (R 09-07: VR loading was painfully janky). The stereo (ArrayCamera) programs
+  // must compile at entry — partly by design (three #32524: multi-view changes shader structure) and not
+  // dedup-able across a session (per-compile node-buffer id churn). A single compileAsync(scene) blocks the
+  // rAF thread for ~20 s → the compositor gets ~1 frame/s → SteamVR drops the session (the fade-out).
+  // Instead: compile a FEW meshes per frame, submit a curtain frame (with a real N-of-M bar) between each
+  // batch, and HOLD the session until done. Each frame stays short enough to present, so the compositor
+  // stays fed. Compiling against xr.getCamera() is the sanctioned three pattern; we just pace it by hand.
   if (curtainState?.armed) { curtainState.armed = false;
-    const t0 = performance.now(); let done = false;
-    const f0 = perf.frameNo ?? 0; const clock = entryClock;   // keep a handle: the clock retires on its own schedule, the curtain must still read it
-    const finish = (why) => { if (done) return; done = true; setXRCurtain(false); tee(`[xr] curtain #${sessionNo} down (${why}) after ${(performance.now() - t0).toFixed(0)} ms — frames under it ${(perf.frameNo ?? 0) - f0}, programs ${clock?.programs ?? '?'} in ${(clock?.programMs ?? 0).toFixed(0)} ms, pipelines ${clock?.pipelines ?? '?'}`); };
-    let compiled = false;
-    try { renderer.compileAsync(scene, renderer.xr.getCamera(), scene).then(() => { compiled = true; if (done) tee(`[xr] curtain #${sessionNo}: compile resolved LATE, ${(performance.now() - t0).toFixed(0)} ms after arm`); finish('compiled'); }, (e) => { report('xr entry compile', e); finish('compile rejected'); }); }
-    catch (e) { report('xr entry compile', e); finish('compile threw'); }
-    setTimeout(() => { if (!compiled) finish('6 s fallback — compileAsync still pending'); }, 6000); }
+    const t0 = performance.now(); const f0 = perf.frameNo ?? 0;
+    const meshes = []; scene.traverse((o) => { if ((o.isMesh || o.isSkinnedMesh) && o.visible !== false) meshes.push(o); });
+    const total = meshes.length || 1;
+    entryCompile = {
+      meshes, i: 0, total, t0, f0, done: false,
+      BATCH: 2,               // meshes compiled per frame — small enough that a frame still presents between
+      SAFETY_MS: 45000,       // absolute cap: never trap the user behind a hung compile
+      finish(why) {
+        if (this.done) return; this.done = true; entryCompile = null; setXRCurtain(false);
+        tee(`[xr] curtain #${sessionNo} down (${why}) after ${(performance.now() - this.t0).toFixed(0)} ms — frames under it ${(perf.frameNo ?? 0) - this.f0}, compiled ${this.i}/${this.total}`);
+      },
+    };
+    setXRCurtainProgress('stepping into ' + (CONFIG.world ?? 'the world'), 0);
+    tee(`[xr] curtain #${sessionNo}: chunked entry compile armed — ${total} meshes, batch ${entryCompile.BATCH}`); }
+  // Drive it: at most ONE batch compiling at a time (compileAsync is genuinely async — it returns a
+  // promise and does no synchronous program work), advancing the bar and the index only when a batch
+  // RESOLVES. Between kicking off a batch and its resolution, this frame falls through to renderWorld,
+  // which draws the curtain and SUBMITS it to the compositor — that submitted frame is what keeps SteamVR
+  // alive. `inflight` guards against launching a second batch over the first.
+  if (entryCompile && !entryCompile.done) {
+    const ec = entryCompile;
+    if (performance.now() - ec.t0 > ec.SAFETY_MS) ec.finish('45 s safety cap — still compiling');
+    else if (ec.i >= ec.total) ec.finish('compiled');
+    else if (!ec.inflight) {
+      ec.inflight = true;
+      const cam = renderer.xr.getCamera();
+      const start = ec.i, end = Math.min(ec.i + ec.BATCH, ec.total);
+      const batch = ec.meshes.slice(start, end);
+      Promise.all(batch.map((m) => renderer.compileAsync(m, cam, scene).catch(() => {})))
+        .then(() => { if (ec.done) return; ec.i = end; ec.inflight = false; setXRCurtainProgress(null, ec.i / ec.total); });
+    } }
   if (entryClock) { const now = performance.now(); entryClock.frames.push(+(now - (entryClock.last || entryClock.t0)).toFixed(0)); entryClock.last = now;
     if (entryClock.frames.length === 8) { tee(`[xr] entry: setSession ${entryClock.setSessionMs} ms; first frame +${entryClock.frames[0]} ms; next gaps ${entryClock.frames.slice(1).join(',')} ms; programs so far ${entryClock.programs} (${entryClock.programMs.toFixed(0)} ms), pipelines ${entryClock.pipelines}`); } }
   if (entryClock && (entryClock.frames.length > 120 || performance.now() - entryClock.t0 > 12000)) entryClock = null;   // the probe retires after 12 s (the line above tees ONCE, at frame 8 — it teed every frame for 12 s on 09-06 23:34)
@@ -882,29 +914,8 @@ export function updateXR(dtSec = 1 / 72) {
 }
 let recAt = 0;
 
-// XR PIPELINE PRE-WARM (entry clock, R 09-06 12:33: setSession 4 ms, first frame +45 ms, then ONE 5524 ms
-// frame — every material compiling for the eye buffers' render context on the first presenting draw).
-// On an XR boot, once my body is in, compile the whole scene ONCE into a render target shaped like the
-// eye buffers (RGBA8, depth, 4× MSAA) while the desktop is still idle-waiting on the visor. If the
-// pipeline cache keys match, entry loses the 5 s frame; the entry clock is the verdict either way.
-let xrWarmed = false;
-function warmXRPipelines() {
-  if (xrWarmed || !XR_BOOT || presenting || !getSelf()?.vrm) return;
-  xrWarmed = true;
-  warm('xr pipelines', async () => {
-    // R's headset 09-07 19:00 settled it: three builds its WebGL-XR target at samples=0 (attributes.antialias
-    // came back false for the XR context) with colorSpace=renderer.outputColorSpace. Our warm RT was samples=4,
-    // cs=(default) → every pipeline key missed → all ~44 programs rebuilt at ENTRY, on the session rAF, starving
-    // three's parallel-compile poller (56–73 s to finish). Match three's target so the warm actually primes the cache.
-    const rt = new THREE.RenderTarget(64, 64, { samples: 0, depthBuffer: true, stencilBuffer: renderer.stencil, colorSpace: renderer.outputColorSpace });
-    const prev = renderer.getRenderTarget(); const prevSamples = renderer._samples; renderer._samples = 0;   // the cache key reads renderer.currentSamples when no RT is bound; the XR session runs at 0, so warm at 0
-    const t0 = performance.now();
-    try { renderer.setRenderTarget(rt); await renderer.compileAsync(scene, renderer.xr.getCamera?.() ?? camera, scene); }
-    catch (e) { report('xr pipeline warm', e); }
-    finally { renderer.setRenderTarget(prev); renderer._samples = prevSamples; rt.dispose(); }
-    tee(`[xr] pipelines pre-warmed for the eye buffers in ${(performance.now() - t0).toFixed(0)} ms — warm RT: samples=${rt.samples} fmt=${rt.texture?.format} type=${rt.texture?.type} cs=${rt.texture?.colorSpace} depth=${rt.depthBuffer} stencil=${rt.stencilBuffer} (matched to three XR target; entry should now show programs≈0)`);
-  }, { p: P_AMBIENT });
-}
+
+
 export async function initXR() {
   if (!navigator.xr) return;
   let supported = false;
@@ -930,7 +941,6 @@ export async function initXR() {
     for (const m of meshes) { m.frustumCulled = false; try { await renderer.compileAsync(m, camera, scene); } catch { /* fine */ } }
   }, { p: P_AMBIENT });
 
-  if (XR_BOOT) { const iv = setInterval(() => { warmXRPipelines(); if (xrWarmed) clearInterval(iv); }, 500); }   // body arrives seconds after boot; poll until it does
   registerXrGlyph({
     // ?xr=1 alone is enough: core.js picks the backend that can present (WebGL until Chrome's
     // WebGPU-XR ships unflagged; ?webgpu=1 opts in early).
