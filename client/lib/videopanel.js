@@ -12,7 +12,7 @@ import { RENDER_SCALES, getRenderScale, setRenderScale,
   PARTICLE_TIERS, getParticleTier, setParticleTier,
   AVATAR_DETAILS, getAvatarDetail, setAvatarDetail } from './governor.js';
 import { shadowsOn, setShadows } from './lightrig.js';
-import { backendName, PREF_MSAA, PREF_BACKEND, XR_BOOT } from './core.js';
+import { backendName, PREF_MSAA, PREF_BACKEND, PREF_HEADSET_SEEN, WEBGPU_XR, WEBGPU_POSSIBLE, XR_BOOT } from './core.js';
 import { CONFIG, bus } from './base.js';
 import { registerXRPanel } from './xrpanels.js';
 import { WEBGL } from './capnotice.js';
@@ -90,18 +90,40 @@ export function initVideoPanel() {
     if (body.dataset.init) return;
     body.dataset.init = '1';
 
-    // renderer: what you are on, why, and what would be faster
+    // renderer: ONE control (R 09-07). auto matches the backend to what VR will use so entry never reloads;
+    // force WebGPU / force WebGL are the overrides. A headset present + WebGPU-XR flags absent is the case that
+    // makes force-WebGPU cost a reload-into-VR, so that combination is warned; force-WebGPU is disabled outright
+    // when the machine has no WebGPU at all.
     const backend = backendName();
-    const forced = CONFIG.params.has('webgl');   // a URL param outranks the choice below, this session
-    const pref = localStorage.getItem(PREF_BACKEND) || 'auto';
-    const why = forced ? `Set by ?webgl=${CONFIG.params.get('webgl')} for this session, overriding the choice below.`
-      : backend === 'webgl' ? (pref === 'webgl' ? 'Chosen below.' : XR_BOOT ? 'VR runs on WebGL 2 here — see VR renderer in Settings › VR.' : WEBGL.body)
-      : 'WebGPU is available and in use — the full version of the renderer.';
-    body.appendChild(selectRow('renderer',
-      `Running on ${backend === 'webgl' ? 'WebGL 2' : 'WebGPU'}. ${why} Applies on reload.`,
-      [['auto', 'auto'], ['webgl', 'WebGL 2']],
-      pref,
-      (v, row) => { if (v === 'auto') localStorage.removeItem(PREF_BACKEND); else localStorage.setItem(PREF_BACKEND, v); needsReload(row); }));
+    const forced = CONFIG.params.has('webgl') || CONFIG.params.has('webgpu');
+    const rpref = localStorage.getItem(PREF_BACKEND) || 'auto';
+    const headsetSeen = localStorage.getItem(PREF_HEADSET_SEEN) === '1';
+    const autoTail = headsetSeen
+      ? (WEBGPU_XR ? 'A headset is present and this browser can present VR from WebGPU, so auto uses WebGPU — VR enters with no reload.'
+                   : 'A headset is present but this browser has no WebGPU-to-VR binding, so auto uses WebGL — VR enters with no reload.')
+      : (WEBGPU_POSSIBLE ? 'No headset sensed; auto uses WebGPU (the full renderer).' : 'No headset sensed and no WebGPU here; auto uses WebGL.');
+    const why = forced ? `Set by a URL param for this session, overriding the choice below.`
+      : `Running on ${backend === 'webgl' ? 'WebGL 2' : 'WebGPU'}. `;
+    const rrow = selectRow('renderer',
+      `How the world is drawn, and how VR gets in. auto: ${autoTail} — the no-lag default. `
+      + `force WebGPU: always the full WebGPU renderer${WEBGPU_POSSIBLE ? '' : ' (unavailable on this machine)'}; if a headset is present but WebGPU-XR flags are off, entering VR reloads to WebGL first (a lag). `
+      + `force WebGL: always WebGL 2 — guaranteed, for A/B testing or a machine where WebGPU misbehaves. Applies on reload.`,
+      [['auto', 'auto'], ['webgpu', 'force WebGPU'], ['webgl', 'force WebGL']],
+      rpref,
+      (val, row) => {
+        if (val === 'auto') localStorage.removeItem(PREF_BACKEND); else localStorage.setItem(PREF_BACKEND, val);
+        needsReload(row);
+        const w = row.querySelector('.rwarn'); if (w) w.remove();
+        if (val === 'webgpu' && headsetSeen && !WEBGPU_XR) {
+          const warn = document.createElement('div'); warn.className = 'note rwarn';
+          warn.style.cssText = 'margin-top:4px;opacity:.85';
+          warn.textContent = '⚠ A headset is present but WebGPU-XR flags aren’t enabled here — entering VR will reload the page onto WebGL, adding a few seconds. Use auto or force WebGL to avoid it.';
+          row.appendChild(warn);
+        }
+      });
+    // gray out force-WebGPU when the machine has no WebGPU at all
+    if (!WEBGPU_POSSIBLE) { const o = rrow.querySelector('select option[value=webgpu]'); if (o) { o.disabled = true; o.text = 'force WebGPU (unavailable)'; } }
+    body.appendChild(rrow);
 
     body.appendChild(selectRow('render scale',
       'Resolution the world is drawn at, as a share of your screen. The single biggest lever on a pixel-bound machine. auto lets the engine step it down when the frame rate sags and back up when it recovers; a pinned value is yours and the engine leaves it alone.',
