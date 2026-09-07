@@ -716,7 +716,9 @@ function applySide() {
   // nothing to grab, so the line goes too (R, 09-05: a confusing affordance)
   frame.body.querySelector('.chat-cols')?.classList.toggle('side-closed', !sideSt.open);
   side.style.width = sideSt.open ? `${sideSt.w}px` : '';
-  frame.body.querySelector('.chat-side-tog').textContent = sideSt.open ? '›' : '‹';
+  // the chevron points the way the pane will move: on the right › closes / ‹ opens; mirrored on the left
+  const left = sideSt.pos === 'left';
+  frame.body.querySelector('.chat-side-tog').textContent = (sideSt.open !== left) ? '›' : '‹';
   paintSide();
 }
 function paintSide() {

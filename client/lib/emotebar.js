@@ -35,9 +35,10 @@ export function initEmoteBar() {
   // pads 7px top+bottom on top of it) — so rows + gaps only, no pad term
   const heightFor = (cols) => rowsFor(cols) * ROW_H + (rowsFor(cols) - 1) * GAP;
   let snapT = null;
+  const ALL = 9;   // 3 postures + 6 emotes: ONE bar (R 09-06 23:34: '9×1')
   const f = makeFrame('emotes', {
-    title: 'emotes', x: -(widthFor(6) + 6), y: -10, w: widthFor(6), h: heightFor(6),   // one row of six by default
-    minW: widthFor(3), minH: heightFor(6), hidden: true,   // 3..6 across
+    title: 'emotes', x: 'center', y: -10, w: widthFor(ALL), h: ROW_H,   // one row of nine across the bottom by default
+    minW: widthFor(3), minH: ROW_H, hidden: true,   // 3..9 across
     // SNAP TO WHOLE TILES on release: drag the frame to any width, and when the
     // drag settles it fits itself to the tiles that row holds (R, 09-04). The
     // frame owns its size, so we write its state and repaint through the refs it
@@ -45,6 +46,9 @@ export function initEmoteBar() {
     onResize: (w) => { clearTimeout(snapT); snapT = setTimeout(() => snapTo(w), 180); },
   });
   const snapTo = (w) => {
+    // the emote list arrives async; snapping against an empty list clamped cols to the 3 postures and
+    // SHRANK a saved 9×1 bar to 3×3 on every reload (R's two ?sendlayout lines: 352×32 → 124×108)
+    if (!EMOTE_ORDER.length) return;
     const cols = Math.max(3, Math.min(POSTURE_TILES + EMOTE_ORDER.length, Math.floor((w - PAD * 2 - 2 + GAP) / (TILE + GAP))));   // ONE BAR is reachable: the postures count as tiles too (R 09-05 21:40: "surely more than 6")
     f._state.w = widthFor(cols); f._state.h = heightFor(cols); f._paint();
   };

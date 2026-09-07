@@ -355,8 +355,7 @@ a:hover { color: var(--fg); text-decoration-color: var(--brand); }
 .chat-side-head { flex: none; padding: 6px 8px 2px; font-size: var(--fs-xs); color: var(--dim); text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
 .chat-cols.side-left { flex-direction: row-reverse; }
 .chat-cols.side-left .chat-side-tog { border-left: none; border-right: 1px solid var(--edge); }
-.chat-cols.side-left .chat-side-grip { left: auto; right: calc(-14px - 4px); }
-.chat-cols.side-left .chat-side-grip { left: auto; right: -4px; }
+.chat-cols.side-left .chat-side-grip { left: auto; right: calc(-14px - 4px); }   /* mirror of the right: over the toggler's border line, not the pane's own edge (R, 09-06 23:34: 'the right behaviour is preferred') */
 .chat-tabs .chat-gear {
   flex: none; margin-left: 2px; padding: 3px 6px;
   background: none; border: none; color: var(--dim); border-radius: 5px;

@@ -234,6 +234,8 @@ if (isViewer) {
   } else start();
 }
 
+if (CONFIG.params.has('glass')) import('./lib/glass.js').then((m) => m.initGlass()).catch((e) => report('glass', e));   // a test mirror (R 09-06 23:37)
+
 // ?sendlayout=1 — post this browser's saved panel layout (every ew-frame-* key + the viewport it
 // was arranged in) to the host tee, so a hand-arranged layout can be read off the log and baked in
 // as the default (R 09-06 23:16: 'copy my menu layout so we can propagate it as the default').
