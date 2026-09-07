@@ -59,6 +59,7 @@ document.body.prepend(canvas);
 // URL param wins for a session (the A/B lever), the persisted preference
 // (video settings) otherwise.
 export const PREF_MSAA = 'ew-msaa', PREF_BACKEND = 'ew-backend';
+export const PREF_HEADSET_SEEN = 'ew-headset-seen';   // set once initXR confirms immersive-vr support; lets the NEXT boot pick WebGL up front so the visor ENTERS instead of RELOADING (R 09-07: the reload tax is the porch-vs-us gap)
 const pref = (k) => { try { return localStorage.getItem(k); } catch { return null; } };   // a storage throw must not kill boot
 // ?xr=1 is a BOOT flag, not a runtime toggle: three 0.185's XRManager rides
 // WebGPU (XRGPUBinding — Chrome, flags today) but only if the adapter was
@@ -111,7 +112,12 @@ export const renderer = new THREE.WebGPURenderer({ canvas,
   antialias: (CONFIG.params.get('msaa') ?? pref(PREF_MSAA)) !== '0',
   forceWebGL: CONFIG.params.get('webgl') === '1'
     || (XR_BOOT && !xrOnWebGPU)
-    || (CONFIG.params.get('webgl') == null && pref(PREF_BACKEND) === 'webgl') });
+    || (CONFIG.params.get('webgl') == null && pref(PREF_BACKEND) === 'webgl')
+    // A headset was detected on a previous visit and the user hasn't forced a backend:
+    // boot WebGL so the visor can enter VR directly (no page reload). WebGPU can't present
+    // VR on Chrome today, so a desktop WebGPU page must reload to WebGL to enter — the tax
+    // porch never paid. Desktop visuals are effectively identical on either backend here.
+    || (CONFIG.params.get('webgl') == null && !XR_BOOT && pref(PREF_BACKEND) == null && pref(PREF_XR_BACKEND) !== 'webgpu' && pref(PREF_HEADSET_SEEN) === '1') });
 /** 'webgpu' | 'webgl' — known once renderer.init() resolves. */
 export const backendName = () => (renderer.backend?.isWebGLBackend ? 'webgl' : 'webgpu');
 // Still in 0.185.1; FIXED on three dev (db1daf163, 2026-07-24, #34088 —
