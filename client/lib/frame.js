@@ -99,6 +99,7 @@ function frame(now) {
     s.ms += (performance.now() - t0 - s.ms) * 0.05;   // rolling average
   }
   frameNo++;
+  perf.frameNo = frameNo;   // lifetime tick count — the after-exit probe reads it (perf.frames never existed; that field teed 0 since 09-06)
 
   frames++;
   if (now - fpsAt > 1000) {
