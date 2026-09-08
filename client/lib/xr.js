@@ -390,6 +390,7 @@ export function makeRadial(entries) {   // exported for the headless ring screen
     const a = -Math.PI / 2 + i * (2 * Math.PI / N);   // porch: -π/2 first (top), then clockwise, placed at (cos a, −sin a)
     const m = new THREE.Mesh(new THREE.PlaneGeometry(RING_ICON, RING_ICON), new THREE.MeshBasicMaterial({ map: ringIconTexture(s, false), transparent: true, depthTest: false }));
     m.renderOrder = 1000 + i; m.userData.order = 1000 + i; m.position.set(Math.cos(a) * R, -Math.sin(a) * R, 0); m.userData.ring = a;
+    if (s.spacer) m.visible = false;   // the balance spacer keeps the verticals true but must not read as a broken icon (ring screenshot 23:40)
     group.add(m); return m;
   });
   const label = ringLabel(); label.mesh.position.set(0, -R - 0.03, 0); group.add(label.mesh);
