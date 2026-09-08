@@ -94,7 +94,13 @@ export function setShadows(on) {
 renderer.shadowMap.enabled = shadowsOn();
 renderer.shadowMap.type = ({ basic: THREE.BasicShadowMap, pcf: THREE.PCFShadowMap, soft: THREE.PCFSoftShadowMap })[CONFIG.params.get('shadowtype')] ?? THREE.PCFSoftShadowMap;   // ?shadowtype=basic|pcf|soft (boot-time: pipeline-shape) — R 09-07 19:22 diagnostic
 sun.castShadow = shadowsOn();
-sun.shadow.mapSize.set(2048, 2048);
+// shadow map resolution (persisted; the video settings row, R 09-07 21:32). Uniform-level:
+// three's ShadowNode setSize()s the target every update, so a live change is a realloc, no recompile.
+const RES_KEY = 'ew-shadow-res';
+export const SHADOW_RES = [1024, 2048, 4096];
+export const shadowRes = () => { const v = +localStorage.getItem(RES_KEY); return SHADOW_RES.includes(v) ? v : 2048; };
+export function setShadowRes(n) { localStorage.setItem(RES_KEY, String(n)); sun.shadow.mapSize.set(n, n); }
+sun.shadow.mapSize.set(shadowRes(), shadowRes());
 if (CONFIG.params.has('shadowfloat')) sun.shadow.mapType = THREE.FloatType;   // ?shadowfloat=1 (boot) — R 09-07 19:30: 32-bit float depth map; a D3D11/ANGLE comparison-sampling variant to test on her GPU
 sun.shadow.bias = -0.0006;
 sun.shadow.normalBias = 0.02;

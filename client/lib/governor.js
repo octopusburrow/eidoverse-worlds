@@ -57,7 +57,7 @@ import { warmStats } from './warmqueue.js';
 import { laneBusy } from './loadwork.js';
 import { promoteTailPending, modelQuality } from './realize/models.js';
 import { setSlotCap, getSlotCap, maxSlots, litCount,
-  setCasterBudget, getCasterBudget, casterCount, shadowsOn } from './lightrig.js';
+  setCasterBudget, getCasterBudget, casterCount, shadowsOn, shadowRes } from './lightrig.js';
 import { setEmitterQuality, emitterQuality, emitterCount } from './emitters.js';
 import { setGrassDensity, getGrassDensity, hasGrass } from './terrain.js';
 import { setLodBias } from './remotes.js';
@@ -282,8 +282,8 @@ const LEVERS = [
       if (!shedDetail) return false;
       shedDetail = false;
       if (avatarDetail === 'auto') setLodBias(1);
-      if (shadowsOn() && sun.shadow.mapSize.width < 2048) {
-        sun.shadow.mapSize.set(2048, 2048);
+      if (shadowsOn() && sun.shadow.mapSize.width < shadowRes()) {
+        sun.shadow.mapSize.set(shadowRes(), shadowRes());
         sun.shadow.map?.dispose();
         sun.shadow.map = null;
       }

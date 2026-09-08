@@ -11,7 +11,7 @@ import { makeSection, flashHint } from './ui.js';
 import { RENDER_SCALES, getRenderScale, setRenderScale,
   PARTICLE_TIERS, getParticleTier, setParticleTier,
   AVATAR_DETAILS, getAvatarDetail, setAvatarDetail } from './governor.js';
-import { shadowsOn, setShadows } from './lightrig.js';
+import { shadowsOn, setShadows, shadowRes, setShadowRes, SHADOW_RES } from './lightrig.js';
 import { backendName, PREF_MSAA, PREF_BACKEND, PREF_HEADSET_SEEN, WEBGPU_XR, WEBGPU_POSSIBLE, XR_BOOT } from './core.js';
 import { CONFIG, bus } from './base.js';
 import { registerXRPanel } from './xrpanels.js';
@@ -69,6 +69,7 @@ function videoFields() {
   return [
     pick('scale', RENDER_SCALES, getRenderScale(), 'render scale'),
     { t: 'check', k: 'shadows', label: 'shadows', value: shadowsOn() },
+    ...(shadowsOn() ? [pick('shadowres', SHADOW_RES, shadowRes(), 'shadow resolution')] : []),
     pick('particles', PARTICLE_TIERS, getParticleTier(), 'particles'),
     pick('detail', Object.keys(AVATAR_DETAILS), getAvatarDetail(), 'avatar detail'),
     { t: 'check', k: 'msaa', label: 'antialiasing (on reload)', value: msaaOn },
@@ -77,6 +78,7 @@ function videoFields() {
 function videoDispatch(k, v) {
   if (k === 'scale') setRenderScale(v);
   else if (k === 'shadows') setShadows(!!v);
+  else if (k === 'shadowres') setShadowRes(+v);
   else if (k === 'particles') setParticleTier(v);
   else if (k === 'detail') setAvatarDetail(v);
   else if (k === 'msaa') localStorage.setItem(PREF_MSAA, v ? '1' : '0');
@@ -98,16 +100,16 @@ export function initVideoPanel() {
     const forced = CONFIG.params.has('webgl') || CONFIG.params.has('webgpu');
     const rpref = localStorage.getItem(PREF_BACKEND) || 'auto';
     const headsetSeen = localStorage.getItem(PREF_HEADSET_SEEN) === '1';
+    // auto = WebGPU, the standard renderer; the one exception is a headset on a browser that can't present VR from WebGPU
     const autoTail = headsetSeen
-      ? (WEBGPU_XR ? 'A headset is present and this browser can present VR from WebGPU, so auto uses WebGPU — VR enters with no reload.'
-                   : 'A headset is present but this browser has no WebGPU-to-VR binding, so auto uses WebGL — VR enters with no reload.')
-      : (WEBGPU_POSSIBLE ? 'No headset sensed; auto uses WebGPU (the full renderer).' : 'No headset sensed and no WebGPU here; auto uses WebGL.');
-    const why = forced ? `Set by a URL param for this session, overriding the choice below.`
-      : `Running on ${backend === 'webgl' ? 'WebGL 2' : 'WebGPU'}. `;
+      ? (WEBGPU_XR ? 'Right now: a headset is present and this browser can present VR from WebGPU, so auto is WebGPU and VR enters without a reload.'
+                   : 'Right now: a headset is present but this browser can’t present VR from WebGPU (the WebGPU-XR flag is off), so auto falls back to WebGL 2 so VR can enter without a reload.')
+      : (WEBGPU_POSSIBLE ? 'Right now: no headset sensed, so auto is WebGPU.' : 'Right now: this machine has no WebGPU, so auto is WebGL 2.');
+    const running = `Running on ${backend === 'webgl' ? 'WebGL 2' : 'WebGPU'}${forced ? ' (forced by the URL)' : ''}. `;
     const rrow = selectRow('renderer',
-      `How the world is drawn, and how VR gets in. auto: ${autoTail} — the no-lag default. `
-      + `force WebGPU: always the full WebGPU renderer${WEBGPU_POSSIBLE ? '' : ' (unavailable on this machine)'}; if a headset is present but WebGPU-XR flags are off, entering VR reloads to WebGL first (a lag). `
-      + `force WebGL: always WebGL 2 — guaranteed, for A/B testing or a machine where WebGPU misbehaves. Applies on reload.`,
+      `${running}auto: WebGPU, the standard full renderer — with one exception: on a browser that can’t present VR from WebGPU, auto uses WebGL 2 whenever a headset is present, so VR enters with no reload. ${autoTail} `
+      + `force WebGPU: always WebGPU${WEBGPU_POSSIBLE ? '' : ' (unavailable on this machine)'} — if a headset is present but the browser can’t present VR from it, entering VR reloads onto WebGL 2 first (a few seconds). `
+      + `force WebGL: always WebGL 2 — for A/B tests or a machine where WebGPU misbehaves. Applies on reload.`,
       [['auto', 'auto'], ['webgpu', 'force WebGPU'], ['webgl', 'force WebGL']],
       rpref,
       (val, row) => {
@@ -130,9 +132,15 @@ export function initVideoPanel() {
       RENDER_SCALES.map((v) => [v, pct(v)]), getRenderScale(),
       (v) => { setRenderScale(v); flashHint(`render scale: ${pct(v)} (yours only)`); }));
 
+    const resRow = selectRow('shadow resolution',
+      'Size of the sun’s shadow map. 2048 is the default; 4096 sharpens edges at four times the memory and fill; 1024 is the cheap tier the engine also drops to under load. Changes live.',
+      SHADOW_RES.map((v) => [v, `${v}²`]), shadowRes(),
+      (v) => { setShadowRes(+v); flashHint(`shadow resolution: ${v}² (yours only)`); });
+    resRow.hidden = !shadowsOn();
     body.appendChild(checkRow('shadows',
       'The sun’s cast shadows. Off is the cheapest single change on a weak GPU; flipping it may recompile materials once.',
-      shadowsOn(), (on) => { setShadows(on); flashHint(`shadows ${on ? 'on' : 'off'} (yours only)`); }));
+      shadowsOn(), (on) => { setShadows(on); resRow.hidden = !on; flashHint(`shadows ${on ? 'on' : 'off'} (yours only)`); }));
+    body.appendChild(resRow);
 
     body.appendChild(selectRow('particles',
       'How many sprites particle effects draw. auto lets the engine thin them under load and restore them after.',
