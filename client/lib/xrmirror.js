@@ -21,22 +21,37 @@ let lastAspect = 0;
 // animation frame (WebXR §opaque framebuffers). One GL call: the left eye onto the canvas. 'third' still needs a
 // pass, into a SMALL target (fill is the lever), blitted up.
 let thirdRT = null, blitFailed = false, blitTeed = false;
+let resolveFB = null, resolveRB = null, resolveW = 0, resolveH = 0;
+// R 09-08 01:10: the blit was REFUSED twice (tee) — the eye framebuffer is multisampled (renderer.samples=4 →
+// XRWebGLLayer antialias) and GL forbids a SCALED blit from a multisample source. Resolve at 1:1 into a
+// single-sample renderbuffer first, then scale that onto the canvas. Two blits, zero renders.
 function blitEye() {
   const gl = renderer.backend?.gl; const layer = renderer.xr.getSession?.()?.renderState?.baseLayer ?? null;
-  if (!gl || !layer?.framebuffer) return false;
+  if (!gl || !layer?.framebuffer) return 'no-layer';
   const cw = gl.drawingBufferWidth, ch = gl.drawingBufferHeight, ew = layer.framebufferWidth >> 1, eh = layer.framebufferHeight;
-  const prevRead = gl.getParameter(gl.READ_FRAMEBUFFER_BINDING), prevDraw = gl.getParameter(gl.DRAW_FRAMEBUFFER_BINDING);
+  const prevRead = gl.getParameter(gl.READ_FRAMEBUFFER_BINDING), prevDraw = gl.getParameter(gl.DRAW_FRAMEBUFFER_BINDING), prevRB = gl.getParameter(gl.RENDERBUFFER_BINDING);
   try {
+    if (!resolveFB || resolveW !== ew || resolveH !== eh) {
+      if (resolveRB) gl.deleteRenderbuffer(resolveRB); if (resolveFB) gl.deleteFramebuffer(resolveFB);
+      resolveRB = gl.createRenderbuffer(); gl.bindRenderbuffer(gl.RENDERBUFFER, resolveRB); gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA8, ew, eh);
+      resolveFB = gl.createFramebuffer(); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, resolveFB); gl.framebufferRenderbuffer(gl.DRAW_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, resolveRB);
+      resolveW = ew; resolveH = eh;
+    }
+    while (gl.getError() !== gl.NO_ERROR) { /* clear stale */ }
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, layer.framebuffer);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, resolveFB);
+    gl.blitFramebuffer(0, 0, ew, eh, 0, 0, ew, eh, gl.COLOR_BUFFER_BIT, gl.NEAREST);   // 1:1 — the multisample resolve
+    let err = gl.getError(); if (err !== gl.NO_ERROR) return `resolve:${err}`;
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, resolveFB);
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
-    // letterbox the eye's aspect into the canvas
     const s = Math.min(cw / ew, ch / eh); const dw = Math.round(ew * s), dh = Math.round(eh * s), dx = (cw - dw) >> 1, dy = (ch - dh) >> 1;
     gl.blitFramebuffer(0, 0, ew, eh, dx, dy, dx + dw, dy + dh, gl.COLOR_BUFFER_BIT, gl.LINEAR);
-    return gl.getError() === gl.NO_ERROR;
-  } finally { gl.bindFramebuffer(gl.READ_FRAMEBUFFER, prevRead); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, prevDraw); }
+    err = gl.getError(); if (err !== gl.NO_ERROR) return `scale:${err}`;
+    return null;
+  } finally { gl.bindFramebuffer(gl.READ_FRAMEBUFFER, prevRead); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, prevDraw); gl.bindRenderbuffer(gl.RENDERBUFFER, prevRB); }
 }
 function blitRT(rt) {
-  const gl = renderer.backend?.gl; const fbs = renderer.backend?.get?.(rt)?.framebuffers; const fb = fbs ? Object.values(fbs)[0] ?? null : null;   // keyed by render-context cache key; one context renders into it
+  const gl = renderer.backend?.gl; const fbs = renderer.backend?.get?.(rt)?.framebuffers; const fb = fbs ? Object.values(fbs)[0] ?? null : null;
   if (!gl || !fb) return false;
   const cw = gl.drawingBufferWidth, ch = gl.drawingBufferHeight;
   const prevRead = gl.getParameter(gl.READ_FRAMEBUFFER_BINDING), prevDraw = gl.getParameter(gl.DRAW_FRAMEBUFFER_BINDING);
@@ -47,7 +62,7 @@ function blitRT(rt) {
 export function tickXRMirror() {
   if (!isPresenting() || xrPrefs.mirror === 'off') return;
   if (xrPrefs.mirror === 'first') {
-    if (!blitFailed) { if (blitEye()) { if (!blitTeed) { blitTeed = true; const l = renderer.xr.getSession?.()?.renderState?.baseLayer; tee(`[xr] mirror: eye blit live (${l?.framebufferWidth ?? '?'}×${l?.framebufferHeight ?? '?'} → canvas ${renderer.domElement.width}×${renderer.domElement.height})`); } return; } blitFailed = true; tee('[xr] mirror: eye blit unavailable — falling back to a scene pass'); }
+    if (!blitFailed) { const why = blitEye(); if (!why) { if (!blitTeed) { blitTeed = true; const l = renderer.xr.getSession?.()?.renderState?.baseLayer; tee(`[xr] mirror: eye blit live (${l?.framebufferWidth ?? '?'}×${l?.framebufferHeight ?? '?'} → canvas ${renderer.domElement.width}×${renderer.domElement.height})`); } return; } blitFailed = true; tee(`[xr] mirror: eye blit unavailable (${why}) — falling back to a scene pass`); }
   }
   const w = renderer.domElement.clientWidth || 1, h = renderer.domElement.clientHeight || 1;
   if (w / h !== lastAspect) { lastAspect = w / h; deskCam.aspect = lastAspect; deskCam.updateProjectionMatrix(); }
@@ -72,12 +87,13 @@ export function tickXRMirror() {
   const was = renderer.xr.enabled; const oldRT = renderer.getRenderTarget(); const oldOut = renderer.getOutputRenderTarget?.() ?? null;
   renderer.xr.enabled = false;
   try {
-    renderer.setOutputRenderTarget?.(null);
-    renderer.setRenderTarget(thirdRT);
+    // the small target is the renderer's OUTPUT target for this pass, so three's own output pass (tone map + sRGB)
+    // lands in it — a plain render target skips that and came out dark (R 09-08 01:10)
+    renderer.setOutputRenderTarget?.(thirdRT);
+    renderer.setRenderTarget(null);
     // the desktop view sees the third-person head (layer 10), never the FP-only meshes (9)
     deskCam.layers.enable(10); deskCam.layers.disable(9);
     renderer.render(scene, deskCam);
-    renderer.setRenderTarget(null);
     if (!blitRT(thirdRT) && !blitTeed) { blitTeed = true; tee('[xr] mirror: target blit unavailable — the small pass has nowhere to go'); }
   } catch { /* a bad frame must never kill the XR loop */ }
   finally {
