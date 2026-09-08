@@ -27,11 +27,13 @@ import { defsPayload, avatarDefs, animationDefs } from "./defs.ts";
 import { tickStats } from "./tick.ts";
 import { entryBusStats } from "./events.ts";
 import { atomicWrite } from "./fsutil.ts";
-import { tmpdir } from "node:os";
-// client console tee: per-world buckets, bounded so a rotating world name cannot grow the map
+// client console tee (see the /clientlog route): per-world buckets PLUS one global bucket, so neither a busy
+// world nor a rotating world name can outrun the limit; no new bucket is opened once the map is full.
 const clientLogRate = new Map<string, { at: number; n: number }>();
-const CLIENTLOG_DIR = process.env.CLIENTLOG_DIR ?? tmpdir();
-const CLIENTLOG_MAX_BODY = 4096;
+const clientLogGlobal = { at: 0, n: 0 };
+const CLIENTLOG_DIR = process.env.CLIENTLOG_DIR ?? join(WORLDS_DIR, ".clientlogs");   // beside the worlds, like .perflogs — never a shared temp dir
+const CLIENTLOG_MAX_BODY = 4096, CLIENTLOG_MAX_FILE = 5_000_000, CLIENTLOG_MAX_WORLDS = 64, CLIENTLOG_PER_WORLD_MIN = 600, CLIENTLOG_GLOBAL_MIN = 2000;
+try { mkdirSync(CLIENTLOG_DIR, { recursive: true }); } catch (e) { console.warn(`[clientlog] cannot create ${CLIENTLOG_DIR}: ${(e as Error)?.message ?? e}`); }
 import { seatStore, announceProfileUpdate, MAX_PROPOSAL_BYTES } from "./seats.ts";
 import { agentTokens, aid1JoinIdentity } from "./auth.ts";
 
@@ -342,11 +344,11 @@ const ROUTES: Route[] = [
   {
     // client console tee — a visitor's errors and [xr] lines land in a file
     // the operator can tail, because a headset shows an error for three
-    // seconds and a desk shows nothing (a tester, 09-04: "I'm surprised you
-    // can't get errors directly reported from my environment"). Bounded: 4 KB
-    // per body (refused above that by content-length, never buffered), 600
-    // lines per minute per world, at most 64 world buckets, key-gated like
-    // the door. Lands in $CLIENTLOG_DIR (default: the OS temp dir).
+    // seconds and a desk shows nothing. Diagnosis data, not surveillance: the
+    // line carries a timestamp and the client's text, no address. Bounded: 4 KB
+    // per body (refused above that by content-length), 600 lines/min/world and
+    // 2000/min overall, at most 64 world files, 5 MB per file, key-gated like
+    // the door. Lands in $CLIENTLOG_DIR (default: WORLDS_DIR/.clientlogs).
     match: (u, req) => u.pathname === "/clientlog" && req.method === "POST",
     handler: async ({ req, url }) => {
       const world = (url.searchParams.get("world") ?? "unknown").replace(/[^a-z0-9_-]/gi, "").slice(0, 40);
@@ -357,19 +359,24 @@ const ROUTES: Route[] = [
       const len = Number(cl);
       if (!Number.isFinite(len) || len > CLIENTLOG_MAX_BODY) return new Response("too big", { status: 413 });
       const now = Date.now();
+      if (now - clientLogGlobal.at > 60_000) { clientLogGlobal.at = now; clientLogGlobal.n = 0; }
+      if (++clientLogGlobal.n > CLIENTLOG_GLOBAL_MIN) return new Response("slow down", { status: 429 });
       let bucket = clientLogRate.get(world);
       if (!bucket) {
-        if (clientLogRate.size >= 64) { const oldest = [...clientLogRate.entries()].sort((a, b) => a[1].at - b[1].at)[0]; if (oldest) clientLogRate.delete(oldest[0]); }
+        if (clientLogRate.size >= CLIENTLOG_MAX_WORLDS) return new Response("too many worlds", { status: 429 });   // no eviction: a fresh name must not buy a fresh quota
         bucket = { at: now, n: 0 }; clientLogRate.set(world, bucket);
       }
       if (now - bucket.at > 60_000) { bucket.at = now; bucket.n = 0; }
-      if (++bucket.n > 600) return new Response("slow down", { status: 429 });
+      if (++bucket.n > CLIENTLOG_PER_WORLD_MIN) return new Response("slow down", { status: 429 });
       let body = "";
       try { body = (await req.text()).slice(0, CLIENTLOG_MAX_BODY); } catch { return new Response("bad", { status: 400 }); }
-      const line = JSON.stringify({ t: new Date(now).toISOString(), ip: req.headers.get("cf-connecting-ip") ?? "", line: body }) + "\n";
-      // appendFileSync, not Bun.write: Bun.write has no append and silently
-      // overwrote the file per line (the tail "replayed" the same entry, 09-04)
-      try { appendFileSync(`${CLIENTLOG_DIR}/clientlog-${world}.log`, line); } catch (e) { console.warn(`[clientlog] append failed: ${(e as Error)?.message ?? e}`); }
+      const line = JSON.stringify({ t: new Date(now).toISOString(), line: body }) + "\n";
+      const dest = join(CLIENTLOG_DIR, `clientlog-${world}.log`);
+      try {
+        if (existsSync(dest) && Bun.file(dest).size > CLIENTLOG_MAX_FILE) return new Response("full", { status: 507 });
+        // appendFileSync, not Bun.write: Bun.write has no append and silently overwrote the file per line
+        appendFileSync(dest, line);
+      } catch (e) { console.warn(`[clientlog] append failed: ${(e as Error)?.message ?? e}`); }
       return new Response("ok", { headers: { "cache-control": "no-store" } });
     },
   },
