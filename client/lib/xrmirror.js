@@ -34,13 +34,22 @@ export function tickXRMirror() {
   // framebuffer as the current render target before the animation callback, so a mirror pass that
   // doesn't retarget the canvas renders the desktop camera INTO THE EYES (R, 09-05 21:45: 'I pop to
   // the origin' — a mono desktop-camera frame in the visor). Save, retarget null (the canvas), restore.
-  const was = renderer.xr.enabled; const oldRT = renderer.getRenderTarget();
+  // …and that is NOT enough on three's WebGPU-class renderer (r185): the XR frame also sets
+  // renderer.setOutputRenderTarget(xrRenderTarget), and a null-target render resolves to
+  // `_renderTarget || _outputRenderTarget` — the EYES. xr.enabled=false changes nothing there. The
+  // desktop camera was drawn into the eye buffer on top of the stereo frame: semi-transparent, each
+  // eye different (R 09-08 00:38: 'very cursed'). Point the output at the canvas for the pass, restore.
+  const was = renderer.xr.enabled; const oldRT = renderer.getRenderTarget(); const oldOut = renderer.getOutputRenderTarget?.() ?? null;
   renderer.xr.enabled = false;
   try {
+    renderer.setOutputRenderTarget?.(null);   // null = the canvas target (three: _outputRenderTarget || _canvasTarget)
     renderer.setRenderTarget(null);
     // the desktop view sees the third-person head (layer 10), never the FP-only meshes (9)
     deskCam.layers.enable(10); deskCam.layers.disable(9);
     renderer.render(scene, deskCam);
   } catch { /* a bad frame must never kill the XR loop */ }
-  finally { renderer.setRenderTarget(oldRT); renderer.xr.enabled = was; }
+  finally {
+    renderer.setOutputRenderTarget?.(oldOut); renderer.setRenderTarget(oldRT); renderer.xr.enabled = was;
+    if (renderer.xr.isPresenting) renderer.xr.updateCamera(camera);   // the eyes rebuilt from the rig before the stereo pass (renderAside's rule)
+  }
 }
