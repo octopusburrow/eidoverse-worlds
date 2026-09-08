@@ -296,7 +296,7 @@ const BACK_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="52" height="52"
 // 6 o'clock = leave VR; the dock's pins fill the right half, mic / ears / recentre the left; a dim spacer keeps the
 // count even so the two fixed slots sit exactly on the vertical. 'emotes' is a sub-wheel (VRC's shape): the nine
 // plus a back slot at 6 o'clock. Toggles stay open and show state; everything else closes on activation.
-function radialEntries() {
+export function radialEntries() {   // exported with makeRadial for the headless ring screenshot
   if (ringLevel === 'emotes') {
     const e = ringEmoteEntries();                    // postures + emotes, bar order, 12 o'clock first
     const back = { svg: BACK_SVG, label: 'back', on: () => false, sub: 'root', act: () => {} };
@@ -353,7 +353,11 @@ function ringIconTexture(s, focused) {
   if (s.svg) {
     const img = new Image();
     img.onload = () => { g.save(); g.translate(64, 64); g.drawImage(img, -30, -30, 60, 60); g.restore(); tex.needsUpdate = true; };
-    img.src = 'data:image/svg+xml;utf8,' + encodeURIComponent(s.svg.replace(/stroke="#f2f7f5"/g, `stroke="${ink}"`).replace(/fill="#f2f7f5"/g, `fill="${ink}"`));
+    // an <svg> without xmlns renders INLINE but paints NOTHING as an <img> data-URI — mic/ears/VR came from the HUD's
+    // inline glyphs and were the exact icons missing on the ring (R 09-07 23:34); the ∃/recentre/emote SVGs carried it
+    let svg = s.svg.replace(/stroke="#f2f7f5"/g, `stroke="${ink}"`).replace(/fill="#f2f7f5"/g, `fill="${ink}"`);
+    if (!/xmlns=/.test(svg)) svg = svg.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
+    img.src = 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
   } else if (!fillPath(g, s.icon, 60, (focused || on) ? 'fill' : 'line')) stroke(g, s.icon, 60);
   g.restore();
   return tex;
@@ -375,7 +379,7 @@ function setRingLabel(text) {
   }
   l.mesh.visible = !!text; l.tx.needsUpdate = true;
 }
-function makeRadial(entries) {
+export function makeRadial(entries) {   // exported for the headless ring screenshot (smoke) — the ring is plain meshes
   const group = new THREE.Group();
   const N = Math.max(1, entries.length);
   // R 09-07 23:01: 'the little circles are z-fighting' — 5 cm discs on a 7.5 cm ring overlap past ~9 slots, and with
@@ -678,15 +682,16 @@ export function syncRigToBody() {
 // cannot see a per-frame oscillation. Armed by a stick turn, 60 frames of rig yaw / hips yaw / root xz / head xz /
 // rig xz tee as ONE line (cm, centi-radians), then it retires for 10 s. Read: does root or rig alternate sign frame to frame?
 let turnTrace = null, turnTraceLast = 0;
-function turnTraceArm(kind) { if (turnTrace || performance.now() - turnTraceLast < 10000) return; turnTrace = { kind, rows: [] }; }
+function turnTraceArm(kind) { if (turnTrace || performance.now() - turnTraceLast < 10000) return; turnTrace = { kind, rows: [], d: 0, dt: null }; }
+function turnTraceInput(d, dt) { if (turnTrace) { turnTrace.d = d; turnTrace.dt = dt; } }
 function turnTraceTick() {
   if (!turnTrace) return;
   const av = getSelf(); const hips = av?.vrm?.humanoid?.getNormalizedBoneNode('hips'); const root = av?.root;
   const hy = hips ? Math.atan2(hips.getWorldDirection(_v).x, hips.getWorldDirection(_v).z) : 0;
   const rp = root ? root.getWorldPosition(_v2) : _v2.set(0, 0, 0);
   const hp = renderer.xr.getCamera().matrixWorld.elements;
-  turnTrace.rows.push(`${Math.round(rig.rotation.y * 100)},${Math.round(hy * 100)},${Math.round(rp.x * 100)},${Math.round(rp.z * 100)},${Math.round(hp[12] * 100)},${Math.round(hp[14] * 100)},${Math.round(rig.position.x * 100)},${Math.round(rig.position.z * 100)}`);
-  if (turnTrace.rows.length >= 60) { tee(`[xr] turn-trace ${turnTrace.kind} (rigYaw,hipsYaw,rootX,rootZ,headX,headZ,rigX,rigZ ×100): ${turnTrace.rows.join(' ')}`); turnTrace = null; turnTraceLast = performance.now(); }
+  turnTrace.rows.push(`${Math.round(rig.rotation.y * 100)},${Math.round(camYawWorld() * 100)},${Math.round((turnTrace.d || 0) * 100)},${turnTrace.dt == null ? 'u' : Math.round(turnTrace.dt * 1000)},${Math.round(hy * 100)},${Math.round(rp.x * 100)},${Math.round(rp.z * 100)},${Math.round(hp[12] * 100)},${Math.round(hp[14] * 100)},${Math.round(rig.position.x * 100)},${Math.round(rig.position.z * 100)}`);
+  if (turnTrace.rows.length >= 60) { tee(`[xr] turn-trace ${turnTrace.kind} (rigYaw,camYaw,stick×100,dtMs|u,hipsYaw,rootX,rootZ,headX,headZ,rigX,rigZ; angles×100, m×100): ${turnTrace.rows.join(' ')}`); turnTrace = null; turnTraceLast = performance.now(); }
 }
 function camYawWorld() { const e = renderer.xr.getCamera().matrixWorld.elements; return Math.atan2(-e[8], -e[10]); }   // world yaw of the HMD's -Z
 const wrapPi = (a) => Math.atan2(Math.sin(a), Math.cos(a));   // every yaw write wraps: an unwrapped body yaw (7.88 = 1.6 + 2π on R's recorder) met a wrapped camera yaw and 'popped' a full turn
@@ -881,7 +886,7 @@ export function updateXR(dtSec = 1 / 72) {
     else if (xrPrefs.turn === 'smooth') {
       // smooth turn: the rig yaws continuously with the stick (R's own mode)
       const d = dead(rx);
-      if (d) { rig.rotation.y = wrapPi(rig.rotation.y - d * SMOOTH_TURN_RAD_S * (dtSec ?? 1 / 72)); turnTraceArm('smooth'); }
+      if (d) { rig.rotation.y = wrapPi(rig.rotation.y - d * SMOOTH_TURN_RAD_S * (dtSec ?? 1 / 72)); turnTraceArm('smooth'); turnTraceInput(d, dtSec); }
       turnMag = Math.abs(d);
     }
     else if (Math.abs(rx) > 0.6 && !snapState.cooling) {

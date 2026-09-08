@@ -24,7 +24,8 @@ export function skinSelect(sel) {
   sel.dataset.skinned = '1';
   const btn = document.createElement('button');
   btn.type = 'button'; btn.className = 'dd'; btn.setAttribute('aria-haspopup', 'listbox'); btn.setAttribute('aria-expanded', 'false');
-  const paint = () => { btn.innerHTML = `<span class="dd-label">${label(sel)}</span>${fsvg('caret-down', 11) || '<span class="dd-caret">▾</span>'}`; btn.disabled = sel.disabled; };
+  // `set` = a non-default choice is live (R 09-07 23:25: a persistent mode should read as ON at a glance — the trigger outlines in accent)
+  const paint = () => { btn.innerHTML = `<span class="dd-label">${label(sel)}</span>${fsvg('caret-down', 11) || '<span class="dd-caret">▾</span>'}`; btn.disabled = sel.disabled; btn.classList.toggle('set', sel.hasAttribute('data-mode') && sel.selectedIndex > 0 && !/^(off|none|default)$/i.test(sel.value)); };
   paint();
   sel.classList.add('dd-native');
   sel.insertAdjacentElement('afterend', btn);

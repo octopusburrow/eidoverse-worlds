@@ -731,6 +731,7 @@ export function buildPerfPanel(stack, { toast = console.log } = {}) {
   const lbl = document.createElement('span');
   lbl.className = 'nm'; lbl.textContent = 'overlay';
   const sel = document.createElement('select');
+  sel.dataset.mode = '1';   // a persistent mode: the skinned trigger outlines in accent while it isn't 'off' (dropdown.js paint)
   for (const [k, m] of Object.entries(MODES)) {
     const o = document.createElement('option');
     o.value = k; o.textContent = m.label;
@@ -745,6 +746,7 @@ export function buildPerfPanel(stack, { toast = console.log } = {}) {
   // the loupe is a plain house button (button.on draws its armed state) and
   // lives with rescan/copy in the button row below — no private tool styling
   const lb = document.createElement('button');
+  lb.classList.add('mode');   // a persistent mode: its `on` paints in accent (index.html button.mode.on), not the hover grey
   lb.title = 'loupe — hover an object for its cost card; click pins';
   lb.innerHTML = `${fsvg('magnifying-glass', 13)} loupe`;
   lb.onclick = () => setLoupe(!loupeOn);
