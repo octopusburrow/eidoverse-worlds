@@ -699,13 +699,25 @@ export function syncRigToBody() {
 let turnEarlyFrame = -1;
 let hadPose = false;   // a viewer pose has arrived this session (the eyes exist) — the headset is on someone's head
 export function applyTurnEarly(dtSec) {
-  if (!presenting || radialOpen || xrPrefs.turn !== 'smooth' || !buttonsTrusted()) return;
+  if (!presenting || radialOpen || !buttonsTrusted()) return;
   const R = sourceFor('right')?.gamepad; if (!R) return;
-  const d = dead(pickAxis(R.axes[2], R.axes[0]));
-  if (!d) return;
-  rig.rotation.y = wrapPi(rig.rotation.y - d * SMOOTH_TURN_RAD_S * (dtSec ?? 1 / 72));
-  turnEarlyFrame = perf.frameNo ?? -1;
-  turnTraceArm('smooth'); turnTraceInput(d, dtSec);
+  const rx = pickAxis(R.axes[2], R.axes[0]);
+  if (xrPrefs.turn === 'smooth') {
+    const d = dead(rx);
+    if (!d) return;
+    rig.rotation.y = wrapPi(rig.rotation.y - d * SMOOTH_TURN_RAD_S * (dtSec ?? 1 / 72));
+    turnEarlyFrame = perf.frameNo ?? -1;
+    turnTraceArm('smooth'); turnTraceInput(d, dtSec);
+    return;
+  }
+  // snap: the same bug at full size — a 30° step written after the body solve put the eyes 30° ahead of the
+  // hands for one frame (R 09-08 01:32: 'much more off on one frame'). Same cooldown as the input pass.
+  if (Math.abs(rx) > 0.6 && !snapState.cooling) {
+    rig.rotation.y = wrapPi(rig.rotation.y - Math.sign(rx) * (SNAP_DEG * Math.PI) / 180);
+    snapState.cooling = true;
+    turnEarlyFrame = perf.frameNo ?? -1;
+    turnTraceArm('snap');
+  } else if (Math.abs(rx) < 0.3) snapState.cooling = false;
 }
 /** Per-frame while presenting. Order matters: read hands → fill intent →
  *  (controller.updateMe moves the body with THEIR loco) → rig follows body. */
@@ -927,10 +939,11 @@ export function updateXR(dtSec = 1 / 72) {
       if (d && turnEarlyFrame !== (perf.frameNo ?? -2)) { rig.rotation.y = wrapPi(rig.rotation.y - d * SMOOTH_TURN_RAD_S * (dtSec ?? 1 / 72)); turnTraceArm('smooth'); turnTraceInput(d, dtSec); }   // applied early this frame (applyTurnEarly) → no second step
       turnMag = Math.abs(d);
     }
-    else if (Math.abs(rx) > 0.6 && !snapState.cooling) {
+    else if (Math.abs(rx) > 0.6 && !snapState.cooling && turnEarlyFrame !== (perf.frameNo ?? -2)) {
       // snap turns the RIG — the world pivots around the body. camYaw belongs
       // to the head (head-following rewrites it every frame), and the camera
       // rides the rig, so the head's world yaw inherits the snap on its own.
+      // (normally applied EARLY by applyTurnEarly, ahead of the body solve; this is the no-body path)
       rig.rotation.y = wrapPi(rig.rotation.y - Math.sign(rx) * (SNAP_DEG * Math.PI) / 180);
       snapState.cooling = true;
       turnTraceArm('snap');
