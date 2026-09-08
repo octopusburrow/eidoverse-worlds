@@ -417,6 +417,7 @@ export const rigDebug = () => ({
   slots: N_SLOTS, cap: slotCap, dayness: +dayness.toFixed(3),
   casters: casters.size, casterBudget,
   casting: [...casters.values()].filter((c) => c.casting).length,
+  casterList: [...casters.values()].map((c) => ({ id: String(c.id).slice(0, 24), casting: c.casting, warm: c.warm, meshes: c.meshes.length })),
   requests: [...requests.values()].map((r) => ({
     key: r.key, slot: r.slot, keep: r.keep, authored: r.authored,
     mirror: Boolean(r.mirror), dayAware: r.dayAware,
