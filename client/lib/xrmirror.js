@@ -47,7 +47,7 @@ function blitRT(rt) {
 export function tickXRMirror() {
   if (!isPresenting() || xrPrefs.mirror === 'off') return;
   if (xrPrefs.mirror === 'first') {
-    if (!blitFailed) { if (blitEye()) return; blitFailed = true; tee('[xr] mirror: eye blit unavailable — falling back to a scene pass'); }
+    if (!blitFailed) { if (blitEye()) { if (!blitTeed) { blitTeed = true; const l = renderer.xr.getSession?.()?.renderState?.baseLayer; tee(`[xr] mirror: eye blit live (${l?.framebufferWidth ?? '?'}×${l?.framebufferHeight ?? '?'} → canvas ${renderer.domElement.width}×${renderer.domElement.height})`); } return; } blitFailed = true; tee('[xr] mirror: eye blit unavailable — falling back to a scene pass'); }
   }
   const w = renderer.domElement.clientWidth || 1, h = renderer.domElement.clientHeight || 1;
   if (w / h !== lastAspect) { lastAspect = w / h; deskCam.aspect = lastAspect; deskCam.updateProjectionMatrix(); }
