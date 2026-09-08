@@ -16,4 +16,15 @@ ok(sanePose({ ...good, xr: { ...xr, h: [NaN, 0, 0, 1] } }) === null, "NaN head q
 ok(sanePose({ ...good, xr: { ...xr, r: [0, 1, 2] } }) === null, "short grip dropped");
 ok(sanePose({ ...good, xr: { h: [0, 0, 0, 1] } }) !== null, "xr with head only passes");
 ok(sanePose({ ...good, xr: null }) === null, "null xr dropped");
-console.log("posecheck: 13 ok");
+// the deep fence: held pose (bone quats), pins, reach — a NaN anywhere inside is the same fault
+const deep = { ...good, pose: { hips: [0, 0, 0, 1], head: [0.1, 0, 0, 0.99] }, pins: [{ bone: "leftHand", p: [1, 2, 3] }], reach: { right: { t: { p: [0, 1, 0] }, palm: 0.5 } } };
+ok(sanePose(deep) !== null, "deep pose/pins/reach pass");
+ok(sanePose({ ...deep, pose: { hips: [0, NaN, 0, 1] } }) === null, "NaN buried in a bone quat dropped");
+ok(sanePose({ ...deep, pins: [{ bone: "x", p: [1, Infinity, 3] }] }) === null, "Infinity buried in a pin dropped");
+ok(sanePose({ ...deep, reach: { right: { t: { p: [0, 1, NaN] } } } }) === null, "NaN buried in reach dropped");
+ok(sanePose({ ...good, pose: null, pins: null, reach: null }) !== null, "null clears pass (the client's 'let go' contract)");
+let nest: unknown = 1; for (let i = 0; i < 8; i++) nest = { a: nest };
+ok(sanePose({ ...good, pose: nest }) === null, "a container nested past MAX_DEPTH dropped");
+const wide: Record<string, number> = {}; for (let i = 0; i < 600; i++) wide["k" + i] = 0;
+ok(sanePose({ ...good, pins: wide }) === null, "a container wider than MAX_KEYS dropped");
+console.log("posecheck: 20 ok");

@@ -53,7 +53,7 @@ function defer(dest: string, why: string) {
   try { mkdirSync(dirname(dest), { recursive: true }); writeFileSync(`${dest}.deferred`, why); } catch { /* best effort */ }
   console.log(`[optimize] deferred ${basename(dest)} — ${why}`);
 }
-function queueOptimize(absPath: string) {
+export function queueOptimize(absPath: string) {
   let pushed = false;
   if (!optQueue.some((q) => q.src === absPath && !q.mode)) {
     optQueue.push({ src: absPath, dest: join(STORE_MIN, basename(absPath)) });
@@ -81,9 +81,13 @@ function queueOptimize(absPath: string) {
   }
   if (pushed) pumpOptimize();
 }
+let optPump: Promise<void> = Promise.resolve();
+/** Resolves when the pump has drained (a harness awaits this; the server never does). */
+export const optIdle = () => optPump;
 async function pumpOptimize() {
   if (optRunning) return;
   optRunning = true;
+  let done!: () => void; optPump = new Promise<void>((r) => { done = r; });
   try {
     while (optQueue.length) {
       const { src, dest, mode } = optQueue.shift()!;
@@ -97,7 +101,7 @@ async function pumpOptimize() {
       // KTX2 variants shadow MUTABLE library files, so a variant older than
       // its source rebuilds (the sweep filters too, but a file can change
       // while its item waits behind slow encodes).
-      if (existsSync(dest) && (!mode || statSync(dest).mtimeMs > statSync(src).mtimeMs)) continue;
+      if (existsSync(dest) && (!mode || statSync(dest).mtimeMs > statSync(src).mtimeMs)) { undefer(dest); continue; }   // done elsewhere: a stale .deferred must not outlive the variant
       // Budget gate: an item this host cannot afford is deferred, not failed,
       // and the rest of the queue keeps going (config.ts OPT_MEM_BUDGET_MB).
       const estMB = Math.ceil(Bun.file(src).size * OPT_COST_FACTOR / 1_000_000);
@@ -113,7 +117,8 @@ async function pumpOptimize() {
       // unmistakable (126: the limit could not be set — a hard limit below
       // the budget; 127: exec failed) so they never read as a content verdict.
       const capped = OPT_MEM_BUDGET_MB > 0 && process.platform === "linux";
-      const cmd = [process.execPath, "run", join(ROOT, "server", "optimize.ts"), ...(mode ? [mode] : []), src, dest];
+      // OPT_CMD: a harness may own the child (tools/optimize-pump-test.ts) — the real optimizer otherwise
+      const cmd = [...(process.env.OPT_CMD ? [process.env.OPT_CMD] : [process.execPath, "run", join(ROOT, "server", "optimize.ts")]), ...(mode ? [mode] : []), src, dest];
       let proc: ReturnType<typeof Bun.spawn>;
       try {
         // /bin/sh by absolute path: the pump may run under a PATH that has no
@@ -200,13 +205,14 @@ async function pumpOptimize() {
         if (envFail) { optQueue.length = 0; break; } // no point grinding the rest
       }
     }
-  } finally { optRunning = false; }
+  } finally { optRunning = false; done(); }
 }
 // Boot sweep: whatever accumulated before this shipped (or failed mid-queue
 // last run) gets its shadow now. Deferred so boot stays about serving worlds.
 // SKIP_OPT_SWEEP: see config.ts — a memory-tight host must be able to serve
 // worlds without shouldering the optimizer.
-setTimeout(() => {
+/** The store sweep (named so a harness can drive it; the boot timer below calls it). */
+export function sweepStore() {
   if (SKIP_OPT_SWEEP) return;
   const dir = join(OPT_DIR, "store");
   if (!existsSync(dir)) return;
@@ -222,7 +228,8 @@ setTimeout(() => {
   if (!pending.length) return;
   console.log(`[store] boot sweep: ${pending.length} upload(s) missing a shadow queued`);
   for (const f of pending) queueOptimize(join(dir, f));
-}, 5000);
+}
+setTimeout(sweepStore, 5000);
 // Library KTX2 sweep (§20a, VRMs §20c, loose images §20d): every library
 // model gets a GPU-native-texture variant at OPT_DIR/<rel>.ktx2.glb, every
 // avatar a surgical-rewrite variant at OPT_DIR/<rel>.ktx2.vrm, and every
@@ -235,7 +242,8 @@ setTimeout(() => {
 // byte-preserved). Avatars live in TWO bases — Skye's library and the upload
 // overlay (assets/opt/...) — and serving prefers the overlay, so the sweep
 // sources each rel from the base that actually wins.
-setTimeout(() => {
+/** The library KTX2/LOD sweep — same seam. */
+export function sweepLibrary() {
   if (SKIP_OPT_SWEEP) return;
   if (ktx2Skip) return;
   const items: OptItem[] = [];
@@ -290,7 +298,8 @@ setTimeout(() => {
   console.log(`[ktx2] boot sweep: ${items.length} library asset(s) queued for variants`);
   optQueue.push(...items);
   pumpOptimize();
-}, 15_000);
+}
+setTimeout(sweepLibrary, 15_000);
 
 // ---- the endpoint -----------------------------------------------------------
 

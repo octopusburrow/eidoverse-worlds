@@ -34,11 +34,21 @@ function usableMemory(): number {
   try { const m = Number(readFileSync("/sys/fs/cgroup/memory.max", "utf8").trim()); if (m > 0) return Math.min(m, totalmem()); } catch { /* no cgroup v2 */ }
   return totalmem();
 }
-export const OPT_MEM_BUDGET_MB = Number(process.env.OPT_MEM_BUDGET_MB ?? Math.floor(usableMemory() / 2_000_000));
+// Env values are VALIDATED: a budget that is not a finite number >= 0 ("banana", -1) falls back to the default
+// with a warning — NaN used to disable the cap silently and serialise as null; a negative one deferred everything.
+function envNumber(name: string, fallback: number, ok: (n: number) => boolean): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  const n = Number(raw);
+  if (Number.isFinite(n) && ok(n)) return n;
+  console.warn(`[config] ${name}=${JSON.stringify(raw)} is not valid — using ${fallback}`);
+  return fallback;
+}
+export const OPT_MEM_BUDGET_MB = envNumber("OPT_MEM_BUDGET_MB", Math.floor(usableMemory() / 2_000_000), (n) => n >= 0);
 // Peak RSS of an optimize pass as a multiple of the source bytes, for the
 // estimate above: measured 259MB for a 5.4MB store GLB (x48). The KTX2/LOD
 // arms were not measured separately and are assumed the same order.
-export const OPT_COST_FACTOR = Number(process.env.OPT_COST_FACTOR ?? 48);
+export const OPT_COST_FACTOR = envNumber("OPT_COST_FACTOR", 48, (n) => n > 0);
 export const ROOT = resolve(import.meta.dir, "..");
 // Dev instances point this elsewhere so a scratch sequencer can't append to the
 // live worlds' logs (they are append-only and forever — a stray dev spawn is

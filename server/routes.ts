@@ -27,12 +27,15 @@ import { defsPayload, avatarDefs, animationDefs } from "./defs.ts";
 import { tickStats } from "./tick.ts";
 import { entryBusStats } from "./events.ts";
 import { atomicWrite } from "./fsutil.ts";
-// client console tee (see the /clientlog route): per-world buckets PLUS one global bucket, so neither a busy
-// world nor a rotating world name can outrun the limit; no new bucket is opened once the map is full.
+// client console tee (see the /clientlog route): a per-world bucket for every world this server KNOWS (loaded in
+// memory, or with a data dir on disk) plus one shared bucket for any other label, plus one global bucket — so a
+// busy world cannot starve the rest, a made-up label cannot buy quota or a file of its own, and the map is
+// bounded by the worlds that exist (review of #172: 64 invented labels once denied a real new world until restart).
 const clientLogRate = new Map<string, { at: number; n: number }>();
 const clientLogGlobal = { at: 0, n: 0 };
 const CLIENTLOG_DIR = process.env.CLIENTLOG_DIR ?? join(WORLDS_DIR, ".clientlogs");   // beside the worlds, like .perflogs — never a shared temp dir
-const CLIENTLOG_MAX_BODY = 4096, CLIENTLOG_MAX_FILE = 5_000_000, CLIENTLOG_MAX_WORLDS = 64, CLIENTLOG_PER_WORLD_MIN = 600, CLIENTLOG_GLOBAL_MIN = 2000;
+const CLIENTLOG_MAX_BODY = 4096, CLIENTLOG_MAX_FILE = 5_000_000, CLIENTLOG_PER_WORLD_MIN = 600, CLIENTLOG_GLOBAL_MIN = 2000;
+const knownWorld = (name: string) => worlds.has(name) || existsSync(join(WORLDS_DIR, name, "log.jsonl"));
 try { mkdirSync(CLIENTLOG_DIR, { recursive: true }); } catch (e) { console.warn(`[clientlog] cannot create ${CLIENTLOG_DIR}: ${(e as Error)?.message ?? e}`); }
 import { seatStore, announceProfileUpdate, MAX_PROPOSAL_BYTES } from "./seats.ts";
 import { agentTokens, aid1JoinIdentity } from "./auth.ts";
@@ -347,11 +350,16 @@ const ROUTES: Route[] = [
     // seconds and a desk shows nothing. Diagnosis data, not surveillance: the
     // line carries a timestamp and the client's text, no address. Bounded: 4 KB
     // per body (refused above that by content-length), 600 lines/min/world and
-    // 2000/min overall, at most 64 world files, 5 MB per file, key-gated like
-    // the door. Lands in $CLIENTLOG_DIR (default: WORLDS_DIR/.clientlogs).
+    // 2000/min overall, one file per KNOWN world plus one shared 'unknown' file
+    // for any other label, 5 MB per file, key-gated like the door — which means
+    // an OPEN door (JOIN_TOKEN empty, the tailnet dev posture) accepts these
+    // writes from anyone who can reach the port: do not run it open on a public
+    // box. A failed append answers 500, never a false 'ok'. Lands in
+    // $CLIENTLOG_DIR (default: WORLDS_DIR/.clientlogs).
     match: (u, req) => u.pathname === "/clientlog" && req.method === "POST",
     handler: async ({ req, url }) => {
-      const world = (url.searchParams.get("world") ?? "").replace(/[^a-z0-9_-]/gi, "").slice(0, 40) || "unknown";
+      const label = (url.searchParams.get("world") ?? "").replace(/[^a-z0-9_-]/gi, "").slice(0, 40);
+      const world = label && knownWorld(label) ? label : "unknown";   // a label the server does not know shares one bucket and one file
       const key = url.searchParams.get("key") ?? "";
       if (JOIN_TOKEN && key !== JOIN_TOKEN) return new Response("no", { status: 401 });
       const cl = req.headers.get("content-length");
@@ -362,10 +370,7 @@ const ROUTES: Route[] = [
       if (now - clientLogGlobal.at > 60_000) { clientLogGlobal.at = now; clientLogGlobal.n = 0; }
       if (++clientLogGlobal.n > CLIENTLOG_GLOBAL_MIN) return new Response("slow down", { status: 429 });
       let bucket = clientLogRate.get(world);
-      if (!bucket) {
-        if (clientLogRate.size >= CLIENTLOG_MAX_WORLDS) return new Response("too many worlds", { status: 429 });   // no eviction: a fresh name must not buy a fresh quota
-        bucket = { at: now, n: 0 }; clientLogRate.set(world, bucket);
-      }
+      if (!bucket) { bucket = { at: now, n: 0 }; clientLogRate.set(world, bucket); }   // bounded by the worlds that exist + 'unknown'
       if (now - bucket.at > 60_000) { bucket.at = now; bucket.n = 0; }
       if (++bucket.n > CLIENTLOG_PER_WORLD_MIN) return new Response("slow down", { status: 429 });
       let body = "";
@@ -376,7 +381,7 @@ const ROUTES: Route[] = [
         if (existsSync(dest) && Bun.file(dest).size > CLIENTLOG_MAX_FILE) return new Response("full", { status: 507 });
         // appendFileSync, not Bun.write: Bun.write has no append and silently overwrote the file per line
         appendFileSync(dest, line);
-      } catch (e) { console.warn(`[clientlog] append failed: ${(e as Error)?.message ?? e}`); }
+      } catch (e) { console.warn(`[clientlog] append failed: ${(e as Error)?.message ?? e}`); return new Response("tee failed", { status: 500 }); }
       return new Response("ok", { headers: { "cache-control": "no-store" } });
     },
   },
