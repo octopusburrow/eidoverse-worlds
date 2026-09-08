@@ -1,0 +1,29 @@
+<!doctype html><meta charset="utf-8"><title>minimal shadow</title>
+<style>html,body{margin:0;background:#000}canvas{display:block}</style>
+<script type="module">
+// R 09-07 19:44: 'a scene with only the sun and a yucca' — three.webgpu (this repo's build, WebGL backend forced),
+// one DirectionalLight with a shadow map, a ground disc, a box + a sphere. No rig, no warm, no batches.
+import * as THREE from '/node_modules/three/build/three.webgpu.js';
+const q = new URLSearchParams(location.search);
+const renderer = new THREE.WebGPURenderer({ antialias: true, forceWebGL: q.get('webgl') !== '0' });
+renderer.setSize(innerWidth, innerHeight); renderer.setPixelRatio(1); document.body.appendChild(renderer.domElement);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = ({ basic: THREE.BasicShadowMap, pcf: THREE.PCFShadowMap })[q.get('shadowtype')] ?? THREE.PCFSoftShadowMap;
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x101418);
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 200); camera.position.set(6, 5, 8); camera.lookAt(0, 0.5, 0);
+scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x283024, 0.3));
+const sun = new THREE.DirectionalLight(0xfff2e0, 2.2); sun.position.set(14, 22, 10); sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.02;
+const sc = sun.shadow.camera; sc.left = sc.bottom = -20; sc.right = sc.top = 20; sc.near = 0.5; sc.far = 80;
+scene.add(sun); scene.add(sun.target);
+const ground = new THREE.Mesh(new THREE.CircleGeometry(30, 64).rotateX(-Math.PI / 2), new THREE.MeshStandardNodeMaterial({ color: 0x2a3440, roughness: 0.9, metalness: 0.05 }));
+ground.receiveShadow = true; scene.add(ground);
+const box = new THREE.Mesh(new THREE.BoxGeometry(1.5, 3, 1.5), new THREE.MeshStandardNodeMaterial({ color: 0x8a9a6a }));
+box.position.set(0, 1.5, 0); box.castShadow = true; box.receiveShadow = true; scene.add(box);
+const ball = new THREE.Mesh(new THREE.SphereGeometry(0.8, 32, 16), new THREE.MeshStandardNodeMaterial({ color: 0xc08a5a }));
+ball.position.set(3, 0.8, 1); ball.castShadow = true; scene.add(ball);
+await renderer.init();
+const gl = renderer.backend?.gl; const dbg = gl?.getExtension?.('WEBGL_debug_renderer_info');
+globalThis.__info = { backend: renderer.backend?.isWebGLBackend ? 'webgl' : 'webgpu', renderer: dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : (gl ? gl.getParameter(gl.RENDERER) : 'webgpu'), type: renderer.shadowMap.type };
+let n = 0; renderer.setAnimationLoop(() => { renderer.render(scene, camera); if (++n === 60) globalThis.__ready = true; });
+</script>

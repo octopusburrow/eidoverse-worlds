@@ -298,11 +298,17 @@ function updateShadow() {
   cam.right = fx + SHADOW_HALF;
   cam.top = fy + SHADOW_HALF;
   cam.bottom = fy - SHADOW_HALF;
-  // the light camera looks down -z, so the focus sits -fz in front of it;
-  // a below-horizon sun makes that negative — clamp to a sane window
+  // the light camera looks down -z, so the focus sits -fz in front of it.
+  // dist goes NEGATIVE whenever the camera stands up-sun of the light's
+  // fixed point (sun.position is ~27-60 m from the origin; every prop in
+  // staging is at x 40-60, z 42-69 — 15-25 m BEHIND that point). The old
+  // `Math.max(0.1, …)` clamp assumed only a below-horizon sun could do that
+  // and threw the whole quarter out of the map: 12 casters "casting", no
+  // shadow on any GPU (R 09-07). An orthographic camera takes a negative
+  // near; three reads shadow.camera.near/far only for VSM and log depth.
   const dist = -_rel.dot(_sz);
-  cam.near = Math.max(0.1, dist - SHADOW_DEPTH);
-  cam.far = Math.max(cam.near + 20, dist + SHADOW_DEPTH);
+  cam.near = dist - SHADOW_DEPTH;
+  cam.far = dist + SHADOW_DEPTH;
   cam.updateProjectionMatrix();
 }
 
