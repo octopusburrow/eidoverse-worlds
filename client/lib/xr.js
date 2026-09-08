@@ -705,9 +705,11 @@ export function recentreXR(why = 'verb') {
 }
 export const xrRecentre = () => ({ ...recentre });
 /** The one exit. Every path (visor glyph, ring, controller hold) ends here and says so. */
+let lastLeaveAt = -1e9;
 export function leaveVR(why = 'verb') {
   if (!session) { tee(`[xr] leave (${why}): no session`); return false; }
   tee(`[xr] leave (${why})`);
+  lastLeaveAt = performance.now();
   try { const p = session.end(); p?.catch?.((e) => tee(`[xr] leave (${why}) rejected: ${e?.message ?? e}`)); } catch (e) { tee(`[xr] leave (${why}) threw: ${e?.message ?? e}`); }
   return true;
 }
@@ -1014,6 +1016,10 @@ export async function initXR() {
     // WebGPU-XR ships unflagged; ?webgpu=1 opts in early).
     onclick: () => {
       if (presenting) { leaveVR('visor'); return; }
+      // R 09-07 22:29: a ring leave was followed by an 'enter #2' inside the same second — a live session with
+      // nobody in the headset = dark desktop, working HUD. Once the session ends the page is a 2D panel again
+      // and a controller trigger IS a click wherever the pointer sits. Nothing meant that; refuse for 1.5 s.
+      if (performance.now() - lastLeaveAt < 1500) { tee('[xr] visor: enter ignored (left VR less than 1.5 s ago)'); return; }
       if (XR_BOOT) { enterVR(); return; }
       // Already on WebGL? Nothing to swap — enter in place, no page reload (R 09-07: kill the reload tax).
       if (!renderer.backend?.isWebGPUBackend) { tee('[xr] visor: enter in place (WebGL, no reload)'); enterVR(); return; }
