@@ -99,7 +99,11 @@ sun.shadow.bias = -0.0006;
 sun.shadow.normalBias = 0.02;
 // Boot line for the shadow state (R 09-07 19:10: 'nothing casts a shadow except right under my avatar' on desktop
 // too, while a headless probe measured the yucca casting) — the persisted switch, the map, and where the sun is.
-setTimeout(() => { try { const d = sun.position.clone().normalize(); tee(`[shadows] pref=${shadowsOn() ? 'on' : 'off'} map=${renderer.shadowMap.enabled} type=${renderer.shadowMap.type} size=${sun.shadow.mapSize.x} sun=(${d.x.toFixed(2)},${d.y.toFixed(2)},${d.z.toFixed(2)}) intensity=${sun.intensity.toFixed(2)} casters=${casters.size} casting=${[...casters.values()].filter((c) => c.casting).length}`); } catch {} }, 20000);
+setTimeout(() => { try { const d = sun.position.clone().normalize(); tee(`[shadows] pref=${shadowsOn() ? 'on' : 'off'} map=${renderer.shadowMap.enabled} type=${renderer.shadowMap.type} size=${sun.shadow.mapSize.x} sun=(${d.x.toFixed(2)},${d.y.toFixed(2)},${d.z.toFixed(2)}) intensity=${sun.intensity.toFixed(2)} casters=${casters.size} casting=${[...casters.values()].filter((c) => c.casting).length}`);
+  // real-hardware facts (R 09-07 19:28: no ground shadow on her GPU, SwiftShader shows one): the map's depth texture, GL error state, the extensions that shape the shadow path
+  const m = sun.shadow.map; const dt = m?.depthTexture; const gl = renderer.backend?.gl; const ext = (n) => gl ? (gl.getExtension(n) ? 1 : 0) : '?';
+  tee(`[shadows] map=${m ? `${m.width}x${m.height}` : 'none'} depthTex=${dt ? `type:${dt.type} fmt:${dt.format} cmp:${dt.compareFunction} ver:${dt.version}` : 'none'} glError=${gl ? gl.getError() : '?'} parallelCompile=${ext('KHR_parallel_shader_compile')} clipControl=${ext('EXT_clip_control')} depthClamp=${ext('EXT_depth_clamp')} renderer=${(() => { try { const d = gl.getExtension('WEBGL_debug_renderer_info'); return d ? gl.getParameter(d.UNMASKED_RENDERER_WEBGL).slice(0, 60) : gl.getParameter(gl.RENDERER).slice(0, 60); } catch { return '?'; } })()}`);
+  } catch (e) { tee(`[shadows] probe threw: ${e?.message ?? e}`); } }, 20000);
 
 // ---- requests ---------------------------------------------------------------
 
