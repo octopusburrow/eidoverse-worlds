@@ -140,6 +140,19 @@ if (XR_BOOT) renderer.xr.enabled = true;   // must precede init(): xrCompatible 
   if (fov) renderer.xr.foveateBoundTexture = (rt) => (rt == null ? undefined : fov(rt));
 }
 renderer.setSize(innerWidth, innerHeight);
+// SHADOWS FROM THE SUN, NOT THE HEAD (R 09-07 18:48 'why do shadows tank the frame rate? nothing casts a shadow
+// on the ground'): while presenting, Renderer.render() swaps in xr.getCamera() for EVERY render call
+// (three.webgpu.js r185/r186dev :64750 'use XR camera for rendering') — including the shadow pass's own render
+// from shadow.camera. So in VR the 2048² map was drawn from the eyes: a full extra scene pass per frame that
+// produced no usable shadow (the old fix was to disable shadows in XR and eat a whole-scene recompile both
+// ways). Same cure as render.js renderAside: xr off around the pass, so the sun camera is honoured. Unity
+// (Basis: 8192 map, 4 cascades, 150 m) renders its map once per frame from the light — this is that.
+{ const proto = THREE.ShadowNode?.prototype; const orig = proto?.updateShadow;
+  if (orig) proto.updateShadow = function (frame) {
+    const xr = frame.renderer?.xr; if (!xr?.isPresenting) return orig.call(this, frame);
+    const was = xr.enabled; xr.enabled = false;
+    try { return orig.call(this, frame); } finally { xr.enabled = was; }
+  }; }
 // Spectators start a notch lower — an audience laptop's job is 30fps for an
 // hour, not maximum sharpness. Adaptive scaling adjusts from here.
 export const BASE_PIXEL_RATIO = Math.min(devicePixelRatio, CONFIG.spectate ? 1.5 : 2);
