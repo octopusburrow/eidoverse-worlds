@@ -19,6 +19,7 @@
 
 import { THREE, renderer, camera, scene, XR_BOOT } from './core.js';
 import { CONFIG, report, bus, tee } from './base.js';
+import { frameDebug } from './frame.js';
 import { xrBodyDebug } from './xrbody.js';
 import { stroke, fillPath } from './icons.js';
 import { xrPanelsEnter, xrPanelsExit, xrPanelsPick, showXRPanel, xrPanelHas, xrPanelOpen, xrPanelsGrab, xrPanelRelease, xrPanelsShown } from './xrpanels.js';
@@ -698,7 +699,7 @@ function turnTraceTick() {
   { const g = hands.right?.grip, hb = av?.vrm?.humanoid?.getNormalizedBoneNode('rightHand');
     if (g && hb) { g.getWorldPosition(_v); hb.getWorldPosition(_v2); _v2.sub(_v); hd = `${Math.round(_v2.x * 1000)}:${Math.round(_v2.y * 1000)}:${Math.round(_v2.z * 1000)}`; } }
   turnTrace.rows.push(`${Math.round(rig.rotation.y * 100)},${Math.round(camYawWorld() * 100)},${Math.round((turnTrace.d || 0) * 100)},${turnTrace.dt == null ? 'u' : Math.round(turnTrace.dt * 1000)},${Math.round(hy * 100)},${Math.round(rp.x * 100)},${Math.round(rp.z * 100)},${Math.round(hp[12] * 100)},${Math.round(hp[14] * 100)},${Math.round(rig.position.x * 100)},${Math.round(rig.position.z * 100)},${hd}`);
-  if (turnTrace.rows.length >= 60) { tee(`[xr] turn-trace ${turnTrace.kind} (rigYaw,camYaw,stick×100,dtMs|u,hipsYaw,rootX,rootZ,headX,headZ,rigX,rigZ,handΔx:y:z mm; angles×100, m×100): ${turnTrace.rows.join(' ')}`); turnTrace = null; turnTraceLast = performance.now(); }
+  if (turnTrace.rows.length >= 60) { try { const sys = (Array.isArray(frameDebug?.()) ? frameDebug() : (frameDebug?.()?.systems ?? [])).map((x) => [x.name, +(x.ms ?? 0).toFixed(2)]).sort((a, b) => b[1] - a[1]).slice(0, 6); tee(`[xr] turn-trace systems (rolling ms, top 6): ${sys.map(([n, m]) => `${n}=${m}`).join(' ')} draws=${renderer.info.render.calls}`); } catch {} tee(`[xr] turn-trace ${turnTrace.kind} (rigYaw,camYaw,stick×100,dtMs|u,hipsYaw,rootX,rootZ,headX,headZ,rigX,rigZ,handΔx:y:z mm; angles×100, m×100): ${turnTrace.rows.join(' ')}`); turnTrace = null; turnTraceLast = performance.now(); }
 }
 function camYawWorld() { const e = renderer.xr.getCamera().matrixWorld.elements; return Math.atan2(-e[8], -e[10]); }   // world yaw of the HMD's -Z
 const wrapPi = (a) => Math.atan2(Math.sin(a), Math.cos(a));   // every yaw write wraps: an unwrapped body yaw (7.88 = 1.6 + 2π on R's recorder) met a wrapped camera yaw and 'popped' a full turn
