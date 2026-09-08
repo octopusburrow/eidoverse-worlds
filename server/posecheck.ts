@@ -18,5 +18,18 @@ export function sanePose(pose: unknown): Record<string, unknown> | null {
     if (x.r !== undefined && !finArr(x.r, 7)) return null;
     if (x.c !== undefined && !finArr(x.c, 4)) return null;
   }
+  // held pose (bone quats), body pins and reach descriptors ride the same packet and are lerped by
+  // every receiver — a NaN anywhere inside them is the same fault. Deep finite-check, bounded depth.
+  for (const k of ["pose", "pins", "reach"]) if (p[k] != null && !finiteDeep(p[k], 0)) return null;
   return p;
+}
+
+const MAX_DEPTH = 6, MAX_KEYS = 512;
+function finiteDeep(v: unknown, depth: number): boolean {
+  if (typeof v === "number") return Number.isFinite(v);
+  if (v === null || typeof v === "string" || typeof v === "boolean") return true;
+  if (depth > MAX_DEPTH) return false;
+  if (Array.isArray(v)) return v.length <= MAX_KEYS && v.every((x) => finiteDeep(x, depth + 1));
+  if (typeof v === "object") { const ks = Object.keys(v as object); return ks.length <= MAX_KEYS && ks.every((k) => finiteDeep((v as Record<string, unknown>)[k], depth + 1)); }
+  return false;
 }

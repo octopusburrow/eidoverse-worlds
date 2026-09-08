@@ -1,8 +1,8 @@
 // C15 probe: recentreSolve math in the live module; Settings › VR rows exist; ring entries include recentre.
-import { chromium } from '/home/claude/eido/staging/node_modules/playwright/index.mjs';
+import { chromium } from 'playwright';
 const b = await chromium.launch(); const page = await b.newPage({ viewport: { width: 1280, height: 720 } }); const errs = []; page.on('pageerror', e => errs.push(String(e).slice(0, 140)));
 await page.addInitScript(() => { try { localStorage.setItem('ew-name-set', '1'); } catch {} });
-await page.goto('http://localhost:8960/?world=staging&name=rc' + (Date.now() % 100000) + '&key=EK4sECff0YegRuB2uo5pMpJ5&webgl=1');
+await page.goto('http://localhost:8960/?world=staging&name=rc' + (Date.now() % 100000) + '&key=' + (process.env.JOIN_KEY ?? 'dev') + '&webgl=1');
 await page.waitForFunction(() => globalThis.__ewEngineUp === true, { timeout: 120000 });
 await page.waitForTimeout(800);
 const r = await page.evaluate(async () => {

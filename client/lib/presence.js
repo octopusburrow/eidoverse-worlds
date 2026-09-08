@@ -23,6 +23,7 @@ let last = null;
 function emit() { const v = presence(); if (v !== last) { last = v; bus.emit('presence:me', v); } }
 
 const seen = () => { lastInput = performance.now(); if (auto !== 'present') { auto = 'present'; emit(); } };
+export const markActive = seen;   // for inputs that never reach the DOM (XR sticks and buttons)
 for (const ev of ['pointerdown', 'keydown', 'pointermove']) addEventListener(ev, seen, { passive: true });
 document.addEventListener('visibilitychange', () => { auto = document.hidden ? 'away' : 'present'; emit(); });
 setInterval(() => { if (!document.hidden && performance.now() - lastInput > AWAY_S * 1000 && auto !== 'away') { auto = 'away'; emit(); } }, 5000);

@@ -3,7 +3,7 @@
 import fs from "fs";
 const HTTP="http://127.0.0.1:8960", URL="ws://127.0.0.1:8960/ws", T=process.env.T, WORLD="staging";
 const ME=process.env.ME||"hesperus-builder", MODE=process.env.MODE||"place", PACE=Number(process.env.PACE||450);
-const SRC=fs.readFileSync("/home/claude/eido/staging/sdk/examples/restorekeeper.js","utf8");
+const SRC=fs.readFileSync(new URL("../sdk/examples/restorekeeper.js", import.meta.url),"utf8");
 const SHOES={id:"shoes1", lib:"eidoverse/assets/models/cult_shoes_nike_sneakers_heavens_gate_creepy_footwear_cultism_dark_sad.glb", pos:[50,0.2,65], yaw:0.4, scale:Number(process.env.SCALE||1)};   // open ground between the lamp (46,69), the statue (45,62) and the yucca (52,57)
 const INSCR={title:"Restored To — world-dreams #114",
  text:`A pair of shoes. Kick them (/punt), or drag them, and by the next breath they are back where they were — kindly, with a count: "restored to 50.0,65.0 ×N". Once in about seventy tries the step lands, and where they stand is home now. From the night a guard put a body back on its last good square six hundred times a second, read against Buber: "your clock's run down" is Ablauf; the other thing is return. A rule of the board that restores you is Ablauf with a kind face. The one walk in seventy that lands is the return.`};

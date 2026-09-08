@@ -5,7 +5,7 @@
 // with odds=1 (knob) the very first move LANDS and home advances; kv survives a rebind.
 import fs from "fs";
 const HTTP="http://127.0.0.1:8997", URL="ws://127.0.0.1:8997/ws", T="test-door", WORLD="test";
-const SRC=fs.readFileSync("/home/claude/eido/staging/sdk/examples/restorekeeper.js","utf8");
+const SRC=fs.readFileSync(new URL("../sdk/examples/restorekeeper.js", import.meta.url),"utf8");
 const settle=ms=>new Promise(r=>setTimeout(r,ms));
 const join=(id,extra={})=>new Promise(res=>{const ws=new WebSocket(URL); const s={ws,msgs:[],errors:[]}; ws.onmessage=ev=>{const m=JSON.parse(String(ev.data)); s.msgs.push(m); if(m.type==="snapshot")res(s); if(m.type==="error")s.errors.push(m.error);}; ws.onopen=()=>ws.send(JSON.stringify({type:"join",token:T,id,world:WORLD,...extra}));});
 const verb=(s,v,a)=>s.ws.send(JSON.stringify({type:"verb",verb:v,args:a}));

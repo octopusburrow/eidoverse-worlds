@@ -116,7 +116,7 @@ export async function fetchBytes(path) {
       demandStart();
       try {
         // R 09-07 22:22: 'first load after you change something, no avatar; reload and it's fine'. Her tee: 530s
-        // from the tunnel edge under Burrow load. One failed fetch was final here — worse, a REJECTED fetch
+        // from the tunnel edge under load. One failed fetch was final here — worse, a REJECTED fetch
         // stayed in byteCache and poisoned every later ask for the same path until reload. Retry 5xx and
         // network failures (3 tries, 0.7 s then 1.8 s); evict on final failure so the next ask starts clean.
         let r;

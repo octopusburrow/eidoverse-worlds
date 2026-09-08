@@ -1,4 +1,5 @@
-import { chromium } from '/home/claude/eido/staging/node_modules/playwright/index.mjs';
+import { chromium } from 'playwright';
+import { tmpdir as __tmp } from 'node:os'; const OUTDIR = process.env.OUT_DIR ?? __tmp();
 const b = await chromium.launch(); const page = await b.newPage({ viewport: { width: 1400, height: 900 } }); const errs = []; page.on('pageerror', (e) => errs.push(String(e).slice(0, 160)));
 await page.addInitScript(() => { try { localStorage.setItem('ew-name-set', '1'); } catch {} });
 await page.goto(process.argv[2]); await page.waitForFunction(() => globalThis.__ewEngineUp === true, { timeout: 120000 }); await page.waitForTimeout(1500);
@@ -24,4 +25,4 @@ const r = await page.evaluate(async () => {
   const st = dq.domQuadTexture('settings'); const png = st?.image?.toDataURL('image/png') ?? null;
   return { ids, stats, click, png };
 });
-if (r.png) { const fs = await import('node:fs'); fs.writeFileSync('/tmp/claude-1000/xrsim/domquad-settings.png', Buffer.from(r.png.split(',')[1], 'base64')); } const { png, ...rest } = r; console.log(JSON.stringify({ ...rest, errs })); await b.close();
+if (r.png) { const fs = await import('node:fs'); fs.writeFileSync(OUTDIR + '/domquad-settings.png', Buffer.from(r.png.split(',')[1], 'base64')); } const { png, ...rest } = r; console.log(JSON.stringify({ ...rest, errs })); await b.close();

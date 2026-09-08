@@ -1,4 +1,4 @@
-import { chromium } from '/home/claude/eido/staging/node_modules/playwright/index.mjs';
+import { chromium } from 'playwright';
 const b = await chromium.launch(); const page = await b.newPage({ viewport: { width: 1280, height: 720 } }); const errs = []; page.on('pageerror', (e) => errs.push(String(e).slice(0, 120)));
 await page.addInitScript(() => { try { localStorage.setItem('ew-name-set', '1'); } catch {} });
 await page.goto(process.argv[2]); await page.waitForFunction(() => globalThis.__ewEngineUp === true, { timeout: 120000 });

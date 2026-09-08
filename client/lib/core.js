@@ -98,7 +98,7 @@ const _forceWebGL = _backendPref === 'webgl'
 // raw crashes continued (some path holds a constructor-time binding).
 // REIMPLEMENTED, not wrapped: the list mutates DURING iteration (the stock
 // loop caches its length and then dereferences a vacated slot).
-if (XR_BOOT) {
+if (XR_BOOT || (typeof navigator !== 'undefined' && navigator.xr)) {   // any browser that can present: the visor enters in place, not only via ?xr=1
   const proto = THREE.WebGPURenderer?.prototype;
   const orig = proto?._renderObjects;
   let logged = 0;

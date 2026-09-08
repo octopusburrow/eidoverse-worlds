@@ -1,7 +1,7 @@
-import { chromium } from '/home/claude/eido/staging/node_modules/playwright/index.mjs';
+import { chromium } from 'playwright';
 const b = await chromium.launch(); const page = await b.newPage({ viewport: { width: 1280, height: 720 } }); const errs = []; page.on('pageerror', e => errs.push(String(e).slice(0,120)));
 await page.addInitScript(() => { try { localStorage.setItem('ew-name-set','1'); } catch {} });
-await page.goto('http://localhost:8960/?world=staging&name=nanprobe7244&key=EK4sECff0YegRuB2uo5pMpJ5&webgl=1');
+await page.goto('http://localhost:8960/?world=staging&name=nanprobe7244&key=' + (process.env.JOIN_KEY ?? 'dev') + '&webgl=1');
 await page.waitForFunction(() => globalThis.__ewEngineUp === true, { timeout: 120000 });
 await page.waitForFunction(async () => { const m = await import('/lib/mybody.js'); return !!m.getMe()?.vrm?.humanoid; }, { timeout: 120000 });
 await page.waitForTimeout(500);

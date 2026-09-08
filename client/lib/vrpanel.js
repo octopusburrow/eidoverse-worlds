@@ -25,7 +25,7 @@ export function initVRPanel() {
     // rows.js: selectRow(label, options, value, onChange) RETURNS { row, select }; checkRow(label, get, set) returns the element
     const { row: turn } = selectRow('turning', [['snap', 'snap (30°)'], ['smooth', 'smooth']], xrPrefs.turn,
       (v) => { setXrPref('turn', v); flashHint(`VR turning: ${v}`); });
-    turn.title = 'snap: the world pivots 30° per stick flick — the comfort default. smooth: continuous, like a desktop mouse.';
+    turn.title = 'smooth: continuous, like a desktop mouse — the default. snap: the world pivots 30° per stick flick, a comfort option.';
     body.appendChild(turn);
 
     const vig = checkRow('comfort vignette', () => !!xrPrefs.vignette,

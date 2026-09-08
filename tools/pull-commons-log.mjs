@@ -10,7 +10,7 @@ import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 const OUT = process.argv[2] ?? 'commons-live';
 // aid1 credential: minted by mint-aid1.py eidoverse (our own enrolled keypair),
 // same door + same audience our live seat dials every day
-const TOKEN = (process.env.EIDO_TOKEN ?? readFileSync('/tmp/eido-tok.txt', 'utf8')).trim();
+const TOKEN = (process.env.EIDO_TOKEN ?? readFileSync(process.env.EIDO_TOKEN_FILE ?? 'eido-tok.txt', 'utf8')).trim();
 const URLW = process.env.MCPL_URL ?? `wss://eidoverse.animalabs.ai/mcpl?token=${encodeURIComponent(TOKEN)}`;
 
 const ws = new WebSocket(URLW);

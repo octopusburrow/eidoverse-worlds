@@ -1,9 +1,9 @@
 // C14 probe: fed head LOW (anchor lowers the body) → feet on the floor at ankle height, knees bent;
 // then move the root sideways → gait re-plants within a stride. node smoke/footik-probe.mjs
-import { chromium } from '/home/claude/eido/staging/node_modules/playwright/index.mjs';
+import { chromium } from 'playwright';
 const b = await chromium.launch(); const page = await b.newPage({ viewport: { width: 960, height: 540 } }); const errs = []; page.on('pageerror', e => errs.push(String(e).slice(0, 140)));
 await page.addInitScript(() => { try { localStorage.setItem('ew-name-set', '1'); } catch {} });
-await page.goto('http://localhost:8960/?world=staging&name=foot' + (Date.now() % 100000) + '&key=EK4sECff0YegRuB2uo5pMpJ5&webgl=1&xrsim=1');
+await page.goto('http://localhost:8960/?world=staging&name=foot' + (Date.now() % 100000) + '&key=' + (process.env.JOIN_KEY ?? 'dev') + '&webgl=1&xrsim=1');
 await page.waitForFunction(() => globalThis.__ewEngineUp === true, { timeout: 120000 });
 await page.waitForFunction(async () => { const m = await import('/lib/mybody.js'); return !!m.getMe()?.vrm?.humanoid; }, { timeout: 120000 });
 const r = await page.evaluate(async () => {

@@ -29,7 +29,8 @@ import { ringEmoteEntries } from './emotebar.js';
 import { entities } from './world.js';
 import { flashHint, toast } from './ui.js';
 import { makePointerLine } from './pointer.js';
-import { markXrAbsent, registerXrGlyph, glyphPinned, micGlyph, earGlyph, xrGlyph, micLive, earOn, flipEar } from './mictoggle.js';
+import { markXrAbsent, registerXrGlyph, micGlyph, earGlyph, xrGlyph, micLive, earOn, flipEar } from './mictoggle.js';
+import { markActive } from './presence.js';
 import { dockPins } from './ui.js';
 import { perf } from './perf.js';
 import { renderCensusTake, renderCensusTick, renderCensusPeek, setXRCurtain } from './render.js';
@@ -60,6 +61,7 @@ let choppedHead = null;   // { bone, scale: Vector3 }
 function selfFirstPerson(on) {
   const av = getSelf();
   if (!av?.vrm) return;
+  av.hideLabel = !!on;   // the nameplate sits on the root above the chopped head; avatar.js reads this per frame
   const raw = av.vrm.humanoid?.getRawBoneNode?.('head');
   if (on && raw && (fpVrm !== av.vrm || choppedHead?.bone !== raw)) {
     if (choppedHead) choppedHead.bone.scale.copy(choppedHead.scale);   // a swap: restore the old body's head first
@@ -77,15 +79,6 @@ export function withHeadShown(fn) {
   const b = choppedHead.bone, kept = b.scale.clone();
   b.scale.copy(choppedHead.scale);
   try { return fn(); } finally { b.scale.copy(kept); }
-  // MToon OUTLINES are a second, back-face, black hull per mesh whose width (screen mode) comes from the
-  // render resolution; in the eye buffers that hull can swallow the body (R 09-06 12:08: 'the claudesona
-  // is pitch black' — and probably 11:31's 'no avatar' against a near-black construct). Off on MY body
-  // while presenting; remotes keep theirs until this is proven. Restored on exit.
-  // outline materials live INSIDE multi-material arrays on this body (12:43 census: 5 of them) — hide the
-  // MATERIAL (material.visible gates its geometry group), not the mesh. 12:33's '0 hulls' read the array.
-  // (An outline-hull hide lived here 12:44–13:20: with it on, selfDrawn fell 10 → 5 and the body stayed
-  // black — those 'isOutline' materials carry real geometry groups on this body. Retired; not the cause.)
-  if (av.label) av.label.visible = !on; // your own name is for OTHER eyes
 }
 // how many of MY meshes the renderer actually drew this frame (all eyes) — 'invisible' becomes a number
 let selfDrawn = 0, selfDrawnLast = 0, drawHookVrm = null;
@@ -179,7 +172,7 @@ export const isPresenting = () => presenting;
 // turn: 'snap' | 'smooth' · vignette: comfort tunnel on move/turn · mirror:
 // what the desktop window shows while presenting — 'off' | 'first' | 'third'.
 const PREF_XR = 'ew-xr-prefs';
-export const xrPrefs = (() => { try { return { turn: 'smooth', vignette: false, mirror: 'off', seated: false, ...JSON.parse(localStorage.getItem(PREF_XR) || '{}') }; } catch { return { turn: 'snap', vignette: false, mirror: 'off', seated: false }; } })();
+export const xrPrefs = (() => { try { return { turn: 'smooth', vignette: false, mirror: 'off', seated: false, ...JSON.parse(localStorage.getItem(PREF_XR) || '{}') }; } catch { return { turn: 'smooth', vignette: false, mirror: 'off', seated: false }; } })();
 { const m = new URLSearchParams(location.search).get('mirror'); if (m === 'off' || m === 'first' || m === 'third') xrPrefs.mirror = m; }   // URL override for A/B (R's 'pop to origin' hunt, 09-05 21:46)
 export function setXrPref(k, v) { xrPrefs[k] = v; try { localStorage.setItem(PREF_XR, JSON.stringify(xrPrefs)); } catch {} bus.emit('xr:prefs', xrPrefs); }
 const DEADZONE = 0.18;
@@ -328,13 +321,13 @@ export function radialEntries() {   // exported with makeRadial for the headless
   return [panels, ...right, leave, ...left];   // clockwise from the top: right side descends 1→5, left ascends 7→11
 }
 const RECENTRE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="52" height="52" viewBox="0 0 26 26" fill="none" stroke="#f2f7f5" stroke-width="1.6" stroke-linecap="round"><circle cx="13" cy="13" r="7"/><circle cx="13" cy="13" r="1.6" fill="#f2f7f5"/><path d="M13 2v4M13 20v4M2 13h4M20 13h4"/></svg>';
-// THE RING as a MENU — porch-old's NESTED RADIAL v2 rules (index.html:7592–7770, Nix in-headset
+// THE RING as a MENU — porch-old's NESTED RADIAL v2 rules (index.html:7592–7770, headset testing
 // 2026-07-12/14/15), eidoverse's tokens, the same slots as before (R 09-06 12:49–12:50):
 //   · rides the RIGHT GRIP, anchored over the THUMB (0, +5 cm, +1 cm) — the digit making the choice;
 //   · billboarded to the eyes every frame with HEADSET-up (wrist roll can't tilt it); de-rolled from the grip;
 //   · R = 7.5 cm, 5 cm icon planes (depthTest off, renderOrder 999) — it draws over the world;
 //   · focus: the slot scales 1.4× and swaps to the brand ink; a focus-label PILL under the ring names it
-//     (Nix 07-15: "add words to the hover menus when an option is focused");
+//     (07-15: "add words to the hover menus when an option is focused");
 //   · deflect > 0.5 selects a sector, release < 0.35 commits (the stick driver below), hold-to-open (updateXR).
 // Ink from the page's tokens: brand seafoam #8fe8c8, fg #ebebe9, panel rgb(5 20 20).
 const RING_R = 0.075, RING_ICON = 0.05, RING_ANCHOR = { x: 0, y: 0.05, z: 0.01 };
@@ -505,7 +498,7 @@ async function enterVR() {
         if (!enterVR._retried) { enterVR._retried = true; tee('[xr] session busy (another page holds it) — retrying in 1500 ms'); toast('a previous VR session is still closing — retrying', 'info', 3000); setTimeout(() => { enterVR._retried = false; enterVR(); }, 1500); return; }
         toast('VR is still held by another tab — close it, then click the visor again', 'warn', 8000); tee('[xr] session busy after retry — giving up until the visor is clicked again'); return;
       }
-      if (!gpu) { if (e?.name === 'NotSupportedError' || e?.name === 'NotFoundError' || /no.*(device|headset|runtime)|not supported|unavailable/i.test(e?.message ?? '')) { markXrAbsent(true); toast('no headset detected — put it on (or wake it) and click the visor again', 'warn', 7000); } throw e; }
+      if (!gpu) { if (e?.name === 'NotSupportedError' || e?.name === 'NotFoundError' || /no.*(device|headset|runtime)|not supported|unavailable/i.test(e?.message ?? '')) { markXrAbsent(true); } throw e; }   // the outer catch posts the one toast
       tee(`[xr] webgpu session refused (${e?.name ?? ''} ${e?.message ?? e}) — reloading on the WebGL backend`);
       toast('no WebGPU VR here — reloading on WebGL', 'info', 6000);
       const u = new URL(location.href); u.searchParams.set('webgl', '1'); u.searchParams.set('xr', '1'); u.searchParams.set('why', 'vr-webgl');
@@ -577,7 +570,7 @@ async function enterVR() {
       window.requestAnimationFrame = (cb) => { if (sessionEnded) return nativeRAF(cb); try { return s.requestAnimationFrame((t) => cb(t)); } catch { return nativeRAF(cb); } };
       window.cancelAnimationFrame = (id) => { try { s.cancelAnimationFrame(id); } catch {} try { nativeCAF(id); } catch {} }; }
     // SHADER ERROR TEE: a material that fails to compile/link in the eye buffers' context draws black
-    // and the WebGL backend only console.error()s it — invisible from Burrow. First 6 such lines tee.
+    // and the WebGL backend only console.error()s it — invisible from the operator's side. First 6 such lines tee.
     if (!consoleTapped) { consoleTapped = true; for (const k of ['error', 'warn']) { const orig = console[k].bind(console);
       console[k] = (...a) => { try { const m = a.map((x) => (typeof x === 'string' ? x : x?.message ?? '')).join(' '); if (presenting && shaderTees < 6 && /shader|program|link|compile|GLSL|uniform|invalid/i.test(m)) { shaderTees++; tee(`[xr] console.${k}: ${m.slice(0, 300)}`); } } catch {} orig(...a); }; } }
     // WE own the stereo camera update (render.js renderWorld → xr.updateCamera(camera)). With
@@ -949,6 +942,7 @@ export function updateXR(dtSec = 1 / 72) {
       turnTraceArm('snap');
     } else if (Math.abs(rx) < 0.3) snapState.cooling = false;
     stickPressWas = pressed;
+    if (xrIntent.fwd || xrIntent.strafe || turnMag || pressed) markActive();   // sticks are input too: a presenting person is not 'away' (presence.js listens to DOM events only)
 
     // pointer + grab chord on BOTH hands (Tier B7 — the left was a stick and one
     // button). Either hand can aim, select, and take a panel; one thing held at a time. The ring stays on the right.

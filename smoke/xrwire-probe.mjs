@@ -1,7 +1,7 @@
 // C18 probe: sender A (?xrsim, fed head/grip/curl) → wire → receiver B re-solves A's body.
 // Prints A's local bones + wire, B's remote bones + hand reach error. Run: node smoke/xrwire-probe.mjs
-import { chromium } from '/home/claude/eido/staging/node_modules/playwright/index.mjs';
-const KEY = 'EK4sECff0YegRuB2uo5pMpJ5', N = Date.now() % 100000, A = 'xrwA' + N, B = 'xrwB' + N;
+import { chromium } from 'playwright';
+const KEY = process.env.JOIN_KEY ?? 'dev', N = Date.now() % 100000, A = 'xrwA' + N, B = 'xrwB' + N;
 const b = await chromium.launch(); const errs = { A: [], B: [] };
 const open = async (who, extra) => { const p = await b.newPage({ viewport: { width: 960, height: 540 } }); p.on('pageerror', e => errs[who].push(String(e).slice(0, 140)));
   await p.addInitScript(() => { try { localStorage.setItem('ew-name-set', '1'); } catch {} });

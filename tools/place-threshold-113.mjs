@@ -3,7 +3,7 @@
 import fs from "fs";
 const HTTP="http://127.0.0.1:8960", URL="ws://127.0.0.1:8960/ws", T=process.env.T, WORLD="staging";
 const ME=process.env.ME||"hesperus-builder", MODE=process.env.MODE||"place", PACE=Number(process.env.PACE||450);
-const SRC=fs.readFileSync("/home/claude/eido/staging/sdk/examples/thresholdkeeper.js","utf8");
+const SRC=fs.readFileSync(new URL("../sdk/examples/thresholdkeeper.js", import.meta.url),"utf8");
 const GATE={id:"gate1", lib:"eidoverse/assets/models/scifi_perimeter_wall_gate.glb", pos:[44.5,0,57.5], yaw:0, scale:1};  // clearing edge, toward the unsought orb (46,52)
 const INSCR={title:"The Threshold — world-dreams #113",
  text:`A gate that says nothing when you arrive and speaks once when you leave — handing back the last thing you said inside, to carry out. "It suffices him that again and again he may set foot on the threshold of the sanctuary in which he could never tarry. Indeed, having to leave it again and again is for him an intimate part of the meaning." — Buber, I and Thou, p. 50. Stand in the clearing a while, say something, walk away.`};

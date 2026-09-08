@@ -23,11 +23,15 @@ import { resolveLibFile } from "./lint.ts";
 import { summarizeGlb } from "./geometry.ts";
 import { worlds, getWorld, type World } from "./world.ts";
 import { handleUpload, optStatus } from "./upload.ts";
-const clientLogRate = new Map<string, { at: number; n: number }>();
 import { defsPayload, avatarDefs, animationDefs } from "./defs.ts";
 import { tickStats } from "./tick.ts";
 import { entryBusStats } from "./events.ts";
 import { atomicWrite } from "./fsutil.ts";
+import { tmpdir } from "node:os";
+// client console tee: per-world buckets, bounded so a rotating world name cannot grow the map
+const clientLogRate = new Map<string, { at: number; n: number }>();
+const CLIENTLOG_DIR = process.env.CLIENTLOG_DIR ?? tmpdir();
+const CLIENTLOG_MAX_BODY = 4096;
 import { seatStore, announceProfileUpdate, MAX_PROPOSAL_BYTES } from "./seats.ts";
 import { agentTokens, aid1JoinIdentity } from "./auth.ts";
 
@@ -338,25 +342,32 @@ const ROUTES: Route[] = [
   {
     // client console tee — a visitor's errors and [xr] lines land in a file
     // the operator can tail, because a headset shows an error for three
-    // seconds and a desk shows nothing (R, 09-04: "I'm surprised you can't
-    // get errors directly reported from my environment"). Bounded: 4 KB per
-    // line, 600 lines per minute per world, key-gated like the door.
+    // seconds and a desk shows nothing (a tester, 09-04: "I'm surprised you
+    // can't get errors directly reported from my environment"). Bounded: 4 KB
+    // per body (refused above that by content-length, never buffered), 600
+    // lines per minute per world, at most 64 world buckets, key-gated like
+    // the door. Lands in $CLIENTLOG_DIR (default: the OS temp dir).
     match: (u, req) => u.pathname === "/clientlog" && req.method === "POST",
     handler: async ({ req, url }) => {
       const world = (url.searchParams.get("world") ?? "unknown").replace(/[^a-z0-9_-]/gi, "").slice(0, 40);
       const key = url.searchParams.get("key") ?? "";
       if (JOIN_TOKEN && key !== JOIN_TOKEN) return new Response("no", { status: 401 });
+      const len = Number(req.headers.get("content-length") ?? "0");
+      if (!Number.isFinite(len) || len > CLIENTLOG_MAX_BODY) return new Response("too big", { status: 413 });
       const now = Date.now();
       let bucket = clientLogRate.get(world);
-      if (!bucket) { bucket = { at: now, n: 0 }; clientLogRate.set(world, bucket); }
+      if (!bucket) {
+        if (clientLogRate.size >= 64) { const oldest = [...clientLogRate.entries()].sort((a, b) => a[1].at - b[1].at)[0]; if (oldest) clientLogRate.delete(oldest[0]); }
+        bucket = { at: now, n: 0 }; clientLogRate.set(world, bucket);
+      }
       if (now - bucket.at > 60_000) { bucket.at = now; bucket.n = 0; }
       if (++bucket.n > 600) return new Response("slow down", { status: 429 });
       let body = "";
-      try { body = (await req.text()).slice(0, 4096); } catch { return new Response("bad", { status: 400 }); }
+      try { body = (await req.text()).slice(0, CLIENTLOG_MAX_BODY); } catch { return new Response("bad", { status: 400 }); }
       const line = JSON.stringify({ t: new Date(now).toISOString(), ip: req.headers.get("cf-connecting-ip") ?? "", line: body }) + "\n";
       // appendFileSync, not Bun.write: Bun.write has no append and silently
       // overwrote the file per line (the tail "replayed" the same entry, 09-04)
-      try { appendFileSync(`/tmp/claude-1000/clientlog-${world}.log`, line); } catch { /* the tee must never fail the page */ }
+      try { appendFileSync(`${CLIENTLOG_DIR}/clientlog-${world}.log`, line); } catch (e) { console.warn(`[clientlog] append failed: ${(e as Error)?.message ?? e}`); }
       return new Response("ok", { headers: { "cache-control": "no-store" } });
     },
   },

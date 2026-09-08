@@ -1,8 +1,9 @@
 // Desktop-vs-quad pairs for every staged frame: a PNG per frame (desktop clip | quad texture) plus mean luma. R 09-05 23:17: 'careful side-by-side of each one'.
-import { chromium } from '/home/claude/eido/staging/node_modules/playwright/index.mjs';
-import sharp from '/home/claude/eido/staging/node_modules/sharp/lib/index.js';
+import { chromium } from 'playwright';
+import { tmpdir as __tmp } from 'node:os'; const OUTDIR = process.env.OUT_DIR ?? __tmp();
+import sharp from 'sharp';
 import fs from 'node:fs';
-const OUT = process.argv[3] ?? '/tmp/claude-1000/xrsim/pairs'; fs.mkdirSync(OUT, { recursive: true });
+const OUT = process.argv[3] ?? OUTDIR + "/pairs"; fs.mkdirSync(OUT, { recursive: true });
 const b = await chromium.launch(); const page = await b.newPage({ viewport: { width: 1400, height: 900 }, deviceScaleFactor: 2 });
 await page.addInitScript(() => { try { localStorage.setItem('ew-name-set', '1'); } catch {} });
 await page.goto(process.argv[2]); await page.waitForFunction(() => globalThis.__ewEngineUp === true, { timeout: 120000 });

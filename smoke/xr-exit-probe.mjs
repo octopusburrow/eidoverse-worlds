@@ -1,9 +1,10 @@
 // Emulated headset (IWER fake Quest 3, WebGL path) drives enter → present → leave without a real HMD,
 // then reads what the desktop canvas actually is afterwards (R 09-06 23:43: 'desktop window still black
 // when leaving VR'). Usage: node smoke/xr-exit-probe.mjs <url> [iwer.js path]
-import { chromium } from '/home/claude/eido/staging/node_modules/playwright/index.mjs';
+import { chromium } from 'playwright';
+import { tmpdir as __tmp } from 'node:os'; const OUTDIR = process.env.OUT_DIR ?? __tmp();
 import { readFileSync, writeFileSync } from 'fs';
-const url = process.argv[2]; const iwer = readFileSync(process.argv[3] ?? '/tmp/claude-1000/iwer/node_modules/iwer/build/iwer.js', 'utf8');
+const url = process.argv[2]; const iwer = readFileSync(process.argv[3] ?? new URL('../node_modules/iwer/build/iwer.js', import.meta.url).pathname, 'utf8');
 const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 const ctx = await b.newContext({ viewport: { width: 1280, height: 720 } });
 await ctx.addInitScript(iwer + `
@@ -24,7 +25,7 @@ const during = await p.evaluate(() => globalThis.__tee.filter((l) => /curtain|en
 phase = 'present'; await p.waitForTimeout(1500); phase = 'exit'; await p.evaluate(async () => { const x = await import('/lib/xr.js'); x.leaveVR('probe'); });
 await p.waitForTimeout(4500);
 const after = await mean('after');
-let shot = null; try { await p.screenshot({ path: '/tmp/claude-1000/xrexit-after.png', timeout: 20000 }); shot = 'saved'; } catch (e) { shot = 'FAILED ' + e.message.split('\n')[0]; }
+let shot = null; try { await p.screenshot({ path: OUTDIR + '/xrexit-after.png', timeout: 20000 }); shot = 'saved'; } catch (e) { shot = 'FAILED ' + e.message.split('\n')[0]; }
 const loop = await p.evaluate(async () => { const { renderer } = await import('/lib/core.js'); const { perf } = await import('/lib/perf.js'); const f0 = perf.frames; await new Promise((r) => setTimeout(r, 1500)); return { framesIn1500ms: perf.frames - f0, drawCalls: renderer.info.render.calls }; });
 const tail = await p.evaluate(() => globalThis.__tee.filter((l) => /leave|session end|after-exit|THREW/.test(l)).slice(-6));
 const byPhase = {}; for (const e of errs) { const k = e.split(' ')[0]; byPhase[k] = (byPhase[k] || 0) + 1; }

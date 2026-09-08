@@ -9,6 +9,7 @@
 //
 //   T=<join token> node tools/scene-inventory.mjs [world=staging] [port=8960] [browser=chromium|firefox]
 import { chromium, firefox } from 'playwright';
+import { tmpdir as __tmp } from 'node:os'; const OUTDIR = process.env.OUT_DIR ?? __tmp();
 const [world='staging', port='8960', bname='chromium'] = process.argv.slice(2);
 const T = process.env.T || ''; const bt = bname === 'firefox' ? firefox : chromium;
 const b = await bt.launch(); const page = await b.newPage({ viewport: { width: 1280, height: 720 } });
@@ -29,5 +30,5 @@ const r = await page.evaluate(async () => {
   rows.sort((a, b) => b.tris * b.inst - a.tris * a.inst);
   return { fps: +(frames / 2).toFixed(1), drawsPerFrame: +(Object.values(draws).reduce((a, b) => a + b, 0) / Math.max(1, frames)).toFixed(1), tris: Math.round(tri), meshes: rows.length, top: rows.slice(0, 12), perFrame, cam: camera.position.toArray().map(v => +v.toFixed(1)) };
 });
-const shot = `/tmp/claude-1000/scene-inventory-${world}-${bname}.png`; await page.screenshot({ path: shot }); await b.close();
+const shot = `${OUTDIR}/scene-inventory-${world}-${bname}.png`; await page.screenshot({ path: shot }); await b.close();
 console.log(JSON.stringify({ world, browser: bname, ...r, pageerrors: errs, screenshot: shot }, null, 1));

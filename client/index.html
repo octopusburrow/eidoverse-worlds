@@ -1418,7 +1418,7 @@ try { const o = JSON.parse(localStorage.getItem('ew-style-tokens') || '{}');
       if (globalThis.__ewEngineUp) return;
       fail(xrBoot
         ? 'still no XR-compatible context after 20 s — chrome://restart with SteamVR already running, or drop xr=1 from the URL. F12 → Console shows what init is waiting on.'
-        : 'still waking after 20s — open the console. Fresh checkout? run: cd client && bun install. And the client needs WebGPU (current Chrome).');
+        : 'still waking after 20s — open the console. Fresh checkout? run: cd client && bun install. The client needs WebGPU or WebGL 2 (current Chrome or Firefox).');
     }, 20000);
   })();
 </script>

@@ -6,7 +6,7 @@
 // (index.html:11160–11184): renderer.xr.enabled OFF around the pass, then
 // restored, so three renders to the canvas instead of the eye buffers.
 import { THREE, renderer, scene, camera } from './core.js';
-import { isPresenting, xrPrefs } from './xr.js';
+import { isPresenting, xrPrefs, withHeadShown } from './xr.js';
 import { myState } from './controller.js';
 import { tee } from './base.js';
 import { toast } from './ui.js';
@@ -106,9 +106,7 @@ export function tickXRMirror() {
     // lands in it — a plain render target skips that and came out dark (R 09-08 01:10)
     renderer.setOutputRenderTarget?.(thirdRT);
     renderer.setRenderTarget(null);
-    // the desktop view sees the third-person head (layer 10), never the FP-only meshes (9)
-    deskCam.layers.enable(10); deskCam.layers.disable(9);
-    renderer.render(scene, deskCam);
+    withHeadShown(() => renderer.render(scene, deskCam));   // the onlooker sees the whole head (the chop is for the eyes)
     if (!blitRT(thirdRT) && !blitTeed) { blitTeed = true; tee('[xr] mirror: target blit unavailable — the small pass has nowhere to go'); }
   } catch { /* a bad frame must never kill the XR loop */ }
   finally {

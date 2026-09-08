@@ -37,5 +37,5 @@ composed at the avatar's pre-`vrm.update` seam. Same law as `reach`: send the re
 body solve it for its own skeleton. ~25 numbers per sample. Feet are not on the wire (remotes keep
 the mixer's legs; the sender plants its own — C14).
 
-Design note (R, 2026-09-05 20:03): the body root stays yaw-only on the wire; tracked parts get full
+Design note (from headset testing, 2026-09-05): the body root stays yaw-only on the wire; tracked parts get full
 quaternions — Basis's shape (hips-anchored, T-pose-relative streaming) without Basis's 51-bone payload.

@@ -1729,7 +1729,7 @@ export class Avatar {
     const d = this.root.position.distanceTo(camera.position);
     const vis = THREE.MathUtils.clamp(1 - (d - 18) / 14, 0, 1);
     this.label.material.opacity = vis;
-    this.label.visible = vis > 0.02;
+    this.label.visible = vis > 0.02 && !this.hideLabel;   // hideLabel: your own name is for OTHER eyes (set while presenting, xr.js selfFirstPerson)
     this.label.scale.setScalar(0); // reset then set (scale carries aspect)
     const lw = 0.9 * (1 + Math.max(0, d - 8) * 0.012); // gentle size hold at range
     this.label.scale.set(lw, lw * 64 / 512, 1);

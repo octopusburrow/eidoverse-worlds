@@ -4,7 +4,7 @@
 import fs from "fs";
 const HTTP="http://127.0.0.1:8960", URL="ws://127.0.0.1:8960/ws", T=process.env.T, WORLD="staging";
 const ME=process.env.ME||"hesperus", MODE=process.env.MODE||"place";  // MODE=place | test | inspect
-const SRC=fs.readFileSync("/home/claude/eido/staging/sdk/examples/ignitiongrove.js","utf8");
+const SRC=fs.readFileSync(new URL("../sdk/examples/ignitiongrove.js", import.meta.url),"utf8");
 const M="eidoverse/assets/models/";
 // the clearing: NW of the sentence-word grove (52–55,57–60), N of the unsought orb (46,52). Triangle ~7m a side, centre ≈ (43,65).
 const THINGS=[

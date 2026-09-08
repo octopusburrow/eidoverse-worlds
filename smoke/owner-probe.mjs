@@ -1,5 +1,5 @@
 // Acceptance (b): head yaw +1.0 with root at 0 → vrm.scene yaw chases; root/rig untouched; eyes at HMD; pitch doesn't move body Y.
-import { chromium } from '/home/claude/eido/staging/node_modules/playwright/index.mjs';
+import { chromium } from 'playwright';
 const b = await chromium.launch(); const page = await b.newPage(); const errs = []; page.on('pageerror', (e) => errs.push(String(e).slice(0, 160)));
 await page.addInitScript(() => { try { localStorage.setItem('ew-name-set', '1'); } catch {} });
 await page.goto(process.argv[2]); await page.waitForFunction(() => globalThis.__ewEngineUp === true, { timeout: 120000 });
