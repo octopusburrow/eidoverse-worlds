@@ -10,7 +10,7 @@
 
 import { keyFromVersion, negotiate, lodFromVersion } from '../../shared/ktx2.js';
 import { tierOf, askFor } from './lod_policy.js';
-import { bodyGate, bodyGateOpen } from './bodygate.js';
+import { bodyGate, bodyGateOpen, bodyGateArmed } from './bodygate.js';
 // ?bodyfirst=0 — the escape hatch (same convention as ?batching=0): world parses
 // no longer wait for the body; for A/B measurement and for a body-less test
 const BODY_FIRST = new URLSearchParams(location.search).get('bodyfirst') !== '0';
@@ -562,7 +562,7 @@ export async function loadGLB(libPath, { tier = 'full' } = {}) {
         const buf = await fetchBytes(`/library/${req.url}`);
         // body first: bytes are in hand, but the PARSE waits for your own
         // body (bodygate.js) — capped at 12 s so nothing can hold the world
-        if (!bodyGateOpen() && BODY_FIRST) {
+        if (bodyGateArmed() && !bodyGateOpen() && BODY_FIRST) {
           work.phase('body-first');
           await Promise.race([bodyGate(), new Promise((r) => setTimeout(r, 12000))]);
         }

@@ -10,8 +10,14 @@
 // gate is a resolved promise — a palette spawn later pays nothing.
 // No imports on purpose: assets.js and mybody.js both reach it, and the
 // module graph already has assets → avatar → assets-shaped cycles enough.
+// ARMED only once a body load has begun (armBodyGate, called where the body is requested). Nothing armed =
+// nothing to wait for: a client that never loads a body (or a build where the body path lands later) parses
+// the world at once instead of paying the 12 s fallback (review 2026-09-08).
 let release = null;
 let released = false;
+let armed = false;
+export function armBodyGate() { armed = true; }
+export const bodyGateArmed = () => armed;
 const gate = new Promise((res) => { release = res; });
 export function bodyGate() { return gate; }
 export function releaseBodyGate(why = 'body') {

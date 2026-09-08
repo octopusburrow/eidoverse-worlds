@@ -18,7 +18,7 @@ import { pending, P } from './scheduler.js';
 import { remotes, ensureRemote, dropRemote, pushPose, noteServerTime, noteSpeaking } from './remotes.js';
 import { myReachBag } from './reachnet.js';
 import { wingFoldPresence } from '../../shared/wingpresence.js';
-import { presenceWire, applyPresenceWire } from '../../shared/presencewire.js';
+import { presenceWire } from '../../shared/presencewire.js';
 import { presence } from './presence.js';
 import { logChat, logWhisper, noteTyping, noteHistoryContext } from './chat.js';
 import { composeFirstPerson } from './fp_view.js';

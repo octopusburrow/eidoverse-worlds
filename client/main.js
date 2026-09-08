@@ -8,7 +8,7 @@
 // consent.js, voice mouths in voicemouths.js, /commands in lib/commands/.
 
 import { THREE, scene, camera, renderer } from './lib/core.js';
-import { releaseBodyGate } from './lib/bodygate.js';
+import { releaseBodyGate, armBodyGate } from './lib/bodygate.js';
 import { CONFIG, bus, report, tee } from './lib/base.js';
 import { contributeThumbnail, makeAvatar, EMOTE_ORDER } from './lib/avatar.js';
 import { updateSky, updateAutoSystems, skyArgs, setCloudQuality } from './lib/sky.js';
@@ -209,7 +209,7 @@ initDebug({
 // server (correctly) calls this person by their Discord name.
 await initIdentity();
 
-if (isViewer) releaseBodyGate('viewer — no body expected');
+if (isViewer) releaseBodyGate('viewer — no body expected'); else armBodyGate();   // a body is coming: the world's parses wait for it (assets.js)
 if (isViewer) {
   panelFrame().hide();
   markPhase('body', 1);

@@ -98,7 +98,11 @@ const _forceWebGL = _backendPref === 'webgl'
 // raw crashes continued (some path holds a constructor-time binding).
 // REIMPLEMENTED, not wrapped: the list mutates DURING iteration (the stock
 // loop caches its length and then dereferences a vacated slot).
-if (XR_BOOT || (typeof navigator !== 'undefined' && navigator.xr)) {   // any browser that can present: the visor enters in place, not only via ?xr=1
+// Installed at boot under ?xr=1, otherwise by enterVR() right before the session request (xr.js) — a desktop
+// session never runs the replacement loop (review 2026-09-08: navigator.xr exists in every Chrome).
+let renderListToleranceInstalled = false;
+export function installRenderListTolerance() {
+  if (renderListToleranceInstalled) return; renderListToleranceInstalled = true;
   const proto = THREE.WebGPURenderer?.prototype;
   const orig = proto?._renderObjects;
   let logged = 0;
@@ -121,6 +125,7 @@ if (XR_BOOT || (typeof navigator !== 'undefined' && navigator.xr)) {   // any br
     };
   }
 }
+if (XR_BOOT) installRenderListTolerance();
 
 export const renderer = new THREE.WebGPURenderer({ canvas,
   antialias: (CONFIG.params.get('msaa') ?? pref(PREF_MSAA)) !== '0',

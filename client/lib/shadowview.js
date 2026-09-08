@@ -1,4 +1,4 @@
-// ?shadowview=1 — R 09-07 19:32: no ground shadow from any scene caster on her RTX 4080 (ANGLE/D3D11), while
+// ?shadowview=1 — 09-07: no ground shadow from any scene caster on a real desktop GPU (ANGLE/D3D11), while
 // SwiftShader shows one; every state tee matches. So: put the SUN'S VIEW on screen. Each frame the scene is
 // rendered from sun.shadow.camera with a depth-as-grey override into a small colour target (renderAside — XR-safe),
 // and that target is drawn on a camera-locked quad, top-left. If the yucca's silhouette is there, the sun camera

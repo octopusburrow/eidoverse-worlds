@@ -17,7 +17,7 @@
 // 'layers' dropped from optionalFeatures (MSAA via classic XRWebGLLayer),
 // foveation 0, local-floor, and the settled law: NEVER navigate mid-session.
 
-import { THREE, renderer, camera, scene, XR_BOOT } from './core.js';
+import { installRenderListTolerance, THREE, renderer, camera, scene, XR_BOOT } from './core.js';
 import { CONFIG, report, bus, tee } from './base.js';
 import { frameDebug } from './frame.js';
 import { xrBodyDebug } from './xrbody.js';
@@ -488,6 +488,7 @@ async function enterVR() {
     tee(`[xr] enter #${sessionNo}: requesting session (${gpu ? 'WebGPU' : 'WebGL'}; renderer.xr.enabled=${renderer.xr.enabled}; presenting=${renderer.xr.isPresenting})`);   // 09-07 11:20: a re-entry went silent between here and 'session on' — which await hangs?
     const optionalFeatures = ['local-floor', 'bounded-floor', 'hand-tracking'];
     try {
+      installRenderListTolerance();   // the tolerant render loop, only now that a session is about to exist
       session = await navigator.xr.requestSession('immersive-vr',
         gpu ? { requiredFeatures: ['webgpu'], optionalFeatures } : { optionalFeatures });
     } catch (e) {
