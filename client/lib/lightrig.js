@@ -302,13 +302,16 @@ const SHADOW_HALF = 46;    // the measured box, unchanged — CSM later
 const SHADOW_DEPTH = 90;   // covers relief + trees around the focus plane
 const _sm = new THREE.Matrix4();
 const _sx = new THREE.Vector3(), _sy = new THREE.Vector3(), _sz = new THREE.Vector3();
-const _rel = new THREE.Vector3();
+const _rel = new THREE.Vector3(), _cw = new THREE.Vector3();
 const _ZERO = new THREE.Vector3();
 
 function updateShadow() {
   if (csm) return;   // the cascades fit themselves around the view (updateBefore)
   const cam = sun.shadow.camera;
-  _rel.copy(camera.position).sub(sun.position);
+  // WORLD position: in VR the camera is a child of the rig (xr.js: rig.position = where you stand, rig.add(camera)),
+  // so camera.position is the head's offset inside the rig — the box sat at the world origin while R stood 50 m
+  // away, and every desktop test passed because desktop never parents the camera (R in-headset 09-07 22:28)
+  _rel.copy(camera.getWorldPosition(_cw)).sub(sun.position);
   _sm.lookAt(sun.position, _ZERO, THREE.Object3D.DEFAULT_UP);
   _sm.extractBasis(_sx, _sy, _sz);
   const texel = (2 * SHADOW_HALF) / (sun.shadow.mapSize.x || 2048);
@@ -365,7 +368,7 @@ export const getCasterBudget = () => casterBudget;
 
 function casterPass() {
   const ranked = [...casters.values()]
-    .map((c) => ({ c, d: c.obj.getWorldPosition(_p).distanceToSquared(camera.position) }))
+    .map((c) => ({ c, d: c.obj.getWorldPosition(_p).distanceToSquared(camera.getWorldPosition(_cw)) }))
     .sort((a, b) => a.d - b.d);
   let enables = 0;
   for (let i = 0; i < ranked.length; i++) {

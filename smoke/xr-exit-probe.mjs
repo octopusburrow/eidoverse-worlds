@@ -15,7 +15,7 @@ const p = await ctx.newPage(); const errs = []; let phase = 'boot';
 p.on('pageerror', (e) => errs.push(phase + ' PAGEERROR ' + String(e).slice(0, 160)));
 p.on('console', (m) => { if (m.type() === 'error' && !/401|Failed to load resource/.test(m.text())) errs.push(phase + ' ' + m.text().split('\n')[0].slice(0, 160)); });
 await p.goto(url);
-await p.waitForFunction(() => getComputedStyle(document.getElementById('splash')).display === 'none', { timeout: 180000 });
+await p.waitForFunction(() => getComputedStyle(document.getElementById('splash')).display === 'none', null, { timeout: 180000 });
 await p.waitForTimeout(2500);
 const mean = async (tag) => { if (process.env.SHOT) { try { const png = await p.screenshot({ timeout: 8000 }); writeFileSync(`/tmp/claude-1000/xrexit-${tag}.png`, png); } catch (e) { console.log(`shot ${tag}: ${e.message.split("\n")[0]}`); } } return p.evaluate(async () => { const { renderer, scene, camera } = await import('/lib/core.js'); let renderErr = null; try { if (!renderer.xr.isPresenting) renderer.render(scene, camera); } catch (e) { renderErr = String(e).slice(0, 120); } const cv = document.querySelector('canvas'); const c = document.createElement('canvas'); c.width = c.height = 8; const g = c.getContext('2d'); try { if (renderErr) return 'renderThrew:' + renderErr; g.drawImage(cv, cv.width * .4, cv.height * .4, cv.width * .2, cv.height * .2, 0, 0, 8, 8); const d = g.getImageData(0, 0, 8, 8).data; let a = 0; for (let i = 0; i < d.length; i += 4) a += d[i] + d[i + 1] + d[i + 2]; return +(a / 64 / 3).toFixed(1); } catch (e) { return 'err:' + e.name; } }); };
 const before = await mean('before'); phase = 'enter';

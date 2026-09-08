@@ -134,3 +134,15 @@ function emojiRenders(s) {
   emojiCache.set(s, ok);
   return ok;
 }
+
+// ---- the ring's emote sub-wheel (R 09-07 22:08: 'emotes should be a sub menu, same as VRC') ----
+// Names, not emoji: the ring paints drawn glyphs only (canvas fillText of an emoji is the trap), so each
+// slot carries its name as SVG text. Postures lead, then the emotes in bar order; every entry closes the
+// ring on activation (you chose it — the ring's job is done).
+const nameSvg = (t) => `<svg xmlns="http://www.w3.org/2000/svg" width="52" height="52" viewBox="0 0 26 26"><text x="13" y="16" font-family="system-ui, sans-serif" font-size="${t.length > 6 ? 5.5 : 7}" font-weight="600" text-anchor="middle" fill="#f2f7f5">${t}</text></svg>`;
+export function ringEmoteEntries() {
+  return [
+    ...POSTURES.map((k) => ({ svg: nameSvg(k), label: k, on: () => (k === 'lie' ? myState.posture === 'lie' : k === 'sit' ? !!myState.seat : false), close: true, act: () => posture(k) })),
+    ...EMOTE_ORDER.map((name) => ({ svg: nameSvg(name), label: name, close: true, act: () => { getMe()?.playEmote(name); myState.emote = name; } })),
+  ];
+}

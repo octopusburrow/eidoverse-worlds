@@ -23,13 +23,12 @@ import { xrBodyDebug } from './xrbody.js';
 import { stroke, fillPath } from './icons.js';
 import { xrPanelsEnter, xrPanelsExit, xrPanelsPick, showXRPanel, xrPanelHas, xrPanelOpen, xrPanelsGrab, xrPanelRelease, xrPanelsShown } from './xrpanels.js';
 import { myState, xrIntent, camYaw, setCamYaw, setXrProbe } from './controller.js';
+import { ringEmoteEntries } from './emotebar.js';
 import { entities } from './world.js';
-import { sendVerb } from './net.js';
 import { flashHint, toast } from './ui.js';
 import { makePointerLine } from './pointer.js';
 import { registerXrGlyph, glyphPinned, micGlyph, earGlyph, xrGlyph, micLive, earOn, flipEar } from './mictoggle.js';
 import { dockPins } from './ui.js';
-import { pushUndo } from './build.js';
 import { perf } from './perf.js';
 import { renderCensusTake, renderCensusTick, renderCensusPeek, setXRCurtain } from './render.js';
 import { warm, P_AMBIENT } from './warmqueue.js';
@@ -258,59 +257,22 @@ function rayHitEntity(handRay, far = 24) {
 }
 
 
-// ---- grab: grip+trigger chord (HIGGS — grip aims, chord takes) -------------
-let held = null;   // {id, hand, prevParent, prevPlace}
+// ---- panel grab: grip+trigger chord takes a QUAD to reposition it -----------
+// World-object grabbing lived here too (near-grab, far-grab, the place verb + undo) and was removed
+// whole (R 09-07 22:26: 'take the code out — it needs to be a proper object component, otherwise it's
+// tech debt'). Panels are UI, not world entities: no verb, no undo, they just ride the hand and land
+// uprighted on the rig. See git history (a2e25e2 and before) for the entity path when the component exists.
+let held = null;   // {quad, hand}
 function tryGrab(hand) {
   const h = hands[hand];
-  // a panel under the laser is taken before the world is (C17) — same precedence as a click
-  { const q = xrPanelsGrab(h.ray);
-    if (q) { held = { quad: q, hand }; haptic(hand, 0.4, 30); h.grip.attach(q.mesh); flashHint(`holding the ${q.id} panel — release grip to place it`); return; } }
-  // near first (within reach of the grip), then ray (far-grab glides to hand)
-  let target = null;
-  h.grip.getWorldPosition(_v);
-  let best = 0.45;
-  for (const [id, obj] of entities) {
-    obj.getWorldPosition(_v2);
-    const d = _v.distanceTo(_v2);
-    if (d < best) { best = d; target = id; }
-  }
-  if (!target) target = rayHitEntity(h.ray)?.id ?? null;
-  if (!target) return;
-  const obj = entities.get(target);
-  if (!obj) return;
-  const prevPlace = {
-    id: target,
-    pos: [+obj.position.x.toFixed(3), +obj.position.y.toFixed(3), +obj.position.z.toFixed(3)],
-    yaw: +obj.rotation.y.toFixed(4),
-    scale: +obj.scale.x.toFixed(3),
-  };
-  held = { id: target, hand, prevParent: obj.parent, prevPlace };
-  haptic(hand, 0.55, 40);           // the take, felt
-  h.grip.attach(obj);              // preserves world transform; it rides the hand
-  flashHint(`holding ${target} — release grip to place`);
+  const q = xrPanelsGrab(h.ray);
+  if (!q) return;
+  held = { quad: q, hand }; haptic(hand, 0.4, 30); h.grip.attach(q.mesh); flashHint(`holding the ${q.id} panel — release grip to place it`);
 }
-
 function releaseGrab() {
   if (!held) return;
-  if (held.quad) {   // a panel: back to the rig where it visually is, uprighted; no verb — panels aren't world entities
-    const p = xrPanelRelease(held.quad, rig);
-    tee(`[xr] panel ${held.quad.id} placed at rig ${p.pos.join(',')} yaw ${p.yaw} pitch ${p.pitch}`);
-    held = null; return;
-  }
-  const obj = entities.get(held.id);
-  const { prevParent, prevPlace } = held;
-  if (obj) {
-    prevParent.attach(obj);        // back to the world, where it visually is
-    const args = {
-      id: held.id,
-      pos: [+obj.position.x.toFixed(3), +obj.position.y.toFixed(3), +obj.position.z.toFixed(3)],
-      yaw: +obj.rotation.y.toFixed(4),
-      scale: prevPlace.scale,
-    };
-    pushUndo({ verb: 'place', args: prevPlace }, `moving ${held.id}`);   // the grab becomes a sentence; undo can unsay it
-    sendVerb('place', args);
-    flashHint(`placed ${held.id}`);
-  }
+  const p = xrPanelRelease(held.quad, rig);
+  tee(`[xr] panel ${held.quad.id} placed at rig ${p.pos.join(',')} yaw ${p.yaw} pitch ${p.pitch}`);
   held = null;
 }
 
@@ -325,19 +287,41 @@ function releaseGrab() {
  *  with no VR surface yet is still a slot — dim, and honest about it — because
  *  parity means the gap is visible until the sweep fills it. sit/lie live in
  *  the emote quad now, not here. */
+let ringLevel = 'root';   // 'root' | 'emotes' — the sub-wheel in view
+const SPACER = { spacer: true, has: false, label: '', on: () => false, act: () => {} };
+const BACK_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="52" height="52" viewBox="0 0 26 26" fill="none" stroke="#f2f7f5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-7 7 7 7"/></svg>';
+// THE WHEEL IS THE DOCK, plus what VR needs (R 09-07 22:08): 12 o'clock = the panels menu (the rail's reverse-E),
+// 6 o'clock = leave VR; the dock's pins fill the right half, mic / ears / recentre the left; a dim spacer keeps the
+// count even so the two fixed slots sit exactly on the vertical. 'emotes' is a sub-wheel (VRC's shape): the nine
+// plus a back slot at 6 o'clock. Toggles stay open and show state; everything else closes on activation.
 function radialEntries() {
-  const out = [];
-  if (glyphPinned('mic')) out.push({ svg: micGlyph(52), label: 'mic', on: micLive, act: () => bus.emit('xr:mic') });
-  if (glyphPinned('ear')) out.push({ svg: earGlyph(52), label: 'ears', on: earOn, act: () => flipEar() });
-  out.push({ svg: xrGlyph(52), label: 'leave VR', on: () => true, act: () => leaveVR('ring') });   // ALWAYS on the ring: an exit must not depend on a desktop pin (R 09-06 12:00: 'no way to leave VR at all')
-  out.push({ svg: RECENTRE_SVG, label: 'recentre', on: () => false, act: () => recentreXR('ring') });   // C15: the playspace verb — always on the ring while presenting
-  out.push({ icon: 'boxes', label: 'panels', on: () => xrPanelsShown(), act: () => { bus.emit('xr:panels'); tee('[xr] panels toggled (ring)'); } });   // hide / show every quad
+  if (ringLevel === 'emotes') {
+    const e = ringEmoteEntries();                    // postures + emotes, bar order, 12 o'clock first
+    const back = { svg: BACK_SVG, label: 'back', on: () => false, sub: 'root', act: () => {} };
+    const half = Math.ceil(e.length / 2);
+    const out = [...e.slice(0, half), back, ...e.slice(half)];
+    if (out.length % 2) out.push(SPACER);
+    return out;
+  }
+  const panels = { icon: 'boxes', label: 'panels', on: () => xrPanelsShown(), act: () => { bus.emit('xr:panels'); tee('[xr] panels toggled (ring)'); } };
+  const leave = { svg: xrGlyph(52), label: 'leave VR', on: () => true, close: true, act: () => leaveVR('ring') };
+  // emotes is its own strip on the desk, not a dock panel — a fixed slot, first on the right (1 o'clock)
+  const right = [{ icon: 'hand-waving', label: 'emotes', sub: 'emotes', on: () => false, act: () => {} }];
   for (const e of dockPins()) {
     const has = xrPanelHas(e.id);
-    out.push({ icon: e.icon, label: e.id, has, on: () => xrPanelOpen(e.id),
+    right.push({ icon: e.icon, label: e.id, has, on: () => xrPanelOpen(e.id), close: true,
       act: () => { if (has) showXRPanel(e.id); else tee(`[xr] ring: ${e.id} has no VR surface yet`); } });
   }
-  return out;
+  const left = [
+    { svg: RECENTRE_SVG, label: 'recentre', on: () => false, close: true, act: () => recentreXR('ring') },
+    { svg: earGlyph(52), label: 'ears', on: earOn, act: () => flipEar() },
+    { svg: micGlyph(52), label: 'mic', on: micLive, act: () => bus.emit('xr:mic') },
+  ];
+  // balance: the same count each side (move dock pins over, then pad) so 'leave' lands on 6 o'clock
+  while (right.length > left.length + 1) left.unshift(right.pop());
+  while (right.length < left.length) right.push(SPACER);
+  if (right.length > left.length) left.unshift(SPACER);
+  return [panels, ...right, leave, ...left];   // clockwise from the top: right side descends 1→5, left ascends 7→11
 }
 const RECENTRE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="52" height="52" viewBox="0 0 26 26" fill="none" stroke="#f2f7f5" stroke-width="1.6" stroke-linecap="round"><circle cx="13" cy="13" r="7"/><circle cx="13" cy="13" r="1.6" fill="#f2f7f5"/><path d="M13 2v4M13 20v4M2 13h4M20 13h4"/></svg>';
 // THE RING as a MENU — porch-old's NESTED RADIAL v2 rules (index.html:7592–7770, Nix in-headset
@@ -407,6 +391,7 @@ function disposeRadial() {
   radial.group.parent?.remove(radial.group); radial = null;
 }
 function openRadial() {
+  ringLevel = 'root';
   disposeRadial();                       // rebuilt every open: the rail is the source of truth and it changes
   radial = makeRadial(radialEntries());
   hands.right.grip.add(radial.group);
@@ -414,7 +399,25 @@ function openRadial() {
   radial.group.quaternion.identity();
   tickRadial();
 }
+const ring = { openedAt: 0, lastInput: 0, leftCentreAt: 0, trigWas: false };
+function closeRing(cause) { const sel = radial?.sel ?? -1; closeRadial(false); tee(`[xr] ring close (${cause})${sel >= 0 ? ` latched=${radial?.entries?.[sel]?.label ?? '?'}` : ''}`); }
+function activateRing(cause) {
+  if (!radial || radial.sel < 0) return;
+  const e = radial.entries[radial.sel];
+  tee(`[xr] ring act → ${e.label} (${cause})`);
+  haptic('right', 0.3, 20);
+  try { e.act(); } catch (err) { tee(`[xr] ring act failed: ${err?.message ?? err}`); }
+  if (!radialOpen || !radial) return;              // the act may have closed it (leave VR)
+  if (e.sub) { ringLevel = e.sub; const sel = radial.sel; disposeRadial(); radial = makeRadial(radialEntries()); hands.right.grip.add(radial.group); radial.group.position.set(RING_ANCHOR.x, RING_ANCHOR.y, RING_ANCHOR.z); tickRadial(); tee(`[xr] ring → ${e.sub}`); return; }
+  if (e.close) { closeRing('act'); return; }
+  repaintRing();                                    // a toggle: show its new state, stay open
+}
+function repaintRing() {
+  if (!radial) return;
+  radial.slots.forEach((m, i) => { m.material.map?.dispose(); m.material.map = ringIconTexture(radial.entries[i], i === radial.sel); m.material.needsUpdate = true; });
+}
 function closeRadial(commit) {
+  ringLevel = 'root';
   if (!radial) { radialOpen = false; return; }
   const act = commit && radial.sel >= 0 ? radial.entries[radial.sel]?.act : null;
   disposeRadial(); radialOpen = false;
@@ -442,7 +445,7 @@ function aimRadial(x, y) {
   if (mag > 0.5) {
     // porch: stick angle atan2(y, x) against each slot's ring angle (gamepad y is inverted, which matches the −sin placement)
     const a = Math.atan2(y, x); let bd = 9;
-    radial.slots.forEach((m, i) => { const d = Math.abs(Math.atan2(Math.sin(a - m.userData.ring), Math.cos(a - m.userData.ring))); if (d < bd) { bd = d; best = i; } });
+    radial.slots.forEach((m, i) => { if (radial.entries[i].spacer) return; const d = Math.abs(Math.atan2(Math.sin(a - m.userData.ring), Math.cos(a - m.userData.ring))); if (d < bd) { bd = d; best = i; } });
   } else if (mag >= 0.35) best = radial.sel;   // hysteresis band: keep the selection, don't commit yet
   if (best !== radial.sel) {
     radial.slots.forEach((m, i) => { const foc = i === best; m.scale.setScalar(foc ? 1.4 : 1); m.material.map?.dispose(); m.material.map = ringIconTexture(radial.entries[i], foc); m.material.needsUpdate = true; });
@@ -800,14 +803,35 @@ export function updateXR(dtSec = 1 / 72) {
     const rx = dead(pickAxis(R.axes[2], R.axes[0]));
     const ry = dead(pickAxis(R.axes[3], R.axes[1]));
     const pressed = !!R.buttons[3]?.pressed;              // thumbstick click
-    // HOLD / AIM / RELEASE — the standard ring (porch-old, VRChat): the ring is open exactly while the
-    // stick is held; aim with the stick; releasing on a slot commits it, releasing on the centre cancels.
-    // (R 09-06 12:40: back to standard — the 09-04 click-toggle stuck open for five minutes this morning.)
-    // Grip while held cancels. Nothing can stay open: no press, no ring.
+    // CLICK / LATCH / TRIGGER (R 09-07 21:56, replacing hold-aim-release: 'I hate the VRChat action menu').
+    //   · stick CLICK opens; stick click again closes; grip cancels; 12 s without stick or trigger closes (the
+    //     09-04 click-toggle stuck open — every close path here tees its cause so a stuck ring is diagnosable);
+    //   · AIM latches: deflect > 0.5 picks the sector and the pick STAYS when the stick springs back — a choice is
+    //     a state, not a held pose (the stick is exhausting to hold; a lit slot costs nothing);
+    //   · TRIGGER activates the latched slot. Toggles (mic, ears, panels) stay open and repaint their state;
+    //     one-shots (recentre, opening a panel) close on activation — Resonite's CloseMenuOnPress, per item;
+    //   · FLICK: deflect and return to centre within 220 ms activates without the trigger;
+    //   · compat: release the CLICK while still deflected within 700 ms of opening → commit + close (the old
+    //     hold-aim-release muscle memory keeps working).
     const gripNow = !!R.buttons[1]?.pressed;
-    if (pressed && !stickPressWas && buttonsTrusted()) { radialOpen = true; openRadial(); haptic('right', 0.35, 30); tee('[xr] ring open'); }
-    else if (radialOpen && pressed) { if (gripNow) { closeRadial(false); tee('[xr] ring cancelled (grip)'); } else { aimRadial(rx, ry); tickRadial(); } }
-    else if (radialOpen && !pressed) { const sel = radial?.sel ?? -1; closeRadial(true); tee(`[xr] ring released${sel >= 0 ? ` → ${radial?.entries[sel]?.label}` : ' (nothing)'}`); }
+    const trigNow = !!R.buttons[0]?.pressed;
+    const magNow = Math.hypot(rx, ry);
+    const nowMs = performance.now();
+    if (pressed && !stickPressWas && buttonsTrusted()) {
+      if (!radialOpen) { radialOpen = true; ring.openedAt = ring.lastInput = nowMs; ring.leftCentreAt = 0; openRadial(); haptic('right', 0.35, 30); tee('[xr] ring open (click)'); }
+      else closeRing('click');
+    } else if (radialOpen) {
+      if (gripNow) closeRing('grip');
+      else {
+        if (magNow > 0.35 || trigNow) ring.lastInput = nowMs;
+        if (magNow > 0.35) { if (!ring.leftCentreAt) ring.leftCentreAt = nowMs; aimRadial(rx, ry); }   // below the band aimRadial is NOT called: the latch holds
+        else if (ring.leftCentreAt) { const flick = nowMs - ring.leftCentreAt < 220 && (radial?.sel ?? -1) >= 0; ring.leftCentreAt = 0; if (flick) activateRing('flick'); }
+        if (!pressed && stickPressWas && magNow > 0.5 && nowMs - ring.openedAt < 700 && (radial?.sel ?? -1) >= 0) { activateRing('release'); if (radialOpen) closeRing('release'); }
+        else if (trigNow && !ring.trigWas) activateRing('trigger');
+        if (radialOpen) { tickRadial(); if (nowMs - ring.lastInput > 12000) closeRing('idle'); }
+      }
+    }
+    ring.trigWas = trigNow;
     turnMag = 0;
     if (radialOpen) { /* the ring owns the stick */ }
     else if (xrPrefs.turn === 'smooth') {
@@ -826,8 +850,7 @@ export function updateXR(dtSec = 1 / 72) {
     stickPressWas = pressed;
 
     // pointer + grab chord on BOTH hands (Tier B7 — the left was a stick and one
-    // button). Either hand can aim, select, and grab; one thing held at a time
-    // (tryGrab knows which hand holds it). The ring stays on the right.
+    // button). Either hand can aim, select, and take a panel; one thing held at a time. The ring stays on the right.
     for (const side of ['right', 'left']) {
       const G = side === 'right' ? R : L; const hand = hands[side];
       if (!G || !hand) continue;
@@ -835,7 +858,7 @@ export function updateXR(dtSec = 1 / 72) {
       hand.laser.visible = grip || trig;
       hand.box.visible = !getSelf()?.vrm;   // a body owns the hands → no test box
       if (!buttonsTrusted()) { triggerWas[side] = trig; continue; }
-      if (grip && trig && !held) tryGrab(side);
+      if (grip && trig && !held) tryGrab(side);   // panels only
       if (!grip && held?.hand === side) releaseGrab();
       if (trig && !triggerWas[side] && !grip && !(radialOpen && side === 'right')) {
         // panels claim the laser before the world does — a click meant for a
@@ -850,7 +873,11 @@ export function updateXR(dtSec = 1 / 72) {
       if (hand.laser.visible) {
         const panelDist = xrPanelsPick(hand.ray, false);
         const hit = panelDist == null ? rayHitEntity(hand.ray, 40) : null;
-        hand.laser.scale.z = panelDist ?? (hit ? hit.dist : 24);
+        // R 09-07 22:10: short and faint unless it points at something you can act on — porch-old's 1.8 m
+        // idle beam; a panel or an entity under the ray draws it out to the hit at full strength
+        const target = panelDist ?? hit?.dist ?? null;
+        hand.laser.scale.z = target ?? 1.8;
+        hand.laser.userData.opacity.value = target != null ? 0.85 : 0.4;
       }
       triggerWas[side] = trig;
     }
@@ -903,7 +930,7 @@ export function updateXR(dtSec = 1 / 72) {
       env: !!scene.environment,
       fpSplit: (() => { const n = { fp: 0, tp: 0, both: 0, base: 0 }; av?.vrm?.scene?.traverse((o) => { if (!o.isMesh && !o.isSkinnedMesh) return; const f = o.layers.isEnabled(FP_LAYER), t = o.layers.isEnabled(TP_LAYER); n[f && t ? 'both' : f ? 'fp' : t ? 'tp' : 'base']++; }); return n; })(),   // a body whose meshes are ALL tp is invisible in FP by spec
       controllers: { L: !!sourceFor('left'), R: !!sourceFor('right'), trusted: buttonsTrusted(), bits: ['left', 'right'].map((h) => (sourceFor(h)?.gamepad?.buttons ?? []).map((b) => +!!b.pressed).join('')) },   // raw pressed bits per hand: a stuck-true button is visible here rig: [+rig.position.x.toFixed(1), +rig.position.y.toFixed(1), +rig.position.z.toFixed(1)],
-      hands: { L: !!sourceFor('left'), R: !!sourceFor('right') }, held: held?.id ?? null,
+      hands: { L: !!sourceFor('left'), R: !!sourceFor('right') }, held: held?.quad?.id ?? null,
       me: [+myState.pos.x.toFixed(1), +myState.pos.y.toFixed(1), +myState.pos.z.toFixed(1)], clip: myState.clip, seat: myState.seat?.id ?? null, ring: radialOpen,
       yaw: { cam: +camYawWorld().toFixed(2), rig: +rig.rotation.y.toFixed(2), root: +(av?.root?.rotation.y ?? 0).toFixed(2) },
       headLocal: [+camera.position.x.toFixed(2), +camera.position.y.toFixed(2), +camera.position.z.toFixed(2)],   // the HMD in rig space: a pop is a number here
@@ -998,7 +1025,7 @@ export const xrDebug = () => {
   const gp = new THREE.Vector3();
   hands.right?.grip.getWorldPosition(gp);
   return { ring,
-    presenting, held: held?.id ?? null, radialOpen,
+    presenting, held: held?.quad?.id ?? null, radialOpen,
     radialSel: radial?.sel ?? null,
     rigYaw: +rig.rotation.y.toFixed(3),
     laserOn: hands.right?.laser.visible ?? false,
