@@ -223,8 +223,8 @@ a:hover { color: var(--fg); text-decoration-color: var(--brand); }
    moving thing is the ground light (.sp-rays, worker-driven): it means
    "alive"; the mark means "us", and holds. */
 .sp-logo {
-  width: 200px; height: 210px; transform: scale(.5); transform-origin: center;   /* drawn 2x, shown at 1x: crisp curves */
-  margin: -52px 0; color: var(--brand); overflow: visible;
+  width: 200px; height: 210px; transform: translateY(10px) scale(.4); transform-origin: center;   /* drawn 2x, shown at 0.8x (R 09-07 23:05: 'a bit too big'), nudged down onto the mark */
+  margin: -52px 0 -64px; color: var(--brand); overflow: visible;
 }
 .sp-logo-wrap { position: relative; display: grid; place-items: center; }
 .sp-mark {
