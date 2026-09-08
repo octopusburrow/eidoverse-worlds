@@ -317,8 +317,8 @@ export function radialEntries() {   // exported with makeRadial for the headless
   }
   const left = [
     { svg: RECENTRE_SVG, label: 'recentre', on: () => false, close: true, act: () => recentreXR('ring') },
-    { svg: earGlyph(52), label: 'ears', on: earOn, act: () => flipEar() },
-    { svg: micGlyph(52), label: 'mic', on: micLive, act: () => bus.emit('xr:mic') },
+    { svg: () => earGlyph(52), label: 'ears', on: earOn, act: () => flipEar() },   // svg as a FUNCTION: the slash follows the live state on every repaint (a toggle from the ring used to keep the open-time glyph)
+    { svg: () => micGlyph(52), label: 'mic', on: micLive, act: () => bus.emit('xr:mic') },
   ];
   // balance: the same count each side (move dock pins over, then pad) so 'leave' lands on 6 o'clock
   while (right.length > left.length + 1) left.unshift(right.pop());
@@ -355,7 +355,7 @@ function ringIconTexture(s, focused) {
     img.onload = () => { g.save(); g.translate(64, 64); g.drawImage(img, -30, -30, 60, 60); g.restore(); tex.needsUpdate = true; };
     // an <svg> without xmlns renders INLINE but paints NOTHING as an <img> data-URI — mic/ears/VR came from the HUD's
     // inline glyphs and were the exact icons missing on the ring (R 09-07 23:34); the ∃/recentre/emote SVGs carried it
-    let svg = s.svg.replace(/stroke="#f2f7f5"/g, `stroke="${ink}"`).replace(/fill="#f2f7f5"/g, `fill="${ink}"`);
+    let svg = (typeof s.svg === 'function' ? s.svg() : s.svg).replace(/stroke="#f2f7f5"/g, `stroke="${ink}"`).replace(/fill="#f2f7f5"/g, `fill="${ink}"`);
     if (!/xmlns=/.test(svg)) svg = svg.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
     img.src = 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
   } else if (!fillPath(g, s.icon, 60, (focused || on) ? 'fill' : 'line')) stroke(g, s.icon, 60);
