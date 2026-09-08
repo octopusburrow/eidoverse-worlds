@@ -141,7 +141,7 @@ document.addEventListener('pointerdown', (e) => {
     // grows are clamped so no edge ever leaves the viewport
     // (windows stay inside the active area, full stop)
     if (z.includes('e')) f.state.w = clamp(s0.w + dx, f.minW, innerWidth - s0.x - 8);
-    if (z.includes('s')) f.state.h = clamp(s0.h + dy, f.minH, innerHeight - s0.y - 40);
+    if (z.includes('s')) f.state.h = clamp(s0.h + dy, f.minH, innerHeight - s0.y - 4);   // same floor as a drag (ui.js: innerHeight − 4); the old −40 stopped a resize 36 px short of where a drag could go (R 09-07 23:25)
     if (z.includes('w')) {
       const maxW = s0.x + s0.w - 8;                // west edge stops at x=8
       f.state.w = clamp(s0.w - dx, f.minW, maxW);

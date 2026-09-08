@@ -777,7 +777,7 @@ function initChatGear() {
     } else if (sd) {
       sideSt.pos = sd; saveSide();
     } else return;
-    applyChatPrefs(); paintPop();
+    applyChatPrefs(); applySide(); paintPop();   // applySide repaints the chevron for the new side (R 09-07 23:25: it pointed the old way after a left↔right move)
   };
   gearOpen = () => !pop.hidden;
   gearToggle = (anchor) => {
