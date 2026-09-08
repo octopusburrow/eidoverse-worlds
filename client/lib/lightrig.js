@@ -50,6 +50,7 @@
 // (docs/upstream-wrap-once.md addendum).
 
 import { THREE, scene, camera, renderer, sun } from './core.js';
+import { CSMShadowNode } from 'three/addons/csm/CSMShadowNode.js';
 import { CONFIG, tee } from './base.js';
 import { warmDepth } from './warmqueue.js';
 
@@ -101,12 +102,24 @@ export const SHADOW_RES = [1024, 2048, 4096];
 export const shadowRes = () => { const v = +localStorage.getItem(RES_KEY); return SHADOW_RES.includes(v) ? v : 2048; };
 export function setShadowRes(n) { localStorage.setItem(RES_KEY, String(n)); sun.shadow.mapSize.set(n, n); }
 sun.shadow.mapSize.set(shadowRes(), shadowRes());
+// ?csm=2|3|4 — cascaded shadow maps (bench probe, R 09-07 21:32: 'better performance in VR'; Basis ships 4
+// cascades over 150 m, first split at 12%). three's CSMShadowNode fits one ortho camera per cascade around the
+// VIEW frustum every frame, with lightMargin m of room behind the light — the follow-box below is replaced by
+// it wholesale (the near-plane trap of a2e25e2 cannot occur by construction). Each cascade is its own map at
+// mapSize, so N cascades = N depth passes; the trade is sharper near shadows + horizon coverage against fill.
+const CSM_N = Math.min(4, Math.max(0, +CONFIG.params.get('csm') || 0));
+export let csm = null;
+if (CSM_N >= 2) {
+  csm = new CSMShadowNode(sun, { cascades: CSM_N, maxFar: +CONFIG.params.get('csmfar') || 150, mode: CONFIG.params.get('csmmode') || 'practical', lightMargin: 100 });
+  sun.shadow.shadowNode = csm;
+  addEventListener('resize', () => csm.updateFrustums());
+}
 if (CONFIG.params.has('shadowfloat')) sun.shadow.mapType = THREE.FloatType;   // ?shadowfloat=1 (boot) — R 09-07 19:30: 32-bit float depth map; a D3D11/ANGLE comparison-sampling variant to test on her GPU
 sun.shadow.bias = -0.0006;
 sun.shadow.normalBias = 0.02;
 // Boot line for the shadow state (R 09-07 19:10: 'nothing casts a shadow except right under my avatar' on desktop
 // too, while a headless probe measured the yucca casting) — the persisted switch, the map, and where the sun is.
-setTimeout(() => { try { const d = sun.position.clone().normalize(); tee(`[shadows] pref=${shadowsOn() ? 'on' : 'off'} map=${renderer.shadowMap.enabled} type=${renderer.shadowMap.type} size=${sun.shadow.mapSize.x} sun=(${d.x.toFixed(2)},${d.y.toFixed(2)},${d.z.toFixed(2)}) intensity=${sun.intensity.toFixed(2)} casters=${casters.size} casting=${[...casters.values()].filter((c) => c.casting).length}`);
+setTimeout(() => { try { const d = sun.position.clone().normalize(); tee(`[shadows] csm=${csm ? csm.cascades : 0} pref=${shadowsOn() ? 'on' : 'off'} map=${renderer.shadowMap.enabled} type=${renderer.shadowMap.type} size=${sun.shadow.mapSize.x} sun=(${d.x.toFixed(2)},${d.y.toFixed(2)},${d.z.toFixed(2)}) intensity=${sun.intensity.toFixed(2)} casters=${casters.size} casting=${[...casters.values()].filter((c) => c.casting).length}`);
   // real-hardware facts (R 09-07 19:28: no ground shadow on her GPU, SwiftShader shows one): the map's depth texture, GL error state, the extensions that shape the shadow path
   const m = sun.shadow.map; const dt = m?.depthTexture; const gl = renderer.backend?.gl; const ext = (n) => gl ? (gl.getExtension(n) ? 1 : 0) : '?';
   tee(`[shadows] map=${m ? `${m.width}x${m.height}` : 'none'} depthTex=${dt ? `type:${dt.type} fmt:${dt.format} cmp:${dt.compareFunction} ver:${dt.version}` : 'none'} glError=${gl ? gl.getError() : '?'} parallelCompile=${ext('KHR_parallel_shader_compile')} clipControl=${ext('EXT_clip_control')} depthClamp=${ext('EXT_depth_clamp')} renderer=${(() => { try { const d = gl.getExtension('WEBGL_debug_renderer_info'); return d ? gl.getParameter(d.UNMASKED_RENDERER_WEBGL).slice(0, 60) : gl.getParameter(gl.RENDERER).slice(0, 60); } catch { return '?'; } })()}`);
@@ -293,6 +306,7 @@ const _rel = new THREE.Vector3();
 const _ZERO = new THREE.Vector3();
 
 function updateShadow() {
+  if (csm) return;   // the cascades fit themselves around the view (updateBefore)
   const cam = sun.shadow.camera;
   _rel.copy(camera.position).sub(sun.position);
   _sm.lookAt(sun.position, _ZERO, THREE.Object3D.DEFAULT_UP);
