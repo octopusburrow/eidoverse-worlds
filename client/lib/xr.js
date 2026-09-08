@@ -20,7 +20,7 @@
 import { installRenderListTolerance, THREE, renderer, camera, scene, XR_BOOT } from './core.js';
 import { CONFIG, report, bus, tee } from './base.js';
 import { frameDebug } from './frame.js';
-import { xrBodyDebug } from './xrbody.js';
+import { resetFingers, xrBodyDebug } from './xrbody.js';
 import { stroke, fillPath } from './icons.js';
 import { xrPanelsEnter, xrPanelsExit, xrPanelsPick, showXRPanel, xrPanelHas, xrPanelOpen, xrPanelsGrab, xrPanelRelease, xrPanelsShown } from './xrpanels.js';
 import { domQuadsScroll } from './domquad.js';
@@ -125,6 +125,8 @@ export const xrFloorSpace = () => floorSpace;
 // measured ratio for anyone who wants the number. Restored to 1 on session end.
 const SCALE_LS = 'ew-xr-scale';
 const scaleState = { k: 1, source: 'fallback', samples: [], eyeY: null, locked: false, firstAt: 0 };
+// a body swap while presenting: the new body must not wear the old body's ratio (eyes off the HMD height)
+bus.on('avatar-worn', () => { if (!presenting) return; scaleState.samples.length = 0; scaleState.locked = false; scaleState.firstAt = 0; scaleState.k = 1; scaleState.source = 'fallback'; loadSavedScale(); tee('[xr] body swapped while presenting — device scale re-measured'); });
 export const xrScale = () => ({ ...scaleState, samples: scaleState.samples.length });
 /** The multiplier the self puppet wears while presenting (Basis: avatar scaled to the player). 1 when unmeasured. */
 export const puppetScale = () => (presenting && scaleState.k > 0 ? 1 / scaleState.k : 1);
@@ -506,6 +508,7 @@ async function enterVR() {
       setTimeout(() => { location.href = u; }, 1200);
       return;
     }
+    try { localStorage.setItem('ew-headset-seen', '1'); } catch {}   // a REAL session, not a capability answer (phones say yes to Cardboard): next boot picks WebGL up front
     tee(`[xr] enter #${sessionNo}: session granted (${session.enabledFeatures?.length ?? '?'} features)`); markXrAbsent(false);
     renderer.xr.enabled = true;
     // Tier A6 (gap list 09-05): CHOOSE the floor reference space — before this it
@@ -555,8 +558,9 @@ async function enterVR() {
     // presents to nothing — and the visor lit as if she were in). The tell is that no viewer pose ever arrives
     // (the stereo camera keeps zero eyes). 2.5 s of that → say so, mark the visor absent, and leave.
     hadPose = false;
+    const thisSession = sessionNo;
     setTimeout(() => {
-      if (!presenting || hadPose) return;
+      if (sessionNo !== thisSession || !presenting || hadPose) return;   // a later session is not this timer's to judge
       tee('[xr] no viewer pose 2.5 s after the session was granted — no headset; leaving');
       markXrAbsent(true); toast('no headset detected — put it on (or wake it) and click the visor again', 'warn', 8000);
       leaveVR('no-headset');
@@ -581,7 +585,7 @@ async function enterVR() {
     renderer.xr.cameraAutoUpdate = false;
     // three.webgpu also hands the shadow pass cameraXR instead of the light camera while presenting
     // (Renderer.js: camera = xr.getCamera() for any render) — shadow maps are wrong by construction
-    // in XR, and cost a full scene pass per light per frame. Off while presenting; ?xrshadows=1 keeps them.
+    // in XR, and cost a full scene pass per light per frame. Off while presenting.
     // R 09-07 18:30: 'leave everything alone.' shadowMap.enabled is pipeline-shape (lightrig.js:85) — flipping it
     // off here and back on at exit recompiled the whole scene at the first frame in BOTH directions: the hard
     // hangs in and out. Shadows now stay exactly as they are on the desktop. What that costs per frame in VR, and
@@ -597,6 +601,8 @@ async function enterVR() {
       presenting = false; bus.emit('xr:state', false); eyeBase = null; setXRCurtain(false); curtainState = null;
       renderer.xr.cameraAutoUpdate = true;
       xrIntent.active = false;
+      if (radialOpen) closeRadial(false);   // a session the browser ended leaves the ring open and the stick owned by it
+      resetFingers(getSelf()?.vrm);
       selfFirstPerson(false);
       { const v = getSelf()?.vrm; if (v) { v.scene.scale.setScalar(1); v.scene.position.set(0, 0, 0); v.scene.updateMatrixWorld(true); if (v.userData) { v.userData.ankleH = null; v.userData._gait = null; } } }   // the puppet scale AND the eye-anchor offset (xrbody writes vrm.scene.position every presenting frame; left in place it sank the feet on the desktop — R 09-08 00:38) are presenting things
       xrPanelsExit(rig);
@@ -661,6 +667,9 @@ async function enterVR() {
     });
   } catch (e) {
     report('enter VR', e);
+    // a session that was GRANTED but whose setSession failed is alive and ours: end it, or the visor is dead
+    // until reload (the browser answers every later request 'already an active immersive XRSession')
+    if (session && !presenting) { try { session.end(); } catch { /* already ending */ } session = null; renderer.xr.enabled = false; }
     // the failure must OUTLIVE the glance (R, 09-04: "didn't see the error
     // for very long") — a sticky toast with the actual message, 30 s
     toast(e?.userMessage ?? `VR failed to start: ${e?.message ?? e}`, e?.userMessage ? 'warn' : 'err', e?.userMessage ? 8000 : 30000);
@@ -1028,7 +1037,8 @@ export function updateXR(dtSec = 1 / 72) {
       lights: (() => { const l = []; scene.traverse((o) => { if (o.isLight) l.push(`${o.type.replace('Light', '')}:${+o.intensity.toFixed(2)}${o.visible ? '' : ':hidden'}`); }); return l.slice(0, 8); })(),
       env: !!scene.environment,
       fpSplit: (() => { const n = { fp: 0, tp: 0, both: 0, base: 0 }; av?.vrm?.scene?.traverse((o) => { if (!o.isMesh && !o.isSkinnedMesh) return; const f = o.layers.isEnabled(FP_LAYER), t = o.layers.isEnabled(TP_LAYER); n[f && t ? 'both' : f ? 'fp' : t ? 'tp' : 'base']++; }); return n; })(),   // a body whose meshes are ALL tp is invisible in FP by spec
-      controllers: { L: !!sourceFor('left'), R: !!sourceFor('right'), trusted: buttonsTrusted(), bits: ['left', 'right'].map((h) => (sourceFor(h)?.gamepad?.buttons ?? []).map((b) => +!!b.pressed).join('')) },   // raw pressed bits per hand: a stuck-true button is visible here rig: [+rig.position.x.toFixed(1), +rig.position.y.toFixed(1), +rig.position.z.toFixed(1)],
+      controllers: { L: !!sourceFor('left'), R: !!sourceFor('right'), trusted: buttonsTrusted(), bits: ['left', 'right'].map((h) => (sourceFor(h)?.gamepad?.buttons ?? []).map((b) => +!!b.pressed).join('')) },   // raw pressed bits per hand: a stuck-true button is visible here
+      rig: [+rig.position.x.toFixed(1), +rig.position.y.toFixed(1), +rig.position.z.toFixed(1)],
       hands: { L: !!sourceFor('left'), R: !!sourceFor('right') }, held: held?.quad?.id ?? null,
       me: [+myState.pos.x.toFixed(1), +myState.pos.y.toFixed(1), +myState.pos.z.toFixed(1)], clip: myState.clip, seat: myState.seat?.id ?? null, ring: radialOpen,
       yaw: { cam: +camYawWorld().toFixed(2), rig: +rig.rotation.y.toFixed(2), root: +(av?.root?.rotation.y ?? 0).toFixed(2) },
@@ -1078,7 +1088,6 @@ export async function initXR() {
   try { supported = await navigator.xr.isSessionSupported('immersive-vr'); }
   catch (e) { report('xr support probe', e); }
   if (!supported) return;
-  try { localStorage.setItem('ew-headset-seen', '1'); } catch {}   // next boot picks WebGL up front → visor enters, no reload (R 09-07)
 
   // the third glyph of the mic/ear trio — the same ink, the same slot
   // layout, the same pin row in the ∃ menu (R, 09-04). Exists only here,

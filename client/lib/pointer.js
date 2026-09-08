@@ -1,4 +1,4 @@
-// The VR pointer: porch-old's FADING beam (Nix 2026-07-14) — a subdivided line whose alpha ramps
+// The VR pointer: porch-old's FADING beam (2026-07-14) — a subdivided line whose alpha ramps
 // from bright at the hand to nothing at the tip, so it dissolves into space instead of ending in a
 // hard dot. porch rode LineBasicMaterial.onBeforeCompile for the per-vertex alpha; node materials
 // have no onBeforeCompile, so the fade is an opacityNode read straight off the attribute.

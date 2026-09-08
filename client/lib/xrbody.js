@@ -129,6 +129,13 @@ const CURL = [1.22, 1.57, 0.96];
 const curlQ = new THREE.Quaternion(), curlE = new THREE.Euler();
 const simCurl = { left: null, right: null };
 export const xrSimCurl = (side, c) => { if (CONFIG.params.has('xrsim')) simCurl[side] = c ? { ...c } : null; };
+/** Put every finger bone back where the clip left it — the curl is a per-tick overlay, and the last tick of a
+ *  session is a trigger pull (leave = trigger) that would otherwise stay on the desktop body and every remote's copy. */
+export function resetFingers(vrm) {
+  const base = vrm?.userData?._fingerBase; if (!base) return;
+  for (const [b, q0] of base) b.quaternion.copy(q0);
+  base.clear();
+}
 function fingerTick(vrm, curls) {
   const h = vrm.humanoid; if (!h) return;
   const ud = vrm.userData = vrm.userData || {};
@@ -186,7 +193,7 @@ export function applyRemoteXR(av, xr, st, dt) {
   fingerTick(vrm, { left: { index: c[0], grip: c[1] }, right: { index: c[2], grip: c[3] } });
 }
 
-// ---- foot IK + gait (Tier C14; porch-old index.html:6068–6163, Nix's 2026-07-09 gait v1, ported
+// ---- foot IK + gait (Tier C14; porch-old index.html:6068–6163, porch-old's 2026-07-09 gait v1, ported
 // whole) — only with real HMD data (desktop keeps the mixer's legs); ?nofootik opts out. Feet are
 // PLANTED in the world and STEP when the desired spot (under the hips at rest hip-width, on the
 // root's floor) drifts past STEP or the body twists past YAWT; a stride is a 0.28 s sine-lift toward
