@@ -20,6 +20,7 @@ case "$v" in
   *) echo "fake verdict $v" >&2; exit "$v";;
 esac
 `); chmodSync(fake, 0o755);
+process.env.SKIP_OPT_SWEEP = "1";   // the parent's own boot timers must not sweep the real library through the fake
 process.env.WORLDS_DIR = join(root, "worlds"); process.env.OPT_DIR = join(root, "opt"); process.env.JOIN_TOKEN = "t"; process.env.OPT_CMD = fake;   // OPT_DIR: NEVER the checkout's store
 process.env.OPT_MEM_BUDGET_MB = "10"; process.env.OPT_COST_FACTOR = "1"; process.env.KTX2_TOKTX = "";
 const { queueOptimize, optIdle } = await import("../server/upload.ts");
@@ -60,7 +61,7 @@ if (process.platform === "linux") {
     const line = sh.stdout.split("\n").find((l) => l.startsWith("{")) ?? "{}";   // the boot-sweep timers log after the JSON
     try { const v = JSON.parse(line); const loud = /cap wrapper failed/.test(sh.stderr + sh.stdout);
       if (v.variant || v.deferred || v.failed || !loud) console.error("126 case saw", JSON.stringify(v), "loud=" + loud, "| tail:", (sh.stderr + sh.stdout).trim().split("\n").slice(-3).join(" // ").slice(0, 400));
-      ok(!v.variant && !v.deferred && !v.failed && loud, "wrapper 126: no variant, no marker, loud"); }
+      ok(!v.variant && !v.deferred && !v.failed && loud, "wrapper 126: no variant, no marker, loud"); console.log("(126 case ran: wrapper refused under the hard limit, nothing marked)"); }
     catch { console.log("(126 case: bun could not start under the hard limit — skipped: " + (sh.stderr + sh.stdout).split("\n").pop() + ")"); }
   } else console.log("(126 case: cannot set a hard data limit here — skipped)");
 } else console.log("(non-Linux: capped-death and 126 cases skipped)");
@@ -77,4 +78,5 @@ const sweep = (skip: boolean) => {
 const skipped = sweep(true), ran = sweep(false);
 ok(skipped.queued === 0, `SKIP_OPT_SWEEP=1: sweeps queued nothing (${JSON.stringify(skipped)})`);
 ok(ran.queued > 0, `SKIP_OPT_SWEEP unset: the planted GLB was queued (${JSON.stringify(ran)})`);
+import("node:fs").then((fs) => fs.rmSync(root, { recursive: true, force: true }));
 console.log("optimize-pump: cases passed");

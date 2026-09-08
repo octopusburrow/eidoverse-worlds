@@ -41,6 +41,7 @@ let lodEncoderWarned = false; // the --lod arm's own once-per-boot note; it neve
 // can say how much is waiting on a bigger box. The count is this boot's;
 // the markers persist (and are never listing entries — store-variants.ts).
 const optDeferred = new Set<string>();
+if (process.env.OPT_CMD) console.warn(`[optimize] OPT_CMD=${process.env.OPT_CMD} — a stand-in optimizer is in charge of every variant this boot`);
 export function optStatus() {
   return { budgetMB: OPT_MEM_BUDGET_MB, queued: optQueue.length, running: optRunning, deferred: optDeferred.size };
 }
@@ -117,7 +118,7 @@ async function pumpOptimize() {
       // unmistakable (126: the limit could not be set — a hard limit below
       // the budget; 127: exec failed) so they never read as a content verdict.
       const capped = OPT_MEM_BUDGET_MB > 0 && process.platform === "linux";
-      // OPT_CMD: a harness may own the child (tools/optimize-pump-test.ts) — the real optimizer otherwise
+      // OPT_CMD: a harness may own the child (tools/optimize-pump-test.ts) — the real optimizer otherwise (logged at boot)
       const cmd = [...(process.env.OPT_CMD ? [process.env.OPT_CMD] : [process.execPath, "run", join(ROOT, "server", "optimize.ts")]), ...(mode ? [mode] : []), src, dest];
       let proc: ReturnType<typeof Bun.spawn>;
       try {

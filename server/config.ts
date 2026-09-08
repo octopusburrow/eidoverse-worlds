@@ -37,7 +37,7 @@ function usableMemory(): number {
 // Env values are VALIDATED: a budget that is not a finite number >= 0 ("banana", -1) falls back to the default
 // with a warning — NaN used to disable the cap silently and serialise as null; a negative one deferred everything.
 function envNumber(name: string, fallback: number, ok: (n: number) => boolean): number {
-  const raw = process.env[name];
+  const raw = process.env[name]?.trim();   // " " is not a number either — Number(" ") is 0
   if (raw === undefined || raw === "") return fallback;
   const n = Number(raw);
   if (Number.isFinite(n) && ok(n)) return n;

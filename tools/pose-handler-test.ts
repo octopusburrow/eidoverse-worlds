@@ -21,3 +21,4 @@ ok(c.lastPose === fine, "finite pose: lastPose updated");
 ok(dirty.get("c1") === fine, "finite pose: staged for the next frame");
 ok(sent.length === 0, "the pose handler answers nothing on the socket");
 console.log("pose-handler: 6 ok");
+import("node:fs").then((fs) => { try { fs.rmSync(process.env.WORLDS_DIR!, { recursive: true, force: true }); } catch {} });

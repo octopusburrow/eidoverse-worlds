@@ -35,7 +35,18 @@ const clientLogRate = new Map<string, { at: number; n: number }>();
 const clientLogGlobal = { at: 0, n: 0 };
 const CLIENTLOG_DIR = process.env.CLIENTLOG_DIR ?? join(WORLDS_DIR, ".clientlogs");   // beside the worlds, like .perflogs — never a shared temp dir
 const CLIENTLOG_MAX_BODY = 4096, CLIENTLOG_MAX_FILE = 5_000_000, CLIENTLOG_PER_WORLD_MIN = 600, CLIENTLOG_GLOBAL_MIN = 2000;
-const knownWorld = (name: string) => worlds.has(name) || existsSync(join(WORLDS_DIR, name, "log.jsonl"));
+// EXACT-case match against the world directory listing (existsSync would say yes to every case variant on a
+// case-insensitive filesystem — each a fresh bucket and file); listed once per few seconds, never per request.
+let worldDirs: Set<string> = new Set(), worldDirsAt = 0;
+const knownWorld = (name: string) => {
+  if (worlds.has(name)) return true;
+  const now = Date.now();
+  const relist = () => { try { worldDirs = new Set(readdirSync(WORLDS_DIR)); } catch { worldDirs = new Set(); } worldDirsAt = now; };
+  if (now - worldDirsAt > 5000) relist();
+  if (!worldDirs.has(name) && now - worldDirsAt > 1000) relist();   // a miss re-lists (at most once a second): a new world is known at once
+  return worldDirs.has(name) && existsSync(join(WORLDS_DIR, name, "log.jsonl"));
+};
+const CLIENTLOG_UNKNOWN = "~unknown";   // '~' is outside the world-name alphabet, so no real world can share this file
 try { mkdirSync(CLIENTLOG_DIR, { recursive: true }); } catch (e) { console.warn(`[clientlog] cannot create ${CLIENTLOG_DIR}: ${(e as Error)?.message ?? e}`); }
 import { seatStore, announceProfileUpdate, MAX_PROPOSAL_BYTES } from "./seats.ts";
 import { agentTokens, aid1JoinIdentity } from "./auth.ts";
@@ -350,7 +361,7 @@ const ROUTES: Route[] = [
     // seconds and a desk shows nothing. Diagnosis data, not surveillance: the
     // line carries a timestamp and the client's text, no address. Bounded: 4 KB
     // per body (refused above that by content-length), 600 lines/min/world and
-    // 2000/min overall, one file per KNOWN world plus one shared 'unknown' file
+    // 2000/min overall, one file per KNOWN world plus one shared '~unknown' file
     // for any other label, 5 MB per file, key-gated like the door — which means
     // an OPEN door (JOIN_TOKEN empty, the tailnet dev posture) accepts these
     // writes from anyone who can reach the port: do not run it open on a public
@@ -358,8 +369,10 @@ const ROUTES: Route[] = [
     // $CLIENTLOG_DIR (default: WORLDS_DIR/.clientlogs).
     match: (u, req) => u.pathname === "/clientlog" && req.method === "POST",
     handler: async ({ req, url }) => {
-      const label = (url.searchParams.get("world") ?? "").replace(/[^a-z0-9_-]/gi, "").slice(0, 40);
-      const world = label && knownWorld(label) ? label : "unknown";   // a label the server does not know shares one bucket and one file
+      const label = (url.searchParams.get("world") ?? "").replace(/[^a-z0-9_-]/gi, "").slice(0, 64);   // 64: the world-name limit (world.ts)
+      // a label the server does not know shares one bucket and one file. A brand-new world has no dir until its first
+      // join, so its pre-join boot lines land there too — a window, not a hole: nothing is lost, only shared.
+      const world = label && knownWorld(label) ? label : CLIENTLOG_UNKNOWN;
       const key = url.searchParams.get("key") ?? "";
       if (JOIN_TOKEN && key !== JOIN_TOKEN) return new Response("no", { status: 401 });
       const cl = req.headers.get("content-length");
