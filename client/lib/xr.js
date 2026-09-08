@@ -304,7 +304,7 @@ function radialEntries() {
     return out;
   }
   const panels = { icon: 'boxes', label: 'panels', on: () => xrPanelsShown(), act: () => { bus.emit('xr:panels'); tee('[xr] panels toggled (ring)'); } };
-  const leave = { svg: xrGlyph(52), label: 'leave VR', on: () => true, close: true, act: () => leaveVR('ring') };
+  const leave = { svg: xrGlyph(52), label: 'leave VR', on: () => true, close: true, guard: true, act: () => leaveVR('ring') };   // guard: trigger only — a stick brush toward 6 o'clock threw R out (22:29)
   // emotes is its own strip on the desk, not a dock panel — a fixed slot, first on the right (1 o'clock)
   const right = [{ icon: 'hand-waving', label: 'emotes', sub: 'emotes', on: () => false, act: () => {} }];
   for (const e of dockPins()) {
@@ -399,11 +399,15 @@ function openRadial() {
   radial.group.quaternion.identity();
   tickRadial();
 }
-const ring = { openedAt: 0, lastInput: 0, leftCentreAt: 0, trigWas: false };
-function closeRing(cause) { const sel = radial?.sel ?? -1; closeRadial(false); tee(`[xr] ring close (${cause})${sel >= 0 ? ` latched=${radial?.entries?.[sel]?.label ?? '?'}` : ''}`); }
+const ring = { openedAt: 0, lastInput: 0, leftCentreAt: 0, peak: 0, actedAt: 0, trigWas: false };
+function closeRing(cause) { const sel = radial?.sel ?? -1; const label = sel >= 0 ? radial?.entries?.[sel]?.label : null; closeRadial(false); tee(`[xr] ring close (${cause})${label ? ` latched=${label}` : ''}`); }
 function activateRing(cause) {
   if (!radial || radial.sel < 0) return;
+  const nowMs = performance.now();
+  if (nowMs - ring.actedAt < 250) return;          // one activation per gesture (two landed in a second, 22:29)
   const e = radial.entries[radial.sel];
+  if (e.guard && cause !== 'trigger') { tee(`[xr] ring: ${e.label} needs the trigger (${cause} ignored)`); return; }
+  ring.actedAt = nowMs;
   tee(`[xr] ring act → ${e.label} (${cause})`);
   haptic('right', 0.3, 20);
   try { e.act(); } catch (err) { tee(`[xr] ring act failed: ${err?.message ?? err}`); }
@@ -824,8 +828,14 @@ export function updateXR(dtSec = 1 / 72) {
       if (gripNow) closeRing('grip');
       else {
         if (magNow > 0.35 || trigNow) ring.lastInput = nowMs;
-        if (magNow > 0.35) { if (!ring.leftCentreAt) ring.leftCentreAt = nowMs; aimRadial(rx, ry); }   // below the band aimRadial is NOT called: the latch holds
-        else if (ring.leftCentreAt) { const flick = nowMs - ring.leftCentreAt < 220 && (radial?.sel ?? -1) >= 0; ring.leftCentreAt = 0; if (flick) activateRing('flick'); }
+        if (magNow > 0.35) { if (!ring.leftCentreAt) { ring.leftCentreAt = nowMs; ring.peak = 0; } ring.peak = Math.max(ring.peak, magNow); aimRadial(rx, ry); }   // below the band aimRadial is NOT called: the latch holds
+        else if (ring.leftCentreAt) {
+          // a FLICK is a full, quick excursion: peak ≥ 0.85, out for 60–220 ms. A brush of the stick is not a choice.
+          const out = nowMs - ring.leftCentreAt;
+          const flick = ring.peak >= 0.85 && out >= 60 && out < 220 && (radial?.sel ?? -1) >= 0;
+          ring.leftCentreAt = 0;
+          if (flick) activateRing('flick');
+        }
         if (!pressed && stickPressWas && magNow > 0.5 && nowMs - ring.openedAt < 700 && (radial?.sel ?? -1) >= 0) { activateRing('release'); if (radialOpen) closeRing('release'); }
         else if (trigNow && !ring.trigWas) activateRing('trigger');
         if (radialOpen) { tickRadial(); if (nowMs - ring.lastInput > 12000) closeRing('idle'); }
