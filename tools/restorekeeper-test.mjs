@@ -1,6 +1,6 @@
 // world-dreams #114 restorekeeper — proof over the real ws/http lifecycle on a scratch world:
-//   WORLDS_DIR=$(mktemp -d) JOIN_TOKEN=test-door PORT=8997 BHV_TIMER_MIN=1 bun server/server.ts > /tmp/claude-1000/rk-server.log 2>&1 &
-//   bun tools/restorekeeper-test.mjs > /tmp/claude-1000/rk-test.log 2>&1   (bun buffers stdout to a pipe; write to a file)
+//   WORLDS_DIR=$(mktemp -d) JOIN_TOKEN=test-door PORT=8997 BHV_TIMER_MIN=1 bun server/server.ts > /tmp/rk-server.log 2>&1 &
+//   bun tools/restorekeeper-test.mjs > /tmp/rk-test.log 2>&1   (bun buffers stdout to a pipe; write to a file)
 // Proves: home is learned; a move is restored by the next tick with a counted line; a tiny jiggle is ignored;
 // with odds=1 (knob) the very first move LANDS and home advances; kv survives a rebind.
 import fs from "fs";
