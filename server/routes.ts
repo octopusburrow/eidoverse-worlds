@@ -351,7 +351,7 @@ const ROUTES: Route[] = [
     // the door. Lands in $CLIENTLOG_DIR (default: WORLDS_DIR/.clientlogs).
     match: (u, req) => u.pathname === "/clientlog" && req.method === "POST",
     handler: async ({ req, url }) => {
-      const world = (url.searchParams.get("world") ?? "unknown").replace(/[^a-z0-9_-]/gi, "").slice(0, 40);
+      const world = (url.searchParams.get("world") ?? "").replace(/[^a-z0-9_-]/gi, "").slice(0, 40) || "unknown";
       const key = url.searchParams.get("key") ?? "";
       if (JOIN_TOKEN && key !== JOIN_TOKEN) return new Response("no", { status: 401 });
       const cl = req.headers.get("content-length");
