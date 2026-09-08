@@ -124,9 +124,10 @@ export const xrFloorSpace = () => floorSpace;
 // targets stay 1:1, hands sit ON the controllers. xrbody reads puppetScale(); xrScale().k stays the
 // measured ratio for anyone who wants the number. Restored to 1 on session end.
 const SCALE_LS = 'ew-xr-scale';
+let wornName = '';   // the avatar name from 'avatar-worn' — the per-body key for a saved scale (Avatar has no .name)
 const scaleState = { k: 1, source: 'fallback', samples: [], eyeY: null, locked: false, firstAt: 0 };
 // a body swap while presenting: the new body must not wear the old body's ratio (eyes off the HMD height)
-bus.on('avatar-worn', () => { if (!presenting) return; scaleState.samples.length = 0; scaleState.locked = false; scaleState.firstAt = 0; scaleState.k = 1; scaleState.source = 'fallback'; loadSavedScale(); tee('[xr] body swapped while presenting — device scale re-measured'); });
+bus.on('avatar-worn', (name) => { wornName = name ?? ''; if (!presenting) return; scaleState.samples.length = 0; scaleState.locked = false; scaleState.firstAt = 0; scaleState.k = 1; scaleState.source = 'fallback'; loadSavedScale(); tee('[xr] body swapped while presenting — device scale re-measured'); });
 export const xrScale = () => ({ ...scaleState, samples: scaleState.samples.length });
 /** The multiplier the self puppet wears while presenting (Basis: avatar scaled to the player). 1 when unmeasured. */
 export const puppetScale = () => (presenting && scaleState.k > 0 ? 1 / scaleState.k : 1);
@@ -143,11 +144,11 @@ function avatarEyeY() {
   return head ? (head.getWorldPosition(new THREE.Vector3()).y - root) / ps + 0.06 : null;   // eyes ≈ 6 cm above the head joint
 }
 function loadSavedScale() {
-  try { const all = JSON.parse(localStorage.getItem(SCALE_LS) || '{}'); const name = getSelf()?.name ?? CONFIG.avatar ?? '';
+  try { const all = JSON.parse(localStorage.getItem(SCALE_LS) || '{}'); const name = wornName;
     const v = all[name]; if (v && v.k > 0.5 && v.k < 1.7) { scaleState.k = v.k; scaleState.source = 'saved'; scaleState.eyeY = v.eyeY ?? null; } } catch {}
 }
 function saveScale() {
-  try { const all = JSON.parse(localStorage.getItem(SCALE_LS) || '{}'); const name = getSelf()?.name ?? CONFIG.avatar ?? '';
+  try { const all = JSON.parse(localStorage.getItem(SCALE_LS) || '{}'); const name = wornName;
     all[name] = { k: scaleState.k, eyeY: scaleState.eyeY, t: Date.now() }; localStorage.setItem(SCALE_LS, JSON.stringify(all)); } catch {}
 }
 function sampleDeviceScale(hmdY) {
@@ -605,8 +606,8 @@ async function enterVR() {
       resetFingers(getSelf()?.vrm);
       selfFirstPerson(false);
       { const v = getSelf()?.vrm; if (v) { v.scene.scale.setScalar(1); v.scene.position.set(0, 0, 0); v.scene.updateMatrixWorld(true); if (v.userData) { v.userData.ankleH = null; v.userData._gait = null; } } }   // the puppet scale AND the eye-anchor offset (xrbody writes vrm.scene.position every presenting frame; left in place it sank the feet on the desktop — R 09-08 00:38) are presenting things
+      releaseGrab();      // a gripped panel goes back to the rig BEFORE the quads are disposed, or a dead mesh stays in the rig
       xrPanelsExit(rig);
-      releaseGrab();
       rig.remove(camera);
       scene.remove(rig);
       session = null;
@@ -771,8 +772,7 @@ export function recentreXR(why = 'verb') {
   if (!presenting) return false;
   const cam = renderer.xr.getCamera();
   _hl.setFromMatrixPosition(cam.matrixWorld);
-  rig.updateMatrixWorld(true); rig.worldToLocal(_hl);           // head in rig space (the playspace, pre-offset)
-  _hl.x += recentre.x; _hl.z += recentre.z; _hl.y -= recentre.y;  // undo the offset already folded in: rig-local == playspace
+  rig.updateMatrixWorld(true); rig.worldToLocal(_hl);           // head in rig space == the playspace: the rig's origin is root − R·recentre (syncRigToBody), so the offset is already out
   if (![_hl.x, _hl.y, _hl.z].every(Number.isFinite)) return false;
   // A tracked head stands on a floor-referenced space at ~1–2 m and within a room of the origin. On the
   // first presenting frames the XR camera has NO pose yet — its matrix is still the desktop camera at the

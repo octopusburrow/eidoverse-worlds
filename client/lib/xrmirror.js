@@ -8,7 +8,7 @@
 import { THREE, renderer, scene, camera } from './core.js';
 import { isPresenting, xrPrefs, withHeadShown } from './xr.js';
 import { myState } from './controller.js';
-import { tee } from './base.js';
+import { tee, bus } from './base.js';
 import { toast } from './ui.js';
 
 const deskCam = new THREE.PerspectiveCamera(65, 16 / 9, 0.1, 20000);
@@ -70,6 +70,7 @@ function blitRT(rt) {
 }
 
 let slowFrames = 0, lastTick = 0, passFrame = 0, mirrorKilled = false;
+bus.on('xr:state', (on) => { if (on) { mirrorKilled = false; slowFrames = 0; lastTick = 0; } });   // 'off for this session' means THIS session
 export function tickXRMirror() {
   if (!isPresenting() || xrPrefs.mirror === 'off' || mirrorKilled) return;
   // THE MIRROR MUST NEVER COST THE HEADSET (R 09-08 01:19: fps 17 → frozen with the mirror on). 30 consecutive

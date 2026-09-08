@@ -14,7 +14,7 @@ import { declareSeatState, clearSeatState } from './seats.js';
 import { applyRemoteReach, noteReachEvents } from './reachnet.js';
 import { applyWingFoldPresence } from '../../shared/wingpresence.js';
 import { applyPresenceWire } from '../../shared/presencewire.js';
-import { applyRemoteXR } from './xrbody.js';
+import { applyRemoteXR, resetFingers } from './xrbody.js';
 
 export const remotes = new Map(); // id -> RemoteBody
 
@@ -211,7 +211,7 @@ function blendXR(xa, xb, k) {
 function applyXRPresence(r, a, b, k) {
   const xb = b?.xr;
   if (!xb) {
-    if (r.xrOn) { r.xrOn = false; if (r.xrHookAv) r.xrHookAv.onBeforeVrmUpdate = null; r.xrHookAv = null; }
+    if (r.xrOn) { r.xrOn = false; if (r.xrHookAv) { r.xrHookAv.onBeforeVrmUpdate = null; resetFingers(r.xrHookAv.vrm); } r.xrHookAv = null; }   // their last sample was a trigger pull: fingers back to the clip
     return;
   }
   r.xrOn = true;
