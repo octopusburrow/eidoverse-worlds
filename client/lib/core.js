@@ -134,8 +134,8 @@ export const backendName = () => (renderer.backend?.isWebGLBackend ? 'webgl' : '
 // reads .isPostProcessingRenderTarget off it → every XR frame throws inside
 // three before the app callback (world freezes, head tracking stays live).
 // Same one-line guard as dev's; DELETE at the r186 bump.
-if (XR_BOOT) {
-  renderer.xr.enabled = true;   // must precede init(): xrCompatible adapter
+if (XR_BOOT) renderer.xr.enabled = true;   // must precede init(): xrCompatible adapter
+{ // the guard belongs to EVERY presenting path — the visor enters in place since 09-07, not only ?xr=1
   const fov = renderer.xr.foveateBoundTexture?.bind(renderer.xr);
   if (fov) renderer.xr.foveateBoundTexture = (rt) => (rt == null ? undefined : fov(rt));
 }

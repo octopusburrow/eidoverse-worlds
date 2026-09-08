@@ -501,6 +501,7 @@ async function enterVR() {
     try { renderer.xr.setReferenceSpaceType(floor ?? 'local'); } catch (e) { report('xr ref space', e); }
     floorSpace = floor;
     scaleState.samples.length = 0; scaleState.locked = false; scaleState.firstAt = 0; scaleState.k = 1; scaleState.source = 'fallback'; loadSavedScale();
+    bus.emit('xr:loop');   // frame.js hands the loop to three BEFORE setSession saves+wraps it (see frame.js)
     const tReq = performance.now();
     await renderer.xr.setSession(session);
     tee(`[xr] enter #${sessionNo}: setSession resolved in ${(performance.now() - tReq).toFixed(0)} ms`);
