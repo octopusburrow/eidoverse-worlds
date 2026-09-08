@@ -140,6 +140,9 @@ button:active { transform: translateY(1px); }
 .btn-row { display: flex; gap: 6px; }
 .btn-row > button { flex: 1; max-width: 12rem; text-align: center; padding: 5px 8px; }   /* capped: a wide frame must not stretch buttons out of proportion (R, 09-04) */
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+@keyframes hud-blink { 0%, 100% { opacity: 1; } 25%, 75% { opacity: .25; } }
+#xrbtn.hud-blink { animation: hud-blink .9s ease-in-out 2; }
+#xrbtn.hud-absent { filter: drop-shadow(0 0 3px var(--attn)); }   /* the attention ring around an absent headset's visor */
 input:focus-visible, textarea:focus-visible { outline: 1px solid var(--edge-hi); }
 button.on { background: var(--hov); border-color: var(--edge-hi); color: var(--fg); }
 /* persistent MODES read as armed (R 09-07 23:25): the loupe's `on`, and a skinned dropdown whose choice isn't the default */

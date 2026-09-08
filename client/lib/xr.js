@@ -29,7 +29,7 @@ import { ringEmoteEntries } from './emotebar.js';
 import { entities } from './world.js';
 import { flashHint, toast } from './ui.js';
 import { makePointerLine } from './pointer.js';
-import { registerXrGlyph, glyphPinned, micGlyph, earGlyph, xrGlyph, micLive, earOn, flipEar } from './mictoggle.js';
+import { markXrAbsent, registerXrGlyph, glyphPinned, micGlyph, earGlyph, xrGlyph, micLive, earOn, flipEar } from './mictoggle.js';
 import { dockPins } from './ui.js';
 import { perf } from './perf.js';
 import { renderCensusTake, renderCensusTick, renderCensusPeek, setXRCurtain } from './render.js';
@@ -505,14 +505,14 @@ async function enterVR() {
         if (!enterVR._retried) { enterVR._retried = true; tee('[xr] session busy (another page holds it) — retrying in 1500 ms'); toast('a previous VR session is still closing — retrying', 'info', 3000); setTimeout(() => { enterVR._retried = false; enterVR(); }, 1500); return; }
         toast('VR is still held by another tab — close it, then click the visor again', 'warn', 8000); tee('[xr] session busy after retry — giving up until the visor is clicked again'); return;
       }
-      if (!gpu) throw e;
+      if (!gpu) { if (e?.name === 'NotSupportedError' || e?.name === 'NotFoundError' || /no.*(device|headset|runtime)|not supported|unavailable/i.test(e?.message ?? '')) { markXrAbsent(true); toast('no headset detected — put it on (or wake it) and click the visor again', 'warn', 7000); } throw e; }
       tee(`[xr] webgpu session refused (${e?.name ?? ''} ${e?.message ?? e}) — reloading on the WebGL backend`);
       toast('no WebGPU VR here — reloading on WebGL', 'info', 6000);
       const u = new URL(location.href); u.searchParams.set('webgl', '1'); u.searchParams.set('xr', '1'); u.searchParams.set('why', 'vr-webgl');
       setTimeout(() => { location.href = u; }, 1200);
       return;
     }
-    tee(`[xr] enter #${sessionNo}: session granted (${session.enabledFeatures?.length ?? '?'} features)`);
+    tee(`[xr] enter #${sessionNo}: session granted (${session.enabledFeatures?.length ?? '?'} features)`); markXrAbsent(false);
     renderer.xr.enabled = true;
     // Tier A6 (gap list 09-05): CHOOSE the floor reference space — before this it
     // was only requested, and three's default is 'local' (eye-level origin), so
@@ -557,6 +557,16 @@ async function enterVR() {
     slots[0] ??= makeHand(0); slots[1] ??= makeHand(1);
     hands.left ??= slots[0]; hands.right ??= slots[1];   // guess until 'connected' files them by handedness
     presenting = true; bus.emit('xr:state', true);
+    // HEADSET OFF (R 09-08 01:12: she switched the headset off after load; the session was still GRANTED — SteamVR
+    // presents to nothing — and the visor lit as if she were in). The tell is that no viewer pose ever arrives
+    // (the stereo camera keeps zero eyes). 2.5 s of that → say so, mark the visor absent, and leave.
+    hadPose = false;
+    setTimeout(() => {
+      if (!presenting || hadPose) return;
+      tee('[xr] no viewer pose 2.5 s after the session was granted — no headset; leaving');
+      markXrAbsent(true); toast('no headset detected — put it on (or wake it) and click the visor again', 'warn', 8000);
+      leaveVR('no-headset');
+    }, 2500);
     // IN-SESSION CLOCK SHIM: window.requestAnimationFrame crawls at ~2 Hz during a WebXR session on R's rig
     // (09-07: 7 ticks in 3 s). Everything that yields on it stalls — three's parallel-link poll (so compileAsync
     // takes 7 s to resolve), the warm conductor (so no scene caster ever finishes its depth warm in VR: only her
@@ -687,6 +697,7 @@ export function syncRigToBody() {
  *  syncRigToBody; the input pass below skips the smooth turn on a frame this already handled. Snap turns
  *  stay in the input pass — a discrete step is not a per-frame lag. */
 let turnEarlyFrame = -1;
+let hadPose = false;   // a viewer pose has arrived this session (the eyes exist) — the headset is on someone's head
 export function applyTurnEarly(dtSec) {
   if (!presenting || radialOpen || xrPrefs.turn !== 'smooth' || !buttonsTrusted()) return;
   const R = sourceFor('right')?.gamepad; if (!R) return;
@@ -794,6 +805,7 @@ export function updateXR(dtSec = 1 / 72) {
   // more than 5° or whose viewport changes shape tees ONE line with both eyes' fov, viewport, and the last
   // foreign render, then re-arms when it returns to baseline.
   { const cams = renderer.xr.getCamera().cameras ?? [];
+    if (cams.length && !hadPose) { hadPose = true; markXrAbsent(false); }
     if (cams.length === 2) {
       const fov = cams.map((c) => 2 * Math.atan(1 / c.projectionMatrix.elements[5]) * 180 / Math.PI);
       const vp = cams.map((c) => c.viewport ? `${c.viewport.x | 0},${c.viewport.y | 0},${c.viewport.z | 0},${c.viewport.w | 0}` : '-').join(' | ');

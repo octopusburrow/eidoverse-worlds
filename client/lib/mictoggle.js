@@ -30,6 +30,7 @@ import { bus } from './base.js';
 const tok = (n, fb) => (getComputedStyle(document.documentElement).getPropertyValue(n) || fb).trim();
 const INK = {
   get off()   { return tok('--dim', '#7d8f8a'); },
+  get absent() { return tok('--edge-hi', 'rgb(255 255 255 / 0.32)'); },   // lighter than off: 'here, but nothing to talk to'
   get on()    { return tok('--brand', '#8fe8c8'); },   // live = brand, like the ∃
   get hot()   { return tok('--attn', '#ffd66b'); },
   // the slash is the OFF state's own ink, not an alarm: a silent body is the
@@ -87,6 +88,11 @@ let micBtn = null, earBtn = null, xrBtn = null;
 // the third glyph is OPTIONAL: xr.js registers it only where the browser
 // answers isSessionSupported('immersive-vr'); until then it does not exist
 let xrHook = null;   // { onclick, live: () => bool }
+// R 09-08 01:12: a headset switched off after the page loaded still showed a live-looking visor (isSessionSupported is
+// answered once at boot) and the click failed silently. When a session request is refused for want of a device, the
+// visor goes lighter grey, blinks twice, and carries an attention-coloured tooltip until the next successful entry.
+let xrAbsent = false;
+export function markXrAbsent(on = true) { xrAbsent = !!on; paint(); if (on && xrBtn) { xrBtn.classList.remove('hud-blink'); void xrBtn.offsetWidth; xrBtn.classList.add('hud-blink'); } }
 export function registerXrGlyph(hook) {
   xrHook = hook;
   ensure();
@@ -136,8 +142,9 @@ function paint() {
     : 'mic LIVE — the world hears you (V)';
   if (xrBtn) {
     const live = xrLive();
-    xrBtn.innerHTML = XR_SVG(live);
-    xrBtn.title = live ? 'in VR — click to leave' : 'enter VR';
+    xrBtn.innerHTML = xrAbsent && !live ? XR_SVG(false).replace(new RegExp(INK.off.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), INK.absent) : XR_SVG(live);
+    xrBtn.title = live ? 'in VR — click to leave' : xrAbsent ? 'no headset detected — put it on (or wake it) and click again' : 'enter VR';
+    xrBtn.classList.toggle('hud-absent', xrAbsent && !live);
   }
   if (earBtn) {
     const consented = receivingVoice();
