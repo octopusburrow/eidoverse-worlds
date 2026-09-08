@@ -68,7 +68,7 @@ interface WorldAPI {
    *  counters and flags, not archives. A set() with an EQUAL value still
    *  counts as a change: a timer that re-sets unchanged state writes a
    *  bstate entry into the replay log every tick, forever — compare before
-   *  you set (see examples/thresholdkeeper.js). */
+   *  you set. */
   kv: {
     get(key: string): unknown;
     set(key: string, value: unknown): void;   // undefined/null deletes
