@@ -92,7 +92,7 @@ export function setShadows(on) {
   sun.castShadow = on;
 }
 renderer.shadowMap.enabled = shadowsOn();
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = ({ basic: THREE.BasicShadowMap, pcf: THREE.PCFShadowMap, soft: THREE.PCFSoftShadowMap })[CONFIG.params.get('shadowtype')] ?? THREE.PCFSoftShadowMap;   // ?shadowtype=basic|pcf|soft (boot-time: pipeline-shape) — R 09-07 19:22 diagnostic
 sun.castShadow = shadowsOn();
 sun.shadow.mapSize.set(2048, 2048);
 sun.shadow.bias = -0.0006;
