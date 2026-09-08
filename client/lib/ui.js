@@ -234,6 +234,9 @@ export function settingsFrame() {
     stack.className = 'stack';
     settingsFrameApi.body.appendChild(stack);
     settingsFrameApi.stack = stack;
+    // the frame registers its own dock entry (its section heads live INSIDE it, so nothing else can open it);
+    // a caller that already listed 'settings' wins, and a frame born after initDock still gets its button
+    if (!dockEntries.some((e) => e.id === 'settings')) { const entry = { id: 'settings', icon: 'gear-six' }; dockEntries.push(entry); if (el?.dock) { addDockButton(entry); paintDock(); } }
   }
   return settingsFrameApi;
 }
@@ -364,8 +367,6 @@ export function initDock(entries) {
   // built-ins lead; a mod registered before boot keeps its entry, once
   const seen = new Set();
   dockEntries = [...entries, ...dockEntries].filter((e) => !seen.has(e.id) && seen.add(e.id));
-  // the settings frame is reachable even when the caller's dock list predates it (its section heads live INSIDE it)
-  if (!seen.has('settings') && getFrame('settings')) dockEntries.push({ id: 'settings', icon: 'gear-six' });
   // `last: true` entries (the edit wrench) ALWAYS close the list: edit is a
   // MODE, not a window, and it reads as one only when it sits apart at the end
   // (R, 09-05). Mods registering later insert ahead of them (addDockButton).
