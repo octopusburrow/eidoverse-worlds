@@ -708,13 +708,28 @@ export function updateXR(dtSec = 1 / 72) {
       }
     } }
   if (curtainState?.armed) { curtainState.armed = false;
-    const t0 = performance.now(); let done = false;
-    const f0 = perf.frameNo ?? 0; const clock = entryClock;   // keep a handle: the clock retires on its own schedule, the curtain must still read it
-    const finish = (why) => { if (done) return; done = true; setXRCurtain(false); tee(`[xr] curtain #${sessionNo} down (${why}) after ${(performance.now() - t0).toFixed(0)} ms — frames under it ${(perf.frameNo ?? 0) - f0}, programs ${clock?.programs ?? '?'} in ${(clock?.programMs ?? 0).toFixed(0)} ms, pipelines ${clock?.pipelines ?? '?'}`); };
-    let compiled = false;
-    try { renderer.compileAsync(scene, renderer.xr.getCamera(), scene).then(() => { compiled = true; if (done) tee(`[xr] curtain #${sessionNo}: compile resolved LATE, ${(performance.now() - t0).toFixed(0)} ms after arm`); finish('compiled'); }, (e) => { report('xr entry compile', e); finish('compile rejected'); }); }
-    catch (e) { report('xr entry compile', e); finish('compile threw'); }
-    setTimeout(() => { if (!compiled) finish('6 s fallback — compileAsync still pending'); }, 6000); }
+    // Curtain drops on SESSION-FRAME progress, not on compileAsync's promise. three resolves that promise
+    // by polling shader completion on window.requestAnimationFrame (three.webgpu.js ~72616) — and window.rAF
+    // is SUSPENDED during a WebXR session (only session.rAF ticks). So the promise cannot resolve until exit:
+    // R's headset proved it — `compile resolved LATE 33581 ms after arm`, i.e. exactly when she left VR, while
+    // the programs themselves compiled in 4 ms. Waiting on it froze entry for the whole session (R 09-07).
+    // Instead: kick compileAsync fire-and-forget (it still realizes pipelines through the normal render path),
+    // and drop the curtain once a few real presenting frames have DRAWN the world — pumped by session.rAF,
+    // which is the only clock alive in here. The render() path compiles any missing pipeline synchronously on
+    // its frame, so by the time N frames have drawn, the world is genuinely up.
+    const t0 = performance.now(); const f0 = perf.frameNo ?? 0; const clock = entryClock;
+    curtainState = { down: false, framesLeft: 3, t0, f0, clock };   // 3 session frames = world drawn at least once, settled
+    try { renderer.compileAsync(scene, renderer.xr.getCamera(), scene).catch((e) => report('xr entry compile', e)); }
+    catch (e) { report('xr entry compile', e); }
+  }
+  // count session frames after arm; drop the curtain when the world has drawn (or a hard 90-frame safety cap)
+  if (curtainState && !curtainState.armed && !curtainState.down) {
+    if (--curtainState.framesLeft <= 0 || (perf.frameNo ?? 0) - curtainState.f0 > 90) {
+      curtainState.down = true; setXRCurtain(false);
+      const clock = curtainState.clock;
+      tee(`[xr] curtain #${sessionNo} down (session frames) after ${(performance.now() - curtainState.t0).toFixed(0)} ms — frames under it ${(perf.frameNo ?? 0) - curtainState.f0}, programs ${clock?.programs ?? '?'} in ${(clock?.programMs ?? 0).toFixed(0)} ms, pipelines ${clock?.pipelines ?? '?'}`);
+    }
+  }
   if (entryClock) { const now = performance.now(); entryClock.frames.push(+(now - (entryClock.last || entryClock.t0)).toFixed(0)); entryClock.last = now;
     if (entryClock.frames.length === 8) { tee(`[xr] entry: setSession ${entryClock.setSessionMs} ms; first frame +${entryClock.frames[0]} ms; next gaps ${entryClock.frames.slice(1).join(',')} ms; programs so far ${entryClock.programs} (${entryClock.programMs.toFixed(0)} ms), pipelines ${entryClock.pipelines}`); } }
   if (entryClock && (entryClock.frames.length > 120 || performance.now() - entryClock.t0 > 12000)) entryClock = null;   // the probe retires after 12 s (the line above tees ONCE, at frame 8 — it teed every frame for 12 s on 09-06 23:34)
