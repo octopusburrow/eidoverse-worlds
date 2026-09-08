@@ -10,7 +10,6 @@
 // the whole layout when you're happy, and have it still be there tomorrow.
 
 import { bus } from './base.js';
-import { isEditing } from './build.js';
 
 const LS = (id) => `ew-frame-${id}`;
 
@@ -509,12 +508,16 @@ export function allFrames() { return [...frames.values()]; }
 // field, a scrim, edit mode (build.js owns Esc there), a locked pointer, or
 // chat's own Esc. The remembered set lives only for the session.
 let escStash = null;
+// anything that owns Esc registers a claim here (build.js registers edit mode) — frames imports nobody for it,
+// so the module graph stays a tree (frames → build → controller → ui → frames was a cycle, review 2026-09-08)
+const escClaims = [];
+export function claimEscape(fn) { escClaims.push(fn); }
 // Esc: close every open panel, Esc again brings the same set back. Installed here, with the frames, so the
 // binding and the help text that promises it ship together. Yields to anything that owns Esc already
-// (escapeIsClaimed) and to edit mode (build.js has its own Esc ladder).
+// (escapeIsClaimed — edit mode registers its claim from build.js).
 addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || e.defaultPrevented) return;
-  if (escapeIsClaimed() || isEditing()) return;
+  if (escapeIsClaimed()) return;
   escapeToggle();
 });
 export function escapeToggle() {
@@ -524,6 +527,7 @@ export function escapeToggle() {
   return 'nothing';
 }
 export function escapeIsClaimed() {
+  for (const fn of escClaims) { const c = fn(); if (c) return c; }
   const a = document.activeElement;
   if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable)) return 'field';
   if (document.querySelector('.pf-pop, .dd-pop, .chat-gearpop:not([hidden]), #emenu:not([hidden])')) return 'pop';   // the gear pop lives in the DOM hidden; only a SHOWN one claims Esc
