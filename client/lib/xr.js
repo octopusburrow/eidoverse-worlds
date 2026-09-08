@@ -111,6 +111,7 @@ function sampleFingerCurl() {
 rig.name = 'xr-rig';
 let presenting = false;
 let nativeRAF = null, nativeCAF = null;   // window.rAF/cAF saved while the in-session shim is installed
+let sessionEnded = false;                  // set on the FIRST 'end' listener; the shim falls back to native once it is
 let exitVeil = null;
 let floorSpace = null;              // 'local-floor' | 'bounded-floor' | null (fell back to 'local')
 export const xrFloorSpace = () => floorSpace;
@@ -512,6 +513,11 @@ async function enterVR() {
     scaleState.samples.length = 0; scaleState.locked = false; scaleState.firstAt = 0; scaleState.k = 1; scaleState.source = 'fallback'; loadSavedScale();
     bus.emit('xr:loop');   // frame.js hands the loop to three BEFORE setSession saves+wraps it (see frame.js)
     const tReq = performance.now();
+    // BEFORE setSession, so it runs BEFORE three's own 'end' listener (registered inside setSession), which restarts
+    // the desktop loop through window.requestAnimationFrame: with the in-session shim still installed that restart
+    // went to the dead session and no frame ever ticked again — R 09-07 22:41, after-exit frames+0 at +0.5 s AND +3 s
+    sessionEnded = false;
+    session.addEventListener('end', () => { sessionEnded = true; if (nativeRAF) { window.requestAnimationFrame = nativeRAF; window.cancelAnimationFrame = nativeCAF; } }, { once: true });
     await renderer.xr.setSession(session);
     tee(`[xr] enter #${sessionNo}: setSession resolved in ${(performance.now() - tReq).toFixed(0)} ms`);
     { const t = renderer.xr._xrRenderTarget; const fb = renderer._frameBufferTargets;
@@ -546,7 +552,7 @@ async function enterVR() {
     // duration; restored at teardown. Our own frame loop is unaffected (three's Animation holds the session).
     if (!globalThis.IWER) { const s = session;   // IWER emulates the session clock ON window.rAF — the shim would feed it to itself (bench crash 09-07 19:15); real runtimes have a native session clock
       if (!nativeRAF) { nativeRAF = window.requestAnimationFrame.bind(window); nativeCAF = window.cancelAnimationFrame.bind(window); }
-      window.requestAnimationFrame = (cb) => { try { return s.requestAnimationFrame((t) => cb(t)); } catch { return nativeRAF(cb); } };
+      window.requestAnimationFrame = (cb) => { if (sessionEnded) return nativeRAF(cb); try { return s.requestAnimationFrame((t) => cb(t)); } catch { return nativeRAF(cb); } };
       window.cancelAnimationFrame = (id) => { try { s.cancelAnimationFrame(id); } catch {} try { nativeCAF(id); } catch {} }; }
     // SHADER ERROR TEE: a material that fails to compile/link in the eye buffers' context draws black
     // and the WebGL backend only console.error()s it — invisible from Burrow. First 6 such lines tee.
@@ -608,7 +614,12 @@ async function enterVR() {
       // shows as held time even when the block is in the GPU process (parallel shader link) and no longtask fires.
       const tExit = performance.now(); const c0 = { ...buildTotals };
       const probe = (tag, due) => {
-        exitVeilShow(false);
+        // the veil drops only when desktop frames are actually flowing (a timer-hide left R a black world with a
+        // live HUD); a loop that is still dead at +3 s is re-armed and probed once more
+        const flowing = ((perf.frameNo ?? 0) - f0) > 0;
+        if (flowing) exitVeilShow(false);
+        else if (tag === '+3s') { tee('[xr] after-exit: loop DEAD (frames+0 at +3 s) — re-arming'); bus.emit('xr:rearm'); setTimeout(() => probe('+6s', 6000), 3000); }
+        else if (tag === '+6s') { exitVeilShow(false); tee(`[xr] after-exit: ${((perf.frameNo ?? 0) - f0) > 0 ? 'loop recovered' : 'loop STILL dead — reload'}`); }
         try {
           const cost = ` programs+${buildTotals.programs - c0.programs} (${(buildTotals.programMs - c0.programMs).toFixed(0)} ms) pipelines+${buildTotals.pipelines - c0.pipelines}`;
           const held = ` held ${Math.max(0, performance.now() - tExit - due).toFixed(0)}ms`;

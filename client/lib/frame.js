@@ -127,6 +127,7 @@ function frame(now) {
 // three's Animation; re-arming window.rAF ourselves on exit would run it twice.
 let onXRLoop = XR_BOOT;
 bus.on('xr:loop', () => { if (onXRLoop) return; onXRLoop = true; renderer.setAnimationLoop(frame); });
+bus.on('xr:rearm', () => renderer.setAnimationLoop(frame));   // after-exit recovery: the loop three restarted never ticked (xr.js probe)
 
 /** Start the loop. Called once from boot, AFTER identity resolves. */
 export function startFrame() {
