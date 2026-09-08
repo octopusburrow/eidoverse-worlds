@@ -86,7 +86,8 @@ scene.add(rigGroup);
 // so the first compile already knows — shadowMap.enabled is pipeline-shape,
 // and a live flip recompiles once; castShadow alone is free (§12.1).
 const SH_KEY = 'ew-shadows';
-export const shadowsOn = () => localStorage.getItem(SH_KEY) !== 'off';
+const stored = (k) => { try { return localStorage.getItem(k); } catch { return null; } };   // storage can throw (site data blocked)
+export const shadowsOn = () => stored(SH_KEY) !== 'off';
 export function setShadows(on) {
   localStorage.setItem(SH_KEY, on ? 'on' : 'off');
   renderer.shadowMap.enabled = on;
@@ -99,7 +100,7 @@ sun.castShadow = shadowsOn();
 // three's ShadowNode setSize()s the target every update, so a live change is a realloc, no recompile.
 const RES_KEY = 'ew-shadow-res';
 export const SHADOW_RES = [1024, 2048, 4096];
-export const shadowRes = () => { const v = +localStorage.getItem(RES_KEY); return SHADOW_RES.includes(v) ? v : 2048; };
+export const shadowRes = () => { const v = +stored(RES_KEY); return SHADOW_RES.includes(v) ? v : 2048; };
 export function setShadowRes(n) { localStorage.setItem(RES_KEY, String(n)); sun.shadow.mapSize.set(n, n); }
 sun.shadow.mapSize.set(shadowRes(), shadowRes());
 // ?csm=2|3|4 — cascaded shadow maps (bench probe, R 09-07 21:32: 'better performance in VR'; Basis ships 4
