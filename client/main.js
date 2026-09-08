@@ -79,7 +79,7 @@ import { protoStats } from './lib/assets.js';
 import { grassTiles } from './lib/terrain.js';
 import { grassDiag } from './lib/grassdiag.js';
 import { warmStats } from './lib/warmqueue.js';
-import { laneStats as schedLaneStats } from './lib/scheduler.js';
+import { pending, P, onIdle, laneStats as schedLaneStats } from './lib/scheduler.js';
 import { laneStats as loadLaneStats } from './lib/loadwork.js';
 import { colliderCacheStats } from './lib/colliders.js';
 import { governPerformance, governorDebug, whenCalm } from './lib/governor.js';
@@ -445,7 +445,7 @@ function people() {
 // into a dark grid the instant the socket opens is how the old boot felt
 // instantaneous and looked broken.
 
-let hydrated = false;
+let hydrated = false, propsWait = false;
 bus.on('hydrated', () => { hydrated = true; checkReady(); });
 
 // An empty world is indistinguishable from a broken one: no ground, no sky,
@@ -467,6 +467,10 @@ function checkReady() {
   if (bootDone()) return;
   const bodyReady = isViewer || !!getMe();
   if (!bodyReady || !hydrated || buildsPending() > 0) return;
+  // …and every prop INSIDE residency radius has landed (R 09-07 23:18: 'it loads me in when most objects are
+  // still boxes — getting in early is what the go-in-anyway button is for'). Far entities never schedule a
+  // load (realize/models.js), so they cannot hold the door; the skip button (4 s) and the 45 s ceiling remain.
+  if (pending(P.FAR) > 0) { if (!propsWait) { propsWait = true; onIdle(() => { propsWait = false; checkReady(); }, P.FAR); } return; }
   // one frame with everything in place before the curtain lifts
   requestAnimationFrame(() => requestAnimationFrame(() => finishBoot('ready')));
 }
