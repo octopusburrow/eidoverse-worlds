@@ -116,19 +116,17 @@ function frame(now) {
   if (!onXRLoop) requestAnimationFrame(frame);
 }
 
-// Which clock drives the loop. During a WebXR session window.rAF is SUSPENDED — only session.rAF ticks —
-// so the frame loop MUST run on renderer.setAnimationLoop (which routes to the session clock) or it freezes
-// dead the instant the session starts. This used to key on the static XR_BOOT (?xr=1) flag, so entering VR
-// via the visor from a NORMAL desktop load never switched clocks: the whole render loop stopped on entry,
-// the world never drew to the eyes, and the session was 'presenting but totally black' (R 09-07). Now the
-// clock follows the actual session state: setAnimationLoop while presenting, window.rAF otherwise.
+// Who drives the loop. An ?xr=1 boot hands frame to three's Animation at boot and it stays there: three's
+// XRManager.setSession SAVES the current app loop, wraps it in _onAnimationFrame (the ONLY place the eye
+// framebuffer is bound — backend.setXRTarget(glBaseLayer.framebuffer) — before the app loop runs), moves it
+// to the session clock, and restores it to window.rAF on exit. The visor enters in place since 09-07, so the
+// hand-over must happen the same way: BEFORE setSession (xr:loop fires just ahead of it). Handing over AFTER
+// setSession (684c716, one afternoon) overwrote three's wrapper with bare frame — session clock at 90 fps,
+// the XR cameras rendered into the CANVAS, setXRTarget never called (loop-identity probe: liveLoop='frame',
+// savedAppLoop=null, 0 binds/s) — and R saw the WebXR construct all day. Once handed over the loop stays on
+// three's Animation; re-arming window.rAF ourselves on exit would run it twice.
 let onXRLoop = XR_BOOT;
-bus.on('xr:state', (on) => {
-  if (on === onXRLoop) return;
-  onXRLoop = on;
-  if (on) renderer.setAnimationLoop(frame);           // session clock — the only one alive in-session
-  else { renderer.setAnimationLoop(null); requestAnimationFrame(frame); }   // back to window.rAF on exit
-});
+bus.on('xr:loop', () => { if (onXRLoop) return; onXRLoop = true; renderer.setAnimationLoop(frame); });
 
 /** Start the loop. Called once from boot, AFTER identity resolves. */
 export function startFrame() {
