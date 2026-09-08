@@ -65,6 +65,12 @@ export function setXRCurtain(on) {
     curtain = new THREE.Scene();
     const shell = new THREE.Mesh(new THREE.SphereGeometry(4, 24, 16), new THREE.MeshBasicNodeMaterial({ color: 0x0b0f12, side: THREE.BackSide }));
     shell.frustumCulled = false; curtain.add(shell); curtain.userData.shell = shell;
+    // one line of text, head-locked 1.6 m out — the feedback R asked for while the scene links (09-07 18:20)
+    const c = document.createElement('canvas'); c.width = 1024; c.height = 256; const g = c.getContext('2d');
+    g.fillStyle = '#dfe7ea'; g.font = '600 96px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('Entering VR…', 512, 128);
+    const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+    const text = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.3), new THREE.MeshBasicNodeMaterial({ map: tex, transparent: true, depthTest: false }));
+    text.frustumCulled = false; text.renderOrder = 1; curtain.add(text); curtain.userData.text = text;
   }
 }
 export const xrCurtainOn = () => curtainOn;
@@ -82,6 +88,7 @@ export function renderWorld() {
   if (curtainOn && renderer.xr?.isPresenting) {
     renderer.xr.updateCamera(camera);
     const xc = renderer.xr.getCamera(); const e = xc.matrixWorld.elements; curtain.userData.shell.position.set(e[12], e[13], e[14]);
+    { const t = curtain.userData.text; if (t) { t.quaternion.setFromRotationMatrix(xc.matrixWorld); t.position.set(e[12] - e[8] * 1.6, e[13] - e[9] * 1.6, e[14] - e[10] * 1.6); } }
     renderer.render(curtain, camera);
     return;
   }

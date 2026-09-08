@@ -50,7 +50,7 @@
 // (docs/upstream-wrap-once.md addendum).
 
 import { THREE, scene, camera, renderer, sun } from './core.js';
-import { CONFIG } from './base.js';
+import { CONFIG, tee } from './base.js';
 import { warmDepth } from './warmqueue.js';
 
 // ---- the fixed inventory ----------------------------------------------------
@@ -97,6 +97,9 @@ sun.castShadow = shadowsOn();
 sun.shadow.mapSize.set(2048, 2048);
 sun.shadow.bias = -0.0006;
 sun.shadow.normalBias = 0.02;
+// Boot line for the shadow state (R 09-07 19:10: 'nothing casts a shadow except right under my avatar' on desktop
+// too, while a headless probe measured the yucca casting) — the persisted switch, the map, and where the sun is.
+setTimeout(() => { try { const d = sun.position.clone().normalize(); tee(`[shadows] pref=${shadowsOn() ? 'on' : 'off'} map=${renderer.shadowMap.enabled} type=${renderer.shadowMap.type} size=${sun.shadow.mapSize.x} sun=(${d.x.toFixed(2)},${d.y.toFixed(2)},${d.z.toFixed(2)}) intensity=${sun.intensity.toFixed(2)} casters=${casters.size} casting=${[...casters.values()].filter((c) => c.casting).length}`); } catch {} }, 20000);
 
 // ---- requests ---------------------------------------------------------------
 

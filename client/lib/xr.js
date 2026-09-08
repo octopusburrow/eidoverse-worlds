@@ -111,6 +111,8 @@ function sampleFingerCurl() {
 }
 rig.name = 'xr-rig';
 let presenting = false;
+let nativeRAF = null, nativeCAF = null;   // window.rAF/cAF saved while the in-session shim is installed
+let exitVeil = null;
 let floorSpace = null;              // 'local-floor' | 'bounded-floor' | null (fell back to 'local')
 export const xrFloorSpace = () => floorSpace;
 
@@ -530,6 +532,15 @@ async function enterVR() {
     slots[0] ??= makeHand(0); slots[1] ??= makeHand(1);
     hands.left ??= slots[0]; hands.right ??= slots[1];   // guess until 'connected' files them by handedness
     presenting = true; bus.emit('xr:state', true);
+    // IN-SESSION CLOCK SHIM: window.requestAnimationFrame crawls at ~2 Hz during a WebXR session on R's rig
+    // (09-07: 7 ticks in 3 s). Everything that yields on it stalls — three's parallel-link poll (so compileAsync
+    // takes 7 s to resolve), the warm conductor (so no scene caster ever finishes its depth warm in VR: only her
+    // avatar cast a shadow), r186's buildAsync fallback. Route it onto the session clock for the session's
+    // duration; restored at teardown. Our own frame loop is unaffected (three's Animation holds the session).
+    if (!globalThis.IWER) { const s = session;   // IWER emulates the session clock ON window.rAF — the shim would feed it to itself (bench crash 09-07 19:15); real runtimes have a native session clock
+      if (!nativeRAF) { nativeRAF = window.requestAnimationFrame.bind(window); nativeCAF = window.cancelAnimationFrame.bind(window); }
+      window.requestAnimationFrame = (cb) => { try { return s.requestAnimationFrame((t) => cb(t)); } catch { return nativeRAF(cb); } };
+      window.cancelAnimationFrame = (id) => { try { s.cancelAnimationFrame(id); } catch {} try { nativeCAF(id); } catch {} }; }
     // SHADER ERROR TEE: a material that fails to compile/link in the eye buffers' context draws black
     // and the WebGL backend only console.error()s it — invisible from Burrow. First 6 such lines tee.
     if (!consoleTapped) { consoleTapped = true; for (const k of ['error', 'warn']) { const orig = console[k].bind(console);
@@ -550,6 +561,8 @@ async function enterVR() {
     selfFirstPerson(true);
     xrPanelsEnter(rig);            // every registered frame as a physical surface
     session.addEventListener('end', () => {
+      if (nativeRAF) { window.requestAnimationFrame = nativeRAF; window.cancelAnimationFrame = nativeCAF; }
+      exitVeilShow(true);   // desktop feedback while the session tears down and the first desktop frames come back
       tee('[xr] session end — teardown begins');   // 09-06 23:43: a leave with no after-exit lines at all → was this handler even reached?
       try {
       presenting = false; bus.emit('xr:state', false); eyeBase = null; setXRCurtain(false); curtainState = null;
@@ -588,6 +601,7 @@ async function enterVR() {
       // shows as held time even when the block is in the GPU process (parallel shader link) and no longtask fires.
       const tExit = performance.now(); const c0 = { ...buildTotals };
       const probe = (tag, due) => {
+        exitVeilShow(false);
         try {
           const cost = ` programs+${buildTotals.programs - c0.programs} (${(buildTotals.programMs - c0.programMs).toFixed(0)} ms) pipelines+${buildTotals.pipelines - c0.pipelines}`;
           const held = ` held ${Math.max(0, performance.now() - tExit - due).toFixed(0)}ms`;
@@ -719,31 +733,27 @@ export function updateXR(dtSec = 1 / 72) {
       }
     } }
   if (curtainState?.armed) { curtainState.armed = false;
-    // Curtain drops on SESSION-FRAME progress, not on compileAsync's promise. three resolves that promise
-    // by polling shader completion on window.requestAnimationFrame (three.webgpu.js ~72616) — and window.rAF
-    // is SUSPENDED during a WebXR session (only session.rAF ticks). So the promise cannot resolve until exit:
-    // R's headset proved it — `compile resolved LATE 33581 ms after arm`, i.e. exactly when she left VR, while
-    // the programs themselves compiled in 4 ms. Waiting on it froze entry for the whole session (R 09-07).
-    // Instead: kick compileAsync fire-and-forget (it still realizes pipelines through the normal render path),
-    // and drop the curtain once a few real presenting frames have DRAWN the world — pumped by session.rAF,
-    // which is the only clock alive in here. The render() path compiles any missing pipeline synchronously on
-    // its frame, so by the time N frames have drawn, the world is genuinely up.
+    // The curtain holds until the entry compileAsync RESOLVES (cap 15 s), then drops after ≥2 presenting
+    // frames. It used to drop after 2 frames flat, because the promise could not resolve in-session: three's
+    // parallel-link poll reschedules on window.requestAnimationFrame, which crawls at ~2 Hz in a WebXR session on
+    // R's rig (measured 09-07: 7 ticks in 3 s) — so the world's first frame found nothing linked and built 25
+    // pipelines synchronously (6.9 s, measured: 'sync pipelines total 25 (6894 ms)'). Now window.rAF is routed
+    // onto the session clock while presenting (see the shim after setSession), the poll runs at frame rate, the
+    // promise resolves in-session, and the first world frame finds its pipelines linked.
     const t0 = performance.now(); const f0 = perf.frameNo ?? 0; const clock = entryClock;
-    curtainState = { down: false, framesLeft: 3, t0, f0, clock };   // 3 session frames = world drawn at least once, settled
-    // Is window.rAF alive in-session? three's parallel-link poll reschedules on it (three.webgpu.js ~74960); if it
-    // ticks, compileAsync CAN resolve in-session and the curtain should wait on it; if it doesn't, we must poll
-    // COMPLETION_STATUS_KHR on the session clock ourselves. One tee, 3 s, R's headset decides (09-07 18:45).
+    curtainState = { down: false, resolved: false, t0, f0, clock };
     { let ticks = 0; const tw = performance.now(); const tick = () => { ticks++; if (performance.now() - tw < 3000) requestAnimationFrame(tick); }; requestAnimationFrame(tick);
       const tc = performance.now(); const pr = renderer.compileAsync(scene, renderer.xr.getCamera(), scene);
-      pr.then(() => tee(`[xr] entry compile resolved ${(performance.now() - tc).toFixed(0)} ms after arm (presenting=${presenting})`)).catch((e) => report('xr entry compile', e));
+      pr.then(() => { tee(`[xr] entry compile resolved ${(performance.now() - tc).toFixed(0)} ms after arm (presenting=${presenting})`); if (curtainState) curtainState.resolved = true; })
+        .catch((e) => { report('xr entry compile', e); if (curtainState) curtainState.resolved = true; });
       setTimeout(() => tee(`[xr] window.rAF in-session: ${ticks} ticks in 3 s; sync pipelines ${buildTotals.syncPipelines} (${buildTotals.syncMs.toFixed(0)} ms)`), 3200); }
   }
-  // count session frames after arm; drop the curtain when the world has drawn (or a hard 90-frame safety cap)
   if (curtainState && !curtainState.armed && !curtainState.down) {
-    if (--curtainState.framesLeft <= 0 || (perf.frameNo ?? 0) - curtainState.f0 > 90) {
+    const frames = (perf.frameNo ?? 0) - curtainState.f0, ms = performance.now() - curtainState.t0;
+    if ((curtainState.resolved && frames >= 2) || ms > 15000) {
       curtainState.down = true; setXRCurtain(false);
       const clock = curtainState.clock;
-      tee(`[xr] curtain #${sessionNo} down (session frames) after ${(performance.now() - curtainState.t0).toFixed(0)} ms — sync pipelines so far ${buildTotals.syncPipelines} (${buildTotals.syncMs.toFixed(0)} ms), frames under it ${(perf.frameNo ?? 0) - curtainState.f0}, programs ${clock?.programs ?? '?'} in ${(clock?.programMs ?? 0).toFixed(0)} ms, pipelines ${clock?.pipelines ?? '?'}`);
+      tee(`[xr] curtain #${sessionNo} down (${curtainState.resolved ? 'compile resolved' : 'CAP 15 s'}) after ${ms.toFixed(0)} ms — sync pipelines so far ${buildTotals.syncPipelines} (${buildTotals.syncMs.toFixed(0)} ms), frames under it ${frames}, programs ${clock?.programs ?? '?'} in ${clock?.programMs?.toFixed(0) ?? '?'} ms, pipelines ${clock?.pipelines ?? '?'}`);
     }
   }
   if (entryClock) { const now = performance.now(); entryClock.frames.push(+(now - (entryClock.last || entryClock.t0)).toFixed(0)); entryClock.last = now;
@@ -995,3 +1005,15 @@ export const xrDebug = () => {
     gripWorld: [+gp.x.toFixed(2), +gp.y.toFixed(2), +gp.z.toFixed(2)],
   };
 };
+
+
+// Desktop veil for the way OUT (R 09-07 18:20: 'loading in/out indicator, hard hangs'): a full-window
+// 'Leaving VR…' from the moment the session ends until the first after-exit probe (desktop frames flowing).
+function exitVeilShow(on) {
+  if (!exitVeil) {
+    exitVeil = document.createElement('div'); exitVeil.textContent = 'Leaving VR…';
+    exitVeil.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:var(--bg,#0b0f12);color:var(--fg,#dfe7ea);font:600 22px system-ui,sans-serif;letter-spacing:.02em;pointer-events:none;opacity:0;transition:opacity .2s';
+    document.body.appendChild(exitVeil);
+  }
+  exitVeil.style.opacity = on ? '1' : '0';
+}
