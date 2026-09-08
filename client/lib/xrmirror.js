@@ -9,6 +9,7 @@ import { THREE, renderer, scene, camera } from './core.js';
 import { isPresenting, xrPrefs } from './xr.js';
 import { myState } from './controller.js';
 import { tee } from './base.js';
+import { toast } from './ui.js';
 
 const deskCam = new THREE.PerspectiveCamera(65, 16 / 9, 0.1, 20000);
 const tmpPos = new THREE.Vector3(), tmpQuat = new THREE.Quaternion(), behind = new THREE.Vector3();
@@ -37,7 +38,7 @@ function blitEye() {
       resolveFB = gl.createFramebuffer(); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, resolveFB); gl.framebufferRenderbuffer(gl.DRAW_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, resolveRB);
       resolveW = ew; resolveH = eh;
     }
-    while (gl.getError() !== gl.NO_ERROR) { /* clear stale */ }
+    for (let i = 0; i < 8 && gl.getError() !== gl.NO_ERROR; i++) { /* drain stale errors — BOUNDED: a lost context reports forever (R 09-08 01:19: the tab froze) */ }
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, layer.framebuffer);
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, resolveFB);
     gl.blitFramebuffer(0, 0, ew, eh, 0, 0, ew, eh, gl.COLOR_BUFFER_BIT, gl.NEAREST);   // 1:1 — the multisample resolve
@@ -59,11 +60,16 @@ function blitRT(rt) {
   finally { gl.bindFramebuffer(gl.READ_FRAMEBUFFER, prevRead); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, prevDraw); }
 }
 
+let slowFrames = 0, lastTick = 0, passFrame = 0, mirrorKilled = false;
 export function tickXRMirror() {
-  if (!isPresenting() || xrPrefs.mirror === 'off') return;
+  if (!isPresenting() || xrPrefs.mirror === 'off' || mirrorKilled) return;
+  // THE MIRROR MUST NEVER COST THE HEADSET (R 09-08 01:19: fps 17 → frozen with the mirror on). 30 consecutive
+  // frames over 30 ms while it runs → off for the session, said out loud. The pref is untouched.
+  { const now = performance.now(); if (lastTick && now - lastTick > 30) { if (++slowFrames >= 30) { mirrorKilled = true; tee(`[xr] mirror: OFF for this session — 30 frames over 30 ms (mode ${xrPrefs.mirror})`); toast('desktop mirror switched off — it was costing the headset frames', 'warn', 8000); return; } } else slowFrames = 0; lastTick = now; }
   if (xrPrefs.mirror === 'first') {
-    if (!blitFailed) { const why = blitEye(); if (!why) { if (!blitTeed) { blitTeed = true; const l = renderer.xr.getSession?.()?.renderState?.baseLayer; tee(`[xr] mirror: eye blit live (${l?.framebufferWidth ?? '?'}×${l?.framebufferHeight ?? '?'} → canvas ${renderer.domElement.width}×${renderer.domElement.height})`); } return; } blitFailed = true; tee(`[xr] mirror: eye blit unavailable (${why}) — falling back to a scene pass`); }
+    if (!blitFailed) { let why; try { why = blitEye(); } catch (e) { why = `threw ${e?.name ?? ''} ${e?.message ?? e}`.slice(0, 120); } if (!why) { if (!blitTeed) { blitTeed = true; const l = renderer.xr.getSession?.()?.renderState?.baseLayer; tee(`[xr] mirror: eye blit live (${l?.framebufferWidth ?? '?'}×${l?.framebufferHeight ?? '?'} → canvas ${renderer.domElement.width}×${renderer.domElement.height})`); } return; } blitFailed = true; tee(`[xr] mirror: eye blit unavailable (${why}) — falling back to a scene pass`); }
   }
+  if ((++passFrame % 3) !== 0) return;   // a scene pass is the expensive path: a third of the frames is plenty for a desktop onlooker
   const w = renderer.domElement.clientWidth || 1, h = renderer.domElement.clientHeight || 1;
   if (w / h !== lastAspect) { lastAspect = w / h; deskCam.aspect = lastAspect; deskCam.updateProjectionMatrix(); }
   const xrCam = renderer.xr.getCamera();
