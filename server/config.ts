@@ -56,7 +56,9 @@ export const ROOT = resolve(import.meta.dir, "..");
 export const WORLDS_DIR = resolve(process.env.WORLDS_DIR ?? join(ROOT, "worlds"));
 // The eidoverse-video checkout = the asset library (models, VRMs, animations).
 export const LIBRARY_DIR = resolve(process.env.EIDOVERSE_DIR ?? join(ROOT, "..", "eidoverse-video"));
-export const OPT_DIR = join(ROOT, "assets", "opt");
+// Same doctrine as WORLDS_DIR: a dev or test instance points this elsewhere so it can never write derived
+// variants or markers into the live store (a harness once did — review of #172).
+export const OPT_DIR = resolve(process.env.OPT_DIR ?? join(ROOT, "assets", "opt"));
 // Deliberate ASSET fixes over the library (versioned IN this repo —
 // patched/README.md carries the doctrine): /library serves these with TOP
 // precedence, so every machine gets the fix via ordinary git pull while

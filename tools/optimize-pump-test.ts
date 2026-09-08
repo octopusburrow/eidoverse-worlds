@@ -20,7 +20,7 @@ case "$v" in
   *) echo "fake verdict $v" >&2; exit "$v";;
 esac
 `); chmodSync(fake, 0o755);
-process.env.WORLDS_DIR = join(root, "worlds"); process.env.JOIN_TOKEN = "t"; process.env.OPT_CMD = fake;
+process.env.WORLDS_DIR = join(root, "worlds"); process.env.OPT_DIR = join(root, "opt"); process.env.JOIN_TOKEN = "t"; process.env.OPT_CMD = fake;   // OPT_DIR: NEVER the checkout's store
 process.env.OPT_MEM_BUDGET_MB = "10"; process.env.OPT_COST_FACTOR = "1"; process.env.KTX2_TOKTX = "";
 const { queueOptimize, optIdle } = await import("../server/upload.ts");
 const { STORE_MIN } = await import("../server/config.ts");
@@ -57,8 +57,10 @@ if (process.platform === "linux") {
   if (canLimit !== "0") {
     const sh = spawnSync("/bin/sh", ["-c", `ulimit -S -d 2000000 && ulimit -H -d 2000000; exec "${process.execPath}" -e 'process.env.OPT_MEM_BUDGET_MB="4000000000"; const {queueOptimize,optIdle}=await import("./server/upload.ts"); const {STORE_MIN}=await import("./server/config.ts"); const fs=await import("node:fs"); const p=${JSON.stringify(join(root, "src", "s8.glb"))}; fs.writeFileSync(p, Buffer.alloc(1000,1)); fs.writeFileSync(p+".verdict","0"); queueOptimize(p); await optIdle(); console.log(JSON.stringify({variant:fs.existsSync(STORE_MIN+"/s8.glb"), deferred:fs.existsSync(STORE_MIN+"/s8.glb.deferred"), failed:fs.existsSync(STORE_MIN+"/s8.glb.failed")}))'`],
       { env: { ...process.env, OPT_MEM_BUDGET_MB: "4000000000" }, cwd: import.meta.dir + "/..", encoding: "utf8" });
-    const line = sh.stdout.trim().split("\n").pop() ?? "{}";
-    try { const v = JSON.parse(line); ok(!v.variant && !v.deferred && !v.failed && /cap wrapper failed/.test(sh.stderr + sh.stdout), "wrapper 126: no variant, no marker, loud"); }
+    const line = sh.stdout.split("\n").find((l) => l.startsWith("{")) ?? "{}";   // the boot-sweep timers log after the JSON
+    try { const v = JSON.parse(line); const loud = /cap wrapper failed/.test(sh.stderr + sh.stdout);
+      if (v.variant || v.deferred || v.failed || !loud) console.error("126 case saw", JSON.stringify(v), "loud=" + loud, "| tail:", (sh.stderr + sh.stdout).trim().split("\n").slice(-3).join(" // ").slice(0, 400));
+      ok(!v.variant && !v.deferred && !v.failed && loud, "wrapper 126: no variant, no marker, loud"); }
     catch { console.log("(126 case: bun could not start under the hard limit — skipped: " + (sh.stderr + sh.stdout).split("\n").pop() + ")"); }
   } else console.log("(126 case: cannot set a hard data limit here — skipped)");
 } else console.log("(non-Linux: capped-death and 126 cases skipped)");
