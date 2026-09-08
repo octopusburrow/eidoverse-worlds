@@ -27,41 +27,32 @@ let thirdRT = null, blitFailed = false, blitTeed = false;
 // into a three RenderTarget, and that texture is drawn onto the canvas with one fullscreen quad through
 // three's own canvas path — the path the scene pass used, which presents live. The target is tagged sRGB:
 // the eye bytes are already encoded, three decodes on sample and re-encodes on output — a round trip.
-let eyeRT = null, quadScene = null, quadCam = null, quadMesh = null;
+let quadScene = null, quadCam = null, quadMesh = null, quadMap = null;
 const MIRROR_FLIP = new URLSearchParams(location.search).has('mirrorflip') ? -1 : 1;
-function eyeTarget(ew, eh) {
-  if (eyeRT && eyeRT.width === ew && eyeRT.height === eh) return eyeRT;
-  eyeRT?.dispose();
-  eyeRT = new THREE.RenderTarget(ew, eh, { depthBuffer: false, samples: 0, generateMipmaps: false });
-  eyeRT.texture.colorSpace = THREE.SRGBColorSpace;
-  // the backend allocates the framebuffer on first use — one clear into it makes it exist for the blit
-  const rt = renderer.getRenderTarget(); renderer.setRenderTarget(eyeRT); try { renderer.clear(); } catch {} renderer.setRenderTarget(rt);
-  if (!quadScene) {
-    quadScene = new THREE.Scene(); quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-    quadMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false, toneMapped: false }));
-    quadScene.add(quadMesh);
-  }
-  quadMesh.material.map = eyeRT.texture; quadMesh.material.needsUpdate = true;
-  return eyeRT;
+// R 09-08 01:43: TWO freezes (fps → 17 → nothing; SteamVR alpha-ing), and by elimination the one thing both frozen
+// builds did that no other version did was READ THE XR LAYER'S OPAQUE FRAMEBUFFER with blitFramebuffer. On
+// Windows that framebuffer is a shared D3D surface owned by the compositor; a read from it every frame is a GPU
+// sync against SteamVR. So the layer is never touched again. Three keeps its OWN intermediate target for the
+// eyes (renderer._getFrameBufferTarget() while the XR target is the output — 'fbts=Map:1' in the enter tee): the
+// MSAA target it resolves into the layer each frame. That is an ordinary texture; the quad samples its LEFT
+// half — the same read three's own output pass already does — and draws it onto the canvas through three's
+// canvas path (linear in, three tone-maps + encodes on the way out, as it does for the eye).
+function ensureQuad() {
+  if (quadScene) return;
+  quadScene = new THREE.Scene(); quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  const g = new THREE.PlaneGeometry(2, 2); const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setX(i, uv.getX(i) * 0.5);   // left eye only
+  quadMesh = new THREE.Mesh(g, new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false }));
+  quadScene.add(quadMesh);
 }
 function blitEye() {
-  const gl = renderer.backend?.gl; const layer = renderer.xr.getSession?.()?.renderState?.baseLayer ?? null;
-  if (!gl || !layer?.framebuffer) return 'no-layer';
-  const ew = layer.framebufferWidth >> 1, eh = layer.framebufferHeight;
-  const rt = eyeTarget(ew, eh);
-  const fbs = renderer.backend?.get?.(rt)?.framebuffers; const fb = fbs ? Object.values(fbs)[0] ?? null : null;
-  if (!fb) return 'no-target-fb';
-  const prevRead = gl.getParameter(gl.READ_FRAMEBUFFER_BINDING), prevDraw = gl.getParameter(gl.DRAW_FRAMEBUFFER_BINDING);
-  try {
-    for (let i = 0; i < 8 && gl.getError() !== gl.NO_ERROR; i++) { /* drain stale errors — BOUNDED: a lost context reports forever */ }
-    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, layer.framebuffer);
-    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, fb);
-    gl.blitFramebuffer(0, 0, ew, eh, 0, 0, ew, eh, gl.COLOR_BUFFER_BIT, gl.NEAREST);   // 1:1 — the multisample resolve
-    const err = gl.getError(); if (err !== gl.NO_ERROR) return `resolve:${err}`;
-  } finally { gl.bindFramebuffer(gl.READ_FRAMEBUFFER, prevRead); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, prevDraw); }
-  // the quad onto the canvas, letterboxed to the eye's aspect, through three's canvas path
+  const layer = renderer.xr.getSession?.()?.renderState?.baseLayer ?? null;
+  const fbt = (typeof renderer._getFrameBufferTarget === 'function') ? renderer._getFrameBufferTarget() : null;   // keyed on the CURRENT output target = the XR target while presenting
+  if (!fbt?.texture) return 'no-fbt';
+  ensureQuad();
+  if (quadMap !== fbt.texture) { quadMap = fbt.texture; quadMesh.material.map = quadMap; quadMesh.material.needsUpdate = true; }
+  const ew = (layer?.framebufferWidth ?? fbt.width) >> 1, eh = layer?.framebufferHeight ?? fbt.height;
   const cw = renderer.domElement.width || 1, ch = renderer.domElement.height || 1;
-  const s = Math.min(cw / ew, ch / eh); quadMesh.scale.set((ew * s) / cw, MIRROR_FLIP * (eh * s) / ch, 1);   // headless stand-in came out inverted (01:38); the real layer bytes are GL raster and should be upright — ?mirrorflip=1 if not
+  const sc = Math.min(cw / ew, ch / eh); quadMesh.scale.set((ew * sc) / cw, MIRROR_FLIP * (eh * sc) / ch, 1);   // letterboxed; ?mirrorflip=1 if inverted
   const was = renderer.xr.enabled; const oldRT = renderer.getRenderTarget(); const oldOut = renderer.getOutputRenderTarget?.() ?? null;
   renderer.xr.enabled = false;
   try { renderer.setOutputRenderTarget?.(null); renderer.setRenderTarget(null); renderer.render(quadScene, quadCam); }
@@ -85,7 +76,7 @@ export function tickXRMirror() {
   // frames over 30 ms while it runs → off for the session, said out loud. The pref is untouched.
   { const now = performance.now(); if (lastTick && now - lastTick > 30) { if (++slowFrames >= 30) { mirrorKilled = true; tee(`[xr] mirror: OFF for this session — 30 frames over 30 ms (mode ${xrPrefs.mirror})`); toast('desktop mirror switched off — it was costing the headset frames', 'warn', 8000); return; } } else slowFrames = 0; lastTick = now; }
   if (xrPrefs.mirror === 'first') {
-    if (!blitFailed) { let why; try { why = blitEye(); } catch (e) { why = `threw ${e?.name ?? ''} ${e?.message ?? e}`.slice(0, 120); } if (!why) { if (!blitTeed) { blitTeed = true; const l = renderer.xr.getSession?.()?.renderState?.baseLayer; tee(`[xr] mirror: eye blit live (${l?.framebufferWidth ?? '?'}×${l?.framebufferHeight ?? '?'} → canvas ${renderer.domElement.width}×${renderer.domElement.height})`); } return; } blitFailed = true; tee(`[xr] mirror: eye blit unavailable (${why}) — falling back to a scene pass`); }
+    if (!blitFailed) { let why; try { why = blitEye(); } catch (e) { why = `threw ${e?.name ?? ''} ${e?.message ?? e}`.slice(0, 120); } if (!why) { if (!blitTeed) { blitTeed = true; const l = renderer.xr.getSession?.()?.renderState?.baseLayer; tee(`[xr] mirror: eye quad live from three's frame-buffer target (${l?.framebufferWidth ?? '?'}×${l?.framebufferHeight ?? '?'} → canvas ${renderer.domElement.width}×${renderer.domElement.height}; the layer is never read)`); } return; } blitFailed = true; tee(`[xr] mirror: eye blit unavailable (${why}) — falling back to a scene pass`); }
   }
   if ((++passFrame % 3) !== 0) return;   // a scene pass is the expensive path: a third of the frames is plenty for a desktop onlooker
   const w = renderer.domElement.clientWidth || 1, h = renderer.domElement.clientHeight || 1;
