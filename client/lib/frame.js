@@ -21,7 +21,7 @@
 // the identity RTT resolves — a module that self-started on import would
 // change boot ordering silently (§14.1).
 
-import { report } from './base.js';
+import { report, bus } from './base.js';
 import { renderer, XR_BOOT } from './core.js';
 import { BC } from './bc.js';
 import { perf } from './perf.js';
@@ -113,8 +113,22 @@ function frame(now) {
     frames = 0;
     fpsAt = now;
   }
-  if (!XR_BOOT) requestAnimationFrame(frame);
+  if (!onXRLoop) requestAnimationFrame(frame);
 }
+
+// Which clock drives the loop. During a WebXR session window.rAF is SUSPENDED — only session.rAF ticks —
+// so the frame loop MUST run on renderer.setAnimationLoop (which routes to the session clock) or it freezes
+// dead the instant the session starts. This used to key on the static XR_BOOT (?xr=1) flag, so entering VR
+// via the visor from a NORMAL desktop load never switched clocks: the whole render loop stopped on entry,
+// the world never drew to the eyes, and the session was 'presenting but totally black' (R 09-07). Now the
+// clock follows the actual session state: setAnimationLoop while presenting, window.rAF otherwise.
+let onXRLoop = XR_BOOT;
+bus.on('xr:state', (on) => {
+  if (on === onXRLoop) return;
+  onXRLoop = on;
+  if (on) renderer.setAnimationLoop(frame);           // session clock — the only one alive in-session
+  else { renderer.setAnimationLoop(null); requestAnimationFrame(frame); }   // back to window.rAF on exit
+});
 
 /** Start the loop. Called once from boot, AFTER identity resolves. */
 export function startFrame() {

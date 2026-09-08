@@ -528,7 +528,7 @@ async function enterVR() {
     rig.add(camera);
     slots[0] ??= makeHand(0); slots[1] ??= makeHand(1);
     hands.left ??= slots[0]; hands.right ??= slots[1];   // guess until 'connected' files them by handedness
-    presenting = true; bus.emit('xr:state');
+    presenting = true; bus.emit('xr:state', true);
     // SHADER ERROR TEE: a material that fails to compile/link in the eye buffers' context draws black
     // and the WebGL backend only console.error()s it — invisible from Burrow. First 6 such lines tee.
     if (!consoleTapped) { consoleTapped = true; for (const k of ['error', 'warn']) { const orig = console[k].bind(console);
@@ -549,7 +549,7 @@ async function enterVR() {
     session.addEventListener('end', () => {
       tee('[xr] session end — teardown begins');   // 09-06 23:43: a leave with no after-exit lines at all → was this handler even reached?
       try {
-      presenting = false; bus.emit('xr:state'); eyeBase = null; setXRCurtain(false); curtainState = null;
+      presenting = false; bus.emit('xr:state', false); eyeBase = null; setXRCurtain(false); curtainState = null;
       renderer.xr.cameraAutoUpdate = true; if (renderer.shadowMap) renderer.shadowMap.enabled = shadowsWere;
       xrIntent.active = false;
       selfFirstPerson(false);
