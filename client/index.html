@@ -1408,7 +1408,7 @@ try { const o = JSON.parse(localStorage.getItem('ew-style-tokens') || '{}');
       `the engine failed to start — ${(e.reason && e.reason.message) || e.reason || 'see the console'}`));
     // An XR boot (?xr=1) asks for an XR-compatible GL context inside renderer.init(), and that call
     // blocks on the OpenXR runtime: SteamVR started after Chrome, or a runtime mid-handshake, hangs the
-    // engine before ANY module can report (09-06 11:12–11:22, three loads, no tee line). Name it early.
+    // engine before ANY module can report (09-06 11:12–11:22, three loads, no console line). Name it early.
     const xrBoot = new URLSearchParams(location.search).has('xr');
     if (xrBoot) setTimeout(() => {
       if (globalThis.__ewEngineUp) return;

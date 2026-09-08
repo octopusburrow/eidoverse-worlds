@@ -133,7 +133,7 @@ new MutationObserver(buildCursors)
 // ============================================================ slider fill
 // WebKit custom tracks have no progress fill, so every .row range carries a
 // --p custom property the track gradient reads (index.html). Painted on user
-// input, and swept once a second because panels also set .value from code
+// input, and swept every 200 ms because panels also set .value from code
 // (syncSky and friends fire no events).
 
 function paintRange(i) {
@@ -364,6 +364,8 @@ export function initDock(entries) {
   // built-ins lead; a mod registered before boot keeps its entry, once
   const seen = new Set();
   dockEntries = [...entries, ...dockEntries].filter((e) => !seen.has(e.id) && seen.add(e.id));
+  // the settings frame is reachable even when the caller's dock list predates it (its section heads live INSIDE it)
+  if (!seen.has('settings') && getFrame('settings')) dockEntries.push({ id: 'settings', icon: 'gear-six' });
   // `last: true` entries (the edit wrench) ALWAYS close the list: edit is a
   // MODE, not a window, and it reads as one only when it sits apart at the end
   // (R, 09-05). Mods registering later insert ahead of them (addDockButton).
@@ -654,6 +656,7 @@ function buildEMenu(m) {
       m.appendChild(row);
       continue;
     }
+    if (!getFrame(id)) continue;   // an entry with no frame behind it (a caller's stale id) gets no row
     const row = document.createElement('button');
     row.className = 'mrow'; row.dataset.row = id;
     row.innerHTML = `${fsvg(icon, 15) || fsvg('puzzle-piece', 15)}<span class="mname">${id}</span>`;

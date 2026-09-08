@@ -10,6 +10,7 @@
 // the whole layout when you're happy, and have it still be there tomorrow.
 
 import { bus } from './base.js';
+import { isEditing } from './build.js';
 
 const LS = (id) => `ew-frame-${id}`;
 
@@ -219,7 +220,7 @@ document.body.classList.toggle('ui-locked', locked);
  *                 x/y accept negatives to anchor from the right/bottom edge.
  */
 // The newcomer's layout is a hand-arranged one, not the panels' individual guesses: R's desktop
-// (1904×844, 09-06 23:2x) read off the tee via ?sendlayout=1 and anchored to edges so it holds on
+// (a 1904×844 window, 09-06) exported from a live session and anchored to edges so it holds on
 // other screens. Only world + chat are open; everything else is closed but pinned to the dock.
 // A frame's own saved state (its owner's moves) still wins; resetLayout returns HERE.
 const DEFAULT_LAYOUT = {
@@ -508,6 +509,14 @@ export function allFrames() { return [...frames.values()]; }
 // field, a scrim, edit mode (build.js owns Esc there), a locked pointer, or
 // chat's own Esc. The remembered set lives only for the session.
 let escStash = null;
+// Esc: close every open panel, Esc again brings the same set back. Installed here, with the frames, so the
+// binding and the help text that promises it ship together. Yields to anything that owns Esc already
+// (escapeIsClaimed) and to edit mode (build.js has its own Esc ladder).
+addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || e.defaultPrevented) return;
+  if (escapeIsClaimed() || isEditing()) return;
+  escapeToggle();
+});
 export function escapeToggle() {
   const open = [...frames.values()].filter((f) => f.visible);
   if (open.length) { escStash = open.map((f) => f.id); for (const f of open) f.hide(); return 'closed'; }

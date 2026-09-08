@@ -47,7 +47,7 @@ export function initEmoteBar() {
   });
   const snapTo = (w) => {
     // the emote list arrives async; snapping against an empty list clamped cols to the 3 postures and
-    // SHRANK a saved 9×1 bar to 3×3 on every reload (R's two ?sendlayout lines: 352×32 → 124×108)
+    // SHRANK a saved 9×1 bar to 3×3 on every reload (two exported layouts: 352×32 → 124×108)
     if (!EMOTE_ORDER.length) return;
     const cols = Math.max(3, Math.min(POSTURE_TILES + EMOTE_ORDER.length, Math.floor((w - PAD * 2 - 2 + GAP) / (TILE + GAP))));   // ONE BAR is reachable: the postures count as tiles too (R 09-05 21:40: "surely more than 6")
     f._state.w = widthFor(cols); f._state.h = heightFor(cols); f._paint();

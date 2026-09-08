@@ -264,7 +264,7 @@ export function logChat(who, text, kind = '', meta = {}) {
     // (lastAuthor), and the two disagree exactly when this branch runs — a
     // 'cont' line landing under another speaker renders their nameplate over
     // these words — a line credited to the wrong speaker. (repro:
-    // exultation/tools/repro-stale-t0.mjs. Sys lines pass through a group,
+    // (reproduced with a stale-t0 harness). Sys lines pass through a group,
     // same as the chronological rule.)
     let prev = line.previousElementSibling;
     while (prev && prev.dataset.kind === 'system') prev = prev.previousElementSibling;
