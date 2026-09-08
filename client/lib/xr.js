@@ -110,7 +110,7 @@ function sampleFingerCurl() {
   }
 }
 rig.name = 'xr-rig';
-let presenting = false; let shadowsWere = false;
+let presenting = false;
 let floorSpace = null;              // 'local-floor' | 'bounded-floor' | null (fell back to 'local')
 export const xrFloorSpace = () => floorSpace;
 
@@ -512,7 +512,7 @@ async function enterVR() {
     // backend builds while the entry clock runs — the 3 s first frame becomes 'N programs in X ms'.
     { const be = renderer.backend; if (be && !be.__entryProbe) { be.__entryProbe = true;
         for (const [k, field] of [['createProgram', 'programs'], ['createRenderPipeline', 'pipelines']]) { const orig = be[k]?.bind(be); if (!orig) continue;
-          be[k] = (...a) => { const t = performance.now(); try { return orig(...a); } finally { if (entryClock) { entryClock[field]++; if (field === 'programs') entryClock.programMs += performance.now() - t; } } }; } } }
+          be[k] = (...a) => { const t = performance.now(); try { return orig(...a); } finally { buildTotals[field]++; if (field === 'programs') buildTotals.programMs += performance.now() - t; if (entryClock) { entryClock[field]++; if (field === 'programs') entryClock.programMs += performance.now() - t; } } }; } } }
     // ENTRY CURTAIN (R 09-06 13:34: 'a bespoke loading screen to cover the WebXR construct'): the first
     // presenting frames draw a cheap curtain to the eyes while the WHOLE scene compiles against the real
     // XR camera + target (compileAsync from inside an XR frame captures that context — the 13:20 pre-warm
@@ -542,8 +542,10 @@ async function enterVR() {
     // three.webgpu also hands the shadow pass cameraXR instead of the light camera while presenting
     // (Renderer.js: camera = xr.getCamera() for any render) — shadow maps are wrong by construction
     // in XR, and cost a full scene pass per light per frame. Off while presenting; ?xrshadows=1 keeps them.
-    shadowsWere = renderer.shadowMap?.enabled ?? false;
-    if (renderer.shadowMap && !new URLSearchParams(location.search).has('xrshadows')) renderer.shadowMap.enabled = false;   // the HUD visor repaints (R 22:04: 'VR icon still inactive')
+    // R 09-07 18:30: 'leave everything alone.' shadowMap.enabled is pipeline-shape (lightrig.js:85) — flipping it
+    // off here and back on at exit recompiled the whole scene at the first frame in BOTH directions: the hard
+    // hangs in and out. Shadows now stay exactly as they are on the desktop. What that costs per frame in VR, and
+    // whether three's XR-camera shadow pass looks wrong, is R's read (fps tee + eyes), not a claim.
     xrIntent.active = true;
     selfFirstPerson(true);
     xrPanelsEnter(rig);            // every registered frame as a physical surface
@@ -551,7 +553,7 @@ async function enterVR() {
       tee('[xr] session end — teardown begins');   // 09-06 23:43: a leave with no after-exit lines at all → was this handler even reached?
       try {
       presenting = false; bus.emit('xr:state', false); eyeBase = null; setXRCurtain(false); curtainState = null;
-      renderer.xr.cameraAutoUpdate = true; if (renderer.shadowMap) renderer.shadowMap.enabled = shadowsWere;
+      renderer.xr.cameraAutoUpdate = true;
       xrIntent.active = false;
       selfFirstPerson(false);
       { const v = getSelf()?.vrm; if (v) { v.scene.scale.setScalar(1); if (v.userData) { v.userData.ankleH = null; v.userData._gait = null; } } }   // the puppet scale is a presenting thing
@@ -580,15 +582,22 @@ async function enterVR() {
       // at +0.5 s and +3 s, tee what the desktop actually is — is the loop running, what did the last frame
       // draw, where is the camera, what size is the canvas, and a REAL pixel read of the canvas centre.
       const f0 = perf.frameNo ?? 0;
-      const probe = (tag) => {
+      // EXIT COST (R 09-07 18:20 'hard hangs in/out'): programs/pipelines built since teardown began (the
+      // shadowMap.enabled restore is pipeline-shape — lightrig.js:85 — so a recompile lands on the first desktop
+      // frame), and `held` = how late each timer fired versus its schedule — a client-side clock, so a frozen tab
+      // shows as held time even when the block is in the GPU process (parallel shader link) and no longtask fires.
+      const tExit = performance.now(); const c0 = { ...buildTotals };
+      const probe = (tag, due) => {
         try {
+          const cost = ` programs+${buildTotals.programs - c0.programs} (${(buildTotals.programMs - c0.programMs).toFixed(0)} ms) pipelines+${buildTotals.pipelines - c0.pipelines}`;
+          const held = ` held ${Math.max(0, performance.now() - tExit - due).toFixed(0)}ms`;
           const cv = renderer.domElement; const ctx = document.createElement('canvas').getContext('2d'); ctx.canvas.width = 8; ctx.canvas.height = 8;
           let mean = null; try { ctx.drawImage(cv, cv.width * 0.4, cv.height * 0.4, cv.width * 0.2, cv.height * 0.2, 0, 0, 8, 8); const d = ctx.getImageData(0, 0, 8, 8).data; let a = 0; for (let i = 0; i < d.length; i += 4) a += d[i] + d[i + 1] + d[i + 2]; mean = +(a / (d.length / 4) / 3).toFixed(1); } catch (e) { mean = `err:${e?.name}`; }
           const e = camera.matrixWorld.elements;
-          tee(`[xr] after-exit ${tag}: frames+${(perf.frameNo ?? 0) - f0} draws ${renderer.info.render.calls} canvas ${cv.width}x${cv.height} css ${cv.clientWidth}x${cv.clientHeight} pr ${renderer.getPixelRatio()} cam ${[e[12], e[13], e[14]].map((v) => v.toFixed(1)).join(',')} parent ${camera.parent?.name ?? camera.parent?.type ?? 'none'} fov ${camera.fov} near/far ${camera.near}/${camera.far} rt ${renderer.getRenderTarget() ? 'SET' : 'canvas'} xr.enabled ${renderer.xr.enabled} presenting ${renderer.xr.isPresenting} hidden ${document.hidden} centrePx ${mean}`);
+          tee(`[xr] after-exit ${tag}:${cost}${held} frames+${(perf.frameNo ?? 0) - f0} draws ${renderer.info.render.calls} canvas ${cv.width}x${cv.height} css ${cv.clientWidth}x${cv.clientHeight} pr ${renderer.getPixelRatio()} cam ${[e[12], e[13], e[14]].map((v) => v.toFixed(1)).join(',')} parent ${camera.parent?.name ?? camera.parent?.type ?? 'none'} fov ${camera.fov} near/far ${camera.near}/${camera.far} rt ${renderer.getRenderTarget() ? 'SET' : 'canvas'} xr.enabled ${renderer.xr.enabled} presenting ${renderer.xr.isPresenting} hidden ${document.hidden} centrePx ${mean}`);
         } catch (e) { tee(`[xr] after-exit ${tag} probe threw: ${e?.message ?? e}`); }
       };
-      setTimeout(() => probe('+0.5s'), 500); setTimeout(() => probe('+3s'), 3000);
+      setTimeout(() => probe('+0.5s', 500), 500); setTimeout(() => probe('+3s', 3000), 3000);
       } catch (e) { tee(`[xr] session end teardown THREW: ${e?.message ?? e} @ ${e?.stack?.split('\n')[1]?.trim() ?? '?'}`); report('xr end', e); }
     });
     // Controller census: log each input source's claimed profiles + layout
@@ -685,6 +694,7 @@ export function leaveVR(why = 'verb') {
 // resolving to our first presenting frame, then the first eight frame gaps — a compile stall shows as
 // one huge gap; a runtime stall shows as the t0→first gap. One tee line, then it retires.
 let entryClock = null;
+const buildTotals = { programs: 0, programMs: 0, pipelines: 0 };   // lifetime — the exit probe reads deltas off it (entryClock is nulled 12 s after entry)
 let curtainState = null;   // { armed, t0 } — the compile kicks off on the first presenting frame
 let eyeBase = null;
 let consoleTapped = false, shaderTees = 0;
