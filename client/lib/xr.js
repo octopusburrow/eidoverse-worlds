@@ -678,6 +678,24 @@ export function syncRigToBody() {
   rig.updateMatrixWorld(true);
   renderer.xr.updateCamera(camera);
 }
+/** THE SMOOTH TURN, BEFORE THE BODY SOLVE (R 09-08 01:10: hands and hips shimmy on turns; frames even).
+ *  xrbody solves the head anchor and the arms from the rig's pose, and it runs BEFORE updateXR — where the
+ *  stick turn used to write the rig's yaw. So every frame the body was solved against LAST frame's yaw while
+ *  the eyes rendered this frame's: the whole body one yaw-step behind the eyes, the hands (at arm's length)
+ *  and the hips (a latch on the head) showing it. Same class as the running stutter (09-06 12:53; the rig
+ *  followed the root a frame late) and the same cure: apply the turn first. xrbody calls this ahead of
+ *  syncRigToBody; the input pass below skips the smooth turn on a frame this already handled. Snap turns
+ *  stay in the input pass — a discrete step is not a per-frame lag. */
+let turnEarlyFrame = -1;
+export function applyTurnEarly(dtSec) {
+  if (!presenting || radialOpen || xrPrefs.turn !== 'smooth' || !buttonsTrusted()) return;
+  const R = sourceFor('right')?.gamepad; if (!R) return;
+  const d = dead(pickAxis(R.axes[2], R.axes[0]));
+  if (!d) return;
+  rig.rotation.y = wrapPi(rig.rotation.y - d * SMOOTH_TURN_RAD_S * (dtSec ?? 1 / 72));
+  turnEarlyFrame = perf.frameNo ?? -1;
+  turnTraceArm('smooth'); turnTraceInput(d, dtSec);
+}
 /** Per-frame while presenting. Order matters: read hands → fill intent →
  *  (controller.updateMe moves the body with THEIR loco) → rig follows body. */
 // TURN BURST TRACE (R 09-07 22:28: 'avatar shimmies back and forth on turns; fine on locomotion'): the 5 s recorder
@@ -894,7 +912,7 @@ export function updateXR(dtSec = 1 / 72) {
     else if (xrPrefs.turn === 'smooth') {
       // smooth turn: the rig yaws continuously with the stick (R's own mode)
       const d = dead(rx);
-      if (d) { rig.rotation.y = wrapPi(rig.rotation.y - d * SMOOTH_TURN_RAD_S * (dtSec ?? 1 / 72)); turnTraceArm('smooth'); turnTraceInput(d, dtSec); }
+      if (d && turnEarlyFrame !== (perf.frameNo ?? -2)) { rig.rotation.y = wrapPi(rig.rotation.y - d * SMOOTH_TURN_RAD_S * (dtSec ?? 1 / 72)); turnTraceArm('smooth'); turnTraceInput(d, dtSec); }   // applied early this frame (applyTurnEarly) → no second step
       turnMag = Math.abs(d);
     }
     else if (Math.abs(rx) > 0.6 && !snapState.cooling) {
