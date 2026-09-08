@@ -593,7 +593,7 @@ async function enterVR() {
       renderer.xr.cameraAutoUpdate = true;
       xrIntent.active = false;
       selfFirstPerson(false);
-      { const v = getSelf()?.vrm; if (v) { v.scene.scale.setScalar(1); if (v.userData) { v.userData.ankleH = null; v.userData._gait = null; } } }   // the puppet scale is a presenting thing
+      { const v = getSelf()?.vrm; if (v) { v.scene.scale.setScalar(1); v.scene.position.set(0, 0, 0); v.scene.updateMatrixWorld(true); if (v.userData) { v.userData.ankleH = null; v.userData._gait = null; } } }   // the puppet scale AND the eye-anchor offset (xrbody writes vrm.scene.position every presenting frame; left in place it sank the feet on the desktop — R 09-08 00:38) are presenting things
       xrPanelsExit(rig);
       releaseGrab();
       rig.remove(camera);
