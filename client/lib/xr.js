@@ -943,7 +943,8 @@ export function updateXR(dtSec = 1 / 72) {
   // the rig is the BODY's root offset by the head's playspace position (recentreXR), so the
   // head — not the playspace origin — stands on myState.pos, and turns pivot about the head
   syncRigToBody();   // (again, after a snap/smooth turn above changed rig.rotation)
-  turnTraceTick(); — three's XRManager builds cameraXR from camera.parent.matrixWorld
+  // — three's XRManager builds cameraXR from camera.parent.matrixWorld
+  turnTraceTick();
 
   // three pushes camera.near/far into session.updateRenderState every frame
   // it changes; a non-finite value throws INSIDE render and the headset
