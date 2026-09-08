@@ -125,6 +125,35 @@ class HTMLTexture extends CanvasTexture {
 
 	}
 
+	// EIDO (5): the deepest element under a uv hit, and a scroll on its nearest scrollable ancestor (R 09-07 22:57:
+	// 'trigger-to-click and scrolling on the VR panels'). Same rect math as htmlevent; re-rasters through the throttle.
+	elementAt( x, y ) {
+		const root = this.dom; const rect = root.getBoundingClientRect();
+		const px = x * rect.width + rect.left, py = y * rect.height + rect.top;
+		let best = null;
+		const walk = ( el ) => {
+			if ( el.nodeType !== 1 ) return;
+			const r = el.getBoundingClientRect();
+			if ( r.width === 0 || px < r.left || px > r.right || py < r.top || py > r.bottom ) return;
+			best = el;
+			for ( const c of el.children ) walk( c );
+		};
+		walk( root );
+		return best;
+	}
+	scrollAt( x, y, dy ) {
+		let el = this.elementAt( x, y );
+		while ( el && el !== this.dom.parentElement ) {
+			const cs = getComputedStyle( el );
+			if ( el.scrollHeight > el.clientHeight + 1 && /(auto|scroll)/.test( cs.overflowY ) ) {
+				const before = el.scrollTop; el.scrollTop = before + dy;
+				if ( el.scrollTop !== before && ! this.scheduleUpdate ) this.scheduleUpdate = setTimeout( () => this.update(), 16 );
+				return el;
+			}
+			el = el.parentElement;
+		}
+		return null;
+	}
 	pause() { this.paused = true; }   // EIDO (3): a quad that isn't shown stops rasterising
 	resume() { this.paused = false; this.update(); }
 

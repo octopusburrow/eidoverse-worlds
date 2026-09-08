@@ -22,6 +22,7 @@ import { CONFIG, report, bus, tee } from './base.js';
 import { xrBodyDebug } from './xrbody.js';
 import { stroke, fillPath } from './icons.js';
 import { xrPanelsEnter, xrPanelsExit, xrPanelsPick, showXRPanel, xrPanelHas, xrPanelOpen, xrPanelsGrab, xrPanelRelease, xrPanelsShown } from './xrpanels.js';
+import { domQuadsScroll } from './domquad.js';
 import { myState, xrIntent, camYaw, setCamYaw, setXrProbe } from './controller.js';
 import { ringEmoteEntries } from './emotebar.js';
 import { entities } from './world.js';
@@ -912,6 +913,7 @@ export function updateXR(dtSec = 1 / 72) {
       }
       if (hand.laser.visible) {
         const panelDist = xrPanelsPick(hand.ray, false);
+        if (side === 'right' && panelDist != null && !radialOpen && Math.abs(ry) > 0.3) domQuadsScroll(hand.ray, ry * 900 * (dtSec ?? 1 / 72));   // R 09-07 22:57: stick Y scrolls the panel under the laser
         const hit = panelDist == null ? rayHitEntity(hand.ray, 40) : null;
         // R 09-07 22:10: short and faint unless it points at something you can act on — porch-old's 1.8 m
         // idle beam; a panel or an entity under the ray draws it out to the hit at full strength

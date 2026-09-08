@@ -7,7 +7,7 @@
 // getBoundingClientRect, never elementFromPoint, so negative coordinates are fine) and
 // returned, with its display state, on exit. Fallback for comparison: ?canvasquads=1.
 import { THREE } from './core.js';
-import { bus } from './base.js';
+import { tee, bus } from './base.js';
 import { allFrames, getFrame } from './frames.js';
 import { HTMLMesh } from './vendor/htmlmesh.js';
 
@@ -125,9 +125,23 @@ export function domQuadsPick(handRay, click = false) {
   if (!hit) return null;
   if (click && hit.uv) {
     const data = { x: hit.uv.x, y: 1 - hit.uv.y };
+    // witness (R 09-07 22:57: 'trigger-to-click … working'): which element the click lands on, teed
+    try { const el = hit.object.material.map.elementAt?.(data.x, data.y); tee(`[xr] quad click ${quads.find((q) => q.mesh === hit.object)?.id ?? '?'} → ${el ? `${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}${el.className && typeof el.className === 'string' ? '.' + el.className.split(' ')[0] : ''} "${(el.textContent || '').trim().slice(0, 24)}"` : 'nothing'}`); } catch {}
     for (const type of ['mousedown', 'mouseup', 'click']) hit.object.dispatchEvent({ type, data });
   }
   return hit.distance;
+}
+
+/** Scroll the panel under the ray by dy CSS px (right stick Y while the laser is on a quad). */
+export function domQuadsScroll(handRay, dy) {
+  if (!quads || !shown) return false;
+  _m.identity().extractRotation(handRay.matrixWorld);
+  _rc.ray.origin.setFromMatrixPosition(handRay.matrixWorld);
+  _rc.ray.direction.set(0, 0, -1).applyMatrix4(_m);
+  _rc.far = 3;
+  const hit = _rc.intersectObjects(quads.map((q) => q.mesh), false)[0];
+  if (!hit?.uv) return false;
+  return !!hit.object.material.map.scrollAt?.(hit.uv.x, 1 - hit.uv.y, dy);
 }
 
 // one quad by id — a ring slot opens that frame's quad; `on` null toggles
