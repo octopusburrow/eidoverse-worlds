@@ -372,9 +372,9 @@ const ROUTES: Route[] = [
       const label = (url.searchParams.get("world") ?? "").replace(/[^a-z0-9_-]/gi, "").slice(0, 64);   // 64: the world-name limit (world.ts)
       // a label the server does not know shares one bucket and one file. A brand-new world has no dir until its first
       // join, so its pre-join boot lines land there too — a window, not a hole: nothing is lost, only shared.
-      const world = label && knownWorld(label) ? label : CLIENTLOG_UNKNOWN;
       const key = url.searchParams.get("key") ?? "";
-      if (JOIN_TOKEN && key !== JOIN_TOKEN) return new Response("no", { status: 401 });
+      if (JOIN_TOKEN && key !== JOIN_TOKEN) return new Response("no", { status: 401 });   // the door is the first gate: no lookup for a stranger
+      const world = label && knownWorld(label) ? label : CLIENTLOG_UNKNOWN;
       const cl = req.headers.get("content-length");
       if (cl === null) return new Response("length required", { status: 411 });   // a chunked body would be buffered whole before the slice
       const len = Number(cl);

@@ -15,7 +15,8 @@ const post = (q: string, body = "hello", headers: Record<string, string> = {}) =
 const st = async (r: Response | Promise<Response>) => (await r).status;
 ok(await st(post("world=known")) === 401, "no key → 401");
 ok(await st(post("world=known&key=wrong")) === 401, "wrong key → 401");
-ok(await st(route(new Request("http://x/clientlog?world=known&key=test-door", { method: "POST", body: "x", headers: {} }), srv)) === 411 || true, "missing content-length → 411 (Request may synthesise one; tolerated)");
+const streamed = new Request("http://x/clientlog?world=known&key=test-door", { method: "POST", body: new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("x")); c.close(); } }), duplex: "half" } as RequestInit);
+ok(streamed.headers.get("content-length") === null && await st(route(streamed, srv)) === 411, "a streamed body (no content-length) → 411");
 ok(await st(post("world=known&key=test-door", "y".repeat(5000))) === 413, "4 KB+ → 413");
 ok(await st(post("world=known&key=test-door", "line one")) === 200, "known world → 200");
 ok(existsSync(join(ld, "clientlog-known.log")), "known world gets its own file");

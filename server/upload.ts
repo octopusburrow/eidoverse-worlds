@@ -230,7 +230,7 @@ export function sweepStore() {
   console.log(`[store] boot sweep: ${pending.length} upload(s) missing a shadow queued`);
   for (const f of pending) queueOptimize(join(dir, f));
 }
-setTimeout(sweepStore, 5000);
+setTimeout(sweepStore, 5000).unref?.();   // a harness that imports this must not be held open by the timer
 // Library KTX2 sweep (§20a, VRMs §20c, loose images §20d): every library
 // model gets a GPU-native-texture variant at OPT_DIR/<rel>.ktx2.glb, every
 // avatar a surgical-rewrite variant at OPT_DIR/<rel>.ktx2.vrm, and every
@@ -300,7 +300,7 @@ export function sweepLibrary() {
   optQueue.push(...items);
   pumpOptimize();
 }
-setTimeout(sweepLibrary, 15_000);
+setTimeout(sweepLibrary, 15_000).unref?.();
 
 // ---- the endpoint -----------------------------------------------------------
 
