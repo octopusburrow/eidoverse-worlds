@@ -136,7 +136,6 @@ export function initBoot({ world, name }) {
   itemsTimer = setInterval(paintItems, 500);   // the > 2 s gate needs a clock, not just events
   tipEl = el.querySelector('.sp-tip');
   el.querySelector('.sp-world').textContent = world;
-  const v = el.querySelector('.sp-ver'); if (v) v.textContent = el.dataset.build || '';
   el.querySelector('.sp-name').textContent = name;
   startedAt = performance.now();
 
