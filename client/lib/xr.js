@@ -512,7 +512,7 @@ async function enterVR() {
     // backend builds while the entry clock runs — the 3 s first frame becomes 'N programs in X ms'.
     { const be = renderer.backend; if (be && !be.__entryProbe) { be.__entryProbe = true;
         for (const [k, field] of [['createProgram', 'programs'], ['createRenderPipeline', 'pipelines']]) { const orig = be[k]?.bind(be); if (!orig) continue;
-          be[k] = (...a) => { const t = performance.now(); try { return orig(...a); } finally { buildTotals[field]++; if (field === 'programs') buildTotals.programMs += performance.now() - t; if (entryClock) { entryClock[field]++; if (field === 'programs') entryClock.programMs += performance.now() - t; } } }; } } }
+          be[k] = (...a) => { const t = performance.now(); try { return orig(...a); } finally { buildTotals[field]++; if (field === 'programs') buildTotals.programMs += performance.now() - t; if (field === 'pipelines' && a[1] == null) { buildTotals.syncPipelines++; buildTotals.syncMs += performance.now() - t; } if (entryClock) { entryClock[field]++; if (field === 'programs') entryClock.programMs += performance.now() - t; } } }; } } }
     // ENTRY CURTAIN (R 09-06 13:34: 'a bespoke loading screen to cover the WebXR construct'): the first
     // presenting frames draw a cheap curtain to the eyes while the WHOLE scene compiles against the real
     // XR camera + target (compileAsync from inside an XR frame captures that context — the 13:20 pre-warm
@@ -694,7 +694,7 @@ export function leaveVR(why = 'verb') {
 // resolving to our first presenting frame, then the first eight frame gaps — a compile stall shows as
 // one huge gap; a runtime stall shows as the t0→first gap. One tee line, then it retires.
 let entryClock = null;
-const buildTotals = { programs: 0, programMs: 0, pipelines: 0 };   // lifetime — the exit probe reads deltas off it (entryClock is nulled 12 s after entry)
+const buildTotals = { programs: 0, programMs: 0, pipelines: 0, syncPipelines: 0, syncMs: 0 };   // sync = created with promises===null on a render frame (blocking link)   // lifetime — the exit probe reads deltas off it (entryClock is nulled 12 s after entry)
 let curtainState = null;   // { armed, t0 } — the compile kicks off on the first presenting frame
 let eyeBase = null;
 let consoleTapped = false, shaderTees = 0;
@@ -730,19 +730,24 @@ export function updateXR(dtSec = 1 / 72) {
     // its frame, so by the time N frames have drawn, the world is genuinely up.
     const t0 = performance.now(); const f0 = perf.frameNo ?? 0; const clock = entryClock;
     curtainState = { down: false, framesLeft: 3, t0, f0, clock };   // 3 session frames = world drawn at least once, settled
-    try { renderer.compileAsync(scene, renderer.xr.getCamera(), scene).catch((e) => report('xr entry compile', e)); }
-    catch (e) { report('xr entry compile', e); }
+    // Is window.rAF alive in-session? three's parallel-link poll reschedules on it (three.webgpu.js ~74960); if it
+    // ticks, compileAsync CAN resolve in-session and the curtain should wait on it; if it doesn't, we must poll
+    // COMPLETION_STATUS_KHR on the session clock ourselves. One tee, 3 s, R's headset decides (09-07 18:45).
+    { let ticks = 0; const tw = performance.now(); const tick = () => { ticks++; if (performance.now() - tw < 3000) requestAnimationFrame(tick); }; requestAnimationFrame(tick);
+      const tc = performance.now(); const pr = renderer.compileAsync(scene, renderer.xr.getCamera(), scene);
+      pr.then(() => tee(`[xr] entry compile resolved ${(performance.now() - tc).toFixed(0)} ms after arm (presenting=${presenting})`)).catch((e) => report('xr entry compile', e));
+      setTimeout(() => tee(`[xr] window.rAF in-session: ${ticks} ticks in 3 s; sync pipelines ${buildTotals.syncPipelines} (${buildTotals.syncMs.toFixed(0)} ms)`), 3200); }
   }
   // count session frames after arm; drop the curtain when the world has drawn (or a hard 90-frame safety cap)
   if (curtainState && !curtainState.armed && !curtainState.down) {
     if (--curtainState.framesLeft <= 0 || (perf.frameNo ?? 0) - curtainState.f0 > 90) {
       curtainState.down = true; setXRCurtain(false);
       const clock = curtainState.clock;
-      tee(`[xr] curtain #${sessionNo} down (session frames) after ${(performance.now() - curtainState.t0).toFixed(0)} ms — frames under it ${(perf.frameNo ?? 0) - curtainState.f0}, programs ${clock?.programs ?? '?'} in ${(clock?.programMs ?? 0).toFixed(0)} ms, pipelines ${clock?.pipelines ?? '?'}`);
+      tee(`[xr] curtain #${sessionNo} down (session frames) after ${(performance.now() - curtainState.t0).toFixed(0)} ms — sync pipelines so far ${buildTotals.syncPipelines} (${buildTotals.syncMs.toFixed(0)} ms), frames under it ${(perf.frameNo ?? 0) - curtainState.f0}, programs ${clock?.programs ?? '?'} in ${(clock?.programMs ?? 0).toFixed(0)} ms, pipelines ${clock?.pipelines ?? '?'}`);
     }
   }
   if (entryClock) { const now = performance.now(); entryClock.frames.push(+(now - (entryClock.last || entryClock.t0)).toFixed(0)); entryClock.last = now;
-    if (entryClock.frames.length === 8) { tee(`[xr] entry: setSession ${entryClock.setSessionMs} ms; first frame +${entryClock.frames[0]} ms; next gaps ${entryClock.frames.slice(1).join(',')} ms; programs so far ${entryClock.programs} (${entryClock.programMs.toFixed(0)} ms), pipelines ${entryClock.pipelines}`); } }
+    if (entryClock.frames.length === 8) { tee(`[xr] entry: setSession ${entryClock.setSessionMs} ms; first frame +${entryClock.frames[0]} ms; next gaps ${entryClock.frames.slice(1).join(',')} ms; programs so far ${entryClock.programs} (${entryClock.programMs.toFixed(0)} ms), pipelines ${entryClock.pipelines}; sync pipelines total ${buildTotals.syncPipelines} (${buildTotals.syncMs.toFixed(0)} ms)`); } }
   if (entryClock && (entryClock.frames.length > 120 || performance.now() - entryClock.t0 > 12000)) entryClock = null;   // the probe retires after 12 s (the line above tees ONCE, at frame 8 — it teed every frame for 12 s on 09-06 23:34)
   if (!xrPrefs.seated) { const e = renderer.xr.getCamera().matrixWorld.elements; const hy = e[13] - rig.position.y - recentre.y; if (Number.isFinite(hy)) sampleDeviceScale(hy); }   // Basis: seated suppresses height capture
   sampleFingerCurl();
