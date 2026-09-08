@@ -28,6 +28,7 @@ let thirdRT = null, blitFailed = false, blitTeed = false;
 // three's own canvas path — the path the scene pass used, which presents live. The target is tagged sRGB:
 // the eye bytes are already encoded, three decodes on sample and re-encodes on output — a round trip.
 let eyeRT = null, quadScene = null, quadCam = null, quadMesh = null;
+const MIRROR_FLIP = new URLSearchParams(location.search).has('mirrorflip') ? -1 : 1;
 function eyeTarget(ew, eh) {
   if (eyeRT && eyeRT.width === ew && eyeRT.height === eh) return eyeRT;
   eyeRT?.dispose();
@@ -60,7 +61,7 @@ function blitEye() {
   } finally { gl.bindFramebuffer(gl.READ_FRAMEBUFFER, prevRead); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, prevDraw); }
   // the quad onto the canvas, letterboxed to the eye's aspect, through three's canvas path
   const cw = renderer.domElement.width || 1, ch = renderer.domElement.height || 1;
-  const s = Math.min(cw / ew, ch / eh); quadMesh.scale.set((ew * s) / cw, (eh * s) / ch, 1);
+  const s = Math.min(cw / ew, ch / eh); quadMesh.scale.set((ew * s) / cw, MIRROR_FLIP * (eh * s) / ch, 1);   // headless stand-in came out inverted (01:38); the real layer bytes are GL raster and should be upright — ?mirrorflip=1 if not
   const was = renderer.xr.enabled; const oldRT = renderer.getRenderTarget(); const oldOut = renderer.getOutputRenderTarget?.() ?? null;
   renderer.xr.enabled = false;
   try { renderer.setOutputRenderTarget?.(null); renderer.setRenderTarget(null); renderer.render(quadScene, quadCam); }
