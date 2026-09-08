@@ -352,7 +352,9 @@ const ROUTES: Route[] = [
       const world = (url.searchParams.get("world") ?? "unknown").replace(/[^a-z0-9_-]/gi, "").slice(0, 40);
       const key = url.searchParams.get("key") ?? "";
       if (JOIN_TOKEN && key !== JOIN_TOKEN) return new Response("no", { status: 401 });
-      const len = Number(req.headers.get("content-length") ?? "0");
+      const cl = req.headers.get("content-length");
+      if (cl === null) return new Response("length required", { status: 411 });   // a chunked body would be buffered whole before the slice
+      const len = Number(cl);
       if (!Number.isFinite(len) || len > CLIENTLOG_MAX_BODY) return new Response("too big", { status: 413 });
       const now = Date.now();
       let bucket = clientLogRate.get(world);
