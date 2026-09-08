@@ -305,7 +305,7 @@ function radialEntries() {
     if (out.length % 2) out.push(SPACER);
     return out;
   }
-  const panels = { icon: 'boxes', label: 'panels', on: () => xrPanelsShown(), act: () => { bus.emit('xr:panels'); tee('[xr] panels toggled (ring)'); } };
+  const panels = { svg: '<svg xmlns="http://www.w3.org/2000/svg" width="52" height="52" viewBox="0 0 26 26"><text x="13" y="19.5" font-family="system-ui, sans-serif" font-size="19" font-weight="700" text-anchor="middle" fill="#f2f7f5">∃</text></svg>', label: 'panels', on: () => xrPanelsShown(), act: () => { bus.emit('xr:panels'); tee('[xr] panels toggled (ring)'); } };
   const leave = { svg: xrGlyph(52), label: 'leave VR', on: () => true, close: true, guard: true, act: () => leaveVR('ring') };   // guard: trigger only — a stick brush toward 6 o'clock threw R out (22:29)
   // emotes is its own strip on the desk, not a dock panel — a fixed slot, first on the right (1 o'clock)
   const right = [{ icon: 'hand-waving', label: 'emotes', sub: 'emotes', on: () => false, act: () => {} }];
@@ -378,13 +378,17 @@ function setRingLabel(text) {
 function makeRadial(entries) {
   const group = new THREE.Group();
   const N = Math.max(1, entries.length);
+  // R 09-07 23:01: 'the little circles are z-fighting' — 5 cm discs on a 7.5 cm ring overlap past ~9 slots, and with
+  // depthTest off and EQUAL renderOrder three re-sorts them by distance each frame as the billboard turns → the
+  // overlaps flicker. The radius grows with the count so discs never overlap, and every slot has a STABLE order.
+  const R = Math.max(RING_R, (N * RING_ICON * 1.15) / (2 * Math.PI));
   const slots = entries.map((s, i) => {
     const a = -Math.PI / 2 + i * (2 * Math.PI / N);   // porch: -π/2 first (top), then clockwise, placed at (cos a, −sin a)
     const m = new THREE.Mesh(new THREE.PlaneGeometry(RING_ICON, RING_ICON), new THREE.MeshBasicMaterial({ map: ringIconTexture(s, false), transparent: true, depthTest: false }));
-    m.renderOrder = 999; m.position.set(Math.cos(a) * RING_R, -Math.sin(a) * RING_R, 0); m.userData.ring = a;
+    m.renderOrder = 1000 + i; m.userData.order = 1000 + i; m.position.set(Math.cos(a) * R, -Math.sin(a) * R, 0); m.userData.ring = a;
     group.add(m); return m;
   });
-  const label = ringLabel(); label.mesh.position.set(0, -RING_R - 0.03, 0); group.add(label.mesh);
+  const label = ringLabel(); label.mesh.position.set(0, -R - 0.03, 0); group.add(label.mesh);
   return { group, slots, entries, sel: -1, label };
 }
 function disposeRadial() {
@@ -455,7 +459,7 @@ function aimRadial(x, y) {
     radial.slots.forEach((m, i) => { if (radial.entries[i].spacer) return; const d = Math.abs(Math.atan2(Math.sin(a - m.userData.ring), Math.cos(a - m.userData.ring))); if (d < bd) { bd = d; best = i; } });
   } else if (mag >= 0.35) best = radial.sel;   // hysteresis band: keep the selection, don't commit yet
   if (best !== radial.sel) {
-    radial.slots.forEach((m, i) => { const foc = i === best; m.scale.setScalar(foc ? 1.4 : 1); m.material.map?.dispose(); m.material.map = ringIconTexture(radial.entries[i], foc); m.material.needsUpdate = true; });
+    radial.slots.forEach((m, i) => { const foc = i === best; m.scale.setScalar(foc ? 1.4 : 1); m.renderOrder = foc ? 1000 + radial.slots.length + 1 : m.userData.order; m.material.map?.dispose(); m.material.map = ringIconTexture(radial.entries[i], foc); m.material.needsUpdate = true; });
     radial.sel = best;
     setRingLabel(best >= 0 ? radial.entries[best].label : null);
     if (best >= 0) haptic('right', 0.15, 10);
