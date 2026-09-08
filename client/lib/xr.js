@@ -309,6 +309,7 @@ function radialEntries() {
   // emotes is its own strip on the desk, not a dock panel — a fixed slot, first on the right (1 o'clock)
   const right = [{ icon: 'hand-waving', label: 'emotes', sub: 'emotes', on: () => false, act: () => {} }];
   for (const e of dockPins()) {
+    if (e.id === 'emotes') continue;   // the sub-wheel slot above IS emotes (R 09-07 22:57: 'you have emotes twice')
     const has = xrPanelHas(e.id);
     right.push({ icon: e.icon, label: e.id, has, on: () => xrPanelOpen(e.id), close: true,
       act: () => { if (has) showXRPanel(e.id); else tee(`[xr] ring: ${e.id} has no VR surface yet`); } });
@@ -668,6 +669,20 @@ export function syncRigToBody() {
 }
 /** Per-frame while presenting. Order matters: read hands → fill intent →
  *  (controller.updateMe moves the body with THEIR loco) → rig follows body. */
+// TURN BURST TRACE (R 09-07 22:28: 'avatar shimmies back and forth on turns; fine on locomotion'): the 5 s recorder
+// cannot see a per-frame oscillation. Armed by a stick turn, 60 frames of rig yaw / hips yaw / root xz / head xz /
+// rig xz tee as ONE line (cm, centi-radians), then it retires for 10 s. Read: does root or rig alternate sign frame to frame?
+let turnTrace = null, turnTraceLast = 0;
+function turnTraceArm(kind) { if (turnTrace || performance.now() - turnTraceLast < 10000) return; turnTrace = { kind, rows: [] }; }
+function turnTraceTick() {
+  if (!turnTrace) return;
+  const av = getSelf(); const hips = av?.vrm?.humanoid?.getNormalizedBoneNode('hips'); const root = av?.root;
+  const hy = hips ? Math.atan2(hips.getWorldDirection(_v).x, hips.getWorldDirection(_v).z) : 0;
+  const rp = root ? root.getWorldPosition(_v2) : _v2.set(0, 0, 0);
+  const hp = renderer.xr.getCamera().matrixWorld.elements;
+  turnTrace.rows.push(`${Math.round(rig.rotation.y * 100)},${Math.round(hy * 100)},${Math.round(rp.x * 100)},${Math.round(rp.z * 100)},${Math.round(hp[12] * 100)},${Math.round(hp[14] * 100)},${Math.round(rig.position.x * 100)},${Math.round(rig.position.z * 100)}`);
+  if (turnTrace.rows.length >= 60) { tee(`[xr] turn-trace ${turnTrace.kind} (rigYaw,hipsYaw,rootX,rootZ,headX,headZ,rigX,rigZ ×100): ${turnTrace.rows.join(' ')}`); turnTrace = null; turnTraceLast = performance.now(); }
+}
 function camYawWorld() { const e = renderer.xr.getCamera().matrixWorld.elements; return Math.atan2(-e[8], -e[10]); }   // world yaw of the HMD's -Z
 const wrapPi = (a) => Math.atan2(Math.sin(a), Math.cos(a));   // every yaw write wraps: an unwrapped body yaw (7.88 = 1.6 + 2π on R's recorder) met a wrapped camera yaw and 'popped' a full turn
 // ---- recentre / seated (gap list C15; Basis: seated suppresses height capture) ----------
@@ -721,6 +736,7 @@ export function leaveVR(why = 'verb') {
   if (!session) { tee(`[xr] leave (${why}): no session`); return false; }
   tee(`[xr] leave (${why})`);
   lastLeaveAt = performance.now();
+  exitVeilShow(true);   // from the CLICK, not the 'end' event — session.end() takes a moment and that moment read as nothing happening (R 22:57)
   try { const p = session.end(); p?.catch?.((e) => tee(`[xr] leave (${why}) rejected: ${e?.message ?? e}`)); } catch (e) { tee(`[xr] leave (${why}) threw: ${e?.message ?? e}`); }
   return true;
 }
@@ -860,7 +876,7 @@ export function updateXR(dtSec = 1 / 72) {
     else if (xrPrefs.turn === 'smooth') {
       // smooth turn: the rig yaws continuously with the stick (R's own mode)
       const d = dead(rx);
-      if (d) rig.rotation.y = wrapPi(rig.rotation.y - d * SMOOTH_TURN_RAD_S * (dtSec ?? 1 / 72));
+      if (d) { rig.rotation.y = wrapPi(rig.rotation.y - d * SMOOTH_TURN_RAD_S * (dtSec ?? 1 / 72)); turnTraceArm('smooth'); }
       turnMag = Math.abs(d);
     }
     else if (Math.abs(rx) > 0.6 && !snapState.cooling) {
@@ -869,6 +885,7 @@ export function updateXR(dtSec = 1 / 72) {
       // rides the rig, so the head's world yaw inherits the snap on its own.
       rig.rotation.y = wrapPi(rig.rotation.y - Math.sign(rx) * (SNAP_DEG * Math.PI) / 180);
       snapState.cooling = true;
+      turnTraceArm('snap');
     } else if (Math.abs(rx) < 0.3) snapState.cooling = false;
     stickPressWas = pressed;
 
@@ -919,7 +936,8 @@ export function updateXR(dtSec = 1 / 72) {
   // and writes the rig or the body root; the VRM chases the head INSIDE the root (xrbody.js).
   // the rig is the BODY's root offset by the head's playspace position (recentreXR), so the
   // head — not the playspace origin — stands on myState.pos, and turns pivot about the head
-  syncRigToBody();   // (again, after a snap/smooth turn above changed rig.rotation) — three's XRManager builds cameraXR from camera.parent.matrixWorld
+  syncRigToBody();   // (again, after a snap/smooth turn above changed rig.rotation)
+  turnTraceTick(); — three's XRManager builds cameraXR from camera.parent.matrixWorld
 
   // three pushes camera.near/far into session.updateRenderState every frame
   // it changes; a non-finite value throws INSIDE render and the headset
