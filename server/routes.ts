@@ -362,7 +362,7 @@ const ROUTES: Route[] = [
     // line carries a timestamp and the client's text, no address. Bounded: 4 KB
     // per body (refused above that by content-length), 600 lines/min/world and
     // 2000/min overall, one file per KNOWN world plus one shared '~unknown' file
-    // for any other label, 5 MB per file, key-gated like the door — which means
+    // for any other label, 5 MB per file, door-keyed by `Authorization: Bearer` (never the URL) — which means
     // an OPEN door (JOIN_TOKEN empty, the tailnet dev posture) accepts these
     // writes from anyone who can reach the port: do not run it open on a public
     // box. A failed append answers 500, never a false 'ok'. Lands in
@@ -372,7 +372,12 @@ const ROUTES: Route[] = [
       const label = (url.searchParams.get("world") ?? "").replace(/[^a-z0-9_-]/gi, "").slice(0, 64);   // 64: the world-name limit (world.ts)
       // a label the server does not know shares one bucket and one file. A brand-new world has no dir until its first
       // join, so its pre-join boot lines land there too — a window, not a hole: nothing is lost, only shared.
-      const key = url.searchParams.get("key") ?? "";
+      // The door key rides in an Authorization header, NEVER the URL: query-carried join tokens have shown up in
+      // proxy/access diagnostics before (review of #172), and this route is called from every browser console.
+      // A key in the query is refused outright so the old client shape cannot ship by accident.
+      if (url.searchParams.has("key")) return new Response("key belongs in the Authorization header", { status: 400 });
+      const auth = req.headers.get("authorization") ?? "";
+      const key = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
       if (JOIN_TOKEN && key !== JOIN_TOKEN) return new Response("no", { status: 401 });   // the door is the first gate: no lookup for a stranger
       const world = label && knownWorld(label) ? label : CLIENTLOG_UNKNOWN;
       const cl = req.headers.get("content-length");

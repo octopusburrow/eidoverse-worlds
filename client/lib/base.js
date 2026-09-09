@@ -81,9 +81,10 @@ function teeFlush() {
   teeTimer = 0;
   if (!teeQ.length || teeMuted) return;
   const batch = teeQ.splice(0, 20);
-  const url = `/clientlog?world=${encodeURIComponent(CONFIG.world ?? '')}&key=${encodeURIComponent(CONFIG.token ?? '')}`;
+  const url = `/clientlog?world=${encodeURIComponent(CONFIG.world ?? '')}`;
+  const headers = { authorization: `Bearer ${CONFIG.token ?? ''}` };   // the door key never rides in a URL
   for (const line of batch) {
-    try { fetch(url, { method: 'POST', body: line, keepalive: true }).then((r) => { if (r.status === 401 || r.status === 404) teeMuted = true; }).catch(() => {}); }
+    try { fetch(url, { method: 'POST', body: line, headers, keepalive: true }).then((r) => { if (r.status === 401 || r.status === 404) teeMuted = true; }).catch(() => {}); }
     catch { /* the tee must never break the page */ }
   }
   if (teeQ.length) teeTimer = setTimeout(teeFlush, 1000);

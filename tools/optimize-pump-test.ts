@@ -14,6 +14,7 @@ writeFileSync(fake, `#!/bin/sh
 src=""; dest=""
 for a in "$@"; do case "$a" in --*) ;; *) if [ -z "$src" ]; then src="$a"; else dest="$a"; fi;; esac; done
 v=$(cat "$src.verdict" 2>/dev/null || echo 0)
+[ -n "$OPT_RECEIPTS" ] && echo "$dest" >> "$OPT_RECEIPTS"   # every invocation leaves a receipt the harness can count
 case "$v" in
   0) mkdir -p "$(dirname "$dest")"; printf 'tiny' > "$dest"; exit 0;;
   sig) kill -SEGV $$;;
@@ -70,13 +71,18 @@ if (process.platform === "linux") {
 //    flag is a config constant read at import.
 const { OPT_DIR } = await import("../server/config.ts");
 mkdirSync(join(OPT_DIR, "store"), { recursive: true }); writeFileSync(join(OPT_DIR, "store", "planted.glb"), Buffer.alloc(500, 1));
+const receipts = join(root, "sweep-receipts");
 const sweep = (skip: boolean) => {
-  const r = spawnSync(process.execPath, ["-e", 'const u = await import("./server/upload.ts"); u.sweepStore(); u.sweepLibrary(); console.log(JSON.stringify(u.optStatus()))'],
-    { env: { ...process.env, SKIP_OPT_SWEEP: skip ? "1" : "0", OPT_CMD: "/bin/true" }, cwd: import.meta.dir + "/..", encoding: "utf8" });
-  return JSON.parse(r.stdout.split("\n").find((l) => l.startsWith("{")) || "{}");   // the sweeps log after the status line
+  const rf = join(receipts, skip ? "skip.txt" : "run.txt"); mkdirSync(receipts, { recursive: true }); writeFileSync(rf, "");
+  const r = spawnSync(process.execPath, ["-e", 'const u = await import("./server/upload.ts"); u.sweepStore(); u.sweepLibrary(); await u.optIdle(); console.log(JSON.stringify(u.optStatus()))'],
+    { env: { ...process.env, SKIP_OPT_SWEEP: skip ? "1" : "0", OPT_RECEIPTS: rf }, cwd: import.meta.dir + "/..", encoding: "utf8" });
+  const status = JSON.parse(r.stdout.split("\n").find((l) => l.startsWith("{")) || "{}");
+  const invoked = readFileSync(rf, "utf8").split("\n").filter(Boolean);
+  return { status, invoked };
 };
+// deterministic: the subprocess awaits optIdle() and the proof is the fake child's own receipts, not a queue snapshot
 const skipped = sweep(true), ran = sweep(false);
-ok(skipped.queued === 0, `SKIP_OPT_SWEEP=1: sweeps queued nothing (${JSON.stringify(skipped)})`);
-ok(ran.queued > 0, `SKIP_OPT_SWEEP unset: the planted GLB was queued (${JSON.stringify(ran)})`);
+ok(skipped.invoked.length === 0 && skipped.status.queued === 0, `SKIP_OPT_SWEEP=1: the child was never invoked (${skipped.invoked.length} receipts)`);
+ok(ran.invoked.some((d) => d.includes("planted.glb")), `SKIP_OPT_SWEEP unset: the planted GLB reached the child (${ran.invoked.length} receipts)`);
 import("node:fs").then((fs) => fs.rmSync(root, { recursive: true, force: true }));
 console.log("optimize-pump: cases passed");
