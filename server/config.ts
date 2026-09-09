@@ -59,6 +59,7 @@ export const LIBRARY_DIR = resolve(process.env.EIDOVERSE_DIR ?? join(ROOT, "..",
 // Same doctrine as WORLDS_DIR: a dev or test instance points this elsewhere so it can never write derived
 // variants or markers into the live store (a harness once did — review of #172).
 export const OPT_DIR = resolve(process.env.OPT_DIR ?? join(ROOT, "assets", "opt"));
+try { mkdirSync(OPT_DIR, { recursive: true }); } catch { /* the first write will say why */ }   // an overridden OPT_DIR may not exist yet; the incarnation file lives here
 // Deliberate ASSET fixes over the library (versioned IN this repo —
 // patched/README.md carries the doctrine): /library serves these with TOP
 // precedence, so every machine gets the fix via ordinary git pull while
