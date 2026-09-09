@@ -14,6 +14,11 @@ import * as TSL from 'three/tsl';
 import { CONFIG } from './base.js';
 
 export { THREE, TSL };
+// THE EYE, as a plain uniform. TSL's camera accessors (`cameraPosition`, …) are built from the per-render
+// camera and have NO camera under per-view (stereo) rendering — a material that reads one never builds its
+// program in VR and draws nothing (09-06 black body; 09-07 black construct floor; grass, perfscope hulls).
+// Materials that need the eye read THIS instead; renderWorld writes it once per frame from the active camera.
+export const eyePos = TSL.uniform(new THREE.Vector3(3.5, 2.6, 5.5));
 
 // ------------------------------------------------------------ wgsl debug
 // ?wgsldebug — surface Tint's REAL compilation diagnostics (Chrome only logs
@@ -132,22 +137,11 @@ export const renderer = new THREE.WebGPURenderer({ canvas,
   forceWebGL: _forceWebGL });
 /** 'webgpu' | 'webgl' — known once renderer.init() resolves. */
 export const backendName = () => (renderer.backend?.isWebGLBackend ? 'webgl' : 'webgpu');
-// Still in 0.185.1; FIXED on three dev (db1daf163, 2026-07-24, #34088 —
-// after the r185 tag, so it ships with r186): XRManager.onAnimationFrame
-// calls foveateBoundTexture(_getFrameBufferTarget()); Renderer.js:1432
-// returns NULL when no tonemap/colorspace pass is needed and XRManager:655
-// reads .isPostProcessingRenderTarget off it → every XR frame throws inside
-// three before the app callback (world freezes, head tracking stays live).
-// Same one-line guard as dev's; DELETE at the r186 bump.
 if (XR_BOOT) renderer.xr.enabled = true;   // must precede init(): xrCompatible adapter
-{ // the guard belongs to EVERY presenting path — the visor enters in place since 09-07, not only ?xr=1
-  const fov = renderer.xr.foveateBoundTexture?.bind(renderer.xr);
-  if (fov) renderer.xr.foveateBoundTexture = (rt) => (rt == null ? undefined : fov(rt));
-}
 renderer.setSize(innerWidth, innerHeight);
 // SHADOWS FROM THE SUN, NOT THE HEAD (R 09-07 18:48 'why do shadows tank the frame rate? nothing casts a shadow
 // on the ground'): while presenting, Renderer.render() swaps in xr.getCamera() for EVERY render call
-// (three.webgpu.js r185/r186dev :64750 'use XR camera for rendering') — including the shadow pass's own render
+// (three.webgpu.js r186 'use XR camera for rendering') — including the shadow pass's own render
 // from shadow.camera. So in VR the 2048² map was drawn from the eyes: a full extra scene pass per frame that
 // produced no usable shadow (the old fix was to disable shadows in XR and eat a whole-scene recompile both
 // ways). Same cure as render.js renderAside: xr off around the pass, so the sun camera is honoured. Unity
