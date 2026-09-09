@@ -14,11 +14,6 @@ import * as TSL from 'three/tsl';
 import { CONFIG } from './base.js';
 
 export { THREE, TSL };
-// THE EYE, as a plain uniform. TSL's camera accessors (`cameraPosition`, …) are built from the per-render
-// camera and have NO camera under per-view (stereo) rendering — a material that reads one never builds its
-// program in VR and draws nothing (09-06 black body; 09-07 black construct floor; grass, perfscope hulls).
-// Materials that need the eye read THIS instead; renderWorld writes it once per frame from the active camera.
-export const eyePos = TSL.uniform(new THREE.Vector3(3.5, 2.6, 5.5));
 
 // ------------------------------------------------------------ wgsl debug
 // ?wgsldebug — surface Tint's REAL compilation diagnostics (Chrome only logs

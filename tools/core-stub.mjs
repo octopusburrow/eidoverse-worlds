@@ -78,3 +78,23 @@ const tslNode = new Proxy(function () {}, {
   construct: () => tslNode,
 });
 export const TSL = new Proxy({}, { get: () => tslNode });
+
+// --- exports the VR-alpha stack's client adds to core.js / base.js (inert here; the test never renders) ---
+export const backendName = () => 'webgl';
+export const canvas = { width: 1, height: 1, getBoundingClientRect: () => ({ width: 1, height: 1 }) };
+export const hemi = null;
+export const axisLines = null;
+export const XR_BOOT = false;
+export const WEBGPU_XR = false;
+export const WEBGPU_POSSIBLE = false;
+export const BASE_PIXEL_RATIO = 1;
+export const PREF_BACKEND = 'ew-backend';
+export const PREF_MSAA = 'ew-msaa';
+export const PREF_HEADSET_SEEN = 'ew-headset-seen';
+export const installRenderListTolerance = () => {};
+export const tee = () => {};
+export const colorFor = () => '#888888';
+export const assignColors = () => {};
+export const setToken = () => {};
+export const setName = () => {};
+export const setErrorSink = () => {};
