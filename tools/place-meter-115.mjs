@@ -25,7 +25,7 @@ if(MODE==="place"){
   await pverb("comp",{id:METER.id,type:"inscription",data:INSCR});
   // NOT locked: the meter's own keeper turns it with `place`; a locked thing refuses that
 }
-await pverb("behavior",{id:"meter",src:path,attach:METER.id,caps:{verbs:["say","place"]},knobs:{alone:600,tick:30}});
+await pverb("behavior",{id:"meter",src:path,attach:METER.id,caps:{verbs:["say","place","comp"]},knobs:{alone:600,tick:30}});
 await settle(1500);
 console.log("FOLD:",JSON.stringify(await eye()));
 const ring=await req({type:"debug",behavior:"meter"},"r2"); console.log("ring:",JSON.stringify((ring.events||[]).slice(-3)));

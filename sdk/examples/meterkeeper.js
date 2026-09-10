@@ -4,7 +4,7 @@
 // one has stood near it for a long while — and what it says nobody is there
 // to hear; it lands in the world's log, for whoever reads that later.
 // Bind:  behavior {id: "meter", src: <upload>, attach: "meter1",
-//                  caps: {verbs: ["say", "place"]}, knobs: {alone: 600, tick: 30}}
+//                  caps: {verbs: ["say", "place", "comp"]}, knobs: {alone: 600, tick: 30}}
 // Meet:  say anything within earshot, or use it. Then leave it alone.
 //
 // Coal from Buber, I and Thou, pp. 57–58: the third I, "the demonic You for
@@ -42,6 +42,9 @@ function turn(by) {
   const yaw = ((Number(me.yaw) || 0) + HOUR) % (2 * Math.PI);
   try {
     world.emit("place", { id: world.self, pos: me.pos, yaw, scale: me.scale ?? 1 });
+    // the count is public, as a comp on the thing itself (kv is private): a
+    // neighbour — the threshold — may read `comp.hours` the way it reads the heart's names.
+    world.emit("comp", { id: world.self, type: "hours", data: hours });
     world.kv.set("hours", hours);
     world.kv.set("alone_since", null); world.kv.set("spoke", null);   // addressed: the crowd is here
     world.log("turned", by, "→ hour", hours);

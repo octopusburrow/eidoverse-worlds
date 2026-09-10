@@ -2,7 +2,10 @@
 // arrive and speaks once when you LEAVE, sending you off carrying the last
 // thing you said inside.
 // Bind:  behavior {id: "threshold-gate", src: <upload>, attach: "gate1",
-//                  caps: {verbs: ["say"]}}
+//                  caps: {verbs: ["say"]}, knobs: {heart: "grove-heart", meter: "meter1"}}
+// Knobs: `heart` — a keeper of relation-names (comp.names) to lend a word to
+//        the silent; `meter` — a thing that counts addresses (comp.hours): the
+//        send-off then also says how many of its hours were yours.
 // Meet:  stand within earshot a little while (STAY_S), say anything, walk away.
 //
 // Coal from Buber, I and Thou, p. 50: "It suffices him that again and again he
@@ -42,6 +45,12 @@ const dist = (a, b) => Math.hypot(a[0] - b[0], a[2] - b[2]);
 const read = (k) => { try { return JSON.parse(world.kv.get(k) || "{}"); } catch (e) { return {}; } };
 const write = (k, v) => world.kv.set(k, JSON.stringify(v));
 const nameOf = (p) => String(p.name || p.id || "someone");
+const meterHours = () => { try { const h = Number(world.entity(world.knobs.meter)?.comp?.hours); return Number.isFinite(h) ? h : 0; } catch (e) { return 0; } };
+const meterLine = (h0) => {
+  if (!world.knobs.meter) return "";
+  const h = meterHours(), k = h - Number(h0 || 0);
+  return k > 0 ? ` the meter has ${h} on its face now; ${k} of them were yours.` : ` the meter has ${h} on its face; none of them were yours. it did not notice.`;
+};
 
 // the last thing anyone said while inside — that is what they will carry out.
 world.on("say", (e) => {
@@ -53,6 +62,7 @@ world.on("say", (e) => {
     if (!me || !me.pos || !p || !p.pos || dist(p.pos, me.pos) > NEAR_M) return;   // said outside: not carried
     here[e.by] = Date.now(); write("here", here);
     const names = read("names"); names[e.by] = nameOf(p); write("names", names);
+    if (world.knobs.meter) { const mh = read("meterh"); mh[e.by] = meterHours(); write("meterh", mh); }
     world.log("set foot (by speaking)", e.by);
   }
   const words = read("words"); words[e.by] = String(e.text || "").trim().slice(0, 80); write("words", words);
@@ -61,15 +71,15 @@ world.on("say", (e) => {
 world.every(TICK_S, () => {
   const me = world.entity(world.self); if (!me || !me.pos) return;
   const now = Date.now();
-  const here = read("here"), words = read("words"), names = read("names");
-  const before = JSON.stringify([here, words, names]);
+  const here = read("here"), words = read("words"), names = read("names"), meterh = read("meterh");
+  const before = JSON.stringify([here, words, names, meterh]);
   const people = world.people();
   const byId = Object.fromEntries(people.map((p) => [p.id, p]));
 
   // arrivals: silent. record when they set foot.
   for (const p of people) {
     if (!p.pos) continue;                                  // unknown position: neither in nor out
-    if (dist(p.pos, me.pos) <= NEAR_M && !here[p.id]) { here[p.id] = now; names[p.id] = nameOf(p); world.log("set foot", p.id); }
+    if (dist(p.pos, me.pos) <= NEAR_M && !here[p.id]) { here[p.id] = now; names[p.id] = nameOf(p); if (world.knobs.meter) meterh[p.id] = meterHours(); world.log("set foot", p.id); }
   }
   // departures: one send-off each, only if they actually stayed.
   for (const id of Object.keys(here)) {
@@ -86,14 +96,14 @@ world.every(TICK_S, () => {
         try { const kept = world.entity(world.knobs.heart)?.comp?.names; if (Array.isArray(kept) && kept.length) word = String(kept[kept.length - 1]); }
         catch (err) { world.log("no heart to read", String(err)); }
       }
-      const line = SENDOFFS[n % SENDOFFS.length](names[id] || id, word);
+      const line = SENDOFFS[n % SENDOFFS.length](names[id] || id, word) + meterLine(meterh[id]);
       world.emit("say", { text: `[${LABEL}] ${line}` });
       world.kv.set("sent", n + 1);
       world.log("sent off", id, "carrying", words[id] || "(nothing)");
     } else world.log("passed through, no visit", id);
-    delete here[id]; delete words[id]; delete names[id];
+    delete here[id]; delete words[id]; delete names[id]; delete meterh[id];
   }
   // write only on change: every kv.set is a bstate entry in the world's replay
   // log, and a quiet tick must cost the fold nothing.
-  if (JSON.stringify([here, words, names]) !== before) { write("here", here); write("words", words); write("names", names); }
+  if (JSON.stringify([here, words, names, meterh]) !== before) { write("here", here); write("words", words); write("names", names); write("meterh", meterh); }
 });

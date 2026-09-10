@@ -21,7 +21,7 @@ const fails=[]; const T_=(n,ok)=>{ console.log((ok?"ok   ":"FAIL ")+n); if(!ok) 
 const close=(x)=>Math.abs(x)<1e-6;
 
 verb(b,"spawn",{id:ID,lib:"eidoverse/assets/models/jeoffry.glb",pos:[10,0,10],yaw:0,scale:1}); await settle(400);
-verb(b,"behavior",{id:BID,src:path,attach:ID,caps:{verbs:["say","place"]},knobs:{alone:8,tick:5}}); await settle(TICK);
+verb(b,"behavior",{id:BID,src:path,attach:ID,caps:{verbs:["say","place","comp"]},knobs:{alone:8,tick:5}}); await settle(TICK);
 const v=await join("visitor"); pose(v,[12,0,10]); await settle(400);          // 2 m away: earshot
 verb(v,"say",{text:"hello, meter"}); await settle(800);
 let e=await entity(ID);
@@ -44,6 +44,8 @@ T_("F) …and only once per solitude", says().length===1);
 pose(v,[12,0,10]); await settle(TICK); verb(v,"say",{text:"back"}); await settle(800);
 pose(v,[80,0,80]); await settle(TICK*3);
 T_("G) return (an address), leave again → speaks a second time, the second line, 13 hours", says().length===2 && /contemplates Us\. 13 hours/.test(says()[1]));
+e=await entity(ID);
+T_("H) the count is public: comp.hours === 13", e && Number(e.comp?.hours)===13);
 const ring=await req(b,{type:"debug",behavior:BID},"r2"); console.log("ring:",JSON.stringify(ring).slice(0,600));
 console.log("says:",JSON.stringify(says())); console.log("errors:",JSON.stringify(b.errors), JSON.stringify(v.errors));
 console.log(fails.length?`FAILED ${fails.length}`:"ALL OK"); process.exit(fails.length?1:0);
