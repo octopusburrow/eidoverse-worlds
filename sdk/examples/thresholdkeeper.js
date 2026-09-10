@@ -56,10 +56,13 @@ const meterLine = (h0) => {
 world.on("say", (e) => {
   if (!e.by || String(e.by).startsWith("bhv:")) return;
   const here = read("here");
+  // only what is said INSIDE earshot is carried — whoever says it, whether or
+  // not the tick has noticed them yet (found 09-10: a word said 18 m out, beside
+  // the meter, was being handed back as "said in here").
+  const me = world.entity(world.self); const p = world.people().find((q) => q.id === e.by);
+  if (!me || !me.pos || !p || !p.pos || dist(p.pos, me.pos) > NEAR_M) return;   // said outside: not carried
   if (!here[e.by]) {
     // not yet noticed by the tick — but speaking inside earshot IS setting foot.
-    const me = world.entity(world.self); const p = world.people().find((q) => q.id === e.by);
-    if (!me || !me.pos || !p || !p.pos || dist(p.pos, me.pos) > NEAR_M) return;   // said outside: not carried
     here[e.by] = Date.now(); write("here", here);
     const names = read("names"); names[e.by] = nameOf(p); write("names", names);
     if (world.knobs.meter) { const mh = read("meterh"); mh[e.by] = meterHours(); write("meterh", mh); }

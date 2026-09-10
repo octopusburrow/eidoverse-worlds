@@ -21,8 +21,10 @@ const says=()=>b.msgs.filter(m=>m.type==="log"&&m.entry?.verb==="say"&&String(m.
 console.log("A) brush-past → bhv says:",JSON.stringify(says()));
 pose(w,[12,0,12]); await settle(1500); verb(w,"say",{text:"I set foot here"}); await settle(20000);  // stay ≥ STAY_S at tick granularity
 verb(b,"comp",{id:"meter1",type:"hours",data:7}); await settle(600);                                    // three addresses happened while they were inside
+pose(w,[26,0,26]); await settle(800); verb(w,"say",{text:"this was said outside"}); await settle(800);     // 22 m out, before the tick notices the departure: must NOT be carried
 pose(w,[30,0,30]); await settle(4000);
 console.log("B) real visit + leave → bhv says:",JSON.stringify(says()));
+console.log("B1) …carrying the INSIDE word, not the one said 22 m out:", /take "I set foot here"/.test(says().slice(-1)[0]||"") ? "ok" : "FAIL");
 console.log("B2) …with the meter's hours:", /the meter has 7 on its face now; 3 of them were yours/.test(says().slice(-1)[0]||"") ? "ok" : "FAIL");
 await settle(4000); pose(w,[12,0,12]); await settle(20000); pose(w,[30,0,30]); await settle(12000);
 console.log("D) silent visit + heart → bhv says:",JSON.stringify(says().slice(-1)));
