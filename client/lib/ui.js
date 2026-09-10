@@ -17,11 +17,6 @@ const EMOJI_ICON = {
 import { loadingItems } from './assets.js';
 import { makeFrame, getFrame, isLocked, setLocked, resetLayout } from './frames.js';
 import { defsRegistry } from './defs.js';
-import { initProfile } from './profile.js';
-import { initStylePanel } from './stylepanel.js';
-import { initVideoPanel } from './videopanel.js';
-import { initCapNotice } from './capnotice.js';
-import { initDropdowns } from './dropdown.js';
 
 const $ = (id) => document.getElementById(id);
 export const el = {
@@ -372,7 +367,12 @@ function addDockButton(entry) {
  *  Called from initDock so they exist wherever the dock does: main.js lists the dock, the UI owns
  *  what's behind it. Returns the entries that lead the rail (profile sits right under ∃). */
 function initPanels() {
-  initProfile(); initStylePanel(); initVideoPanel(); initCapNotice();
+  // dynamic, not static: profile/videopanel reach controller.js through xrpanels/mybody, and a static edge from
+  // ui.js closed an import loop that read controller's `pointerClaimed` before initialization (rung-4 boot).
+  // The dock entry is pushed now; the frames land a tick later and the dock repaints so the button shows.
+  Promise.all([import('./profile.js'), import('./stylepanel.js'), import('./videopanel.js'), import('./capnotice.js'), import('./dropdown.js')])
+    .then(([p, st, v, c, d]) => { p.initProfile(); st.initStylePanel(); v.initVideoPanel(); c.initCapNotice(); d.initDropdowns(); paintDock(); })
+    .catch((e) => report('ui panels', e));
   return [{ id: 'profile', icon: 'user-circle' }];
 }
 export function initDock(entries) {
@@ -415,7 +415,6 @@ export function initDock(entries) {
   bus.on('frames', () => paintDock());
   setInterval(paintDock, 2000);   // role grants land async; the wrench follows
   initEMenu();
-  initDropdowns();   // skins every chrome <select> the panels just made, and any made later
 
 }
 
