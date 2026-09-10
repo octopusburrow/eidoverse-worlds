@@ -839,8 +839,3 @@ export function openDoor({ roster = [], needsKey = false, login = null, onEnter 
   openOverlay(el.door);
   setTimeout(() => (s.querySelector('#d-name') ?? s.querySelector('#d-go'))?.focus(), 30);
 }
-
-// COMPAT for the stacked review only (part 3 of 4): the entry file main.js still comes from upstream at this rung and
-// calls the roster that the people pane replaced. Part 4 brings the new entry and removes these two lines.
-export function initRoster() {}
-export function toggleRoster() { const f = getFrame('chat'); if (f && !f.visible) f.show(); document.querySelector('.chat-side-tog')?.click(); }
