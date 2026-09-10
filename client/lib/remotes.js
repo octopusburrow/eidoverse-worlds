@@ -13,6 +13,8 @@ import { avatarMounts, mountTransform } from './world.js';
 import { declareSeatState, clearSeatState } from './seats.js';
 import { applyRemoteReach, noteReachEvents } from './reachnet.js';
 import { applyWingFoldPresence } from '../../shared/wingpresence.js';
+import { applyPresenceWire } from '../../shared/presencewire.js';
+import { applyRemoteXR, resetFingers } from './xrbody.js';
 
 export const remotes = new Map(); // id -> RemoteBody
 
@@ -188,6 +190,39 @@ function applyPose(r, a, b, k) {
 
 const isQuat = (q) => Array.isArray(q) && q.length === 4;
 
+// ---- C18: a tracked (VR) body's head + hands. The sample rides presence as `xr`
+// (see xrbody.js for the frame); here it is blended a→b like the root, handed to
+// the avatar's pre-vrm.update seam, and re-solved there. No sample → hook off, the
+// clip owns the bones again.
+const _xq1 = new THREE.Quaternion(), _xq2 = new THREE.Quaternion(), _xv1 = new THREE.Vector3(), _xv2 = new THREE.Vector3();
+const blendQ = (qa, qb, k) => { _xq1.fromArray(qa); _xq2.fromArray(qb); return _xq1.slerp(_xq2, k).toArray(); };
+const blendGrip = (ga, gb, k) => {
+  if (!ga || !gb) return gb || ga;
+  _xv1.fromArray(ga); _xv2.fromArray(gb); _xv1.lerp(_xv2, k);
+  return [..._xv1.toArray(), ...blendQ(ga.slice(3), gb.slice(3), k)];
+};
+function blendXR(xa, xb, k) {
+  if (!xa || xa === xb || k >= 1) return xb;
+  const o = { h: blendQ(xa.h, xb.h, k), c: xb.c && xa.c ? xb.c.map((v, i) => xa.c[i] + (v - xa.c[i]) * k) : xb.c };
+  const l = blendGrip(xa.l, xb.l, k), r = blendGrip(xa.r, xb.r, k);
+  if (l) o.l = l; if (r) o.r = r;
+  return o;
+}
+function applyXRPresence(r, a, b, k) {
+  const xb = b?.xr;
+  if (!xb) {
+    if (r.xrOn) { r.xrOn = false; if (r.xrHookAv) { r.xrHookAv.onBeforeVrmUpdate = null; resetFingers(r.xrHookAv.vrm); } r.xrHookAv = null; }   // their last sample was a trigger pull: fingers back to the clip
+    return;
+  }
+  r.xrOn = true;
+  r.xrSample = blendXR(a?.xr, xb, k);
+  if (r.xrHookAv !== r.avatar || r.avatar.onBeforeVrmUpdate !== r.xrHook) {   // fresh avatar (swap) or first sample
+    r.xrState = r.xrState || { look: new THREE.Vector3() };
+    r.xrHook = (dt) => applyRemoteXR(r.avatar, r.xrSample, r.xrState, dt);
+    r.xrHookAv = r.avatar; r.avatar.onBeforeVrmUpdate = r.xrHook;
+  }
+}
+
 /** Merged bone list for one pair, with the output arrays setPose will read.
  *  A bone named on only one side holds that side's rotation instead of
  *  blending toward rest — senders drop bones they aren't driving, and reading
@@ -210,6 +245,7 @@ function planPoseBlend(r, pa, pb) {
  *  interpolated and single-sample paths so a late joiner isn't missing them. */
 function applyPresenceExtras(r, s) {
   applyWingFoldPresence(r.avatar, s);
+  applyPresenceWire(r, s);            // present / away / busy, for the Who panel
   const clip = s.clip ?? 'idle';
   if (s.emote && s.emote !== r.lastEmote) {
     r.lastEmote = s.emote;
@@ -285,11 +321,13 @@ export function updateRemotes(dt, now = performance.now()) {
           // The seat owns root/clip, not semantic anatomy. A seated vigil is
           // still visibly folded through the same rig-local renderer path.
           applyWingFoldPresence(r.avatar, s);
+          applyPresenceWire(r, s);
           if (s.emote && s.emote !== r.lastEmote) {
             r.lastEmote = s.emote;
             r.avatar.playEmote(s.emote);
           } else if (!s.emote) r.lastEmote = null;
           applyRemoteReach(r, s);   // a seated body still puts a hand out
+          applyXRPresence(r, s, s, 1);   // …and still looks around / points
         }
         r.avatar.setLimp(false);
         if (r.lastClip !== sw.pose) { r.lastClip = sw.pose; }
@@ -323,6 +361,7 @@ export function updateRemotes(dt, now = performance.now()) {
       // drop samples we've moved past, but always keep one behind renderAt
       while (buf.length > 2 && buf[1].t < renderAt - 400) buf.shift();
       applyPose(r, a, b, k);
+      applyXRPresence(r, a, b, k);
       applyPresenceExtras(r, b);
     } else if (buf.length === 1) {
       applyImmediate(r);
@@ -331,6 +370,7 @@ export function updateRemotes(dt, now = performance.now()) {
       // as a STANDING figure sunk into the ground (the root lowers, the pose
       // never folds). This ran only in the interpolation branch before.
       applyPose(r, buf[0], buf[0], 1);
+      applyXRPresence(r, buf[0], buf[0], 1);
       applyPresenceExtras(r, buf[0]);
     }
 
