@@ -184,4 +184,3 @@ export function fillPath(ctx, name, size = 26, weight = 'fill') {
   ctx.restore();
   return true;
 }
-
