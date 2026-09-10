@@ -14,6 +14,11 @@ import * as TSL from 'three/tsl';
 import { CONFIG } from './base.js';
 
 export { THREE, TSL };
+// THE EYE, as a plain uniform. TSL's camera accessors (`cameraPosition`, …) are built from the per-render
+// camera and have NO camera under per-view (stereo) rendering — a material that reads one never builds its
+// program in VR and draws nothing (09-06 black body; 09-07 black construct floor; grass, perfscope hulls).
+// Materials that need the eye read THIS instead; renderWorld writes it once per frame from the active camera.
+export const eyePos = TSL.uniform(new THREE.Vector3(3.5, 2.6, 5.5));
 
 // ------------------------------------------------------------ wgsl debug
 // ?wgsldebug — surface Tint's REAL compilation diagnostics (Chrome only logs
@@ -61,7 +66,7 @@ document.body.prepend(canvas);
 export const PREF_MSAA = 'ew-msaa', PREF_BACKEND = 'ew-backend';
 export const PREF_HEADSET_SEEN = 'ew-headset-seen';   // set once initXR confirms immersive-vr support; lets the NEXT boot pick WebGL up front so the visor ENTERS instead of RELOADING (R 09-07: the reload tax is the porch-vs-us gap)
 const pref = (k) => { try { return localStorage.getItem(k); } catch { return null; } };   // a storage throw must not kill boot
-// ?xr=1 is a BOOT flag, not a runtime toggle: three 0.185's XRManager rides
+// ?xr=1 is a BOOT flag, not a runtime toggle: three's XRManager (0.185–0.186) rides
 // WebGPU (XRGPUBinding — Chrome, flags today) but only if the adapter was
 // requested xrCompatible, which the backend reads off renderer.xr.enabled at
 // init() time. So the flag sets xr.enabled BEFORE init below.

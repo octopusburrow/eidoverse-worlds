@@ -16,7 +16,7 @@
 import { THREE, renderer } from './core.js';
 import { CONFIG, tee } from './base.js';
 import { myState } from './controller.js';
-import { isPresenting, xrScale, puppetScale, xrRig, xrHands, xrFingerCurl, syncRigToBody, applyTurnEarly } from './xr.js';
+import { isPresenting, puppetScale, xrRig, xrHands, xrFingerCurl, syncRigToBody, applyTurnEarly } from './xr.js';
 
 let getSelf = () => null;
 let hooked = null;

@@ -15,18 +15,14 @@ const deskCam = new THREE.PerspectiveCamera(65, 16 / 9, 0.1, 20000);
 const tmpPos = new THREE.Vector3(), tmpQuat = new THREE.Quaternion(), behind = new THREE.Vector3();
 let lastAspect = 0;
 
-// R 09-08 00:47: the scene re-render (porch-old's pattern, above) costs a full pass on top of stereo — on this
-// renderer that is a MISSED FRAME every tick (the SteamVR construct fading up at head angles) and the input
-// pass starved with it. 'first' now re-renders NOTHING: the eye buffer is the session's XRWebGLLayer — an opaque
-// framebuffer, not a texture three can sample, but a legal READ framebuffer for gl.blitFramebuffer inside the
-// animation frame (WebXR §opaque framebuffers). One GL call: the left eye onto the canvas. 'third' still needs a
-// pass, into a SMALL target (fill is the lever), blitted up.
+// History, kept short because a stranger will pick this up: 'first' once re-rendered the scene (a full pass on
+// top of stereo — a missed frame every tick), then read the session's XRWebGLLayer with gl.blitFramebuffer (two
+// freezes — see below). Neither survives. What runs now is described at ensureQuad(). 'third' renders one pass
+// into a SMALL target (fill is the lever) and blits it up.
 let thirdRT = null, blitFailed = false, blitTeed = false;
-// R 09-08 01:35: a blit straight onto the canvas left ONE still frame — Chrome re-composites a WebGL canvas
-// when a draw or clear touches it, and a blit is neither. So the eye is blitted (multisample-resolved 1:1)
-// into a three RenderTarget, and that texture is drawn onto the canvas with one fullscreen quad through
-// three's own canvas path — the path the scene pass used, which presents live. The target is tagged sRGB:
-// the eye bytes are already encoded, three decodes on sample and re-encodes on output — a round trip.
+// A blit straight onto the canvas also left ONE still frame: Chrome re-composites a WebGL canvas only when a
+// draw or clear touches it. So the eye is drawn onto the canvas with one fullscreen quad through three's own
+// canvas path — the path the scene pass used, which presents live.
 let quadScene = null, quadCam = null, quadMesh = null, quadMap = null;
 const MIRROR_FLIP = new URLSearchParams(location.search).has('mirrorflip') ? -1 : 1;
 // R 09-08 01:43: TWO freezes (fps → 17 → nothing; SteamVR alpha-ing), and by elimination the one thing both frozen

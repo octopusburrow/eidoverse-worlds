@@ -621,7 +621,7 @@ async function enterVR() {
       // Defensive: the canvas back to the window's size and ratio (three restores its own record; ours is the truth)
       try { renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(innerWidth, innerHeight); } catch (e) { report('xr exit resize', e); }
       // THE BLACK DESKTOP (R 09-06 12:46 → 23:43; reproduced 09-07 00:05 with an emulated headset, smoke/xr-exit-probe.mjs):
-      // three 0.185's WebGL backend keeps `_currentContext` = the last XR frame's render context after the session
+      // three's WebGL backend (0.185–0.186) keeps `_currentContext` = the last XR frame's render context after the session
       // ends (that frame's finishRender never ran). Every desktop render then ends with finishRender → _setFramebuffer
       // (deadXRContext) → drawBuffers → `WeakMap.set(undefined)` THROWS — nothing reaches the canvas while the HUD (DOM)
       // lives on. Drop the dead context; the next render starts clean. (Upstream: report against Renderer/XRManager.)

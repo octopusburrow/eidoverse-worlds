@@ -1,4 +1,5 @@
-// Vendored from three r185.1 examples/jsm/interactive/HTMLMesh.js (MIT) for eido's VR quads (2026-09-05).
+// Vendored from three 0.185.1 examples/jsm/interactive/HTMLMesh.js (MIT) for eido's VR quads (2026-09-05); NOT
+// rebased onto 0.186's HTMLMesh.js (they differ by ~106 lines: the EIDO patches below plus upstream drift).
 // Patches, each marked EIDO: (1) DPR scale — canvas rasterised at `scale` px per CSS px so the quad
 // matches xrpanels' 900 px/m; (2) inline <svg> drawn via serialise→Image (the icon system);
 // (3) `pause`/`resume` + a per-instance min interval so live panels don't re-rasterise at 60 Hz;

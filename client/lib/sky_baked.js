@@ -385,7 +385,7 @@ function xrPumpTick() {
   // key". Classic secondary-view discipline: xr.enabled off around the bake.
   const xrWas = renderer.xr.enabled;
   renderer.xr.enabled = false;
-  // r184 PINNED-VERSION SURGERY (revisit at every three bump): between XR
+  // PINNED-VERSION SURGERY, written against r184, re-checked at the 0.186 bump (revisit at every three bump): between XR
   // frames the backend's _currentContext still points at the LAST XR frame's
   // context. Our render captures it as previousContext and finishRender then
   // restores a framebuffer that does not exist outside the session frame —

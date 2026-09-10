@@ -17,6 +17,11 @@ const EMOJI_ICON = {
 import { loadingItems } from './assets.js';
 import { makeFrame, getFrame, isLocked, setLocked, resetLayout } from './frames.js';
 import { defsRegistry } from './defs.js';
+import { initProfile } from './profile.js';
+import { initStylePanel } from './stylepanel.js';
+import { initVideoPanel } from './videopanel.js';
+import { initCapNotice } from './capnotice.js';
+import { initDropdowns } from './dropdown.js';
 
 const $ = (id) => document.getElementById(id);
 export const el = {
@@ -363,10 +368,18 @@ function addDockButton(entry) {
   return b;
 }
 
+/** The panels the UI owns — profile, style, video, capability notice — and the select skinning.
+ *  Called from initDock so they exist wherever the dock does: main.js lists the dock, the UI owns
+ *  what's behind it. Returns the entries that lead the rail (profile sits right under ∃). */
+function initPanels() {
+  initProfile(); initStylePanel(); initVideoPanel(); initCapNotice();
+  return [{ id: 'profile', icon: 'user-circle' }];
+}
 export function initDock(entries) {
+  const lead = initPanels();
   // built-ins lead; a mod registered before boot keeps its entry, once
   const seen = new Set();
-  dockEntries = [...entries, ...dockEntries].filter((e) => !seen.has(e.id) && seen.add(e.id));
+  dockEntries = [...lead, ...entries, ...dockEntries].filter((e) => !seen.has(e.id) && seen.add(e.id));
   // `last: true` entries (the edit wrench) ALWAYS close the list: edit is a
   // MODE, not a window, and it reads as one only when it sits apart at the end
   // (R, 09-05). Mods registering later insert ahead of them (addDockButton).
@@ -402,6 +415,8 @@ export function initDock(entries) {
   bus.on('frames', () => paintDock());
   setInterval(paintDock, 2000);   // role grants land async; the wrench follows
   initEMenu();
+  initDropdowns();   // skins every chrome <select> the panels just made, and any made later
+
 }
 
 // ---- the rail lives flat on an edge. {edge, along} persisted;

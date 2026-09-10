@@ -66,5 +66,3 @@ mcpl/node_modules
 .DS_Store
 
 # scratch world output from smoke runs
-smoke/*.jsonl
-smoke/snapshot.json
