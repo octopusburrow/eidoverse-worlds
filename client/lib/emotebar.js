@@ -114,7 +114,15 @@ export function initEmoteBar() {
     // charges it to the correct accumulator. Taking g.right from everything was true
     // only of left-anchored chrome.
     let costL = 0, costR = 0;
-    for (const sel of ['#dock', '#micbtn', '#earbtn', '.capnotice']) {
+    // `.capnotice` IS NOT IN THIS LIST, by the owner's ordering rule (15:04): the bar
+    // computes against the dock and its glyphs, and the card then lands under the bar.
+    // One direction. The entry used to be here, inert because the card's three shipped
+    // tops (389 / 64 / 102) all failed `g.top < 60` — and the comment above said what
+    // would happen if it ever entered the band. It did, on 2026-09-12, when the card's
+    // top became computed: room went negative and the 9-across bar reflowed to a 48x350
+    // column on a phone. The card is transient chrome with a dismiss button; the bar is
+    // a primary control. The card yields, and it is placed second so it can.
+    for (const sel of ['#dock', '#micbtn', '#earbtn']) {
       const g = document.querySelector(sel)?.getBoundingClientRect();
       if (g && g.width && g.top < 60 && g.bottom > 8) {
         const c = chromeCost(sel, g, innerWidth);
@@ -161,8 +169,19 @@ export function initEmoteBar() {
   // by stacking. (#emenu 40 and #trayzone 28 are not in the list at all.)
   f.show = () => {
     show();
+    // RE-DERIVE, DO NOT RATCHET. `Math.min(state.w, room)` can only ever shrink, and
+    // state.w is restored from localStorage — so one bad width outlives the condition
+    // that caused it, forever. Measured 2026-09-12: while `.capnotice` was still in
+    // roomFor()'s list it drove room negative and snapTo wrote w:48 (a 9-tall column)
+    // to storage; removing the card from that list fixed room (272, correct) and the
+    // bar STILL opened at 48, because min(48, 272) = 48. The same shape as the frame
+    // width ratchet in frames.js:fit().
+    //
+    // An UNPLACED bar has no claim on a stored width — its width is always a function
+    // of the room available now. A PLACED one (the owner dragged it) keeps what they
+    // chose, which is what `room == null` already expresses.
     const room = f._placed ? null : roomFor();
-    snapTo(room == null ? f._state.w : Math.min(f._state.w, room));
+    snapTo(room == null ? f._state.w : room);
     return f;
   };
   const grid = document.createElement('div');

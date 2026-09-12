@@ -182,19 +182,33 @@ console.log('EMOTEBAR — B2: a clamp that cannot help stands down (antra-tess #
     f._state.w < 352 && f._state.w >= 48, `w=${f._state.w} — expected a snapped width under 352 (room here is 320)`);
   rail.remove();
 
-  // THE .capnotice ENTRY IS LIVE, tested in the state where the card actually
-  // constrains the bar: STRETCHED, which is what it declares below 900px
-  // (`left:50px; right:8px`, index.html's max-width:900 block). Right-anchored it never
-  // can — capped at min(320px,46vw) it would need to be ~646px wide to squeeze a 352px
-  // bar at 1024, so a right-anchored fixture is indistinguishable from the entry being
-  // absent. That, not a fault in the clamp, is what made the previous check
-  // unsatisfiable once the costing became anchor-aware.
+  // THE CARD DOES NOT CONSTRAIN THE BAR. Inverted deliberately — this assertion used
+  // to require the opposite ("a stretched .capnotice in the bar row DOES constrain it
+  // — the list entry is live"), and it was right for the design it was written against.
+  //
+  // The owner's ordering rule (15:04) replaced that design: "Compute emote bar first
+  // relative to the dock. capnotice lands under the emote bar (or just over it, tbh,
+  // because you can dismiss it)." One direction. The bar sizes against the rail and its
+  // glyphs; the card then places itself from the bar's settled rect. So `.capnotice` is
+  // out of roomFor()'s obstacle list, and a stretched card in the bar's row must now
+  // leave the bar at its full width.
+  //
+  // WHY THE OLD DESIGN HAD TO GO: the two measured each other. The card's top came from
+  // every obstacle above it, the bar included; the bar's width came from every obstacle
+  // in its band, the card included. It had no fixed point — the same probe measured the
+  // card at 361 on one run and 95 on the next. And emotebar.js:99-104 had already
+  // written down what would happen if the card entered the band: "room goes negative
+  // (measured -6 ... reflowed the 9-across bar to a 48x350 column)". That shipped to a
+  // phone on 2026-09-12: nine tiles in one 48px column down the right edge.
+  //
+  // This check is the guard against re-adding it: put `.capnotice` back in roomFor()'s
+  // list and this goes red.
   document.body.innerHTML = '';
   (window as any).innerWidth = 390;
   const card = mk('.capnotice', 50, 382, 10, 45, { anchor: 'stretch' });
   f._state.w = 352; f._state.h = ROW_H; (f as any)._placed = false; f.show();
-  check('a stretched .capnotice in the bar row DOES constrain it — the list entry is live',
-    f._state.w < 352, `w=${f._state.w} — if .capnotice were dropped from the list this stays 352`);
+  check('a stretched .capnotice in the bar row leaves the bar alone — the card yields, not the bar',
+    f._state.w === 352, `w=${f._state.w} — the card is back in roomFor()'s obstacle list; the cycle is back with it`);
   card.remove();
   (window as any).innerWidth = 1280;
 
@@ -222,16 +236,33 @@ console.log('EMOTEBAR — B2: a clamp that cannot help stands down (antra-tess #
   for (const el of [...document.body.children]) if (!made.includes(el as any) && el !== f.el) el.remove();
   for (const el of made) if (!el.isConnected) document.body.append(el);
 
-  // THE NEVER-WIDEN HALF, bound. Round-4 review: replacing `Math.min(f._state.w,
-  // room)` at the show() call site with bare `room` left this suite 35/0, because
-  // no fixture presented a room WIDER than the saved width. The clamp must only
-  // ever narrow: a bar saved at 86px must not be inflated to fill 1162px of clear
-  // space just because the chrome moved.
+  // NEVER-WIDEN APPLIES TO A BAR THE OWNER PLACED — and only to that one.
+  //
+  // Round 4 bound this with `_placed = false`, and the rule it stated is right for the
+  // case it had in mind: "a bar saved at 86px must not be inflated to fill 1162px of
+  // clear space just because the chrome moved." But an UNPLACED bar never chose 86px.
+  // Its width is a function of the room available, and a saved one is a derived value
+  // that outlives the condition that produced it.
+  //
+  // Measured on a phone, 2026-09-12: while `.capnotice` was still in roomFor()'s list
+  // it drove room negative, snapTo wrote w:48 to storage, and the bar opened as nine
+  // tiles in a single 48px column down the right edge. Removing the card from that list
+  // fixed room (272, correct) and the bar STILL opened at 48 — because
+  // `Math.min(48, 272)` is 48. The stored value could never recover.
+  //
+  // The distinction already exists in the product: frames.js:193 marks a resize as
+  // deliberate ("a resize is deliberate too"), so a dragged bar has `_placed = true`
+  // and show() skips the clamp entirely (`f._placed ? null : roomFor()`). So this
+  // fixture now asserts what it meant — a PLACED bar keeps its width — and the
+  // unplaced case is asserted below it.
   document.body.innerHTML = '';
   mk('#dock', 0, 42, 10, 304);
+  f._state.w = widthFor(2); f._state.h = heightFor(2); (f as any)._placed = true; f.show();
+  check('a bar the owner PLACED is never widened to fill the room available',
+    f._state.w === widthFor(2), `w=${f._state.w} — a deliberate 2-across was inflated`);
   f._state.w = widthFor(2); f._state.h = heightFor(2); (f as any)._placed = false; f.show();
-  check('a saved narrow bar is never WIDENED to fill the room available',
-    f._state.w === widthFor(2), `w=${f._state.w} — bare room would give widthFor(9)=352`);
+  check('...but an UNPLACED bar re-derives, so a width a bug wrote can recover',
+    f._state.w === widthFor(9), `w=${f._state.w} — min(saved, room) ratchets: the phone opened 9 tiles in a 48px column`);
   for (const el of [...document.body.children]) if (el !== f.el) el.remove();
   for (const el of made) if (!el.isConnected) document.body.append(el);
 
