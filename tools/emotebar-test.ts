@@ -210,6 +210,29 @@ console.log('EMOTEBAR — B2: a clamp that cannot help stands down (antra-tess #
   check('a stretched .capnotice in the bar row leaves the bar alone — the card yields, not the bar',
     f._state.w === 352, `w=${f._state.w} — the card is back in roomFor()'s obstacle list; the cycle is back with it`);
   card.remove();
+
+  // ANCHOR-AWARENESS IN roomFor(), bound by a RIGHT-DOCKED RAIL.
+  //
+  // Removing `.capnotice` from the obstacle list (cdca5c2) took the only right-anchored
+  // obstacle out of this suite, and with it the only fixture that could tell
+  // chromeCost() from the bare `g.right` arithmetic it replaced: the review found that
+  // bypassing chromeCost here left the suite 39/0.
+  //
+  // The entry is NOT redundant — all three remaining selectors read `dataset.edge`,
+  // which ui.js:499 rewrites whenever the rail is dragged, so any of them can become
+  // right-anchored at runtime. What was missing was a fixture that does it. At 1280
+  // with the rail at [1238..1280]:
+  //     anchor-aware  {left:0, right:42}    -> room 1222   bar keeps 352
+  //     bare g.right  {left:1280, right:0}  -> room  -16   bar floors to 48
+  // which is the 48x350 single column the owner photographed on 2026-09-12, reached by
+  // a second route.
+  document.body.innerHTML = '';
+  (window as any).innerWidth = 1280;
+  const rightRail = mk('#dock', 1238, 1280, 10, 42, { edge: 'right' });
+  f._state.w = 352; f._state.h = ROW_H; (f as any)._placed = false; f.show();
+  check('a RIGHT-docked rail does not eat the bar from the left',
+    f._state.w === 352, `w=${f._state.w} — charging its g.right to the left gives room -16 and floors the bar to one column`);
+  rightRail.remove();
   (window as any).innerWidth = 1280;
 
   // ANCHOR-AWARENESS ITSELF, bound. The two fixtures above cannot see it: a LEFT-anchored
