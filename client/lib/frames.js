@@ -377,6 +377,22 @@ export function makeFrame(id, opts = {}) {
     // is stranded hidden FOREVER. B1 traded "reopens a deliberately closed panel" for
     // "never reopens an auto-hidden one".
     autoHidden: saved?.autoHidden ?? false,
+    // AND `placed`, for the same reason and by the same mistake. markMoved() sets
+    // `state.placed = true` ad-hoc and save() serialises the whole object, so the flag
+    // reaches storage once — but this literal had no `placed` key, so the NEXT
+    // construction built a state without it and the next save() erased it. Identical
+    // in shape to the autoHidden bug fixed in 2256cba, three lines above, which I
+    // fixed while leaving its twin in place.
+    //
+    // Measured at 1280x800 on the emote bar: markMoved + save -> `_placed: true`;
+    // reload -> `_placed: false`; one hide/show -> storage carries no `placed` key at
+    // all. A bar the owner deliberately resized is forgotten by the next refresh and
+    // goes back to being auto-managed — losing the fit() re-derive exemption
+    // (`!placed && opts.w != null`), the chrome-clearance exemption
+    // (`!placed && chromeSettled`) and the viewport auto-minimize exemption
+    // (`id === 'chat' || !f._state || f._placed`) all at once. The exact failure
+    // `placed` was introduced to prevent.
+    placed: saved?.placed === true,
   };
 
   const api = {

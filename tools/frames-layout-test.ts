@@ -544,6 +544,28 @@ console.log("AUTO-HIDDEN — survives a reload");
   check("autoHidden is read back from a saved layout, not just written to it",
     f._state.autoHidden === true, JSON.stringify(f._state));
 
+  // THE SAME BUG, ONE FIELD OVER — and it survived the fix above by three lines.
+  // `markMoved()` sets `state.placed = true` ad-hoc and save() serialises the whole
+  // object, so the flag reached storage the FIRST time. But the state literal had no
+  // `placed` key, so the next construction built a state without it and the next
+  // save() erased it. Measured live at 1280x800 on the emote bar:
+  //   markMoved + _save -> placed:true · reload -> placed:true
+  //   hide/show         -> the key is GONE from storage
+  //   reload again      -> _placed:false
+  // Two page loads and a frame the owner deliberately placed is auto-managed again:
+  // it loses the fit() re-derive exemption, the chrome-clearance exemption and the
+  // viewport auto-minimize exemption at once. Exactly what `placed` exists to prevent.
+  localStorage.setItem("ew-frame-placedtest", JSON.stringify({
+    x: 100, y: 100, w: 200, h: 150, hidden: false, placed: true,
+  }));
+  const pf: any = makeFrame("placedtest", { title: "placedtest", x: 100, y: 100, w: 200, h: 150 });
+  check("placed is read back from a saved layout, not just written to it",
+    pf._placed === true, `_placed=${pf._placed}`);
+  check("...and it SURVIVES the next save() — the state object carries it",
+    (() => { pf._save(); const ls = JSON.parse(localStorage.getItem("ew-frame-placedtest") || "{}");
+             return ls.placed === true; })(),
+    `storage after save: ${localStorage.getItem("ew-frame-placedtest")}`);
+
   // ...and a frame the owner deliberately closed must NOT carry the flag, or the
   // viewport rule would reopen it. hide() clears it; that is the whole distinction.
   localStorage.setItem("ew-frame-autotest2", JSON.stringify({
