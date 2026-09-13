@@ -182,6 +182,28 @@ export function initEmoteBar() {
     // chose, which is what `room == null` already expresses.
     const room = f._placed ? null : roomFor();
     snapTo(room == null ? f._state.w : room);
+    // TODO(mobile): ONE SAVED LAYOUT SERVES EVERY SURFACE, AND IT SHOULD NOT.
+    //
+    // A placed bar keeps the width its owner chose — correct, and the reason this
+    // exemption exists. But `_placed` also exempts it from roomFor(), which was the
+    // only thing holding it clear of the rail's glyphs. Measured 2026-09-12: drag the
+    // bar to 352 at 1280x800, reload at 390x844, and it opens at [30..382] with `sit`
+    // and `stand` under #micbtn/#earbtn (z-45 vs Z_HI=25) — unreachable until the owner
+    // moves or resets it.
+    //
+    // Not patched here, deliberately. Every local fix is worse than the bug:
+    //   narrow it   — discards the width the owner chose, which is what this exemption
+    //                 exists to protect
+    //   slide it x  — impossible: 352 in a 390 viewport leaves 22px of slack and fit()
+    //                 already pins x to [8,30]; any x written is clamped straight back
+    //   drop it y   — works (measured: zero blocked tiles, width kept) but the vertical
+    //                 rail runs to bottom 304, so "below what it collides with" puts the
+    //                 bar at y=312, mid-screen. Reachable and wrong-looking.
+    //
+    // The real shape is a layout saved PER SURFACE (desktop vs mobile at minimum), so a
+    // deliberate desktop arrangement is never replayed onto a phone at all. R's call,
+    // 2026-09-12 18:06; mobile is being picked up by someone else, so this is theirs to
+    // design rather than ours to guess at. Disclosed in the PR body under "known".
     return f;
   };
   const grid = document.createElement('div');
