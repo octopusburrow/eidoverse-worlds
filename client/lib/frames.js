@@ -11,6 +11,20 @@
 
 import { bus } from './base.js';
 
+// TODO(mobile): ONE SAVED LAYOUT SERVES EVERY SURFACE, AND IT SHOULD NOT.
+// This key carries the frame id and nothing else, so an arrangement made on a desktop
+// is replayed verbatim onto a phone. A layout is not portable across surfaces — the
+// viewport that produced it is part of what it means — and every symptom of that is a
+// separate patch that fights the last one:
+//   · a bar the owner widened to 352 at 1280x800 reopens at 390x844 with `sit` and
+//     `stand` under #micbtn/#earbtn, unreachable (measured 2026-09-12; emotebar.js
+//     show() has the detail and why no local fix is worth taking)
+//   · the width and height ratchets fixed in bcbe9f7/cdca5c2 are both the same shape:
+//     a value derived under one viewport outliving the condition that produced it
+// The fix is to key the record by surface class (desktop / mobile at minimum) so a
+// deliberate arrangement is never replayed onto a viewport that cannot hold it.
+// Owner's call, 2026-09-12: mobile is being picked up separately, so the surface
+// taxonomy is theirs to design rather than ours to guess at. Disclosed in PR #185.
 const LS = (id) => `ew-frame-${id}`;
 
 // Layout-version guard. DEFAULT_LAYOUT is a hand-arranged default (edge-anchored). A frame's own

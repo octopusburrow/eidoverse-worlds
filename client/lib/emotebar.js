@@ -182,7 +182,10 @@ export function initEmoteBar() {
     // chose, which is what `room == null` already expresses.
     const room = f._placed ? null : roomFor();
     snapTo(room == null ? f._state.w : room);
-    // TODO(mobile): ONE SAVED LAYOUT SERVES EVERY SURFACE, AND IT SHOULD NOT.
+    // TODO(mobile): the general form of this lives at the persistence key in
+    // frames.js (`const LS = ...`) — one saved layout serves every surface. What
+    // follows is this module's instance of it, kept here because the measurements
+    // and the rejected fixes are specific to the bar.
     //
     // A placed bar keeps the width its owner chose — correct, and the reason this
     // exemption exists. But `_placed` also exempts it from roomFor(), which was the
