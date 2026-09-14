@@ -29,7 +29,8 @@
 //   { t:'group',  k, label, open? }   marker: rows until the next marker belong to it;
 //                 collapsed groups skip their rows                → edit('fold', k)
 //   { t:'tree',   k, rows:[{ id, label, sub?, depth, active?, multi?, badges?:[], locked?, menu?, kids?, open?, dim? }],
-//                 a Shift/Ctrl-click row dispatches edit(k, id, f, {extend:true})
+//                 a Shift/Ctrl-click row dispatches edit(k, id, f, {extend:true}); dragging a row onto
+//                 another dispatches edit('drop', {id, onto}) — onto empty tree space: {onto: null}
 //                 menu?:[{k, label, danger?}] }   right-click a row → its menu (row.menu wins)
 //                 kids>0 draws a disclosure → edit('open', id)   → edit(k, id) / edit('lock', id) / edit(item.k, id)
 // Every field also takes { disabled?, driven?, hint? }: disabled draws it
@@ -129,6 +130,8 @@ function guardActions(root) {
     if (moved > 6 && !e.target.closest('.sp-num')) { e.preventDefault(); e.stopImmediatePropagation(); }
   }, true);
 }
+
+let treeDrag = null;   // the tree row being dragged (id), across the dragstart → drop pair
 
 export function renderDOM(body, fields, edit) {
   body.innerHTML = '';
@@ -355,8 +358,23 @@ function fieldDOM(f, edit) {
     case 'tree': {
       const box = el('div', 'sp-tree');
       if (!f.rows?.length) box.append(el('div', 'sp-empty', f.empty ?? 'nothing here'));
+      // drag a row onto another to reparent it (edit('drop', {id, onto})); onto
+      // the tree's empty space to make it a root ({onto: null}). The dragged
+      // id rides a module variable, not dataTransfer — synthetic DragEvents
+      // in a headless bench carry no data, and nothing else needs it.
+      const dropOn = (onto) => (e) => { e.preventDefault(); e.stopPropagation(); box.querySelectorAll('.drop').forEach((x) => x.classList.remove('drop')); if (treeDrag && treeDrag !== onto) edit('drop', { id: treeDrag, onto }); treeDrag = null; };
+      box.ondragover = (e) => { if (treeDrag) { e.preventDefault(); e.dataTransfer && (e.dataTransfer.dropEffect = 'move'); } };
+      box.ondrop = dropOn(null);
       for (const r of f.rows ?? []) {
         const line = el('div', `sp-item sp-tree-row${r.active ? ' active' : ''}${r.multi ? ' multi' : ''}`);
+        if (!r.noDrag) {
+          line.draggable = true;
+          line.ondragstart = (e) => { treeDrag = r.id; line.classList.add('dragging'); e.dataTransfer?.setData('text/plain', String(r.id)); };
+          line.ondragend = () => { treeDrag = null; line.classList.remove('dragging'); box.querySelectorAll('.drop').forEach((x) => x.classList.remove('drop')); };
+          line.ondragover = (e) => { if (treeDrag && treeDrag !== r.id) { e.preventDefault(); e.stopPropagation(); line.classList.add('drop'); } };
+          line.ondragleave = () => line.classList.remove('drop');
+          line.ondrop = dropOn(r.id);
+        }
         line.style.paddingLeft = `${4 + (r.depth ?? 0) * 14}px`;
         if (r.dim) line.classList.add('dim');
         // disclosure: a row with children folds them (edit('open', id))

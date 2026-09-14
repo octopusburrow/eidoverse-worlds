@@ -149,7 +149,10 @@ console.log('\nEsc mid-scrub, in a real browser (the key lands on the document, 
   check('scrub previews (range 10 → 22 on the face)', await evalJson(`${inp}.value === '22'`), await evalJson(`${inp}.value`));
   check('…and the input is not focused while scrubbing', await evalJson(`document.activeElement !== ${inp}`));
   await evalJson(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })), true`);
-  check('Esc restores the face', await evalJson(`${inp}.value === '10'`), 'face=' + await evalJson(`${inp}.value`) + ' channels=' + JSON.stringify(await evalJson(`[...${insp}.querySelectorAll('.sp-f-num')].map((r) => r.querySelector('.sp-label').textContent + '=' + r.querySelector('.sp-num').value)`)) + ' fold=' + JSON.stringify(await evalJson(`import('/lib/state.js').then((m) => { const e = m.state.st.entities.benchlamp; return { intensity: e?.intensity, range: e?.range }; })`)));
+  // a live coalesced commit may already have gone out mid-scrub; the Esc sends
+  // the start value back through the same coalescer, so the restore is on the
+  // WIRE one pacing interval later — wait for the face AND the fold
+  check('Esc restores the face — and the fold, if a live commit had already gone out', await waitFor(`${inp}.value === '10' && import('/lib/state.js').then((m) => m.state.st.entities.benchlamp.range === 10)`, 4000), 'face=' + await evalJson(`${inp}.value`) + ' channels=' + JSON.stringify(await evalJson(`[...${insp}.querySelectorAll('.sp-f-num')].map((r) => r.querySelector('.sp-label').textContent + '=' + r.querySelector('.sp-num').value)`)) + ' fold=' + JSON.stringify(await evalJson(`import('/lib/state.js').then((m) => { const e = m.state.st.entities.benchlamp; return { intensity: e?.intensity, range: e?.range }; })`)));
   await evalJson(`${inp}.dispatchEvent(${pe('pointerup', 160)}), true`);
   await sleep(700);
   check('…and the light never left 10 (nothing committed)', (await evalJson(`import('/lib/world.js').then((m) => m.entities.get('benchlamp')?.userData?.lightParams?.range)`)) === 10);
@@ -225,6 +228,29 @@ check('↑ selects the previous', await waitFor(`import('/lib/scenegraph.js').th
 await evalJson(`dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyD', altKey: true, bubbles: true })), true`);
 check('Alt+D duplicates: a new light carrying the SOURCE\'s components (minus lock), nudged', await waitFor(`import('/lib/world.js').then((m) => { const id = [...m.entities.keys()].find((k) => /^benchlamp~[0-9a-f]{4}$/.test(k)); const o = m.entities.get(id); if (!o) return false; const strip = (b) => { const c = { ...(b ?? {}) }; delete c.lock; return JSON.stringify(c); }; return strip(m.comps.get(id)) === strip(m.comps.get('benchlamp')) && Math.abs(o.position.x - 1.5) < 0.01; })`), await evalJson(`import('/lib/world.js').then((m) => { const id = [...m.entities.keys()].find((k) => /^benchlamp~[0-9a-f]{4}$/.test(k)); return JSON.stringify({ id, comps: m.comps.get(id), src: m.comps.get('benchlamp'), pos: m.entities.get(id)?.position.toArray() }); })`));
 check('…and the copy is selected', await waitFor(`import('/lib/scenegraph.js').then((m) => /^benchlamp~[0-9a-f]{4}$/.test(m.sceneSelected() ?? ''))`));
+await evalJson(`import('/lib/scenegraph.js').then((m) => m.sceneSelect('benchlamp')), true`);
+await waitFor(`${insp}.querySelector('.sp-info')?.textContent.startsWith('benchlamp')`);
+
+console.log('\ndrag-reparent in the tree: detach onto empty space, attach onto a row, refuse a cycle, undo:');
+await sleep(1500);   // verb window
+const rowOf = (id) => `[...${hier}.querySelectorAll('.sp-tree-row')].find((x) => x.querySelector('.sp-item-label').textContent.includes(${JSON.stringify('')} + ${JSON.stringify(id)}))`;
+const dragTo = async (id, targetExpr) => evalJson(`(() => { const src = ${rowOf(id)}; const dst = ${targetExpr}; if (!src || !dst) return 'missing:' + !!src + !!dst; src.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: new DataTransfer() })); dst.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: new DataTransfer() })); dst.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: new DataTransfer() })); src.dispatchEvent(new DragEvent('dragend', { bubbles: true })); return 'ok'; })()`);
+check('rows are draggable; riders are not', await evalJson(`${rowOf('lamp3')}?.draggable === true`));
+check('lamp3 starts mounted on benchlamp', await evalJson(`import('/lib/state.js').then((m) => m.state.st.entities.lamp3?.parent?.to === 'benchlamp')`));
+const d1 = await dragTo('lamp3', `${hier}.querySelector('.sp-tree')`);
+check('drop onto empty tree space → detached (dismount, absolute pose stamped)', await waitFor(`import('/lib/state.js').then((m) => !m.state.st.entities.lamp3?.parent)`), d1 + ' parent=' + JSON.stringify(await evalJson(`import('/lib/state.js').then((m) => m.state.st.entities.lamp3?.parent)`)) + ' refused=' + JSON.stringify(await evalJson(`window.__refused`)));
+await sleep(600);
+const d2 = await dragTo('lamp3', rowOf('porch  (benchlamp)'));
+check('drop onto a row → mounted on it (in place)', await waitFor(`import('/lib/state.js').then((m) => m.state.st.entities.lamp3?.parent?.to === 'benchlamp')`), d2 + ' parent=' + JSON.stringify(await evalJson(`import('/lib/state.js').then((m) => m.state.st.entities.lamp3?.parent)`)));
+await sleep(600);
+const d3 = await dragTo('porch  (benchlamp)', rowOf('lamp3'));
+await sleep(400);
+check('dropping a carrier onto its own cargo is refused with a hint, nothing sent', d3 === 'ok' && await evalJson(`import('/lib/state.js').then((m) => m.state.st.entities.lamp3?.parent?.to === 'benchlamp' && !m.state.st.entities.benchlamp?.parent)`) && await evalJson(`/own cargo/.test(document.querySelector('#hintbar, .hint, #hint')?.textContent ?? document.body.textContent)`));
+await evalJson(`import('/lib/build.js').then((m) => m.undo()), true`);
+check('Ctrl+Z undoes the attach → detached again', await waitFor(`import('/lib/state.js').then((m) => !m.state.st.entities.lamp3?.parent)`), JSON.stringify(await evalJson(`import('/lib/state.js').then((m) => m.state.st.entities.lamp3?.parent)`)));
+await sleep(600);
+await evalJson(`import('/lib/build.js').then((m) => m.undo()), true`);
+check('…and once more undoes the detach → mounted again with its old offset', await waitFor(`import('/lib/state.js').then((m) => m.state.st.entities.lamp3?.parent?.to === 'benchlamp' && Math.abs((m.state.st.entities.lamp3.parent.offset ?? [0])[1] - 0.5) < 1e-6)`), JSON.stringify(await evalJson(`import('/lib/state.js').then((m) => m.state.st.entities.lamp3?.parent)`)));
 await evalJson(`import('/lib/scenegraph.js').then((m) => m.sceneSelect('benchlamp')), true`);
 await waitFor(`${insp}.querySelector('.sp-info')?.textContent.startsWith('benchlamp')`);
 

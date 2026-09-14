@@ -140,7 +140,7 @@ function hierarchyFields() {
     const at = rows.length; rows.push(row);
     let any = mine;
     if (!collapsed.has(id) || q) {   // a filter looks inside folded nodes too
-      for (const r of rd) if (!q || r.toLowerCase().includes(q)) { rows.push({ id: `rider:${r}`, label: `🧍 ${r}`, depth: depth + 1 }); any = true; }
+      for (const r of rd) if (!q || r.toLowerCase().includes(q)) { rows.push({ id: `rider:${r}`, label: `🧍 ${r}`, depth: depth + 1, noDrag: true }); any = true; }
       for (const k of ch) if (walk(k, depth + 1)) any = true;
     }
     if (!any) rows.splice(at);        // nothing under it matched either: drop it and its subtree
@@ -187,6 +187,7 @@ function hierarchyDispatch(action, payload, _field, opts = {}) {
     }
     case 'detach': sceneDetach(payload ?? sel); break;
     case 'remove': { const ids = payload && !extra.has(payload) && payload !== sel ? [payload] : selection(); if (ids.length) removeMany(ids); break; }
+    case 'drop': reparent(payload?.id, payload?.onto); break;
     case 'filter': filter = String(payload ?? ''); break;
     case 'open': if (collapsed.has(payload)) collapsed.delete(payload); else collapsed.add(payload); break;
     case 'hide': { const id = payload ?? sel; if (id) commitEdit(id, 'flags.hidden', comps.get(id)?.hidden !== true); break; }
@@ -199,6 +200,36 @@ function hierarchyDispatch(action, payload, _field, opts = {}) {
     }
   }
   repaintAll();
+}
+
+/** Drag-reparent: `id` onto `onto` (null = make it a root). Refuses a thing
+ *  onto itself or its own cargo BEFORE anything is sent, with the reason;
+ *  scenegraph does the mount/dismount math (in place: the thing doesn't move,
+ *  its frame does). The undo re-issues whatever held it before — its old
+ *  carrier with the old offset, or a dismount stamped at its absolute pose. */
+function reparent(id, onto) {
+  if (!id || !entities.get(id)) return;
+  const rec = foldRecord(id); if (!rec) return;
+  const was = rec.parent ? { to: rec.parent.to, ...(rec.parent.slot ? { slot: rec.parent.slot } : {}), ...(rec.parent.offset ? { offset: [...rec.parent.offset] } : {}), ...(rec.parent.yaw != null ? { yaw: rec.parent.yaw } : {}) } : null;
+  if (onto == null) {
+    if (!was) { flashHint(`${id} is already a root`, 3000); return; }
+    pushUndo({ verb: 'mount', args: { id, ...was } }, `detaching ${id} from ${was.to}`);
+    sceneDetach(id);
+    return;
+  }
+  if (onto === id) return;
+  if (!entities.get(onto)) { flashHint(`${onto} is still loading`, 3000); return; }
+  for (let p = foldRecord(onto); p; p = p.parent ? foldRecord(p.parent.to) : null) {
+    if (p === rec || (p.parent && p.parent.to === id)) { flashHint(`<b>${onto}</b> rides <b>${id}</b> — a thing can't be mounted on its own cargo`, 4000); return; }
+  }
+  if (was?.to === onto) { flashHint(`${id} already rides ${onto}`, 3000); return; }
+  if (comps.get(id)?.lock) { flashHint(`${id} is locked — unlock it first`, 4000); return; }
+  const obj = entities.get(id); const wp = obj.getWorldPosition(_wp);
+  const q = obj.getWorldQuaternion(new THREE.Quaternion()); const yaw = new THREE.Euler().setFromQuaternion(q, 'YXZ').y;
+  pushUndo(was ? { verb: 'mount', args: { id, ...was } } : { verb: 'dismount', args: { id, pos: [+wp.x.toFixed(3), +wp.y.toFixed(3), +wp.z.toFixed(3)], yaw: +yaw.toFixed(3) } }, `mounting ${id} on ${onto}`);
+  sceneAttach(id, onto);
+  if (!collapsed.has(onto)) return;
+  collapsed.delete(onto);   // show where it went
 }
 
 /** A copy of a thing: same lib/pose (nudged so it is not on top of the
