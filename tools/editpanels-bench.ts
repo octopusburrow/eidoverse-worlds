@@ -31,6 +31,7 @@ await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
     const ce = console.error.bind(console);
     console.error = (...a) => { __errs.push('console: ' + a.map(String).join(' ')); ce(...a); };`,
 });
+await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: `window.__refused = []; import('/lib/base.js').then((m) => m.bus.on('verb-refused', (e) => window.__refused.push(e?.error ?? '?')));` });
 await cdp.send('Page.navigate', { url: `${BASE}/?name=editbot&world=editbench` });
 
 {
@@ -40,6 +41,11 @@ await cdp.send('Page.navigate', { url: `${BASE}/?name=editbot&world=editbench` }
     if (secs < 4) await sleep(500);
   }
   check('client boots', secs >= 4, `${secs} sections`);
+  // Headless never finishes the body load (dead WebGPU swap chain), so the
+  // boot splash stays at --spp 0.6, full-screen at z-100, and steals every
+  // elementFromPoint below. A real browser dismisses it. Make it transparent
+  // to hit-tests here; every "can a pointer reach it" check depends on this.
+  await evalJson(`(() => { const s = document.querySelector('#splash'); if (s && !s.classList.contains('gone')) s.style.pointerEvents = 'none'; return true; })()`);
 }
 
 console.log('\nedit mode shows the two frames:');
@@ -54,6 +60,11 @@ console.log('\nthe workspace: docked columns, strips, a slim rail:');
 check('hierarchy is docked in the left column, above chat', await evalJson(`(() => { const L = document.querySelector('.edit-left'); const ids = [...L.children].map((c) => c.dataset?.frame ?? c.className); return JSON.stringify(ids) === JSON.stringify(['hierarchy', 'edit-split edit-split-h', 'chat']); })()`), await evalJson(`JSON.stringify([...document.querySelector('.edit-left').children].map((c) => c.dataset?.frame ?? c.className))`));
 check('inspector is docked in the right column', await evalJson(`document.querySelector('.edit-right [data-frame="inspector"]') !== null`));
 check('top strip + tools column are up', await evalJson(`!document.querySelector('.edit-top').hidden && document.querySelectorAll('.edit-tools .edit-tool').length === 5`));
+check('mic / ear / goggles sit IN the top bar (inside its box, hit-testable)', await evalJson(`(() => { const bar = document.querySelector('.edit-top').getBoundingClientRect(); const ok = (sel) => { const e = document.querySelector(sel); if (!e) return sel === '.xr-chip'; const r = e.getBoundingClientRect(); const inside = r.top >= bar.top && r.bottom <= bar.bottom + 1 && r.right <= bar.right; const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return inside && (hit === e || e.contains(hit)); }; return ok('#micbtn') && ok('#earbtn') && ok('.xr-chip'); })()`), await evalJson(`JSON.stringify(['#micbtn','#earbtn','.xr-chip'].map((s) => { const e = document.querySelector(s); const r = e?.getBoundingClientRect(); return r ? [s, r.left|0, r.top|0, r.width|0, r.height|0] : [s, null]; }))`));
+await evalJson(`document.querySelector('.edit-vbtn[data-view="wire"]').click(), true`);
+check('wireframe sets a scene override material', await evalJson(`import('/lib/core.js').then((m) => !!m.scene.overrideMaterial?.wireframe)`));
+await evalJson(`document.querySelector('.edit-vbtn[data-view="wire"]').click(), true`);
+check('…and clears it', await evalJson(`import('/lib/core.js').then((m) => m.scene.overrideMaterial === null)`));
 check('rail shows only the wrench among toggles', await evalJson(`[...document.querySelectorAll('#dock button[data-toggles]')].filter((b) => getComputedStyle(b).display !== 'none').map((b) => b.dataset.toggles).join() === 'edit'`));
 check('the World panel is parked (it would sit behind the Inspector)', await evalJson(`!document.querySelector('[data-frame="world"]') || getComputedStyle(document.querySelector('[data-frame="world"]')).display === 'none'`));
 check('docked frames ignore their floating geometry', await evalJson(`(() => { const h = document.querySelector('[data-frame="hierarchy"]'); const cs = getComputedStyle(h); return cs.position === 'relative' && h.getBoundingClientRect().left >= 40; })()`));
@@ -63,7 +74,6 @@ await evalJson(`document.querySelector('.edit-tool[data-tool="move"]').click(), 
 check('Edit ▾ opens a menu with undo (and it is the only one showing)', await evalJson(`(() => { [...document.querySelectorAll('.edit-menu > .edit-btn')].find((b) => /^Edit/.test(b.textContent)).click(); const shown = [...document.querySelectorAll('.edit-menu-pop')].filter((p) => getComputedStyle(p).display !== 'none'); return shown.length === 1 && [...shown[0].querySelectorAll('.edit-menu-item')].some((i) => /undo/.test(i.textContent)); })()`));
 await evalJson(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })), true`);
 check('Esc closes the menu (computed, not the attribute)', await evalJson(`[...document.querySelectorAll('.edit-menu-pop')].every((p) => getComputedStyle(p).display === 'none')`));
-console.log('  [diag] under the strip at (350,36): ' + await evalJson(`(() => { const e = document.elementFromPoint(350, 36); return e ? e.tagName + '#' + e.id + '.' + e.className : null; })()`));
 
 console.log('\na placed light lands in the tree and the inspector:');
 await evalJson(`import('/lib/net.js').then((m) => m.sendVerb('light', { id: 'benchlamp', pos: [1, 1, 1], color: 0xffd9a0, intensity: 16, range: 10 })), true`);

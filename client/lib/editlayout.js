@@ -18,6 +18,7 @@ import { bus } from './base.js';
 import { getFrame, allFrames } from './frames.js';
 import { setTool, getTool, undo, deselect, setEditMode } from './build.js';
 import { panelFrame } from './ui.js';
+import { THREE, scene } from './core.js';
 
 const LS = 'ew-edit-layout';
 const DEF = { leftW: 300, rightW: 320, leftSplit: 0.55 };
@@ -83,8 +84,17 @@ function build() {
     }))),
   );
   const undoBtn = el('button', 'edit-btn', '↶ undo'); undoBtn.title = 'Ctrl+Z'; undoBtn.onclick = undo;
+  // viewport buttons: what the render does, not what the world is
+  const view = el('div', 'edit-viewbtns');
+  const wire = el('button', 'edit-vbtn', '▦'); wire.title = 'wireframe'; wire.dataset.view = 'wire';
+  wire.onclick = () => { setWireframe(!wireOn); wire.classList.toggle('on', wireOn); };
+  const full = el('button', 'edit-vbtn', '⛶'); full.title = 'full screen (F11 also works)'; full.dataset.view = 'full';
+  full.onclick = () => { if (document.fullscreenElement) document.exitFullscreen?.(); else document.documentElement.requestFullscreen?.(); };
+  document.addEventListener('fullscreenchange', () => full.classList.toggle('on', !!document.fullscreenElement));
+  view.append(wire, full);
   const mode = el('span', 'edit-mode-label');
-  top.append(menus, undoBtn, mode);
+  const seat = el('span', 'edit-seat');   // mic / ear / goggles are re-seated here by CSS (they are fixed elements owned by their modules)
+  top.append(menus, undoBtn, view, mode, seat);
   bus.on('tool', () => { mode.textContent = getTool(); });
   mode.textContent = getTool();
 
@@ -97,6 +107,18 @@ function build() {
   els = { top, tools, left, right, split, lsplit, rsplit };
   paintTools();
   return els;
+}
+
+// wireframe = one override material on the scene; the renderer draws every
+// mesh with it and nothing in the world is touched. Off on exit.
+let wireOn = false;
+let wireMat = null;
+function setWireframe(v) {
+  wireOn = !!v;
+  if (wireOn) {
+    wireMat ??= new THREE.MeshBasicNodeMaterial({ color: 0xbfc4cc, wireframe: true, toneMapped: false });
+    scene.overrideMaterial = wireMat;
+  } else if (scene.overrideMaterial === wireMat) scene.overrideMaterial = null;
 }
 
 function menu(label, items) {
@@ -145,12 +167,12 @@ function paintTools() {
 function apply() {
   if (!els || !on) return;
   const { top, tools, left, right, split, lsplit, rsplit } = els;
-  const TOP = 34, RAIL = 48;
+  const TOP = 40, RAIL = 48;
   // the rail is a full-height neutral BAND: mic/ear stack above the ∃ inside
   // it (the dock is pushed down so placeMic finds room), the wrench below,
   // then the tools. The strip starts at the band's edge — no gaps (R, 09-13).
   top.style.cssText = `left:${RAIL}px; right:0; top:0; height:${TOP}px`;
-  tools.style.cssText = `left:0; top:0; bottom:0; width:${RAIL}px; padding-top:172px`;
+  tools.style.cssText = `left:0; top:0; bottom:0; width:${RAIL}px; padding-top:${TOP + 52}px`;
   const leftW = Math.round(L.leftW), rightW = Math.round(L.rightW);
   left.style.cssText = `left:${RAIL}px; top:${TOP}px; bottom:0; width:${leftW}px`;
   right.style.cssText = `right:0; top:${TOP}px; bottom:0; width:${rightW}px`;
@@ -193,6 +215,8 @@ function exit() {
   const { top, tools, left, right, lsplit, rsplit } = els;
   for (const e of [top, tools, left, right, lsplit, rsplit]) e.hidden = true;
   document.body.classList.remove('edit-workspace');
+  setWireframe(false);
+  if (els.top.querySelector('.edit-vbtn[data-view="wire"]')) els.top.querySelector('.edit-vbtn[data-view="wire"]').classList.remove('on');
   const c = getFrame('chat');
   for (const f of [getFrame('hierarchy'), getFrame('inspector'), c]) { if (f) { f.el.style.flex = ''; f.undock(); } }
   if (c && prevChat === false) c.hide();
