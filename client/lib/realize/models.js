@@ -283,6 +283,7 @@ function realizeModel(id, cur, obj) {
   entities.set(id, obj);
   entityMeta.set(id, { actor: cur.actor, lib: cur.lib, ts: cur.ts });
   scene.add(obj);
+  applyHidden(id);   // a thing hidden before its model arrived stays hidden
   bus.emit('entity', { id, kind: 'spawn' });
   // comps that folded while the GLB was in flight (or that rode the
   // snapshot) announce now — emitters and panels attach off these events
@@ -385,6 +386,7 @@ function createLight(id, ent) {
   entities.set(id, g);
   entityMeta.set(id, { actor: ent.actor, kind: 'light', ts: ent.ts });
   scene.add(g);
+  applyHidden(id);
   bus.emit('entity', { id, kind: 'light' });
   emitCompBag(id);
 }
@@ -499,10 +501,19 @@ function emitCompBag(id) {
   if (bag) for (const [type, data] of Object.entries(bag)) bus.emit('comp', { id, type, data });
 }
 
+/** comp {type:'hidden', data:true} = not drawn, still there (the collider,
+ *  the mounts, the log all stand). The evaluator is one line; the comp is
+ *  the convention every surface — inspector, hierarchy, look() — honours. */
+function applyHidden(id) {
+  const obj = entities.get(id);
+  if (obj) obj.visible = comps.get(id)?.hidden !== true;
+}
+
 function onComp(id, type) {
   syncComps(id);
   const data = comps.get(id)?.[type] ?? null;
   if (type === 'motion' && data == null) restAtBase(id);
+  if (type === 'hidden') applyHidden(id);
   // a sockets change re-seats everything riding this carrier — a mount that
   // landed BEFORE its socket was authored glued to the origin, and the
   // socket's arrival is what makes it right (review S5; the relKey includes

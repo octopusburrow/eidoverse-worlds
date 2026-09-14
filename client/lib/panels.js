@@ -28,9 +28,9 @@
 //   { t:'color',  k, label, value:0xRRGGBB }                      → edit(k, int)
 //   { t:'group',  k, label, open? }   marker: rows until the next marker belong to it;
 //                 collapsed groups skip their rows                → edit('fold', k)
-//   { t:'tree',   k, rows:[{ id, label, sub?, depth, active?, badges?:[], locked?, menu? }],
+//   { t:'tree',   k, rows:[{ id, label, sub?, depth, active?, badges?:[], locked?, menu?, kids?, open?, dim? }],
 //                 menu?:[{k, label, danger?}] }   right-click a row → its menu (row.menu wins)
-//                                                                 → edit(k, id) / edit('lock', id) / edit(item.k, id)
+//                 kids>0 draws a disclosure → edit('open', id)   → edit(k, id) / edit('lock', id) / edit(item.k, id)
 // Every field also takes { disabled?, driven?, hint? }: disabled draws it
 // read-only (a locked thing's pose); driven names what owns the value (a
 // motion comp composes onto this rest pose) and tints the row — Blender's
@@ -356,9 +356,15 @@ function fieldDOM(f, edit) {
       if (!f.rows?.length) box.append(el('div', 'sp-empty', f.empty ?? 'nothing here'));
       for (const r of f.rows ?? []) {
         const line = el('div', `sp-item sp-tree-row${r.active ? ' active' : ''}`);
-        line.style.paddingLeft = `${7 + (r.depth ?? 0) * 14}px`;
+        line.style.paddingLeft = `${4 + (r.depth ?? 0) * 14}px`;
+        if (r.dim) line.classList.add('dim');
+        // disclosure: a row with children folds them (edit('open', id))
+        const disc = el('button', `sp-disc${r.kids ? '' : ' none'}`, r.kids ? (r.open === false ? '▸' : '▾') : '');
+        disc.tabIndex = -1;
+        if (r.kids) disc.onclick = (e) => { e.stopPropagation(); edit('open', r.id); };
+        line.append(disc);
         const main = el('span', 'sp-item-main');
-        main.append(el('span', 'sp-item-label', `${r.depth ? '└ ' : ''}${r.label}`));
+        main.append(el('span', 'sp-item-label', r.label));
         if (r.sub || r.badges?.length) main.append(el('span', 'sp-item-sub', [r.sub, ...(r.badges ?? [])].filter(Boolean).join(' · ')));
         main.onclick = () => edit(f.k, r.id);
         const items = r.menu ?? f.menu;
@@ -466,12 +472,16 @@ export function renderCanvas(canvas, fields, { width = 512, rowH = 44, pad = 12,
       g.fillStyle = r.active ? '#1d2634' : C.row;
       g.fillRect(pad, y + 2, width - pad * 2, rowH - 4);
       font(15, r.active ? 600 : 400); g.fillStyle = C.text;
-      g.fillText(`${tree && r.depth ? '└ ' : ''}${r.label}`.slice(0, 34), pad + 10 + ind, y + rowH * 0.62);
+      g.fillText(String(r.label).slice(0, 34), pad + 10 + ind, y + rowH * 0.62);
       if (tree && (r.sub || r.badges?.length)) {
         font(11); g.fillStyle = C.label;
         g.fillText([r.sub, ...(r.badges ?? [])].filter(Boolean).join(' · ').slice(0, 40), pad + 10 + ind + Math.min(220, r.label.length * 9 + 14), y + rowH * 0.62);
       }
       regions.push({ x: pad, y, w: width * 0.6, h: rowH, action: f.parent.k ?? 'row', payload: r.id });
+      if (tree && r.kids) {   // a disclosure glyph, its own hit region ahead of the row's
+        font(13); g.fillStyle = C.label; g.fillText(r.open === false ? '▸' : '▾', pad + ind - 4, y + rowH * 0.62);
+        regions.unshift({ x: pad + ind - 8, y, w: 16, h: rowH, action: 'open', payload: r.id });
+      }
       if (tree) {
         const bw = 34, bx = width - pad - bw;
         g.fillStyle = r.locked ? C.accent : '#2a3342';

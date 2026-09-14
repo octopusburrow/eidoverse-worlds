@@ -47,6 +47,9 @@ function toggleFold(id, g) {
   try { localStorage.setItem(FOLD_LS, JSON.stringify(folds)); } catch { /* fine */ }
 }
 let arming = null;   // the child id waiting for a row click to name its parent
+let filter = '';     // the hierarchy's filter text: non-matches hide, ancestors of a match stay (dimmed)
+const collapsed = new Set();   // ids whose children are folded (client state, not persisted)
+let visibleRows = [];          // the rows as last painted, for ↑/↓
 
 // ---------------------------------------------------------------- scripts roster
 // the behavior runtime, for 📜 badges in the tree and the Behaviors group —
@@ -79,30 +82,49 @@ function badgesFor(id) {
 function hierarchyFields() {
   const { roots, kids, riders } = treeData();
   const sel = sceneSelected();
+  const q = filter.trim().toLowerCase();
   const rows = [];
+  const labelOf = (id) => { const l = comps.get(id)?.label; return typeof l === 'string' && l ? `${l}  (${id})` : id; };
+  const matches = (id) => !q || [id, comps.get(id)?.label ?? '', entityMeta.get(id)?.lib ?? '', ...Object.keys(comps.get(id) ?? {})].join(' ').toLowerCase().includes(q);
+  // a row shows when it matches or any descendant does; ancestors of a match dim
   const walk = (id, depth) => {
     const meta = entityMeta.get(id); const bag = comps.get(id) ?? {};
     const badges = badgesFor(id);
     if (!entities.get(id)) badges.unshift('loading…');
-    rows.push({ id, label: id, sub: short(meta), depth, active: id === sel, badges, locked: !!bag.lock });
-    for (const r of riders.get(id) ?? []) rows.push({ id: `rider:${r}`, label: `🧍 ${r}`, depth: depth + 1 });
-    for (const k of kids.get(id) ?? []) walk(k, depth + 1);
+    if (bag.hidden === true) badges.push('hidden');
+    const ch = kids.get(id) ?? [];
+    const rd = riders.get(id) ?? [];
+    const mine = matches(id);
+    const row = { id, label: labelOf(id), sub: short(meta), depth, active: id === sel, badges, locked: !!bag.lock,
+      kids: ch.length + rd.length, open: !collapsed.has(id), dim: q && !mine };
+    const at = rows.length; rows.push(row);
+    let any = mine;
+    if (!collapsed.has(id) || q) {   // a filter looks inside folded nodes too
+      for (const r of rd) if (!q || r.toLowerCase().includes(q)) { rows.push({ id: `rider:${r}`, label: `🧍 ${r}`, depth: depth + 1 }); any = true; }
+      for (const k of ch) if (walk(k, depth + 1)) any = true;
+    }
+    if (!any) rows.splice(at);        // nothing under it matched either: drop it and its subtree
+    return any;
   };
   for (const id of roots.sort()) walk(id, 0);
-  // no button row: a row's actions live on its right-click menu (and the
-  // keys — F find, Del remove); the tree is the tree
   for (const r of rows) {
     if (String(r.id).startsWith('rider:')) continue;
     const mounted = !!entities.get(r.id)?.userData?.mountedTo;
     r.menu = [
       { k: 'find', label: 'find  (F)' },
+      { k: 'duplicate', label: 'duplicate  (Shift+D)' },
       { k: 'attach', label: arming === r.id ? 'cancel attach' : 'attach to…' },
       ...(mounted ? [{ k: 'detach', label: 'detach' }] : []),
       { k: 'lock', label: r.locked ? 'unlock' : 'lock in place' },
-      { k: 'remove', label: 'remove  (Del)', danger: true },
+      { k: 'hide', label: comps.get(r.id)?.hidden === true ? 'show' : 'hide' },
+      { k: 'remove', label: 'remove  (X)', danger: true },
     ];
   }
-  return [{ t: 'tree', k: 'sel', rows, empty: 'nothing placed yet — press B in the world to place things' }];
+  visibleRows = rows.filter((r) => !String(r.id).startsWith('rider:')).map((r) => r.id);
+  return [
+    { t: 'text', k: 'filter', label: '', value: filter, placeholder: 'filter — id, label, lib, component ⏎', hint: 'non-matches hide; a match keeps its ancestors' },
+    { t: 'tree', k: 'sel', rows, empty: q ? `nothing matches "${filter}"` : 'nothing placed yet — press B in the world to place things' },
+  ];
 }
 function hierarchyDispatch(action, payload) {
   let sel = sceneSelected();
@@ -124,8 +146,36 @@ function hierarchyDispatch(action, payload) {
     }
     case 'detach': sceneDetach(payload ?? sel); break;
     case 'remove': if (payload ?? sel) removeWithUndo(payload ?? sel); break;
+    case 'filter': filter = String(payload ?? ''); break;
+    case 'open': if (collapsed.has(payload)) collapsed.delete(payload); else collapsed.add(payload); break;
+    case 'hide': { const id = payload ?? sel; if (id) commitEdit(id, 'flags.hidden', comps.get(id)?.hidden !== true); break; }
+    case 'duplicate': duplicate(payload ?? sel); break;
+    case 'step': {   // ↑/↓ through the rows as painted
+      const i = visibleRows.indexOf(sel);
+      const next = visibleRows[Math.max(0, Math.min(visibleRows.length - 1, (i < 0 ? 0 : i) + payload))];
+      if (next && next !== sel) sceneSelect(next);
+      break;
+    }
   }
   repaintAll();
+}
+
+/** A copy of a thing: same lib/pose (nudged so it is not on top of the
+ *  original), same components, same carrier — composed on the client from
+ *  ordinary verbs, ONE undo entry (remove the copy). Lights copy through
+ *  `light`. Locks are not copied: a copy is a fresh thing to place. */
+function duplicate(id) {
+  const rec = foldRecord(id); const obj = entities.get(id);
+  if (!rec || !obj) return;
+  const nid = `${id.replace(/-[a-f0-9]{4}$/, '')}-${Math.random().toString(16).slice(2, 6)}`;
+  const pos = [...(rec.pos ?? [0, 0, 0])]; pos[0] = round(pos[0] + 0.5); pos[2] = round(pos[2] + 0.5);
+  if (rec.kind === 'light') sendVerb('light', { id: nid, pos, color: rec.color, intensity: rec.intensity, range: rec.range, ...(rec.keep ? { keep: true } : {}), ...(rec.day === false ? { day: false } : {}) });
+  else sendVerb('spawn', { id: nid, lib: rec.lib, pos, yaw: rec.yaw ?? 0, ...(rec.scale != null ? { scale: rec.scale } : {}), ...(rec.collide ? { collide: rec.collide } : {}) });
+  for (const [type, data] of Object.entries(rec.comp ?? {})) if (type !== 'lock') sendVerb('comp', { id: nid, type, data });
+  if (rec.parent) sendVerb('mount', { id: nid, to: rec.parent.to, ...(rec.parent.slot ? { slot: rec.parent.slot } : {}), ...(rec.parent.offset ? { offset: rec.parent.offset.map((v, i) => (i === 0 || i === 2 ? v + 0.5 : v)) } : {}), ...(rec.parent.yaw != null ? { yaw: rec.parent.yaw } : {}) });
+  pushUndo({ verb: 'remove', args: { id: nid } }, `duplicating ${id}`);
+  flashHint(`<b>${nid}</b> — a copy of ${id}`, 4000);
+  setTimeout(() => { if (entities.has(nid)) sceneSelect(nid); }, 400);   // select it once the fold echoes
 }
 
 function toggleLock(id) {
@@ -303,9 +353,29 @@ export function initEditPanels() {
   bus.on('sg:selected', () => { gesture = null; endGesture(); });   // a drag's `before` never outlives its selection
   setEditHooks({ undo: pushUndo, commitLight, casting: lightCasting });
   bus.on('edit-find', () => findSelected());              // F in the viewport
+  bus.on('key', (e) => {
+    if (!shown || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.code === 'KeyD' && e.shiftKey && sceneSelected()) hierarchyDispatch('duplicate', sceneSelected());
+  });
+  // ↑/↓ walk the tree ONLY while the tree has focus — on the window they are
+  // walking keys (controller.js: ArrowUp is forward). The frame listener runs
+  // before the window's and stops the event there.
+  const hf = frames.get('hierarchy');
+  if (hf) {
+    const scroll = hf.frame.body.querySelector('.schema-scroll');
+    scroll.tabIndex = 0;
+    scroll.addEventListener('pointerdown', () => { if (!/INPUT|TEXTAREA/.test(document.activeElement?.tagName ?? '')) scroll.focus({ preventScroll: true }); });
+    hf.frame.el.addEventListener('keydown', (e) => {
+      if (/INPUT|TEXTAREA/.test(e.target?.tagName ?? '')) return;
+      if (e.code !== 'ArrowUp' && e.code !== 'ArrowDown') return;
+      e.preventDefault(); e.stopPropagation();
+      hierarchyDispatch('step', e.code === 'ArrowUp' ? -1 : 1);
+    });
+  }
   bus.on('sg:selected', () => { if (shown) refreshBehaviors(); });
   repaintAll();
   globalThis.__editPanels = editPanelsDebug;   // harness window (probes read it, nothing else does)
+  globalThis.__editStep = (d) => { const sel = sceneSelected(); const i = visibleRows.indexOf(sel); hierarchyDispatch('step', d); return { sel, i, rows: [...visibleRows], after: sceneSelected(), has: entities.has(visibleRows[i + d]) }; };
   import('./editlayout.js').then((m) => { globalThis.__editLayout = m.editLayoutDebug; });
   const show = (on) => {
     shown = !!on;
@@ -319,5 +389,5 @@ export function initEditPanels() {
 /** harness window */
 export const editPanelsDebug = () => ({
   hierarchy: hierarchyFields().length, inspector: inspectorFields().length, selected: sceneSelected(), arming,
-  editors: editors.map((e) => e.group), behaviors: behaviors.length,
+  groups: sceneSelected() ? schemaFor(sceneSelected()).groups.map((g) => g.group) : [], behaviors: behaviors.length, rows: visibleRows,
 });

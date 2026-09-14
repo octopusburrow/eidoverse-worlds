@@ -31,7 +31,7 @@ await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
     const ce = console.error.bind(console);
     console.error = (...a) => { __errs.push('console: ' + a.map(String).join(' ')); ce(...a); };`,
 });
-await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: `window.__refused = []; import('/lib/base.js').then((m) => m.bus.on('verb-refused', (e) => window.__refused.push(e?.error ?? '?')));` });
+await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: `window.__refused = []; window.__keys = []; import('/lib/base.js').then((m) => { m.bus.on('verb-refused', (e) => window.__refused.push(e?.error ?? '')); m.bus.on('key', (e) => window.__keys.push(e.code)); });` });
 await cdp.send('Page.navigate', { url: `${BASE}/?name=editbot&world=editbench` });
 
 {
@@ -178,8 +178,51 @@ if (process.env.EDIT_SHOT) {   // a look, not a trust: the grey scope is a desig
   console.log(`  screenshot → ${process.env.EDIT_SHOT}`);
 }
 check('no raw-JSON row for a type an editor speaks for', await evalJson(`![...${insp}.querySelectorAll('.sp-f-text .sp-label')].some((l) => /^(sockets|motion)$/.test(l.textContent))`));
-const xinfo = await evalJson(`(() => { const all = [...${insp}.querySelectorAll('.sp-mini.danger')]; const b = all.find((x) => x.textContent === '✕'); if (!b) return { found: false, n: all.length, texts: all.map((x) => x.textContent) }; const r = b.getBoundingClientRect(); b.dispatchEvent(new PointerEvent('pointerdown', { clientX: 1, clientY: 1, bubbles: true })); b.click(); return { found: true, rect: [r.left | 0, r.top | 0, r.width | 0, r.height | 0], vis: getComputedStyle(b).display }; })()`);
-check('✕ removes the only seat → sockets comp gone', await waitFor(`import('/lib/world.js').then((m) => !m.comps.get('benchlamp')?.sockets)`), JSON.stringify(xinfo) + ' sockets=' + JSON.stringify(await evalJson(`import('/lib/world.js').then((m) => m.comps.get('benchlamp')?.sockets)`)) + ' errs=' + JSON.stringify(await evalJson(`window.__errs.filter((e) => !/popErrorScope|createBuffer/.test(e)).slice(-3)`)));
+// a settle before the ✕: the bench fires verbs faster than a person, and the
+// server's VERB_RATE window (12 per 4 s) is the one thing that can make this
+// click do nothing with no error in the page — the detail prints refusals
+await sleep(1500);
+await evalJson(`(() => { const b = [...${insp}.querySelectorAll('.sp-mini.danger')].find((x) => x.textContent === '✕'); b.dispatchEvent(new PointerEvent('pointerdown', { clientX: 1, clientY: 1, bubbles: true })); b.click(); return true; })()`);
+check('✕ removes the only seat → sockets comp gone', await waitFor(`import('/lib/world.js').then((m) => !m.comps.get('benchlamp')?.sockets)`), 'sockets=' + JSON.stringify(await evalJson(`import('/lib/world.js').then((m) => m.comps.get('benchlamp')?.sockets)`)) + ' refused=' + JSON.stringify(await evalJson(`window.__refused`)));
+
+console.log('\nhierarchy: label · hidden · filter · disclosure · duplicate · arrows:');
+await sleep(1500);   // settle: the verb-rate window (see the ✕ note above)
+const hier = `[...document.querySelectorAll('.frame.edit')].find((f) => /Hierarchy/.test(f.querySelector('.fr-title')?.textContent))`;
+await evalJson(`(() => { const i = [...${insp}.querySelectorAll('.sp-f-text')].find((r) => r.querySelector('.sp-label')?.textContent === 'label').querySelector('.sp-text'); i.value = 'porch'; i.dispatchEvent(new Event('change')); return true; })()`);
+check('label typed in Flags → the hierarchy row shows it', await waitFor(`[...${hier}.querySelectorAll('.sp-tree-row .sp-item-label')].some((l) => l.textContent === 'porch  (benchlamp)')`), 'rows=' + await evalJson(`[...${hier}.querySelectorAll('.sp-tree-row .sp-item-label')].map((l) => l.textContent).join('|')`) + ' label-comp=' + JSON.stringify(await evalJson(`import('/lib/world.js').then((m) => m.comps.get('benchlamp')?.label)`)) + ' refused=' + JSON.stringify(await evalJson(`window.__refused`)));
+await evalJson(`(() => { const c = [...${insp}.querySelectorAll('.sp-f-check')].find((r) => r.querySelector('.sp-label')?.textContent === 'hidden').querySelector('input'); c.checked = true; c.dispatchEvent(new Event('change')); return true; })()`);
+check('hidden checkbox → the mesh is not drawn (obj.visible false, still in the fold)', await waitFor(`import('/lib/world.js').then((m) => m.entities.get('benchlamp')?.visible === false && !!m.comps.get('benchlamp')?.hidden)`));
+await evalJson(`(() => { const c = [...${insp}.querySelectorAll('.sp-f-check')].find((r) => r.querySelector('.sp-label')?.textContent === 'hidden').querySelector('input'); c.checked = false; c.dispatchEvent(new Event('change')); return true; })()`);
+check('…and back', await waitFor(`import('/lib/world.js').then((m) => m.entities.get('benchlamp')?.visible === true)`));
+await evalJson(`import('/lib/net.js').then((m) => m.sendVerb('light', { id: 'lamp3', pos: [1, 1.5, 1], color: 0xffffff, intensity: 4, range: 3 })), true`);
+await waitFor(`import('/lib/world.js').then((m) => !!m.entities.get('lamp3'))`);
+await evalJson(`import('/lib/net.js').then((m) => m.sendVerb('mount', { id: 'lamp3', to: 'benchlamp', offset: [0, 0.5, 0] })), true`);
+check('a mounted light indents under its carrier', await waitFor(`(() => { const R = [...${hier}.querySelectorAll('.sp-tree-row')]; const r = R.find((x) => /lamp3/.test(x.querySelector('.sp-item-label').textContent)); return !!r && parseInt(r.style.paddingLeft) > 10; })()`));
+await evalJson(`(() => { const R = [...${hier}.querySelectorAll('.sp-tree-row')]; const r = R.find((x) => /benchlamp/.test(x.querySelector('.sp-item-label').textContent)); r.querySelector('.sp-disc').click(); return true; })()`);
+check('disclosure folds the carrier: lamp3 row gone', await waitFor(`![...${hier}.querySelectorAll('.sp-tree-row .sp-item-label')].some((l) => /lamp3/.test(l.textContent))`));
+await evalJson(`(() => { const R = [...${hier}.querySelectorAll('.sp-tree-row')]; const r = R.find((x) => /benchlamp/.test(x.querySelector('.sp-item-label').textContent)); r.querySelector('.sp-disc').click(); return true; })()`);
+check('…and unfolds', await waitFor(`[...${hier}.querySelectorAll('.sp-tree-row .sp-item-label')].some((l) => /lamp3/.test(l.textContent))`));
+await evalJson(`(() => { const i = ${hier}.querySelector('.sp-f-text .sp-text'); i.value = 'zzz-nothing'; i.dispatchEvent(new Event('change')); return true; })()`);
+check('a filter with no match empties the tree and says so', await waitFor(`${hier}.querySelectorAll('.sp-tree-row').length === 0 && /nothing matches/.test(${hier}.querySelector('.sp-empty')?.textContent ?? '')`));
+await evalJson(`(() => { const i = ${hier}.querySelector('.sp-f-text .sp-text'); i.value = 'lamp3'; i.dispatchEvent(new Event('change')); return true; })()`);
+check('a match keeps its ancestor (dimmed) and itself', await waitFor(`(() => { const R = [...${hier}.querySelectorAll('.sp-tree-row')]; return R.length === 2 && R[0].classList.contains('dim') && /lamp3/.test(R[1].textContent) && !R[1].classList.contains('dim'); })()`), await evalJson(`[...${hier}.querySelectorAll('.sp-tree-row')].map((r) => r.className + ':' + r.querySelector('.sp-item-label').textContent).join('|')`));
+await evalJson(`(() => { const i = ${hier}.querySelector('.sp-f-text .sp-text'); i.value = ''; i.dispatchEvent(new Event('change')); return true; })()`);
+await waitFor(`${hier}.querySelectorAll('.sp-tree-row').length >= 2`);
+await evalJson(`import('/lib/scenegraph.js').then((m) => m.sceneSelect('benchlamp')), true`);
+await waitFor(`${insp}.querySelector('.sp-info')?.textContent.startsWith('benchlamp')`);
+await evalJson(`(() => { const s = ${hier}.querySelector('.schema-scroll'); s.focus(); s.dispatchEvent(new KeyboardEvent('keydown', { code: 'ArrowDown', bubbles: true, cancelable: true })); return true; })()`);
+await evalJson(`import('/lib/scenegraph.js').then((m) => m.sceneSelect('benchlamp')), true`);
+await waitFor(`import('/lib/scenegraph.js').then((m) => m.sceneSelected() === 'benchlamp')`);
+await evalJson(`(() => { const s = ${hier}.querySelector('.schema-scroll'); s.focus(); s.dispatchEvent(new KeyboardEvent('keydown', { code: 'ArrowDown', bubbles: true, cancelable: true })); return true; })()`);
+check('↓ in the focused tree selects the next row (lamp3)', await waitFor(`import('/lib/scenegraph.js').then((m) => m.sceneSelected() === 'lamp3')`), 'sel=' + JSON.stringify(await evalJson(`import('/lib/scenegraph.js').then((m) => m.sceneSelected())`)) + ' rows=' + JSON.stringify(await evalJson(`globalThis.__editPanels?.().rows`)) + ' focus=' + JSON.stringify(await evalJson(`document.activeElement?.className`)) + ' inFrame=' + JSON.stringify(await evalJson(`${hier}.contains(${hier}.querySelector('.schema-scroll'))`)));
+check('…and the keystroke never reached the walking keys', !(await evalJson(`window.__keys.includes('ArrowDown')`)), 'keys=' + JSON.stringify(await evalJson(`window.__keys.slice(-5)`)));
+await evalJson(`(() => { const s = ${hier}.querySelector('.schema-scroll'); s.focus(); s.dispatchEvent(new KeyboardEvent('keydown', { code: 'ArrowUp', bubbles: true, cancelable: true })); return true; })()`);
+check('↑ selects the previous', await waitFor(`import('/lib/scenegraph.js').then((m) => m.sceneSelected() === 'benchlamp')`));
+await evalJson(`dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyD', shiftKey: true, bubbles: true })), true`);
+check('Shift+D duplicates: a new light carrying the SOURCE\'s components (minus lock), nudged', await waitFor(`import('/lib/world.js').then((m) => { const id = [...m.entities.keys()].find((k) => /^benchlamp-[0-9a-f]{4}$/.test(k)); const o = m.entities.get(id); if (!o) return false; const strip = (b) => { const c = { ...(b ?? {}) }; delete c.lock; return JSON.stringify(c); }; return strip(m.comps.get(id)) === strip(m.comps.get('benchlamp')) && Math.abs(o.position.x - 1.5) < 0.01; })`), await evalJson(`import('/lib/world.js').then((m) => { const id = [...m.entities.keys()].find((k) => /^benchlamp-[0-9a-f]{4}$/.test(k)); return JSON.stringify({ id, comps: m.comps.get(id), src: m.comps.get('benchlamp'), pos: m.entities.get(id)?.position.toArray() }); })`));
+check('…and the copy is selected', await waitFor(`import('/lib/scenegraph.js').then((m) => /^benchlamp-[0-9a-f]{4}$/.test(m.sceneSelected() ?? ''))`));
+await evalJson(`import('/lib/scenegraph.js').then((m) => m.sceneSelect('benchlamp')), true`);
+await waitFor(`${insp}.querySelector('.sp-info')?.textContent.startsWith('benchlamp')`);
 
 console.log('\nthe legacy World›Scene section still gets the light editor (adapter):');
 await evalJson(`document.querySelector('#sec-scene .head')?.click(), true`);

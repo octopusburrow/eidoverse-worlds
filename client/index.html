@@ -1221,6 +1221,12 @@ body.edit-workspace #dock button[data-toggles="edit"].on::before { display: none
 .sp-ctx-item { text-align: left; background: none; border: none; color: #e4e4e8; font: 12.5px var(--font); padding: 5px 9px; border-radius: 4px; cursor: pointer; }
 .sp-ctx-item:hover { background: rgb(255 255 255 / .09); }
 .sp-ctx-item.danger { color: #ff9e9e; }
+.sp-disc { width: 14px; flex: none; padding: 0; background: none; border: none; color: var(--dim); font-size: 10px; cursor: pointer; line-height: 1; }
+.sp-disc.none { cursor: default; }
+.sp-disc:not(.none):hover { color: var(--fg); }
+.sp-item.dim .sp-item-label, .sp-item.dim .sp-item-sub { opacity: .45; }
+.frame.edit .sp-f-text .sp-label:empty { display: none; }
+.frame.edit .sp-f-text .sp-text { font-size: 12px; }
 /* fixed chrome from before the columns keeps to the VIEWPORT between them */
 body.edit-workspace #structbar { left: calc(var(--edit-left-edge, 0px) + 12px) !important; }
 body.edit-workspace #trayzone { right: calc(var(--edit-right-w, 0px) + 10px); }
