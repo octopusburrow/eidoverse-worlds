@@ -52,6 +52,8 @@
 // drag; hard limits bound everything.
 
 import { makeFrame } from './frames.js';
+import { parseEntry } from '../../shared/editschema.js';
+export { parseEntry };
 
 // ---------------------------------------------------------------- DOM renderer
 
@@ -176,24 +178,6 @@ function el(tag, cls, text) {
 }
 
 const R2D = 180 / Math.PI;
-
-/** Typed entry → number, with Maya's relative operators. null = not a number. */
-export function parseEntry(text, current) {
-  const t = String(text).trim();
-  const m = /^([+\-*/])=\s*(-?\d*\.?\d+)\s*(%?)$/.exec(t);
-  if (m) {
-    let n = +m[2];
-    if (m[3]) n = current * n / 100;
-    switch (m[1]) {
-      case '+': return current + n;
-      case '-': return current - n;
-      case '*': return current * n;
-      case '/': return n ? current / n : null;
-    }
-  }
-  const v = parseFloat(t);
-  return Number.isFinite(v) ? v : null;
-}
 
 function stepper(value, f, commit) {
   const cur = { step: 0.1, dp: 2, ...f };   // options are LIVE: update() refreshes them (a typed value past softMax raises the next drag's cap)

@@ -40,8 +40,7 @@ import { serverNow } from './remotes.js';
 // `amplitude`, missing t0) lives there too; this file is what remains:
 // applying evaluated transforms to THREE objects, and the part-frame
 // machinery only a renderer with a loaded model can have.
-import { evalWholeMotion, evalPath, axisOf, ampOf, since, pendulumTheta, AXES } from './motioneval.js';
-import { registerFields } from './inspect.js';
+import { evalWholeMotion, evalPath, axisOf, ampOf, since, pendulumTheta } from './motioneval.js';
 
 const _q = new THREE.Quaternion();
 const _ax = new THREE.Vector3();
@@ -197,100 +196,7 @@ export function tickMotion() {
 // mid-route), the stopper emits `place` alongside — that IS the
 // plane-transition stamp.
 
-// ---- the inspector's motion editor -----------------------------------------
-// Declared here because the MEANING of these parameters lives in this file:
-// which type takes an axis, that a pendulum's amp is an angle and a bob's is
-// metres, that spin reads deg/s (rpm is dialect). One group covers the whole-
-// entity `motion` and every `motion:<part>`; fields are keyed `<comp>|<param>`.
-// Commits keep the comp's t0 (the fold only stamps a MISSING epoch) so a tweak
-// never restarts the phase. No live preview: a component is parameters the
-// log owns, and previewing would mean writing a bag this module does not
-// own (the same law the evaluator keeps with its t0 WeakMap).
-
-const MOTION_TYPES = ['pendulum', 'spin', 'orbit', 'bob', 'path'];
-const AXIS_OPTS = Object.keys(AXES).map((v) => ({ v, label: v }));
-const R2D = 180 / Math.PI;
-function axisName(m, def) {
-  const a = m.axis;
-  if (typeof a === 'string' && AXES[a.toLowerCase()]) return a.toLowerCase();
-  if (Array.isArray(a) && a.length === 3) {
-    for (const [k, v] of Object.entries(AXES)) if (v.every((c, i) => c === a[i])) return k;
-    return 'custom';
-  }
-  return def;
-}
-
-registerFields(({ id, bag, commit, undo }) => {
-  const keys = Object.keys(bag ?? {}).filter((k) => (k === 'motion' || k.startsWith('motion:')) && bag[k] && typeof bag[k] === 'object');
-  if (!keys.length) return null;
-  const fields = [];
-  for (const key of keys) {
-    const m = bag[key];
-    const P = key === 'motion' ? '' : `${key.slice(7)} · `;
-    const k = (p) => `${key}|${p}`;
-    const types = MOTION_TYPES.includes(m.type) ? MOTION_TYPES : [...MOTION_TYPES, m.type ?? '?'];
-    fields.push({ t: 'enum', k: k('type'), label: `${P}type`, value: m.type, options: types.map((v) => ({ v, label: v })) });
-    if (['pendulum', 'spin', 'bob'].includes(m.type)) {
-      const ax = axisName(m, m.type === 'pendulum' ? 'x' : 'y');
-      fields.push({ t: 'enum', k: k('axis'), label: `${P}axis`, value: ax, options: ax === 'custom' ? [...AXIS_OPTS, { v: 'custom', label: 'custom' }] : AXIS_OPTS });
-    }
-    switch (m.type) {
-      case 'pendulum':
-        fields.push({ t: 'num', k: k('amp'), label: `${P}amp`, value: m.amp ?? m.amplitude ?? 0, step: 5, deg: true, min: 0, softMax: Math.PI });
-        fields.push({ t: 'num', k: k('period'), label: `${P}period`, value: m.period ?? 3.5, step: 0.1, dp: 2, min: 0.05, unit: 's' });
-        fields.push({ t: 'num', k: k('phase'), label: `${P}phase`, value: m.phase ?? 0, step: 5, deg: true });
-        fields.push({ t: 'num', k: k('damp'), label: `${P}damp`, value: m.damp ?? 0, step: 0.01, dp: 3, min: 0, softMax: 2, hint: '0 swings forever; friction is opt-in' });
-        break;
-      case 'spin':
-        fields.push({ t: 'num', k: k('degPerSec'), label: `${P}rate`, value: m.degPerSec != null ? m.degPerSec : (m.rpm ?? 6) * 6, step: 5, dp: 1, unit: '°/s' });
-        fields.push({ t: 'num', k: k('phase'), label: `${P}phase`, value: m.phase ?? 0, step: 5, deg: true });
-        break;
-      case 'orbit':
-        fields.push({ t: 'num', k: k('radius'), label: `${P}radius`, value: m.radius ?? 1, step: 0.1, dp: 2, min: 0, unit: 'm' });
-        fields.push({ t: 'num', k: k('degPerSec'), label: `${P}rate`, value: m.degPerSec ?? 12, step: 5, dp: 1, unit: '°/s' });
-        fields.push({ t: 'check', k: k('face'), label: `${P}face along`, value: m.face !== false });
-        break;
-      case 'bob':
-        fields.push({ t: 'num', k: k('amp'), label: `${P}amp`, value: m.amp ?? m.amplitude ?? 0.3, step: 0.05, dp: 2, min: 0, unit: 'm' });
-        fields.push({ t: 'num', k: k('period'), label: `${P}period`, value: m.period ?? 4, step: 0.1, dp: 2, min: 0.05, unit: 's' });
-        fields.push({ t: 'num', k: k('phase'), label: `${P}phase`, value: m.phase ?? 0, step: 5, deg: true });
-        break;
-      case 'path':
-        fields.push({ t: 'info', label: `${P}points`, value: `${Array.isArray(m.points) ? m.points.length : 0} points — edit as JSON` });
-        if (m.duration != null && m.speed == null) fields.push({ t: 'num', k: k('duration'), label: `${P}duration`, value: m.duration, step: 0.5, dp: 1, min: 0.1, unit: 's' });
-        else fields.push({ t: 'num', k: k('speed'), label: `${P}speed`, value: m.speed ?? 1, step: 0.1, dp: 2, min: 0, unit: 'm/s' });
-        fields.push({ t: 'enum', k: k('loop'), label: `${P}loop`, value: m.loop ?? 'loop', options: ['loop', 'pingpong', 'once'].map((v) => ({ v, label: v })) });
-        fields.push({ t: 'check', k: k('face'), label: `${P}face along`, value: m.face !== false });
-        break;
-    }
-    fields.push({ t: 'btn', k: k('rest'), label: P ? `${P.trim()} come to rest` : 'come to rest', danger: true });
-  }
-  return {
-    group: 'motion',
-    types: keys,
-    fields,
-    dispatch(action, value, _field, opts) {
-      if (opts?.live) return;   // parameters commit on release only (see above)
-      const bar = action.indexOf('|');
-      const key = action.slice(0, bar), param = action.slice(bar + 1);
-      const prev = bag[key];
-      if (!prev) return;
-      const send = (next, what) => {
-        if (key === 'motion') {
-          undo?.({ verb: 'motion', args: { id, ...prev } }, what);
-          commit('motion', next ? { id, ...next } : { id, type: null });
-        } else {
-          undo?.({ verb: 'comp', args: { id, type: key, data: prev } }, what);
-          commit('comp', { id, type: key, data: next });
-        }
-      };
-      if (param === 'rest') { send(null, `stopping ${key} on ${id}`); return; }
-      const next = { ...prev };
-      if (param === 'axis') { if (value === 'custom') return; next.axis = value; }
-      else if (param === 'degPerSec') { next.degPerSec = value; delete next.rpm; }
-      else if (param === 'amp') { next.amp = value; delete next.amplitude; }
-      else next[param] = value;
-      send(next, `${param} of ${key} on ${id}`);
-    },
-  };
-});
+// The inspector's motion fields are declared in shared/editschema.js (one
+// declaration for the desktop, the VR quad and a model's inspect/edit).
+// There is no live preview on purpose: a component is parameters the log
+// owns, and previewing would mean writing a bag this module does not own.

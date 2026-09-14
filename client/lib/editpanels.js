@@ -25,7 +25,9 @@ import { makeSchemaFrame, resolveDelta } from './panels.js';
 import { registerXRPanel } from './xrpanels.js';
 import { treeData, sceneSelected, sceneSelect, sceneAttach, sceneDetach } from './scenegraph.js';
 import { pushUndo, refreshOutline } from './build.js';
-import { fieldEditorsFor } from './inspect.js';
+import { schemaFor, commitEdit, setEditHooks, endGesture, foldRecord } from './inspect.js';
+import { channels } from '../../shared/editschema.js';
+import { commitLight, lightCasting } from './lights.js';
 import { myState } from './controller.js';
 import { reindexCollider } from './colliders.js';
 
@@ -138,23 +140,20 @@ function findSelected() {
 }
 
 // ---------------------------------------------------------------- inspector
-let editors = [];      // the registry's claims on the current selection, as painted
 let painted = [];      // the inspector's last field list (a canvas stepper's delta resolves against it)
-let gesture = null;    // { before } while a transform drag is in flight
+let gesture = null;    // { before } while a transform drag is in flight (the local preview's start pose)
 
 /** Is a whole-entity motion composing onto this thing's rest pose? */
 function drivenBy(id, obj) {
   if (obj?.userData?.mountedTo) return null;
-  const bag = comps.get(id) ?? {};
-  // motion:<part> and motion{part} move a child node (motion.js mbase), never the root
-  const m = bag.motion;
+  const m = comps.get(id)?.motion;
   return m?.type && !m.part ? 'motion' : null;
 }
-/** The pose `place` edits: the rest pose when a motion drives the object. */
-function restPose(obj, driven) {
-  const b = driven ? obj.userData.base : null;
-  return b
-    ? { pos: b.pos.map((v) => round(v)), yaw: round(b.yaw, 4), scale: round(obj.scale?.x ?? 1) }
+/** The pose `place` edits — the FOLD's, which is the rest pose by definition. */
+function restPose(id, obj) {
+  const rec = foldRecord(id);
+  return rec
+    ? { pos: (rec.pos ?? [0, 0, 0]).map((v) => round(v)), yaw: round(rec.yaw ?? 0, 4), scale: round(rec.scale ?? 1) }
     : { pos: [round(obj.position.x), round(obj.position.y), round(obj.position.z)], yaw: round(obj.rotation.y, 4), scale: round(obj.scale?.x ?? 1) };
 }
 
@@ -165,61 +164,40 @@ function inspectorFields() {
   // the fold knows the thing before its model arrives: entities holds null
   // while the GLB loads (scenegraph guards the same seam)
   if (!obj) return [{ t: 'info', label: 'id', value: id }, { t: 'info', label: 'lib', value: short(meta) }, { t: 'info', label: 'state', value: 'loading…' }];
-  const isLight = !!obj?.userData?.isLight;
+  const schema = schemaFor(id);           // ONE declaration: shared/editschema.js
   const locked = !!bag.lock;
-  const driven = drivenBy(id, obj);
-  const pose = restPose(obj, driven);
   const wp = obj.getWorldPosition(_wp);
-  editors = fieldEditorsFor({ id, obj, meta, bag, commit: sendVerb, undo: pushUndo });
+  const label = typeof bag.label === 'string' && bag.label ? ` "${bag.label}"` : '';
 
   const f = [
-    { t: 'info', label: 'id', value: id },
+    { t: 'info', label: 'id', value: `${id}${label}` },
     { t: 'info', label: 'lib', value: short(meta) },
     { t: 'info', label: 'by', value: `${meta.actor ?? '?'}${obj?.userData?.mountedTo ? ` · on ${obj.userData.mountedTo}` : ''}` },
     { t: 'info', label: 'world', value: `(${wp.x.toFixed(1)}, ${wp.y.toFixed(1)}, ${wp.z.toFixed(1)}) · ${wp.distanceTo(myState.pos).toFixed(0)}m away` },
   ];
 
-  // CHANNELS — the numeric lane. Transform first (the entity's LOCAL frame,
-  // exactly what `place` takes), then every num any editor declared.
+  // CHANNELS — the numeric lane: every num in the schema, transform first
   f.push({ t: 'group', k: 'channels', label: `Channels${locked ? ' 🔒' : ''}${obj.userData.mountedTo ? ' (mounted)' : ''}`, open: isOpen(id, 'channels') });
-  const mounted = !!obj.userData.mountedTo;
-  const tf = { compact: true, disabled: locked || mounted, driven: driven ?? undefined,
-    hint: locked ? 'locked — uncheck lock to move it' : mounted ? 'mounted — the attach offset owns this pose; detach to move it' : undefined };
-  ['x', 'y', 'z'].forEach((ax, i) => f.push({ t: 'num', k: `ch:pos:${i}`, label: `pos ${ax}`, value: pose.pos[i], step: 0.1, dp: 2, unit: 'm', ...tf }));
-  if (!isLight) {
-    f.push({ t: 'num', k: 'ch:yaw', label: 'yaw', value: pose.yaw, step: 5, deg: true, ...tf });
-    f.push({ t: 'num', k: 'ch:scale', label: 'scale', value: pose.scale, step: 0.05, dp: 2, min: 0.01, softMax: 12, ...tf });
+  for (const c of channels(schema)) {
+    f.push({ ...c, k: `ch:${c.key}`, label: c.group === 'pos' ? c.label : `${c.group} · ${c.label ?? c.k}`, compact: true });
   }
-  editors.forEach((e, i) => {
-    for (const nf of e.fields) {
-      if (nf.t !== 'num') continue;
-      f.push({ ...nf, k: `ch:${i}:${nf.k}`, label: `${e.group} · ${nf.label ?? nf.k}`, compact: true });
-    }
-  });
 
-  f.push({ t: 'group', k: 'flags', label: 'Flags', open: isOpen(id, 'flags') });
-  f.push({ t: 'check', k: 'lock', label: 'locked', value: locked, hint: 'nail it down: nobody\'s drags, verbs or scripts can move, replace or remove it (server-enforced) — sitting on it and content edits stay open' });
-
-  // GROUPS — one per editor that claimed the selection, then raw JSON for
-  // every comp type no editor speaks for (the blind fold's UI twin: a type
-  // invented this morning is editable today), then add.
-  const claimed = new Set();
-  editors.forEach((e, i) => {
-    for (const t of e.types ?? []) claimed.add(t);
-    f.push({ t: 'group', k: `ed:${e.group}`, label: e.group, open: isOpen(id, `ed:${e.group}`) });
-    for (const nf of e.fields) {
-      const g = { ...nf, k: nf.k != null ? `ed:${i}:${nf.k}` : undefined };
-      if (nf.t === 'list') g.rows = (nf.rows ?? []).map((r) => ({ ...r, actions: (r.actions ?? []).map((a) => ({ ...a, k: `ed:${i}:${a.k}` })) }));
-      f.push(g);
+  // GROUPS — flags, then every component group the schema declares, then the
+  // raw-JSON floor for types no group speaks for, then behaviors
+  const groupOf = (name) => schema.groups.find((g) => g.group === name);
+  const addGroup = (g, key, title) => {
+    if (!g) return;
+    f.push({ t: 'group', k: `g:${key}`, label: title ?? g.label ?? g.group, open: isOpen(id, `g:${key}`) });
+    for (const nf of g.fields) {
+      const row = { ...nf, k: nf.k != null ? `ed:${g.group}.${nf.k}` : undefined };
+      if (nf.t === 'list') row.rows = (nf.rows ?? []).map((r) => ({ ...r, actions: (r.actions ?? []).map((a) => ({ ...a, k: `ed:${g.group}.${a.k}` })) }));
+      if (nf.t === 'text' && g.group === 'comp' && nf.k !== '+') { f.push(row); f.push({ t: 'btn', k: `uncomp:${nf.k}`, label: `remove ${nf.k}`, danger: true }); continue; }
+      f.push(row);
     }
-  });
-  const rest = Object.keys(bag).filter((t) => t !== 'lock' && !claimed.has(t));
-  f.push({ t: 'group', k: 'components', label: `Components (${rest.length})`, open: isOpen(id, 'components') });
-  for (const type of rest) {
-    f.push({ t: 'text', k: `comp:${type}`, label: type, value: JSON.stringify(bag[type]), hint: 'raw JSON — a saved edit replaces this type\'s data wholesale' });
-    f.push({ t: 'btn', k: `uncomp:${type}`, label: `remove ${type}`, danger: true });
-  }
-  f.push({ t: 'text', k: 'newtype', label: '+ component', value: '', placeholder: 'type (sockets, recipe…) ⏎', hint: 'attach a component — any type folds, evaluators give known ones behavior' });
+  };
+  addGroup(groupOf('flags'), 'flags', 'Flags');
+  for (const g of schema.groups) if (!['pos', 'flags', 'comp'].includes(g.group)) addGroup(g, g.group);
+  addGroup(groupOf('comp'), 'components');
 
   const mine = behaviors.filter((b) => b.attach === id);
   if (mine.length) {
@@ -239,15 +217,15 @@ function inspectorDispatch(action, payload, field, opts = {}) {
 
   // transform channels: preview locally while dragging (no log traffic), one
   // `place` on release carrying the full pose the channels show
-  if (action.startsWith('ch:') && /^ch:(pos:\d|yaw|scale)$/.test(action)) {
+  if (/^ch:pos\.(x|y|z|yaw|scale)$/.test(action)) {
+    const k = action.slice(7);
     const driven = drivenBy(id, obj);
-    const before = gesture?.before ?? restPose(obj, driven);
+    const before = gesture?.before ?? restPose(id, obj);
     const next = { ...before, pos: [...before.pos] };
-    // canvas steppers send {axis, delta}; DOM sends the whole value
     const val = (cur) => (typeof payload === 'object' && payload && 'delta' in payload ? cur + payload.delta : payload);
-    if (action.startsWith('ch:pos:')) { const i = +action.slice(7); next.pos[i] = round(val(before.pos[i])); }
-    else if (action === 'ch:yaw') next.yaw = round(val(before.yaw), 4);
-    else next.scale = Math.max(0.01, round(val(before.scale)));
+    if (k === 'yaw') next.yaw = round(val(before.yaw), 4);
+    else if (k === 'scale') next.scale = Math.max(0.01, round(val(before.scale)));
+    else next.pos['xyz'.indexOf(k)] = round(val(before.pos['xyz'.indexOf(k)]));
     if (next.pos.some(Number.isNaN)) return;
     if (live) {
       // a live call back AT the start pose is a cancelled/no-op drag ending
@@ -265,43 +243,21 @@ function inspectorDispatch(action, payload, field, opts = {}) {
     repaintAll();
     return;
   }
-  // an editor's field, from either lane: ch:<i>:<k> or ed:<i>:<k>
-  const m = /^(ch|ed):(\d+):(.+)$/.exec(action);
-  if (m) {
-    const e = editors[+m[2]];
-    // a VR stepper sends {axis, delta}; editors expect the number. Only a delta
-    // can fail to resolve — a button legitimately dispatches with no payload
-    const isDelta = typeof payload === 'object' && payload && 'delta' in payload;
+  // every other field, from either lane: ch:<group.k> / ed:<group.k> → the shared commit path
+  if (action.startsWith('ch:') || action.startsWith('ed:')) {
+    const key = action.slice(3);
+    const isDelta = typeof payload === 'object' && payload && 'delta' in payload;   // a VR stepper
     const v = isDelta ? resolveDelta(painted, action, payload) : payload;
     if (isDelta && v == null) return;
-    try { e?.dispatch(m[3], v, field, opts); } catch (err) { flashHint(`editor error: ${err.message}`, 5000); }
+    const r = commitEdit(id, key, v, opts);
+    if (r.errors?.length) flashHint(r.errors.join(' · '), 5000);
     if (!live) repaintAll();
     return;
   }
   switch (action) {
-    case 'lock': toggleLock(id); break;
     case 'remove': removeWithUndo(id); break;
     case 'unbind': sendVerb('behavior', { id: payload, remove: true }); setTimeout(refreshBehaviors, 400); break;
-    case 'newtype': {
-      const type = String(payload ?? '').trim();
-      if (!type) return;
-      if (comps.get(id)?.[type] != null) { flashHint(`${id} already has ${type}`, 4000); return; }
-      pushUndo({ verb: 'comp', args: { id, type, data: null } }, `adding ${type} to ${id}`);
-      sendVerb('comp', { id, type, data: {} });
-      break;
-    }
-    default: {
-      if (action.startsWith('comp:')) {
-        const type = action.slice(5); let data;
-        try { data = JSON.parse(payload); } catch (err) { flashHint(`not valid JSON: ${err.message}`, 5000); return; }
-        pushUndo({ verb: 'comp', args: { id, type, data: comps.get(id)?.[type] ?? null } }, `editing ${type} on ${id}`);
-        sendVerb('comp', { id, type, data });
-      } else if (action.startsWith('uncomp:')) {
-        const type = action.slice(7);
-        pushUndo({ verb: 'comp', args: { id, type, data: comps.get(id)?.[type] ?? null } }, `removing ${type} from ${id}`);
-        sendVerb('comp', { id, type, data: null });
-      }
-    }
+    default: if (action.startsWith('uncomp:')) commitEdit(id, `comp.${action.slice(7)}`, null);
   }
   repaintAll();
 }
@@ -310,7 +266,7 @@ function removeWithUndo(id) {
   const obj = entities.get(id); const meta = entityMeta.get(id) ?? {};
   if (!obj) return;
   if (comps.get(id)?.lock) { flashHint(`${id} is locked — unlock it first`, 4000); return; }
-  const pose = restPose(obj, drivenBy(id, obj));
+  const pose = restPose(id, obj);
   const lp = obj.userData.isLight ? obj.userData.lightParams ?? {} : null;
   pushUndo(lp
     ? { verb: 'light', args: { id, pos: pose.pos, color: lp.color, intensity: lp.intensity, range: lp.range, keep: !!lp.keep, day: lp.day !== false } }
@@ -344,7 +300,8 @@ export function initEditPanels() {
     frames.set(p.id, sf);
   }
   for (const ev of ['entity', 'comp', 'mount', 'edit-mode', 'sg:selected']) bus.on(ev, repaintAll);
-  bus.on('sg:selected', () => { gesture = null; });   // a drag's `before` never outlives its selection
+  bus.on('sg:selected', () => { gesture = null; endGesture(); });   // a drag's `before` never outlives its selection
+  setEditHooks({ undo: pushUndo, commitLight, casting: lightCasting });
   bus.on('edit-find', () => findSelected());              // F in the viewport
   bus.on('sg:selected', () => { if (shown) refreshBehaviors(); });
   repaintAll();

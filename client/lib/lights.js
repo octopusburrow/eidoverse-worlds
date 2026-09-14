@@ -25,7 +25,9 @@
 import { THREE } from './core.js';
 import { bus } from './base.js';
 import { requestLight, updateRequest, releaseLight, isCasting } from './lightrig.js';
-import { registerFields } from './inspect.js';
+import { sendVerb } from './net.js';
+import { entities } from './world.js';
+import { registerHandler } from './inspect.js';
 
 // governor compatibility re-exports (main.js's shed lever; 5d replaces)
 export { shedALight, litCount } from './lightrig.js';
@@ -158,45 +160,23 @@ bus.on('verb-refused', () => {
   }
 });
 
-// ---- the inspector's light editor -------------------------------------------
-// Registered here because the MEANING of these fields lives in this module:
-// what a sane brightness range is, and what `keep` honestly promises (top
-// priority in the slot pool — but still glow-only when the pool is spent on
-// other keeps). Declared as FIELDS: the inspector, the channel box and the VR
-// quad all render this one declaration. A drag previews locally through
-// updateLight and commits through the coalescer above — at most one partial
-// `light` verb per EDIT_COMMIT_MS (just the touched field — the fold merges),
-// with the gesture's final value always sent on release.
-let gestureStart = null;   // lightParams as they were when the current drag began
-registerFields(({ id, obj, commit, undo }) => {
-  if (!obj?.userData?.isLight) return null;
-  const p = obj.userData.lightParams ?? {};
-  const inten = p.intensity ?? 16;
-  const range = p.range ?? 10;
-  const fields = [
-    { t: 'color', k: 'color', label: 'color', value: p.color ?? 0xffd9a0 },
-    // soft max: the drag stops here, typing may exceed it (Blender's soft limit)
-    { t: 'num', k: 'intensity', label: 'brightness', value: inten, step: 1, dp: 0, min: 0, softMax: Math.max(64, inten) },
-    { t: 'num', k: 'range', label: 'range', value: range, step: 1, dp: 0, min: 1, softMax: Math.max(40, range), unit: 'm' },
-    { t: 'check', k: 'keep', label: 'keep lit', value: !!p.keep, hint: 'first claim on a light slot, never governor-shed' },
-    { t: 'check', k: 'noon', label: 'burns at noon', value: p.day === false, hint: 'opts out of the day cycle' },
-  ];
-  if (!isCasting(obj.userData.rigKey)) fields.push({ t: 'info', label: '', value: 'glow-only right now (slot pool spent) — it may still cast for others' });
-  return {
-    group: 'light',
-    fields,
-    dispatch(k, v, _field, opts) {
-      const patch = k === 'noon' ? { day: !v } : { [k]: v };
-      // one undo per finished gesture (drags arrive live many times, then once
-      // final); the inverse is the value the fold held when the gesture began
-      if (!opts?.live) {
-        const prev = gestureStart ?? { ...p };
-        const key = Object.keys(patch)[0];
-        undo?.({ verb: 'light', args: { id, [key]: prev[key] } }, `${key} of ${id}`);
-        gestureStart = null;
-      } else gestureStart ??= { ...p };
-      updateLight(obj, patch);
-      queueCommit(id, commit, patch);   // live and final alike: the coalescer paces the wire
-    },
-  };
+// ---- the inspector's light PREVIEW --------------------------------------------
+// The fields themselves are declared once, for every surface, in
+// shared/editschema.js. What only this module can add: a live preview
+// (updateLight) while a control is dragged, and the coalescer above for the
+// commit — at most one partial `light` verb per EDIT_COMMIT_MS, the
+// gesture's final value always sent. Both go through queueCommit so a drag
+// never outruns VERB_RATE.
+export const lightCasting = (obj) => (obj?.userData?.rigKey ? isCasting(obj.userData.rigKey) : undefined);
+export function commitLight(id, patch) {
+  const obj = entities.get(id);
+  if (obj?.userData?.isLight) updateLight(obj, patch);   // the preview lands before the echo
+  queueCommit(id, (verb, args) => sendVerb(verb, args), patch);
+}
+registerHandler('light', (id, obj, k, v, opts) => {
+  if (!obj?.userData?.isLight || !opts?.live) return false;
+  const patch = k === 'noon' ? { day: !v } : { [k]: v };
+  updateLight(obj, patch);
+  queueCommit(id, (verb, args) => sendVerb(verb, args), patch);   // live: the coalescer paces the wire
+  return true;
 });

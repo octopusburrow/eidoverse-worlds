@@ -21,7 +21,7 @@ import { mouse } from './controller.js';
 import { flashHint } from './ui.js';
 import { setEditMode, isEditing, deselect, pushUndo,
   setInspectorHtml, hideInspector } from './build.js';
-import { registerFields } from './inspect.js';
+import { registerHandler } from './inspect.js';
 
 const raycaster = new THREE.Raycaster();
 
@@ -296,60 +296,19 @@ addEventListener('mouseup', () => {
 });
 
 
-// ---- the inspector's sockets editor ----------------------------------------
-// Declared here because this file already owns the anchor grammar: what a
-// slot is, that a write is ONE merged comp entry (a naive write eats every
-// other anchor), and the gizmo a slot shows as. Every slot's pos/yaw are
-// numbers, so they surface in the channel box too; a drag there moves the
-// gizmo live and commits on release through commitSockets, undo included.
-registerFields(({ id, bag }) => {
-  const sockets = bag?.sockets;
-  if (!sockets || typeof sockets !== 'object') return null;
-  const slots = Object.keys(sockets);
-  const fields = [{
-    t: 'list', k: 'slots', empty: 'no anchors yet',
-    rows: slots.map((slot) => {
-      const s = sockets[slot] ?? {};
-      const pos = s.pos ?? [0, 0.5, 0];
-      return {
-        id: slot, label: slot,
-        sub: `(${pos.map((v) => (+v).toFixed(2)).join(', ')}) · ${Math.round((s.yaw ?? 0) * 180 / Math.PI)}°${s.part ? ` · rides ${s.part}` : ''}`,
-        active: seatSel?.id === id && seatSel.slot === slot,
-        actions: [{ k: 'del', label: '✕', danger: true }],
-      };
-    }),
-  }];
-  for (const slot of slots) {
-    const s = sockets[slot] ?? {};
-    const pos = s.pos ?? [0, 0.5, 0];
-    ['x', 'y', 'z'].forEach((ax, i) => fields.push({ t: 'num', k: `${slot}|pos|${i}`, label: `${slot} ${ax}`, value: pos[i], step: 0.05, dp: 2, unit: 'm' }));
-    fields.push({ t: 'num', k: `${slot}|yaw`, label: `${slot} yaw`, value: s.yaw ?? 0, step: 5, deg: true });
-  }
-  fields.push({ t: 'btn', k: 'add', label: '+ seat here', hint: 'click the spot on the thing where a sitter goes' });
-  return {
-    group: 'sockets',
-    types: ['sockets'],
-    fields,
-    dispatch(action, value, _field, opts) {
-      if (action === 'add') { armSeatPlacement(id); return; }
-      if (action === 'slots') { if (entities.get(id)) selectSeat({ id, slot: value }); return; }
-      if (action === 'del') {
-        const next = socketsOf(id); delete next[value];
-        commitSockets(id, next, `removing anchor ${value} from ${id}`);
-        if (seatSel?.id === id && seatSel.slot === value) deselectSeat();
-        return;
-      }
-      const [slot, what, idx] = action.split('|');
-      const next = socketsOf(id);
-      const cur = next[slot];
-      if (!cur) return;
-      const pos = [...(cur.pos ?? [0, 0.5, 0])];
-      if (what === 'pos') pos[+idx] = +(+value).toFixed(3); else cur.yaw = +(+value).toFixed(3);
-      cur.pos = pos;
-      const g = seatGizmos.get(`${id}\x00${slot}`);
-      if (g) { g.position.set(...pos); g.rotation.y = cur.yaw ?? 0; }   // the live preview IS the gizmo
-      if (opts?.live) return;
-      commitSockets(id, next, what === 'pos' ? 'seat move' : 'seat facing');
-    },
-  };
+// ---- the inspector's sockets GESTURES + preview --------------------------------
+// The fields are declared in shared/editschema.js. What only this module can
+// add: '+ seat here' arms the click-to-place, a row click selects the gizmo,
+// a live drag on a slot's channels moves the gizmo before the merged comp
+// commits (the shared path merges and pushes the undo).
+registerHandler('sockets', (id, obj, k, value, opts) => {
+  if (k === 'add') { armSeatPlacement(id); return true; }
+  if (k === 'slots') { if (entities.get(id)) selectSeat({ id, slot: value }); return true; }
+  if (k === 'del') { if (seatSel?.id === id && seatSel.slot === value) deselectSeat(); return false; }
+  if (!opts?.live) return false;
+  const [slot, what, idx] = k.split('|');
+  const g = seatGizmos.get(`${id}\x00${slot}`);
+  if (!g) return true;
+  if (what === 'pos') { const p = g.position.toArray(); p[+idx] = +value; g.position.set(...p); } else g.rotation.y = +value;
+  return true;
 });
