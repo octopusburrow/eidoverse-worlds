@@ -204,7 +204,7 @@ function stepper(value, f, commit) {
   // Esc while scrubbing: the input was BLURRED when the drag armed (so the
   // caret never fights the pointer), which means the key lands on the
   // document, not here — listen there, only while a drag is armed
-  const onDragKey = (e) => { if (e.key === 'Escape' && drag?.armed) { e.stopPropagation(); e.preventDefault(); cancelDrag(); } };
+  const onDragKey = (e) => { if (e.key === 'Escape' && drag?.armed) { e.stopImmediatePropagation(); e.preventDefault(); cancelDrag(); } };   // immediate: the global key router (controller.js) must not also see it and deselect
   const cancelDrag = () => {
     if (!drag) return;
     const d = drag; drag = null;

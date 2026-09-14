@@ -124,6 +124,26 @@ console.log("\nEsc mid-drag restores the start and commits nothing:");
   check("a live restore was dispatched (the preview must snap back)", last[3]?.live && near(last[1], 2));
   inp.dispatchEvent(pe("pointerup", 160));
   check("no commit after Esc", calls.every((c) => c[3]?.live));
+  // the INTERNAL value must be back too, not just the face (a stale wire
+  // would make the next relative edit compute from the abandoned drag)
+  inp.value = "+=1"; inp.dispatchEvent(new Event("change"));
+  const typed = calls[calls.length - 1];
+  check("a relative edit after Esc computes from the restored value (2+1)", !typed[3]?.live && near(typed[1], 3), String(typed?.[1]));
+}
+
+console.log("\nshift = fine, ctrl = snap (the header claimed these; now they are bound):");
+{
+  const host = document.createElement("div");
+  const calls: any[] = [];
+  renderDOM(host, [{ t: "num", k: "px", value: 2, step: 0.1, dp: 2 }], (...a: any[]) => calls.push(a));
+  const inp = host.querySelector(".sp-num") as HTMLInputElement;
+  inp.dispatchEvent(pe("pointerdown", 100));
+  inp.dispatchEvent(pe("pointermove", 150));                        // +50px → +1.00
+  inp.dispatchEvent(pe("pointermove", 200, { shiftKey: true }));    // +50px at 0.1× → +0.10
+  check("shift scales the travel by 0.1", near(calls[calls.length - 1][1], 3.1, 1e-9), String(calls[calls.length - 1][1]));
+  inp.dispatchEvent(pe("pointermove", 213, { ctrlKey: true }));     // 3.1 + 0.26 → 3.36 → snaps to 3
+  check("ctrl snaps to whole units", calls[calls.length - 1][1] === 3, String(calls[calls.length - 1][1]));
+  inp.dispatchEvent(pe("pointerup", 213, { ctrlKey: true }));
 }
 
 console.log("\nshift = fine, ctrl = snap, soft limit bounds the drag, hard bounds typing:");

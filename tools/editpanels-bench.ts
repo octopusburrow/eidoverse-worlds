@@ -66,12 +66,12 @@ check('channels: pos x/y/z + light brightness + range', await evalJson(`(() => {
 check('the light group renders from the registry', await evalJson(`[...${insp}.querySelectorAll('.sp-group')].some((g) => /light/.test(g.textContent)) && !!${insp}.querySelector('input[type=color]')`));
 check('lock / keep / noon toggles', await evalJson(`${insp}.querySelectorAll('input[type=checkbox]').length >= 3`));
 check('compact channels have no bumpers', await evalJson(`${insp}.querySelectorAll('.sp-step.compact .sp-bump').length === 0 && ${insp}.querySelectorAll('.sp-step.compact').length >= 5`));
-check('grey scope: no seafoam on the edit frame', await evalJson(`getComputedStyle(${insp}).getPropertyValue('--brand').trim() !== '#8fe8c8'`));
+check('grey scope: the edit frame re-points --brand to the grey', await evalJson(`getComputedStyle(${insp}).getPropertyValue('--brand').trim() === '#d2d2d6'`));
 
 console.log('\nediting through the channel box reaches the light:');
 await evalJson(`(() => { const i = [...${insp}.querySelectorAll('.sp-f-num')].find((r) => r.querySelector('.sp-label').textContent === 'light · brightness').querySelector('.sp-num'); i.value = '+=4'; i.dispatchEvent(new Event('change')); return true; })()`);
 check('brightness is 20 on the light', await waitFor(`import('/lib/world.js').then((m) => m.entities.get('benchlamp')?.userData?.lightParams?.intensity === 20)`));
-check('…and the light group agrees (same declaration, two lanes)', await waitFor(`[...${insp}.querySelectorAll('.sp-f-num')].filter((r) => /brightness/.test(r.querySelector('.sp-label').textContent)).every((r) => r.querySelector('.sp-num').value === '20')`));
+check('…and the light group agrees (same declaration, two lanes)', await waitFor(`(() => { const R = [...${insp}.querySelectorAll('.sp-f-num')].filter((r) => /brightness/.test(r.querySelector('.sp-label').textContent)); return R.length >= 2 && R.every((r) => r.querySelector('.sp-num').value === '20'); })()`));
 await sleep(1500);   // past EDIT_COMMIT_MS and the echo: a refusal would have rolled it back by now
 check('…and it stayed (the verb was accepted, not rolled back)', (await evalJson(`import('/lib/world.js').then((m) => m.entities.get('benchlamp')?.userData?.lightParams?.intensity)`)) === 20);
 
