@@ -67,6 +67,27 @@ function inverseOf(v, rec, id) {
   return null;
 }
 
+/** The verbs and inverses ONE edit would produce, computed but not sent —
+ *  multi-selection batches these across ids into one undo step. `base` is
+ *  the record the inverse is computed from (a gesture's start, else now). */
+export function planEdit(id, key, value, base = null) {
+  const rec = foldRecord(id);
+  if (!rec) return { verbs: [], inverses: [], errors: [`${id} is not in the fold`] };
+  const dot = key.indexOf('.');
+  const group = key.slice(0, dot), k = key.slice(dot + 1);
+  const f = fieldAt(inspectSchema(rec, id), key);
+  if (f?.deg && typeof value === 'number') value = value * R2D;   // panel steppers speak wire (radians); editVerbs takes the face
+  if (group === 'comp' && k !== '+' && value === '') return { verbs: [], inverses: [], errors: [`${k}: empty — use "remove ${k}" to remove it`] };
+  const { verbs, errors } = editVerbs(rec, id, { [key]: value });
+  const inverses = verbs.map((v) => inverseOf(v, base ?? rec, id)).filter(Boolean);
+  return { verbs, inverses, errors };
+}
+/** Send one planned verb through the right door (lights ride the coalescer). */
+export function sendPlanned(v) {
+  if (v.verb === 'light' && hooks.commitLight) { const { id: _i, ...patch } = v.args; hooks.commitLight(v.args.id, patch); }
+  else sendVerb(v.verb, v.args);
+}
+
 export function commitEdit(id, key, value, opts = {}) {
   const rec = foldRecord(id);
   const obj = entities.get(id);
@@ -80,22 +101,14 @@ export function commitEdit(id, key, value, opts = {}) {
   if (live) return { ok: true, live: true };
   const base = gesture?.id === id ? gesture.rec : rec;   // the pose/values before the drag began
   gesture = null;
-  // the panel's steppers speak WIRE units (a deg field commits radians);
-  // editVerbs' contract — a model's — is that numbers are the FACE (degrees).
-  // Convert here, once, on the seam. (Review B1: amp/phase/socket yaw were
-  // landing at 1/57th.)
-  const f = fieldAt(inspectSchema(rec, id), key);
-  if (f?.deg && typeof value === 'number') value = value * R2D;
-  // a raw-JSON box cleared and blurred must not delete the component — the
-  // 'remove <type>' button (null) is the deliberate act (review S2)
-  if (group === 'comp' && k !== '+' && value === '') return { ok: false, errors: [`${k}: empty — use "remove ${k}" to remove it`] };
-  const { verbs, errors } = editVerbs(rec, id, { [key]: value });
-  for (const v of verbs) {
-    const inv = inverseOf(v, base, id);
-    if (inv) hooks.undo?.(inv, `${key} of ${id}`);
-    if (v.verb === 'light' && hooks.commitLight) { const { id: _i, ...patch } = v.args; hooks.commitLight(id, patch); }
-    else sendVerb(v.verb, v.args);
-  }
+  // planEdit holds the two seam rules: the panel's steppers speak WIRE units
+  // (a deg field commits radians) while editVerbs' contract — a model's — is
+  // the FACE, converted once here (review B1: amp/phase/socket yaw landed at
+  // 1/57th); and a raw-JSON box cleared and blurred must not delete the
+  // component — the 'remove <type>' button (null) is the deliberate act (S2).
+  const { verbs, inverses, errors } = planEdit(id, key, value, base);
+  inverses.forEach((inv) => hooks.undo?.(inv, `${key} of ${id}`));
+  verbs.forEach(sendPlanned);
   return { ok: !errors.length, errors, verbs };
 }
 

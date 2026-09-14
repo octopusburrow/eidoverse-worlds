@@ -28,7 +28,8 @@
 //   { t:'color',  k, label, value:0xRRGGBB }                      → edit(k, int)
 //   { t:'group',  k, label, open? }   marker: rows until the next marker belong to it;
 //                 collapsed groups skip their rows                → edit('fold', k)
-//   { t:'tree',   k, rows:[{ id, label, sub?, depth, active?, badges?:[], locked?, menu?, kids?, open?, dim? }],
+//   { t:'tree',   k, rows:[{ id, label, sub?, depth, active?, multi?, badges?:[], locked?, menu?, kids?, open?, dim? }],
+//                 a Shift/Ctrl-click row dispatches edit(k, id, f, {extend:true})
 //                 menu?:[{k, label, danger?}] }   right-click a row → its menu (row.menu wins)
 //                 kids>0 draws a disclosure → edit('open', id)   → edit(k, id) / edit('lock', id) / edit(item.k, id)
 // Every field also takes { disabled?, driven?, hint? }: disabled draws it
@@ -355,7 +356,7 @@ function fieldDOM(f, edit) {
       const box = el('div', 'sp-tree');
       if (!f.rows?.length) box.append(el('div', 'sp-empty', f.empty ?? 'nothing here'));
       for (const r of f.rows ?? []) {
-        const line = el('div', `sp-item sp-tree-row${r.active ? ' active' : ''}`);
+        const line = el('div', `sp-item sp-tree-row${r.active ? ' active' : ''}${r.multi ? ' multi' : ''}`);
         line.style.paddingLeft = `${4 + (r.depth ?? 0) * 14}px`;
         if (r.dim) line.classList.add('dim');
         // disclosure: a row with children folds them (edit('open', id))
@@ -366,7 +367,7 @@ function fieldDOM(f, edit) {
         const main = el('span', 'sp-item-main');
         main.append(el('span', 'sp-item-label', r.label));
         if (r.sub || r.badges?.length) main.append(el('span', 'sp-item-sub', [r.sub, ...(r.badges ?? [])].filter(Boolean).join(' · ')));
-        main.onclick = () => edit(f.k, r.id);
+        main.onclick = (e) => edit(f.k, r.id, f, { extend: e.shiftKey || e.ctrlKey || e.metaKey });   // Shift/Ctrl-click extends a selection
         const items = r.menu ?? f.menu;
         if (items?.length) line.oncontextmenu = (e) => { e.preventDefault(); contextMenu(e.clientX, e.clientY, items, (k) => edit(k, r.id)); };
         line.append(main);

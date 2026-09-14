@@ -228,6 +228,30 @@ check('…and the copy is selected', await waitFor(`import('/lib/scenegraph.js')
 await evalJson(`import('/lib/scenegraph.js').then((m) => m.sceneSelect('benchlamp')), true`);
 await waitFor(`${insp}.querySelector('.sp-info')?.textContent.startsWith('benchlamp')`);
 
+console.log('\nmulti-selection: intersected channels, field-wise writes, one undo:');
+await sleep(1500);   // verb window
+const copyId = await evalJson(`import('/lib/world.js').then((m) => [...m.entities.keys()].find((k) => /^benchlamp~[0-9a-f]{4}$/.test(k)))`);
+await evalJson(`(() => { const R = [...${hier}.querySelectorAll('.sp-tree-row')]; const r = R.find((x) => x.querySelector('.sp-item-label').textContent.includes(${JSON.stringify(copyId)})); r.querySelector('.sp-item-main').dispatchEvent(new MouseEvent('click', { ctrlKey: true, bubbles: true })); return true; })()`);
+check('Ctrl-click a second row → 2 selected, primary unchanged', await waitFor(`globalThis.__editPanels?.().selection.length === 2 && globalThis.__editPanels().selection[0] === 'benchlamp'`), JSON.stringify(await evalJson(`globalThis.__editPanels?.().selection`)));
+check('the inspector says so and shows only SHARED channels (both lights: brightness, no sockets)', await waitFor(`/2 selected/.test(${insp}.textContent) && [...${insp}.querySelectorAll('.sp-f-num .sp-label')].some((l) => /brightness/.test(l.textContent)) && ![...${insp}.querySelectorAll('.sp-f-num .sp-label')].some((l) => /sockets/.test(l.textContent))`), JSON.stringify(await evalJson(`[...${insp}.querySelectorAll('.sp-f-num .sp-label')].map((l) => l.textContent)`)));
+check('the second row is marked multi, the first active', await evalJson(`${hier}.querySelectorAll('.sp-tree-row.multi').length === 1 && ${hier}.querySelectorAll('.sp-tree-row.active').length === 1`));
+const before = await evalJson(`import('/lib/state.js').then((m) => [m.state.st.entities.benchlamp.intensity, m.state.st.entities[${JSON.stringify(copyId)}].intensity])`);
+await evalJson(`(() => { const i = [...${insp}.querySelectorAll('.sp-f-num')].find((r) => /brightness/.test(r.querySelector('.sp-label').textContent)).querySelector('.sp-num'); i.value = '33'; i.dispatchEvent(new Event('change')); return true; })()`);
+check('typing 33 into brightness lands on BOTH lights', await waitFor(`import('/lib/state.js').then((m) => m.state.st.entities.benchlamp.intensity === 33 && m.state.st.entities[${JSON.stringify(copyId)}].intensity === 33)`), 'before=' + JSON.stringify(before) + ' now=' + JSON.stringify(await evalJson(`import('/lib/state.js').then((m) => [m.state.st.entities.benchlamp.intensity, m.state.st.entities[${JSON.stringify(copyId)}].intensity])`)) + ' refused=' + JSON.stringify(await evalJson(`window.__refused`)));
+await sleep(1200);
+await evalJson(`import('/lib/build.js').then((m) => m.undo()), true`);
+check('ONE undo restores both', await waitFor(`import('/lib/state.js').then((m) => m.state.st.entities.benchlamp.intensity === ${before[0]} && m.state.st.entities[${JSON.stringify(copyId)}].intensity === ${before[1]})`), JSON.stringify(await evalJson(`import('/lib/state.js').then((m) => [m.state.st.entities.benchlamp.intensity, m.state.st.entities[${JSON.stringify(copyId)}].intensity])`)));
+await evalJson(`import('/lib/scenegraph.js').then((m) => m.sceneSelect('benchlamp')), true`);
+check('after undo + a plain select, the set is back to one', await waitFor(`globalThis.__editPanels?.().selection.length === 1`), 'sel=' + JSON.stringify(await evalJson(`globalThis.__editPanels?.().selection`)));
+await evalJson(`(() => { const R = [...${hier}.querySelectorAll('.sp-tree-row')]; const r = R.find((x) => x.querySelector('.sp-item-label').textContent.includes(${JSON.stringify(copyId)})); r.querySelector('.sp-item-main').dispatchEvent(new MouseEvent('click', { ctrlKey: true, bubbles: true })); return true; })()`);
+check('Ctrl-click extends again → 2', await waitFor(`globalThis.__editPanels?.().selection.length === 2`), JSON.stringify(await evalJson(`globalThis.__editPanels?.().selection`)));
+await evalJson(`(() => { const R = [...${hier}.querySelectorAll('.sp-tree-row')]; const r = R.find((x) => x.querySelector('.sp-item-label').textContent.includes(${JSON.stringify(copyId)})); r.querySelector('.sp-item-main').dispatchEvent(new MouseEvent('click', { ctrlKey: true, bubbles: true })); return true; })()`);
+check('Ctrl-click the extra again drops it → 1 selected', await waitFor(`globalThis.__editPanels?.().selection.length === 1`), 'selection=' + JSON.stringify(await evalJson(`globalThis.__editPanels?.().selection`)) + ' rows=' + JSON.stringify(await evalJson(`[...${hier}.querySelectorAll('.sp-tree-row')].map((r) => r.className.replace('sp-item sp-tree-row', '') + ':' + r.querySelector('.sp-item-label').textContent)`)));
+await evalJson(`(() => { const R = [...${hier}.querySelectorAll('.sp-tree-row')]; const r = R.find((x) => x.querySelector('.sp-item-label').textContent.includes(${JSON.stringify(copyId)})); r.querySelector('.sp-item-main').dispatchEvent(new MouseEvent('click', { bubbles: true })); return true; })()`);
+check('a plain click collapses to that one thing', await waitFor(`globalThis.__editPanels?.().selection.length === 1 && globalThis.__editPanels().selection[0] === ${JSON.stringify(copyId)}`));
+await evalJson(`import('/lib/scenegraph.js').then((m) => m.sceneSelect('benchlamp')), true`);
+await waitFor(`${insp}.querySelector('.sp-info')?.textContent.startsWith('benchlamp')`);
+
 console.log('\nthe legacy World›Scene section still gets the light editor (adapter):');
 await evalJson(`document.querySelector('#sec-scene .head')?.click(), true`);
 check('scene section renders the light fields through editorsFor', await waitFor(`!!document.querySelector('#sec-scene [data-fe] .sp-num')`));

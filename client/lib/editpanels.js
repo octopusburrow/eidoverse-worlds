@@ -16,7 +16,7 @@
 // A number a motion comp drives shows its REST pose, tinted: `place` moves
 // the base the motion composes onto, which is the honest thing to edit.
 
-import { THREE } from './core.js';
+import { THREE, scene } from './core.js';
 import { bus } from './base.js';
 import { entities, entityMeta, comps, avatarMounts } from './world.js';
 import { sendVerb, requestDebug } from './net.js';
@@ -25,7 +25,7 @@ import { makeSchemaFrame, resolveDelta } from './panels.js';
 import { registerXRPanel } from './xrpanels.js';
 import { treeData, sceneSelected, sceneSelect, sceneAttach, sceneDetach } from './scenegraph.js';
 import { pushUndo, refreshOutline } from './build.js';
-import { schemaFor, commitEdit, setEditHooks, endGesture, foldRecord } from './inspect.js';
+import { schemaFor, commitEdit, planEdit, sendPlanned, setEditHooks, endGesture, foldRecord } from './inspect.js';
 import { channels } from '../../shared/editschema.js';
 import { commitLight, lightCasting } from './lights.js';
 import { myState } from './controller.js';
@@ -50,6 +50,46 @@ let arming = null;   // the child id waiting for a row click to name its parent
 let filter = '';     // the hierarchy's filter text: non-matches hide, ancestors of a match stay (dimmed)
 const collapsed = new Set();   // ids whose children are folded (client state, not persisted)
 let visibleRows = [];          // the rows as last painted, for ↑/↓
+
+// ---------------------------------------------------------------- multi-selection
+// The PRIMARY selection stays exactly what build.js/scenegraph own (one id,
+// the outline, every existing path). A Shift/Ctrl-click in the tree or a
+// Ctrl-click in the viewport EXTENDS it with more ids, held here. The
+// inspector then shows the channels every selected thing has (Godot's
+// MultiNodeEdit intersects), typing writes the value to each, and the undo
+// is one compound step. A plain click anywhere collapses back to one.
+const extra = new Set();
+let extending = false;         // true while an extend re-primaries: the sg:selected it emits must not clear the set
+const outlines = new Map();    // id → BoxHelper for the extras (the primary keeps build.js's outline)
+/** Every selected id, primary first, live things only. */
+export function selection() {
+  const p = sceneSelected();
+  const ids = p && entities.get(p) ? [p] : [];
+  for (const id of extra) if (id !== p && entities.get(id)) ids.push(id);
+  return ids;
+}
+function extendSelection(id) {
+  if (!entities.get(id)) return;
+  const p = sceneSelected();
+  if (!p) { sceneSelect(id); return; }
+  if (id === p) {                       // un-primary: promote the next extra, or clear
+    const next = [...extra][0];
+    if (next) { extra.delete(next); extending = true; sceneSelect(next); extending = false; }
+    else return;
+  } else if (extra.has(id)) extra.delete(id);
+  else extra.add(id);
+  syncOutlines(); repaintAll();
+}
+function clearExtras() { if (!extra.size) return; extra.clear(); syncOutlines(); }
+function syncOutlines() {
+  for (const [id, h] of outlines) if (!extra.has(id) || !entities.get(id)) { scene.remove(h); h.dispose?.(); outlines.delete(id); }
+  for (const id of extra) {
+    const obj = entities.get(id); if (!obj) continue;
+    let h = outlines.get(id);
+    if (!h) { h = new THREE.BoxHelper(obj, 0x8fe8c8); h.material.transparent = true; h.material.opacity = 0.55; scene.add(h); outlines.set(id, h); }
+    else h.setFromObject(obj);
+  }
+}
 
 // ---------------------------------------------------------------- scripts roster
 // the behavior runtime, for 📜 badges in the tree and the Behaviors group —
@@ -95,7 +135,7 @@ function hierarchyFields() {
     const ch = kids.get(id) ?? [];
     const rd = riders.get(id) ?? [];
     const mine = matches(id);
-    const row = { id, label: labelOf(id), sub: short(meta), depth, active: id === sel, badges, locked: !!bag.lock,
+    const row = { id, label: labelOf(id), sub: short(meta), depth, active: id === sel, multi: extra.has(id) && id !== sel, badges, locked: !!bag.lock,
       kids: ch.length + rd.length, open: !collapsed.has(id) || !!q, dim: q && !mine };   // a filter looks inside folded nodes, so the glyph says open
     const at = rows.length; rows.push(row);
     let any = mine;
@@ -126,12 +166,13 @@ function hierarchyFields() {
     { t: 'tree', k: 'sel', rows, empty: q ? `nothing matches "${filter}"` : 'nothing placed yet — press B in the world to place things' },
   ];
 }
-function hierarchyDispatch(action, payload) {
+function hierarchyDispatch(action, payload, _field, opts = {}) {
   let sel = sceneSelected();
   switch (action) {
     case 'sel': {
       if (String(payload).startsWith('rider:')) return;
       if (arming && payload !== arming) { sceneAttach(arming, payload); arming = null; break; }
+      if (opts.extend) { extendSelection(payload); return; }
       sceneSelect(payload);
       break;
     }
@@ -145,7 +186,7 @@ function hierarchyDispatch(action, payload) {
       break;
     }
     case 'detach': sceneDetach(payload ?? sel); break;
-    case 'remove': if (payload ?? sel) removeWithUndo(payload ?? sel); break;
+    case 'remove': { const ids = payload && !extra.has(payload) && payload !== sel ? [payload] : selection(); if (ids.length) removeMany(ids); break; }
     case 'filter': filter = String(payload ?? ''); break;
     case 'open': if (collapsed.has(payload)) collapsed.delete(payload); else collapsed.add(payload); break;
     case 'hide': { const id = payload ?? sel; if (id) commitEdit(id, 'flags.hidden', comps.get(id)?.hidden !== true); break; }
@@ -207,9 +248,36 @@ function restPose(id, obj) {
     : { pos: [round(obj.position.x), round(obj.position.y), round(obj.position.z)], yaw: round(obj.rotation.y, 4), scale: round(obj.scale?.x ?? 1) };
 }
 
+/** Godot's MultiNodeEdit: the channels EVERY selected thing has, the
+ *  primary's value shown, ≠ where they differ; flags intersect the same way. */
+function multiFields(ids) {
+  const schemas = ids.map((id) => schemaFor(id));
+  const chans = schemas.map((sc) => new Map(channels(sc).map((c) => [c.key, c])));
+  const f = [{ t: 'info', label: 'selection', value: `${ids.length} selected — ${ids.join(', ')}` }, { t: 'info', label: '', value: 'typing sets every one · Ctrl-click to drop one · one undo' }];
+  f.push({ t: 'group', k: 'channels', label: 'Channels (shared)', open: true });
+  for (const c of chans[0].values()) {
+    const all = chans.map((m) => m.get(c.key)).filter(Boolean);
+    if (all.length !== ids.length) continue;
+    const mixed = all.some((x) => Math.abs(x.value - c.value) > 1e-9);
+    f.push({ ...c, k: `ch:${c.key}`, label: `${c.group === 'pos' ? c.label : `${c.group} · ${c.label ?? c.k}`}${mixed ? ' ≠' : ''}`, compact: true,
+      disabled: all.some((x) => x.disabled), driven: undefined, hint: mixed ? 'differs across the selection — typing sets all' : c.hint });
+  }
+  f.push({ t: 'group', k: 'flags', label: 'Flags', open: true });
+  for (const k of ['lock', 'hidden']) {
+    const vals = ids.map((id) => comps.get(id)?.[k] === true);
+    const on = vals.every(Boolean), mixed = vals.some(Boolean) && !on;
+    f.push({ t: 'check', k: `ed:flags.${k}`, label: `${k === 'lock' ? 'locked' : 'hidden'}${mixed ? ' ≠' : ''}`, value: on, hint: mixed ? 'differs — checking sets all' : undefined });
+  }
+  f.push({ t: 'btn', k: 'remove', label: `remove ${ids.length}`, danger: true });
+  painted = f;
+  return f;
+}
+
 function inspectorFields() {
   const id = sceneSelected();
   if (!id || !entities.has(id)) return [{ t: 'info', label: 'selection', value: 'nothing selected — click a thing, or a row in the hierarchy' }];
+  const ids = selection();
+  if (ids.length > 1) return multiFields(ids);
   const obj = entities.get(id); const meta = entityMeta.get(id) ?? {}; const bag = comps.get(id) ?? {};
   // the fold knows the thing before its model arrives: entities holds null
   // while the GLB loads (scenegraph guards the same seam)
@@ -264,6 +332,27 @@ function inspectorDispatch(action, payload, field, opts = {}) {
   if (action === 'fold') { toggleFold(id, payload); repaintAll(); return; }
   if (!obj) return;
   const live = !!opts.live;
+  const ids = selection();
+  if (ids.length > 1) {
+    if (live) return;                                   // no multi preview: the commit is the feedback
+    if (action === 'remove') { removeMany(ids); return; }
+    if (action.startsWith('ch:') || action.startsWith('ed:')) {
+      const key = action.slice(3);
+      const isDelta = typeof payload === 'object' && payload && 'delta' in payload;
+      const v = isDelta ? resolveDelta(painted, action, payload) : payload;
+      if (isDelta && v == null) return;
+      const inverses = [], errors = [];
+      for (const each of ids) {
+        const plan = planEdit(each, key, v);
+        errors.push(...plan.errors); inverses.push(...plan.inverses);
+        plan.verbs.forEach(sendPlanned);
+      }
+      if (inverses.length) pushUndo({ verbs: inverses }, `${key} on ${ids.length} things`);
+      if (errors.length) flashHint(errors.join(' · '), 5000);
+      repaintAll();
+    }
+    return;
+  }
 
   // transform channels: preview locally while dragging (no log traffic), one
   // `place` on release carrying the full pose the channels show
@@ -305,23 +394,31 @@ function inspectorDispatch(action, payload, field, opts = {}) {
     return;
   }
   switch (action) {
-    case 'remove': removeWithUndo(id); break;
+    case 'remove': removeMany([id]); break;
     case 'unbind': sendVerb('behavior', { id: payload, remove: true }); setTimeout(refreshBehaviors, 400); break;
     default: if (action.startsWith('uncomp:')) commitEdit(id, `comp.${action.slice(7)}`, null);
   }
   repaintAll();
 }
 
-function removeWithUndo(id) {
-  const obj = entities.get(id); const meta = entityMeta.get(id) ?? {};
-  if (!obj) return;
-  if (comps.get(id)?.lock) { flashHint(`${id} is locked — unlock it first`, 4000); return; }
-  const pose = restPose(id, obj);
-  const lp = obj.userData.isLight ? obj.userData.lightParams ?? {} : null;
-  pushUndo(lp
-    ? { verb: 'light', args: { id, pos: pose.pos, color: lp.color, intensity: lp.intensity, range: lp.range, keep: !!lp.keep, day: lp.day !== false } }
-    : { verb: 'spawn', args: { id, lib: meta.lib, ...pose } }, `removing ${id}`);
-  sendVerb('remove', { id });
+/** The verb that would bring a removed thing back — from the FOLD record,
+ *  so a light returns with its colour and a model with its scale and comps. */
+function removeInverse(id) {
+  const rec = foldRecord(id); if (!rec) return null;
+  const pos = [...(rec.pos ?? [0, 0, 0])];
+  return rec.kind === 'light'
+    ? { verb: 'light', args: { id, pos, color: rec.color, intensity: rec.intensity, range: rec.range, keep: rec.keep === true, day: rec.day !== false } }
+    : { verb: 'spawn', args: { id, lib: rec.lib, pos, yaw: rec.yaw ?? 0, ...(rec.scale != null ? { scale: rec.scale } : {}) } };
+}
+function removeMany(ids) {
+  const locked = ids.filter((id) => comps.get(id)?.lock);
+  if (locked.length) { flashHint(`${locked.join(', ')} ${locked.length > 1 ? 'are' : 'is'} locked — unlock first`, 4000); }
+  const go = ids.filter((id) => entities.get(id) && !comps.get(id)?.lock);
+  if (!go.length) return;
+  const inverses = go.map(removeInverse).filter(Boolean);
+  pushUndo(inverses.length === 1 ? inverses[0] : { verbs: inverses }, go.length === 1 ? `removing ${go[0]}` : `removing ${go.length} things`);
+  for (const id of go) sendVerb('remove', { id });
+  clearExtras();
 }
 
 // ---------------------------------------------------------------- mounting
@@ -350,7 +447,10 @@ export function initEditPanels() {
     frames.set(p.id, sf);
   }
   for (const ev of ['entity', 'comp', 'mount', 'edit-mode', 'sg:selected']) bus.on(ev, repaintAll);
-  bus.on('sg:selected', () => { gesture = null; endGesture(); });   // a drag's `before` never outlives its selection
+  bus.on('sg:selected', () => { gesture = null; endGesture(); if (!extending) clearExtras(); });   // a plain select collapses the set; a drag's `before` never outlives its selection
+  bus.on('edit-extend', (id) => extendSelection(id));   // Ctrl-click in the viewport (build.js)
+  bus.on('entity', () => { if (extra.size) syncOutlines(); });
+  bus.on('edit-mode', (on) => { if (!on) clearExtras(); });
   setEditHooks({ undo: pushUndo, commitLight, casting: lightCasting });
   bus.on('edit-find', () => findSelected());              // F in the viewport
   bus.on('key', (e) => {   // Alt+D duplicates: D strafes, and Shift+D strafes faster
@@ -389,5 +489,5 @@ export function initEditPanels() {
 /** harness window */
 export const editPanelsDebug = () => ({
   hierarchy: hierarchyFields().length, inspector: inspectorFields().length, selected: sceneSelected(), arming,
-  groups: sceneSelected() ? schemaFor(sceneSelected()).groups.map((g) => g.group) : [], behaviors: behaviors.length, rows: visibleRows,
+  groups: sceneSelected() ? schemaFor(sceneSelected()).groups.map((g) => g.group) : [], behaviors: behaviors.length, rows: visibleRows, selection: selection(),
 });

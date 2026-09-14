@@ -365,7 +365,8 @@ export function undo() {
   if (!step) { flashHint('nothing to undo'); return; }
   // Undo is inverse ENTRIES — history stays append-only, which is what keeps
   // the log replayable and the world forkable.
-  sendVerb(step.inverse.verb, step.inverse.args);
+  // a compound inverse ({verbs: [...]}) undoes a multi-selection edit as ONE step
+  for (const inv of step.inverse.verbs ?? [step.inverse]) sendVerb(inv.verb, inv.args);
   flashHint(`undid ${step.describe}`);
   deselect();
 }
@@ -405,6 +406,10 @@ canvas.addEventListener('mousedown', (e) => {
   while (root && !root.userData.entityId) root = root.parent;
   if (!root) return;
   const id = root.userData.entityId;
+  // Ctrl-click EXTENDS the selection (editpanels owns the set; Shift is the
+  // vertical drag here, so it can't double as the extend modifier it is in
+  // the tree). No drag starts from an extend.
+  if (e.ctrlKey || e.metaKey) { bus.emit('edit-extend', id); e.preventDefault(); return; }
   select(id);
   // A press is a SELECT. It only becomes a drag once the pointer actually
   // travels — otherwise clicking a thing to look at its label moved it.
