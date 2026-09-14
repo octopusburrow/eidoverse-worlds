@@ -64,7 +64,7 @@ const yawQuat = (yaw) => qAxisAngle([0, 1, 0], yaw ?? 0);
 // [1,0,0], no t0 at all. Parsing is where generosity lives; the closed form
 // stays exact.
 
-const AXES = { x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1],
+export const AXES = { x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1],
   '-x': [-1, 0, 0], '-y': [0, -1, 0], '-z': [0, 0, -1] };
 
 export const axisOf = (m, def) => {

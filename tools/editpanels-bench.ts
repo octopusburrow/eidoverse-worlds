@@ -75,14 +75,37 @@ check('…and the light group agrees (same declaration, two lanes)', await waitF
 await sleep(1500);   // past EDIT_COMMIT_MS and the echo: a refusal would have rolled it back by now
 check('…and it stayed (the verb was accepted, not rolled back)', (await evalJson(`import('/lib/world.js').then((m) => m.entities.get('benchlamp')?.userData?.lightParams?.intensity)`)) === 20);
 
-console.log('\nthe legacy World›Scene section still gets the light editor (adapter):');
-await evalJson(`document.querySelector('#sec-scene .head')?.click(), true`);
-check('scene section renders the light fields through editorsFor', await waitFor(`!!document.querySelector('#sec-scene [data-fe] .sp-num')`));
+console.log('\nmotion: a bob on the light — group, driven channels, an edit that keeps t0:');
+await evalJson(`import('/lib/net.js').then((m) => m.sendVerb('motion', { id: 'benchlamp', type: 'bob', amp: 0.3, period: 2 })), true`);
+check('motion group renders from motion.js', await waitFor(`[...${insp}.querySelectorAll('.sp-group')].some((g) => /motion/.test(g.textContent)) && [...${insp}.querySelectorAll('select.sp-enum')].some((s) => s.value === 'bob')`));
+check('pos channels are DRIVEN (rest pose, tinted)', await evalJson(`${insp}.querySelectorAll('.sp-f-num.driven').length >= 3`));
+check('amp / period reach the channel box', await evalJson(`(() => { const L = [...${insp}.querySelectorAll('.sp-f-num .sp-label')].map((l) => l.textContent); return L.includes('motion · amp') && L.includes('motion · period'); })()`));
+const t0 = await evalJson(`import('/lib/world.js').then((m) => m.comps.get('benchlamp')?.motion?.t0)`);
+check('the fold stamped a t0', typeof t0 === 'number' && t0 > 0, String(t0));
+await evalJson(`(() => { const i = [...${insp}.querySelectorAll('.sp-f-num')].find((r) => r.querySelector('.sp-label').textContent === 'motion · amp').querySelector('.sp-num'); i.value = '+=0.2'; i.dispatchEvent(new Event('change')); return true; })()`);
+check('amp is 0.5 after +=0.2', await waitFor(`import('/lib/world.js').then((m) => Math.abs((m.comps.get('benchlamp')?.motion?.amp ?? 0) - 0.5) < 1e-9)`));
+check('…and t0 was kept (no phase restart)', (await evalJson(`import('/lib/world.js').then((m) => m.comps.get('benchlamp')?.motion?.t0)`)) === t0);
+await evalJson(`(() => { const b = [...${insp}.querySelectorAll('.sp-btn')].find((x) => /come to rest/.test(x.textContent)); b.dispatchEvent(new PointerEvent('pointerdown', { clientX: 1, clientY: 1, bubbles: true })); b.click(); return true; })()`);
+check('come to rest removes the motion', await waitFor(`import('/lib/world.js').then((m) => !m.comps.get('benchlamp')?.motion)`));
+
+console.log('\nsockets: a seat on the light — list, per-slot channels, ✕ through the merged write:');
+await evalJson(`import('/lib/net.js').then((m) => m.sendVerb('comp', { id: 'benchlamp', type: 'sockets', data: { seat: { pos: [0, 0.5, 0], yaw: 0 } } })), true`);
+check('sockets group with the seat row', await waitFor(`[...${insp}.querySelectorAll('.sp-group')].some((g) => /sockets/.test(g.textContent)) && [...${insp}.querySelectorAll('.sp-item-label')].some((l) => l.textContent === 'seat')`));
+check('seat x/y/z/yaw reach the channel box', await evalJson(`(() => { const L = [...${insp}.querySelectorAll('.sp-f-num .sp-label')].map((l) => l.textContent); return L.includes('sockets · seat x') && L.includes('sockets · seat yaw'); })()`));
+await evalJson(`import('/lib/net.js').then((m) => m.sendVerb('motion', { id: 'benchlamp', type: 'spin', degPerSec: 30 })), true`);
+await waitFor(`[...${insp}.querySelectorAll('select.sp-enum')].some((s) => s.value === 'spin')`);
 if (process.env.EDIT_SHOT) {   // a look, not a trust: the grey scope is a design claim
   const shot = await cdp.send<any>('Page.captureScreenshot', { format: 'png' });
   await Bun.write(process.env.EDIT_SHOT, Buffer.from(shot.data, 'base64'));
   console.log(`  screenshot → ${process.env.EDIT_SHOT}`);
 }
+check('no raw-JSON row for a type an editor speaks for', await evalJson(`![...${insp}.querySelectorAll('.sp-f-text .sp-label')].some((l) => /^(sockets|motion)$/.test(l.textContent))`));
+await evalJson(`(() => { const b = [...${insp}.querySelectorAll('.sp-mini.danger')].find((x) => x.textContent === '✕'); b.dispatchEvent(new PointerEvent('pointerdown', { clientX: 1, clientY: 1, bubbles: true })); b.click(); return true; })()`);
+check('✕ removes the only seat → sockets comp gone', await waitFor(`import('/lib/world.js').then((m) => !m.comps.get('benchlamp')?.sockets)`));
+
+console.log('\nthe legacy World›Scene section still gets the light editor (adapter):');
+await evalJson(`document.querySelector('#sec-scene .head')?.click(), true`);
+check('scene section renders the light fields through editorsFor', await waitFor(`!!document.querySelector('#sec-scene [data-fe] .sp-num')`));
 
 console.log('\nleaving:');
 await evalJson(`dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape' })), true`);

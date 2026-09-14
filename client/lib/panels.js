@@ -21,8 +21,8 @@
 //   { t:'vec3',   k, label, value:[x,y,z], step=0.1, dp=2, link? } → edit(k, [x,y,z], axis|null)
 //   { t:'text',   k, label, value, placeholder? }                 → edit(k, string)  [desktop only]
 //   { t:'btn',    k, label, danger? }                             → edit(k)
-//   { t:'list',   label, empty?, rows:[{ id, label, sub?, active?,
-//                 actions:[{k, label, danger?}] }] }              → edit(k, rowId) / edit('row', rowId)
+//   { t:'list',   k?, label, empty?, rows:[{ id, label, sub?, active?,
+//                 actions:[{k, label, danger?}] }] }              → edit(a.k, rowId) / edit(k ?? 'row', rowId)
 //   { t:'check',  k, label, value, hint? }                        → edit(k, bool)
 //   { t:'enum',   k, label, value, options:[{v,label}] }          → edit(k, v)
 //   { t:'color',  k, label, value:0xRRGGBB }                      → edit(k, int)
@@ -388,7 +388,7 @@ function fieldDOM(f, edit) {
         const main = el('span', 'sp-item-main');
         main.append(el('span', 'sp-item-label', r.label));
         if (r.sub) main.append(el('span', 'sp-item-sub', r.sub));
-        main.onclick = () => edit('row', r.id);
+        main.onclick = () => edit(f.k ?? 'row', r.id);   // a keyed list routes its rows; unkeyed lists keep 'row'
         line.append(main);
         for (const a of r.actions ?? []) {
           const b = el('button', `sp-mini${a.danger ? ' danger' : ''}`, a.label);

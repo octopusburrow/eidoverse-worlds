@@ -158,7 +158,7 @@ function inspectorFields() {
   const driven = drivenBy(id, obj);
   const pose = restPose(obj, driven);
   const wp = obj.getWorldPosition(_wp);
-  editors = fieldEditorsFor({ id, obj, meta, bag, commit: sendVerb });
+  editors = fieldEditorsFor({ id, obj, meta, bag, commit: sendVerb, undo: pushUndo });
 
   const f = [
     { t: 'info', label: 'id', value: id },
@@ -193,7 +193,11 @@ function inspectorFields() {
   editors.forEach((e, i) => {
     for (const t of e.types ?? []) claimed.add(t);
     f.push({ t: 'group', k: `ed:${e.group}`, label: e.group, open: isOpen(id, `ed:${e.group}`) });
-    for (const nf of e.fields) f.push({ ...nf, k: nf.k != null ? `ed:${i}:${nf.k}` : undefined });
+    for (const nf of e.fields) {
+      const g = { ...nf, k: nf.k != null ? `ed:${i}:${nf.k}` : undefined };
+      if (nf.t === 'list') g.rows = (nf.rows ?? []).map((r) => ({ ...r, actions: (r.actions ?? []).map((a) => ({ ...a, k: `ed:${i}:${a.k}` })) }));
+      f.push(g);
+    }
   });
   const rest = Object.keys(bag).filter((t) => t !== 'lock' && !claimed.has(t));
   f.push({ t: 'group', k: 'components', label: `Components (${rest.length})`, open: isOpen(id, 'components') });

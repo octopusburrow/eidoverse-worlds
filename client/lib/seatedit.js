@@ -21,6 +21,7 @@ import { mouse } from './controller.js';
 import { flashHint } from './ui.js';
 import { setEditMode, isEditing, deselect, pushUndo,
   setInspectorHtml, hideInspector } from './build.js';
+import { registerFields } from './inspect.js';
 
 const raycaster = new THREE.Raycaster();
 
@@ -122,7 +123,7 @@ function socketsOf(id) { return structuredClone(comps.get(id)?.sockets ?? {}); }
 /** One merged comp entry per gesture, with its inverse on the undo stack —
  *  merged, because comp data replaces wholesale and a naive write would
  *  silently eat every OTHER anchor on the thing. */
-function commitSockets(id, next, describe) {
+export function commitSockets(id, next, describe) {
   const before = comps.get(id)?.sockets;
   sendVerb('comp', { id, type: 'sockets', data: Object.keys(next).length ? next : null });
   pushUndo({ verb: 'comp', args: { id, type: 'sockets', data: before ? structuredClone(before) : null } }, describe);
@@ -292,4 +293,63 @@ addEventListener('mousemove', (e) => {
 addEventListener('mouseup', () => {
   if (seatDrag?.armed) commitSeatDrag();
   seatDrag = null;
+});
+
+
+// ---- the inspector's sockets editor ----------------------------------------
+// Declared here because this file already owns the anchor grammar: what a
+// slot is, that a write is ONE merged comp entry (a naive write eats every
+// other anchor), and the gizmo a slot shows as. Every slot's pos/yaw are
+// numbers, so they surface in the channel box too; a drag there moves the
+// gizmo live and commits on release through commitSockets, undo included.
+registerFields(({ id, bag }) => {
+  const sockets = bag?.sockets;
+  if (!sockets || typeof sockets !== 'object') return null;
+  const slots = Object.keys(sockets);
+  const fields = [{
+    t: 'list', k: 'slots', empty: 'no anchors yet',
+    rows: slots.map((slot) => {
+      const s = sockets[slot] ?? {};
+      const pos = s.pos ?? [0, 0.5, 0];
+      return {
+        id: slot, label: slot,
+        sub: `(${pos.map((v) => (+v).toFixed(2)).join(', ')}) · ${Math.round((s.yaw ?? 0) * 180 / Math.PI)}°${s.part ? ` · rides ${s.part}` : ''}`,
+        active: seatSel?.id === id && seatSel.slot === slot,
+        actions: [{ k: 'del', label: '✕', danger: true }],
+      };
+    }),
+  }];
+  for (const slot of slots) {
+    const s = sockets[slot] ?? {};
+    const pos = s.pos ?? [0, 0.5, 0];
+    ['x', 'y', 'z'].forEach((ax, i) => fields.push({ t: 'num', k: `${slot}|pos|${i}`, label: `${slot} ${ax}`, value: pos[i], step: 0.05, dp: 2, unit: 'm' }));
+    fields.push({ t: 'num', k: `${slot}|yaw`, label: `${slot} yaw`, value: s.yaw ?? 0, step: 5, deg: true });
+  }
+  fields.push({ t: 'btn', k: 'add', label: '+ seat here', hint: 'click the spot on the thing where a sitter goes' });
+  return {
+    group: 'sockets',
+    types: ['sockets'],
+    fields,
+    dispatch(action, value, _field, opts) {
+      if (action === 'add') { armSeatPlacement(id); return; }
+      if (action === 'slots') { if (entities.get(id)) selectSeat({ id, slot: value }); return; }
+      if (action === 'del') {
+        const next = socketsOf(id); delete next[value];
+        commitSockets(id, next, `removing anchor ${value} from ${id}`);
+        if (seatSel?.id === id && seatSel.slot === value) deselectSeat();
+        return;
+      }
+      const [slot, what, idx] = action.split('|');
+      const next = socketsOf(id);
+      const cur = next[slot];
+      if (!cur) return;
+      const pos = [...(cur.pos ?? [0, 0.5, 0])];
+      if (what === 'pos') pos[+idx] = +(+value).toFixed(3); else cur.yaw = +(+value).toFixed(3);
+      cur.pos = pos;
+      const g = seatGizmos.get(`${id}\x00${slot}`);
+      if (g) { g.position.set(...pos); g.rotation.y = cur.yaw ?? 0; }   // the live preview IS the gizmo
+      if (opts?.live) return;
+      commitSockets(id, next, what === 'pos' ? 'seat move' : 'seat facing');
+    },
+  };
 });
