@@ -75,6 +75,20 @@ check('…and the light group agrees (same declaration, two lanes)', await waitF
 await sleep(1500);   // past EDIT_COMMIT_MS and the echo: a refusal would have rolled it back by now
 check('…and it stayed (the verb was accepted, not rolled back)', (await evalJson(`import('/lib/world.js').then((m) => m.entities.get('benchlamp')?.userData?.lightParams?.intensity)`)) === 20);
 
+console.log('\nEsc mid-scrub, in a real browser (the key lands on the document, not the blurred input):');
+{
+  const pe = (t: string, x: number) => `new PointerEvent('${t}', { clientX: ${x}, clientY: 0, button: 0, pointerId: 7, bubbles: true, isPrimary: true })`;
+  const inp = `[...${insp}.querySelectorAll('.sp-f-num')].find((r) => r.querySelector('.sp-label').textContent === 'light · range').querySelector('.sp-num')`;
+  await evalJson(`(() => { const i = ${inp}; i.dispatchEvent(${pe('pointerdown', 100)}); i.dispatchEvent(${pe('pointermove', 130)}); i.dispatchEvent(${pe('pointermove', 160)}); return true; })()`);
+  check('scrub previews (range 10 → 22 on the face)', await evalJson(`${inp}.value === '22'`), await evalJson(`${inp}.value`));
+  check('…and the input is not focused while scrubbing', await evalJson(`document.activeElement !== ${inp}`));
+  await evalJson(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })), true`);
+  check('Esc restores the face', await evalJson(`${inp}.value === '10'`), await evalJson(`${inp}.value`));
+  await evalJson(`${inp}.dispatchEvent(${pe('pointerup', 160)}), true`);
+  await sleep(700);
+  check('…and the light never left 10 (nothing committed)', (await evalJson(`import('/lib/world.js').then((m) => m.entities.get('benchlamp')?.userData?.lightParams?.range)`)) === 10);
+}
+
 console.log('\nmotion: a bob on the light — group, driven channels, an edit that keeps t0:');
 await evalJson(`import('/lib/net.js').then((m) => m.sendVerb('motion', { id: 'benchlamp', type: 'bob', amp: 0.3, period: 2 })), true`);
 check('motion group renders from motion.js', await waitFor(`[...${insp}.querySelectorAll('.sp-group')].some((g) => /motion/.test(g.textContent)) && [...${insp}.querySelectorAll('select.sp-enum')].some((s) => s.value === 'bob')`));

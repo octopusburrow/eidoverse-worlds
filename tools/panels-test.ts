@@ -114,7 +114,11 @@ console.log("\nEsc mid-drag restores the start and commits nothing:");
   inp.dispatchEvent(pe("pointerdown", 100));
   inp.dispatchEvent(pe("pointermove", 160));
   check("previewed away from start", inp.value === "3.20", inp.value);
-  inp.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  // the input was BLURRED when the drag armed: a real browser delivers the key
+  // to the document, so that is where the test sends it (an element-targeted
+  // dispatch here would pass on a listener the browser never reaches)
+  check("arming blurred the input", document.activeElement !== inp);
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   const last = calls[calls.length - 1];
   check("face restored", inp.value === "2.00", inp.value);
   check("a live restore was dispatched (the preview must snap back)", last[3]?.live && near(last[1], 2));

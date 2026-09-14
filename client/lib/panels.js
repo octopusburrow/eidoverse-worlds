@@ -189,7 +189,7 @@ function stepper(value, f, commit) {
     num.blur();   // release focus so held repaints resume
   };
   num.onkeydown = (e) => {
-    if (e.key === 'Escape') { if (drag?.armed) cancelDrag(); else { show(wire); num.blur(); } e.stopPropagation(); }
+    if (e.key === 'Escape') { show(wire); num.blur(); e.stopPropagation(); }
     else if (e.key === 'Enter') { num.onchange(); }
     else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
       e.preventDefault();
@@ -201,9 +201,14 @@ function stepper(value, f, commit) {
   // drag-to-scrub: absolute from origin, on the FACE scale, soft limits
   const perPx = f.drag ?? step * 0.2;
   let drag = null;
+  // Esc while scrubbing: the input was BLURRED when the drag armed (so the
+  // caret never fights the pointer), which means the key lands on the
+  // document, not here — listen there, only while a drag is armed
+  const onDragKey = (e) => { if (e.key === 'Escape' && drag?.armed) { e.stopPropagation(); e.preventDefault(); cancelDrag(); } };
   const cancelDrag = () => {
     if (!drag) return;
     const d = drag; drag = null;
+    document.removeEventListener('keydown', onDragKey, true);
     num.classList.remove('scrub');
     try { num.releasePointerCapture(d.id); } catch { /* already released */ }
     if (d.armed) { show(d.w0); commit(d.w0, { live: true }); wire = d.w0; }
@@ -225,6 +230,7 @@ function stepper(value, f, commit) {
       try { num.setPointerCapture(drag.id); } catch { /* no capture here */ }
       num.classList.add('scrub');
       num.blur();
+      document.addEventListener('keydown', onDragKey, true);
     }
     let face = drag.face0 + drag.dist * perPx;
     if (e.ctrlKey || e.metaKey) face = Math.round(face);
@@ -236,6 +242,7 @@ function stepper(value, f, commit) {
     if (!drag) return;
     const d = drag; drag = null;
     if (d.armed) {
+      document.removeEventListener('keydown', onDragKey, true);
       num.classList.remove('scrub');
       try { num.releasePointerCapture(d.id); } catch { /* fine */ }
       if (d.cur != null && d.cur !== d.w0) commit(d.cur); else if (d.cur != null) commit(d.w0, { live: true });
