@@ -60,9 +60,9 @@ check('docked frames ignore their floating geometry', await evalJson(`(() => { c
 await evalJson(`document.querySelector('.edit-tool[data-tool="rotate"]').click(), true`);
 check('clicking a tool sets it (rotate)', await evalJson(`globalThis.__editLayout?.().tool === 'rotate'`));
 await evalJson(`document.querySelector('.edit-tool[data-tool="move"]').click(), true`);
-check('Edit ▾ opens a menu with undo', await evalJson(`(() => { [...document.querySelectorAll('.edit-menu > .edit-btn')].find((b) => /^Edit/.test(b.textContent)).click(); const pop = [...document.querySelectorAll('.edit-menu-pop')].find((p) => !p.hidden); return !!pop && [...pop.querySelectorAll('.edit-menu-item')].some((i) => /undo/.test(i.textContent)); })()`));
+check('Edit ▾ opens a menu with undo (and it is the only one showing)', await evalJson(`(() => { [...document.querySelectorAll('.edit-menu > .edit-btn')].find((b) => /^Edit/.test(b.textContent)).click(); const shown = [...document.querySelectorAll('.edit-menu-pop')].filter((p) => getComputedStyle(p).display !== 'none'); return shown.length === 1 && [...shown[0].querySelectorAll('.edit-menu-item')].some((i) => /undo/.test(i.textContent)); })()`));
 await evalJson(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })), true`);
-check('Esc closes the menu', await evalJson(`[...document.querySelectorAll('.edit-menu-pop')].every((p) => p.hidden)`));
+check('Esc closes the menu (computed, not the attribute)', await evalJson(`[...document.querySelectorAll('.edit-menu-pop')].every((p) => getComputedStyle(p).display === 'none')`));
 console.log('  [diag] under the strip at (350,36): ' + await evalJson(`(() => { const e = document.elementFromPoint(350, 36); return e ? e.tagName + '#' + e.id + '.' + e.className : null; })()`));
 
 console.log('\na placed light lands in the tree and the inspector:');
