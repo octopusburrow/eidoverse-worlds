@@ -1193,7 +1193,7 @@ body.edit-workspace .frame.docked { --panel-a: 1; }
 /* the rail slims to what edit mode needs: ∃, the wrench (mic / ear / goggles are their own elements) */
 body.edit-workspace #dock button[data-toggles]:not([data-toggles="edit"]) { display: none !important; }
 body.edit-workspace #dock { top: 80px !important; left: 3px !important; }   /* room above the ∃: mic/ear stack there, inside the band */
-body.edit-workspace .edit-tools { border-radius: 0; border-right: 1px solid rgb(255 255 255 / .08); background: #1a1a1c; }
+body.edit-workspace .edit-tools { z-index: 26; border-radius: 0; border-right: 1px solid rgb(255 255 255 / .08); background: #1a1a1c; }   /* under the dock (27): the band is behind the ∃, never over it */
 /* the wrench carries the mode: an amber box, instead of a rim around the world */
 body.edit-workspace #dock button[data-toggles="edit"].on {
   color: var(--attn); background: color-mix(in srgb, var(--attn) 16%, transparent);

@@ -121,6 +121,7 @@ check('right-click opens the row menu with find / attach / lock / remove', await
 await evalJson(`[...document.querySelectorAll('.sp-ctx-item')].find((i) => /remove/.test(i.textContent)).click(), true`);
 check('menu → remove takes lamp2 out of the world', await waitFor(`import('/lib/world.js').then((m) => !m.entities.has('lamp2'))`));
 check('…and the menu is gone', await evalJson(`document.querySelector('.sp-ctx') === null`));
+check('∃ and the wrench are VISIBLE on the band (elementFromPoint, not a class)', await evalJson(`(() => { const hit = (el) => { const r = el.getBoundingClientRect(); const e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return e === el || el.contains(e); }; return hit(document.querySelector('#hud')) && hit(document.querySelector('#dock button[data-toggles="edit"]')); })()`));
 check('rim is gone; the wrench wears the amber box', await evalJson(`(() => { const w = document.querySelector('#dock button[data-toggles="edit"]'); return w && w.classList.contains('on') && getComputedStyle(w).boxShadow !== 'none' && getComputedStyle(document.body, '::after').content !== '""'; })()`));
 await evalJson(`import('/lib/scenegraph.js').then((m) => m.sceneSelect('benchlamp')), true`);
 await waitFor(`${insp}.querySelector('.sp-info')?.textContent === 'benchlamp'`);
