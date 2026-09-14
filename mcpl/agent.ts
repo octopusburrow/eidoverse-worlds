@@ -1065,6 +1065,18 @@ export class WorldAgent {
   /** Reconcile the derived maps from the folded state — the ONLY writer of
    *  this.entities/this.mounts outside the sim stamp. Fresh objects each
    *  pass: nothing stale survives a spawn-replace or a fold-side cascade. */
+  /** The FOLDED record for a placed thing — every field the fold keeps
+   *  (a light's colour/intensity/range/keep/day, a model's collide), which
+   *  the perception view above deliberately thins. The inspector tools read
+   *  this; `parent` is attached from the mount view so the shape matches
+   *  what shared/editschema.js expects. */
+  foldRecord(id: string): Record<string, unknown> | null {
+    const e = (this.st.entities as Record<string, any>)[id];
+    if (!e) return null;
+    const m = this.mounts.get(id);
+    return m ? { ...e, parent: m } : { ...e };
+  }
+
   private reconcileFromFold() {
     const seen = new Set<string>();
     for (const [id, e] of Object.entries(this.st.entities)) {
@@ -2963,7 +2975,8 @@ export class WorldAgent {
     const ordered = meKnown ? [...ents].sort((a, b) => sortKey(a) - sortKey(b)) : ents;
     for (const e of ordered) {
       const f = fx.get(e.id)!;
-      const short = (e.lib ?? "(light)").split("/").pop()!.replace(".glb", "").split("_").slice(0, 5).join(" ");
+      const short = (e.lib ?? "(light)").split("/").pop()!.replace(".glb", "").split("_").slice(0, 5).join(" ")
+        + (typeof e.comp?.label === "string" && e.comp.label ? ` "${e.comp.label}"` : "");   // a display name someone gave it (comp label)
       // Affordances read out loud: a thing that can be sat on, used, or is
       // moving SAYS SO in text-tier perception — this is how the capability
       // a builder declared (sockets/reactions components) reaches everyone
@@ -2982,12 +2995,13 @@ export class WorldAgent {
       // locked = nailed down: the server refuses every move/replace/remove on
       // it. Saying so here saves an agent a refused verb round-trip.
       if (c.lock) aff.push(`🔒 locked (immovable until comp {id, type: "lock", data: null})`);
+      if (c.hidden === true) aff.push(`hidden (not drawn; comp {id, type: "hidden", data: null} shows it)`);
       // A griddled building says what it IS — rooms, walls, doors — because
       // unlike a conjured mesh it knows. This is the whole difference the
       // structure component buys: `components: structure` would be true and
       // useless, where "a building: 2 rooms, 14 walls, 1 door" is actionable.
       if (c.structure) { try { aff.push(describeStructure(c.structure)); } catch { /* a broken house is not a broken look() */ } }
-      const extra = Object.keys(c).filter((k) => !["sockets", "reactions", "motion", "particles", "lock", "structure"].includes(k));
+      const extra = Object.keys(c).filter((k) => !["sockets", "reactions", "motion", "particles", "lock", "structure", "label", "hidden"].includes(k));
       if (extra.length) aff.push(`components: ${extra.join(", ")}`);
       const ride = this.mounts.get(e.id);
       if (ride) aff.push(`mounted on ${ride.to}${f.ok && f.moving ? ` (riding its ${f.moving})` : ""}`);
