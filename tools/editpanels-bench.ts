@@ -111,10 +111,13 @@ console.log('\na no-op scrub on one thing must not leak its pose into the next s
 }
 
 console.log('\nstandard keys and the hierarchy context menu:');
-await evalJson(`dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyE', bubbles: true })), true`);
-check('E → rotate tool', await evalJson(`globalThis.__editLayout?.().tool === 'rotate'`));
+await evalJson(`dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyR', bubbles: true })), true`);
+check('R → rotate tool (Blender)', await evalJson(`globalThis.__editLayout?.().tool === 'rotate'`));
+await evalJson(`dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyG', bubbles: true })), true`);
+check('G → move tool', await evalJson(`globalThis.__editLayout?.().tool === 'move'`));
 await evalJson(`dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyW', bubbles: true })), true`);
-check('W → move tool', await evalJson(`globalThis.__editLayout?.().tool === 'move'`));
+check('W is still walking — no tool change', await evalJson(`globalThis.__editLayout?.().tool === 'move'`));
+check('tool buttons show their letters', await evalJson(`[...document.querySelectorAll('.edit-tool-key')].map((k) => k.textContent).join('') === 'QGRS'`));
 check('hierarchy has no button row', await evalJson(`document.querySelector('.edit-left [data-frame="hierarchy"] .sp-btn') === null`));
 await evalJson(`(() => { const row = [...document.querySelectorAll('.edit-left .sp-tree-row')].find((r) => /lamp2/.test(r.textContent)); row.dispatchEvent(new MouseEvent('contextmenu', { clientX: 120, clientY: 130, bubbles: true, cancelable: true })); return true; })()`);
 check('right-click opens the row menu with find / attach / lock / remove', await evalJson(`(() => { const m = document.querySelector('.sp-ctx'); const T = m ? [...m.querySelectorAll('.sp-ctx-item')].map((i) => i.textContent) : []; return T.some((t) => /find/.test(t)) && T.some((t) => /attach/.test(t)) && T.some((t) => /lock/.test(t)) && T.some((t) => /remove/.test(t)); })()`));

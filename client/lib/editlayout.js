@@ -26,12 +26,12 @@ try { L = { ...DEF, ...JSON.parse(localStorage.getItem(LS) || '{}') }; } catch {
 const save = () => { try { localStorage.setItem(LS, JSON.stringify(L)); } catch { /* fine */ } };
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
-const TOOLS = [
-  { id: 'select', glyph: '↖', title: 'select — click picks, a drag never moves' },
-  { id: 'move', glyph: '✥', title: 'move — drag moves; Shift+drag raises' },
-  { id: 'rotate', glyph: '↻', title: 'rotate — drag turns about up' },
-  { id: 'scale', glyph: '⤢', title: 'scale — drag sizes, uniform' },
-  { id: 'pivot', glyph: '⊙', title: 'pivot — later, with rot/scale[] in the protocol', disabled: true },
+const TOOLS = [   // Blender's letters: WASD is walking here, so Maya's QWER can't be
+  { id: 'select', glyph: '↖', key: 'Q', title: 'select (Q) — click picks, a drag never moves' },
+  { id: 'move', glyph: '✥', key: 'G', title: 'move (G) — drag moves; Shift+drag raises' },
+  { id: 'rotate', glyph: '↻', key: 'R', title: 'rotate (R) — drag turns about up' },
+  { id: 'scale', glyph: '⤢', key: 'S', title: 'scale (S) — drag sizes, uniform' },
+  { id: 'pivot', glyph: '⊙', key: '', title: 'pivot — later, with rot/scale[] in the protocol', disabled: true },
 ];
 
 let els = null;          // { top, tools, left, right, split, lsplit, rsplit }
@@ -56,6 +56,7 @@ function build() {
   // ---- tools column
   for (const t of TOOLS) {
     const b = el('button', 'edit-tool', t.glyph);
+    if (t.key) b.append(el('kbd', 'edit-tool-key', t.key));   // the letter, so hands learn it
     b.dataset.tool = t.id; b.title = t.title; b.disabled = !!t.disabled;
     b.onclick = () => setTool(t.id);
     tools.append(b);
@@ -202,8 +203,7 @@ function exit() {
 
 export function initEditLayout() {
   bus.on('edit-mode', (v) => (v ? enter() : exit()));
-  // no tool hotkeys yet: R/F raise, Q/E turn and ,/. size already live on the
-  // keyboard in build.js; a scheme (Maya QWER vs Blender GRS) is R's call
+  // tool hotkeys live in build.js's key router (Blender's G/R/S/Q/F/X)
   return { apply, isOn: () => on };
 }
 
