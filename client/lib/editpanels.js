@@ -96,7 +96,7 @@ function hierarchyFields() {
     const rd = riders.get(id) ?? [];
     const mine = matches(id);
     const row = { id, label: labelOf(id), sub: short(meta), depth, active: id === sel, badges, locked: !!bag.lock,
-      kids: ch.length + rd.length, open: !collapsed.has(id), dim: q && !mine };
+      kids: ch.length + rd.length, open: !collapsed.has(id) || !!q, dim: q && !mine };   // a filter looks inside folded nodes, so the glyph says open
     const at = rows.length; rows.push(row);
     let any = mine;
     if (!collapsed.has(id) || q) {   // a filter looks inside folded nodes too
@@ -112,7 +112,7 @@ function hierarchyFields() {
     const mounted = !!entities.get(r.id)?.userData?.mountedTo;
     r.menu = [
       { k: 'find', label: 'find  (F)' },
-      { k: 'duplicate', label: 'duplicate  (Shift+D)' },
+      { k: 'duplicate', label: 'duplicate  (Alt+D)' },
       { k: 'attach', label: arming === r.id ? 'cancel attach' : 'attach to…' },
       ...(mounted ? [{ k: 'detach', label: 'detach' }] : []),
       { k: 'lock', label: r.locked ? 'unlock' : 'lock in place' },
@@ -167,7 +167,7 @@ function hierarchyDispatch(action, payload) {
 function duplicate(id) {
   const rec = foldRecord(id); const obj = entities.get(id);
   if (!rec || !obj) return;
-  const nid = `${id.replace(/-[a-f0-9]{4}$/, '')}-${Math.random().toString(16).slice(2, 6)}`;
+  const nid = `${id}~${Math.random().toString(16).slice(2, 6)}`;   // never strip anything from the id: 'lamp-2024' is a name, not a suffix
   const pos = [...(rec.pos ?? [0, 0, 0])]; pos[0] = round(pos[0] + 0.5); pos[2] = round(pos[2] + 0.5);
   if (rec.kind === 'light') sendVerb('light', { id: nid, pos, color: rec.color, intensity: rec.intensity, range: rec.range, ...(rec.keep ? { keep: true } : {}), ...(rec.day === false ? { day: false } : {}) });
   else sendVerb('spawn', { id: nid, lib: rec.lib, pos, yaw: rec.yaw ?? 0, ...(rec.scale != null ? { scale: rec.scale } : {}), ...(rec.collide ? { collide: rec.collide } : {}) });
@@ -353,9 +353,9 @@ export function initEditPanels() {
   bus.on('sg:selected', () => { gesture = null; endGesture(); });   // a drag's `before` never outlives its selection
   setEditHooks({ undo: pushUndo, commitLight, casting: lightCasting });
   bus.on('edit-find', () => findSelected());              // F in the viewport
-  bus.on('key', (e) => {
-    if (!shown || e.ctrlKey || e.metaKey || e.altKey) return;
-    if (e.code === 'KeyD' && e.shiftKey && sceneSelected()) hierarchyDispatch('duplicate', sceneSelected());
+  bus.on('key', (e) => {   // Alt+D duplicates: D strafes, and Shift+D strafes faster
+    if (!shown || e.ctrlKey || e.metaKey || !e.altKey) return;
+    if (e.code === 'KeyD' && sceneSelected()) { e.preventDefault(); hierarchyDispatch('duplicate', sceneSelected()); }
   });
   // ↑/↓ walk the tree ONLY while the tree has focus — on the window they are
   // walking keys (controller.js: ArrowUp is forward). The frame listener runs

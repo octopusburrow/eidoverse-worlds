@@ -50,7 +50,7 @@ console.log("\nedits → the fewest verbs:");
 {
   const r = editVerbs({ ...chair, comp: { ...chair.comp, lock: undefined } }, "c1", { "pos.x": "+=1", "pos.z": 4, "pos.yaw": "90" });
   const p = one(r, "place");
-  check("three transform edits = ONE place with the full pose", p.length === 1 && r.verbs.length === 1, JSON.stringify(r));
+  check("three transform edits = ONE place with the full pose", p.length === 1 && r.verbs.length === 1 && p[0].args.pos.length === 3 && "yaw" in p[0].args && "scale" in p[0].args, JSON.stringify(r));
   check("…x relative, z absolute, yaw typed in degrees → radians", p[0] && p[0].args.pos[0] === 2 && p[0].args.pos[2] === 4 && near(p[0].args.yaw, Math.PI / 2, 1e-4), JSON.stringify(p[0]?.args));
   check("…scale carried unchanged", p[0]?.args.scale === 1);
   const rl = editVerbs(chair, "c1", { "pos.x": 3 });
@@ -78,6 +78,31 @@ console.log("\nedits → the fewest verbs:");
   const before = JSON.stringify(chair);
   editVerbs(chair, "c1", { "sockets.seat|pos|0": 9, "flags.lock": false, "comp.recipe": "{\"wood\":3}" });
   check("editVerbs never mutates the record", JSON.stringify(chair) === before);
+}
+
+console.log("\nthe survivors of the mutation sweep, bound:");
+{
+  const before = JSON.stringify(swing);
+  const r = editVerbs(swing, "s", { "pos.x": "+=1", "motion.amp": "+=5", "motion.plank|degPerSec": 1 });
+  check("editing pos and motion never mutates the record (pos array, motion bags)", JSON.stringify(swing) === before && one(r, "place")[0].args.pos[0] === 6);
+  const unlocked = { ...chair, comp: { ...chair.comp, lock: undefined } };
+  check("comp.<type> = '' REMOVES the component", one(editVerbs(unlocked, "c1", { "comp.recipe": "" }), "comp")[0]?.args.data === null);
+  check("flags.lock false → data null; 'no'/'off'/'false' strings read as false", one(editVerbs(chair, "c1", { "flags.lock": false }), "comp")[0].args.data === null && one(editVerbs(unlocked, "c1", { "flags.hidden": "no" }), "comp")[0].args.data === null && one(editVerbs(unlocked, "c1", { "flags.lock": "off" }), "comp")[0].args.data === null && one(editVerbs(unlocked, "c1", { "flags.hidden": "false" }), "comp")[0].args.data === null);
+  check("comp.+ of a type already there is refused; comp.+ '' is ignored", /already has/.test(editVerbs(unlocked, "c1", { "comp.+": "recipe" }).errors[0] ?? "") && editVerbs(unlocked, "c1", { "comp.+": "" }).verbs.length === 0);
+  check("sockets.del of a missing slot is an error, nothing sent", editVerbs(unlocked, "c1", { "sockets.del": "nope" }).verbs.length === 0 && /no slot/.test(editVerbs(unlocked, "c1", { "sockets.del": "nope" }).errors[0] ?? ""));
+  const ns = one(editVerbs(unlocked, "c1", { "sockets.back|pos|1": 0.7 }), "comp")[0];
+  check("a new slot name declares it (pos default [0,0.5,0], yaw 0) and keeps the others", ns.args.data.back.pos[1] === 0.7 && ns.args.data.back.pos[0] === 0 && ns.args.data.back.yaw === 0 && !!ns.args.data.seat && !!ns.args.data.side, JSON.stringify(ns));
+  const ch = channels(inspectSchema(swing, "s"));
+  check("channels() carries the group and lists pos before motion", ch[0].group === "pos" && ch.findIndex((c) => c.group === "motion") > ch.findIndex((c) => c.group === "pos"));
+  check("a label longer than 80 chars is cut", one(editVerbs(unlocked, "c1", { "flags.label": "x".repeat(100) }), "comp")[0].args.data.length === 80);
+  const fire = { ...chair, comp: { particles: { preset: "fire", count: 150, origin: [0, 0.25, 0] } } };
+  const pv = one(editVerbs(fire, "c1", { "particles.origin|1": "+=0.5", "particles.count": 900, "particles.quality": "low" }), "comp");
+  check("particles: origin cloned+edited, count hard-capped at 600, quality passes through — ONE comp", pv.length === 1 && pv[0].args.data.origin[1] === 0.75 && fire.comp.particles.origin[1] === 0.25 && pv[0].args.data.count === 600 && pv[0].args.data.quality === "low", JSON.stringify(pv));
+  check("particles.out removes it", one(editVerbs(fire, "c1", { "particles.out": 1 }), "comp")[0].args.data === null);
+  const tc = editVerbs(swing, "s", { "motion.type": "spin" });
+  check("a motion type change keeps t0/axis, DROPS the old type's params, refuses an unknown type", one(tc, "motion")[0].args.type === "spin" && one(tc, "motion")[0].args.t0 === 123 && one(tc, "motion")[0].args.axis && one(tc, "motion")[0].args.amp === undefined && one(tc, "motion")[0].args.period === undefined && /type must be/.test(editVerbs(swing, "s", { "motion.type": "wobble" }).errors[0] ?? ""), JSON.stringify(one(tc, "motion")));
+  const dm = describeSchema(inspectSchema(swing, "s"));
+  check("describeSchema: degrees, enum options, the driven suffix, action lines", /motion\.amp = 23°/.test(dm) && /motion\.type = pendulum  \[pendulum\|spin/.test(dm) && /rest pose — driven by motion/.test(dm) && /motion\.rest: action/.test(dm), dm.split("\n").filter((l) => /motion\.(amp|type|rest)|pos\.x/.test(l)).join(" || "));
 }
 
 console.log("\ndescribeSchema reads like an inspector:");

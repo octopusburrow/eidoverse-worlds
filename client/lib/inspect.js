@@ -27,7 +27,8 @@ import { entities } from './world.js';
 import { state } from './state.js';
 import { sendVerb } from './net.js';
 import { renderDOM } from './panels.js';
-import { inspectSchema, editVerbs } from '../../shared/editschema.js';
+import { inspectSchema, editVerbs, fieldAt } from '../../shared/editschema.js';
+const R2D = 180 / Math.PI;
 
 const handlers = new Map();      // group → fn
 const htmlEditors = [];
@@ -79,6 +80,15 @@ export function commitEdit(id, key, value, opts = {}) {
   if (live) return { ok: true, live: true };
   const base = gesture?.id === id ? gesture.rec : rec;   // the pose/values before the drag began
   gesture = null;
+  // the panel's steppers speak WIRE units (a deg field commits radians);
+  // editVerbs' contract — a model's — is that numbers are the FACE (degrees).
+  // Convert here, once, on the seam. (Review B1: amp/phase/socket yaw were
+  // landing at 1/57th.)
+  const f = fieldAt(inspectSchema(rec, id), key);
+  if (f?.deg && typeof value === 'number') value = value * R2D;
+  // a raw-JSON box cleared and blurred must not delete the component — the
+  // 'remove <type>' button (null) is the deliberate act (review S2)
+  if (group === 'comp' && k !== '+' && value === '') return { ok: false, errors: [`${k}: empty — use "remove ${k}" to remove it`] };
   const { verbs, errors } = editVerbs(rec, id, { [key]: value });
   for (const v of verbs) {
     const inv = inverseOf(v, base, id);

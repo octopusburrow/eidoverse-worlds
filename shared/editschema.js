@@ -279,7 +279,14 @@ export function editVerbs(ent, id, edits) {
         if (param === 'rest') { motions.set(mkey, null); break; }
         const next = motions.get(mkey) ?? { ...prev };
         if (param === 'axis') { if (raw === 'custom') break; if (!AXES[String(raw).toLowerCase()]) { errors.push(`${key}: axis must be one of ${Object.keys(AXES).join(' ')}`); break; } next.axis = String(raw).toLowerCase(); }
-        else if (param === 'type') { if (!MOTION_TYPES.includes(raw)) { errors.push(`${key}: type must be one of ${MOTION_TYPES.join(' ')}`); break; } next.type = raw; }
+        else if (param === 'type') {
+          if (!MOTION_TYPES.includes(raw)) { errors.push(`${key}: type must be one of ${MOTION_TYPES.join(' ')}`); break; }
+          // a type change keeps only what carries across (the evaluator would
+          // ignore a spin's amp, and the server lints every leftover); t0 stays
+          // so the change is not also a phase jump
+          for (const p of Object.keys(next)) if (!['type', 'axis', 'pivot', 'phase', 't0', 'part'].includes(p)) delete next[p];
+          next.type = raw;
+        }
         else if (param === 'loop') next.loop = raw;
         else if (f.t === 'check') next[param] = bool(raw);
         else { const n = num(f, raw); if (n == null) break; next[param] = round(n, 4); if (param === 'degPerSec') delete next.rpm; if (param === 'amp') delete next.amplitude; }

@@ -91,6 +91,7 @@ function maybePlaceholder(id) {
   const grp = makePlaceholder(id, ent, g);
   entities.set(id, grp);
   scene.add(grp);
+  applyHidden(id);   // hidden survives the stand-in box (placeholder / demote)
   bus.emit('entity', { id, kind: 'placeholder' });
 }
 
@@ -691,6 +692,7 @@ function demote(id) {
   const grp = makePlaceholder(id, ent, libGeom.get(ent.lib));
   entities.set(id, grp);
   scene.add(grp);
+  applyHidden(id);   // hidden survives the stand-in box (placeholder / demote)
   // entityMeta and comps STAY — labels and evaluators read fold truth, and
   // the parity probe's identity check compares fold-to-fold either way
   resStats.demotes++;

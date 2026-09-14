@@ -51,7 +51,7 @@ await cdp.send('Page.navigate', { url: `${BASE}/?name=editbot&world=editbench` }
 console.log('\nedit mode shows the two frames:');
 check('frames exist before edit mode, hidden', await evalJson(`[...document.querySelectorAll('.frame.edit')].length === 2 && [...document.querySelectorAll('.frame.edit')].every((f) => getComputedStyle(f).display === 'none')`));
 await evalJson(`dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyB' })), true`);
-check('B shows both', await waitFor(`[...document.querySelectorAll('.frame.edit')].every((f) => getComputedStyle(f).display !== 'none')`));
+check('B shows both', await waitFor(`(() => { const F = [...document.querySelectorAll('.frame.edit')]; return F.length === 2 && F.every((f) => getComputedStyle(f).display !== 'none'); })()`));
 check('titles are Hierarchy / Inspector', await evalJson(`[...document.querySelectorAll('.frame.edit .fr-title')].map((t) => t.textContent).sort().join('|') === 'Hierarchy|Inspector'`));
 check('empty world: hierarchy says so', await evalJson(`!!document.querySelector('#frame-hierarchy .sp-empty, .frame.edit .sp-empty')`));
 check('nothing selected: inspector says so', await evalJson(`/nothing selected/.test(document.querySelector('.frame.edit .sp-info')?.textContent ?? '')`));
@@ -122,12 +122,14 @@ console.log('\na no-op scrub on one thing must not leak its pose into the next s
 
 console.log('\nstandard keys and the hierarchy context menu:');
 await evalJson(`dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyR', bubbles: true })), true`);
-check('R → rotate tool (Blender)', await evalJson(`globalThis.__editLayout?.().tool === 'rotate'`));
+check('R → scale tool (Maya\'s R; S walks)', await evalJson(`globalThis.__editLayout?.().tool === 'scale'`));
+await evalJson(`dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyE', bubbles: true })), true`);
+check('E → rotate tool', await evalJson(`globalThis.__editLayout?.().tool === 'rotate'`));
 await evalJson(`dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyG', bubbles: true })), true`);
 check('G → move tool', await evalJson(`globalThis.__editLayout?.().tool === 'move'`));
 await evalJson(`dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyW', bubbles: true })), true`);
 check('W is still walking — no tool change', await evalJson(`globalThis.__editLayout?.().tool === 'move'`));
-check('tool buttons show their letters', await evalJson(`[...document.querySelectorAll('.edit-tool-key')].map((k) => k.textContent).join('') === 'QGRS'`));
+check('tool buttons show their letters', await evalJson(`[...document.querySelectorAll('.edit-tool-key')].map((k) => k.textContent).join('') === 'QGER'`));
 check('hierarchy has no button row', await evalJson(`document.querySelector('.edit-left [data-frame="hierarchy"] .sp-btn') === null`));
 await evalJson(`(() => { const row = [...document.querySelectorAll('.edit-left .sp-tree-row')].find((r) => /lamp2/.test(r.textContent)); row.dispatchEvent(new MouseEvent('contextmenu', { clientX: 120, clientY: 130, bubbles: true, cancelable: true })); return true; })()`);
 check('right-click opens the row menu with find / attach / lock / remove', await evalJson(`(() => { const m = document.querySelector('.sp-ctx'); const T = m ? [...m.querySelectorAll('.sp-ctx-item')].map((i) => i.textContent) : []; return T.some((t) => /find/.test(t)) && T.some((t) => /attach/.test(t)) && T.some((t) => /lock/.test(t)) && T.some((t) => /remove/.test(t)); })()`));
@@ -147,7 +149,7 @@ console.log('\nEsc mid-scrub, in a real browser (the key lands on the document, 
   check('scrub previews (range 10 → 22 on the face)', await evalJson(`${inp}.value === '22'`), await evalJson(`${inp}.value`));
   check('…and the input is not focused while scrubbing', await evalJson(`document.activeElement !== ${inp}`));
   await evalJson(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })), true`);
-  check('Esc restores the face', await evalJson(`${inp}.value === '10'`), await evalJson(`${inp}.value`));
+  check('Esc restores the face', await evalJson(`${inp}.value === '10'`), 'face=' + await evalJson(`${inp}.value`) + ' channels=' + JSON.stringify(await evalJson(`[...${insp}.querySelectorAll('.sp-f-num')].map((r) => r.querySelector('.sp-label').textContent + '=' + r.querySelector('.sp-num').value)`)) + ' fold=' + JSON.stringify(await evalJson(`import('/lib/state.js').then((m) => { const e = m.state.st.entities.benchlamp; return { intensity: e?.intensity, range: e?.range }; })`)));
   await evalJson(`${inp}.dispatchEvent(${pe('pointerup', 160)}), true`);
   await sleep(700);
   check('…and the light never left 10 (nothing committed)', (await evalJson(`import('/lib/world.js').then((m) => m.entities.get('benchlamp')?.userData?.lightParams?.range)`)) === 10);
@@ -177,6 +179,8 @@ if (process.env.EDIT_SHOT) {   // a look, not a trust: the grey scope is a desig
   await Bun.write(process.env.EDIT_SHOT, Buffer.from(shot.data, 'base64'));
   console.log(`  screenshot → ${process.env.EDIT_SHOT}`);
 }
+await evalJson(`(() => { const i = [...${insp}.querySelectorAll('.sp-f-num')].find((r) => r.querySelector('.sp-label').textContent === 'sockets · seat yaw').querySelector('.sp-num'); i.value = '90'; i.dispatchEvent(new Event('change')); return true; })()`);
+check('typing 90 into a degree channel lands as π/2 in the fold (not π/2/57)', await waitFor(`import('/lib/world.js').then((m) => Math.abs((m.comps.get('benchlamp')?.sockets?.seat?.yaw ?? 0) - Math.PI / 2) < 1e-3)`), 'yaw=' + JSON.stringify(await evalJson(`import('/lib/world.js').then((m) => m.comps.get('benchlamp')?.sockets?.seat?.yaw)`)));
 check('no raw-JSON row for a type an editor speaks for', await evalJson(`![...${insp}.querySelectorAll('.sp-f-text .sp-label')].some((l) => /^(sockets|motion)$/.test(l.textContent))`));
 // a settle before the ✕: the bench fires verbs faster than a person, and the
 // server's VERB_RATE window (12 per 4 s) is the one thing that can make this
@@ -197,7 +201,7 @@ check('…and back', await waitFor(`import('/lib/world.js').then((m) => m.entiti
 await evalJson(`import('/lib/net.js').then((m) => m.sendVerb('light', { id: 'lamp3', pos: [1, 1.5, 1], color: 0xffffff, intensity: 4, range: 3 })), true`);
 await waitFor(`import('/lib/world.js').then((m) => !!m.entities.get('lamp3'))`);
 await evalJson(`import('/lib/net.js').then((m) => m.sendVerb('mount', { id: 'lamp3', to: 'benchlamp', offset: [0, 0.5, 0] })), true`);
-check('a mounted light indents under its carrier', await waitFor(`(() => { const R = [...${hier}.querySelectorAll('.sp-tree-row')]; const r = R.find((x) => /lamp3/.test(x.querySelector('.sp-item-label').textContent)); return !!r && parseInt(r.style.paddingLeft) > 10; })()`));
+check('a mounted light indents under its carrier', await waitFor(`(() => { const R = [...${hier}.querySelectorAll('.sp-tree-row')]; const r = R.find((x) => /lamp3/.test(x.querySelector('.sp-item-label').textContent)); return !!r && parseInt(r.style.paddingLeft) > 10; })()`), 'parent=' + JSON.stringify(await evalJson(`import('/lib/state.js').then((m) => m.state.st.entities.lamp3?.parent)`)) + ' mountedTo=' + JSON.stringify(await evalJson(`import('/lib/world.js').then((m) => m.entities.get('lamp3')?.userData?.mountedTo)`)) + ' refused=' + JSON.stringify(await evalJson(`window.__refused`)));
 await evalJson(`(() => { const R = [...${hier}.querySelectorAll('.sp-tree-row')]; const r = R.find((x) => /benchlamp/.test(x.querySelector('.sp-item-label').textContent)); r.querySelector('.sp-disc').click(); return true; })()`);
 check('disclosure folds the carrier: lamp3 row gone', await waitFor(`![...${hier}.querySelectorAll('.sp-tree-row .sp-item-label')].some((l) => /lamp3/.test(l.textContent))`));
 await evalJson(`(() => { const R = [...${hier}.querySelectorAll('.sp-tree-row')]; const r = R.find((x) => /benchlamp/.test(x.querySelector('.sp-item-label').textContent)); r.querySelector('.sp-disc').click(); return true; })()`);
@@ -215,12 +219,12 @@ await evalJson(`import('/lib/scenegraph.js').then((m) => m.sceneSelect('benchlam
 await waitFor(`import('/lib/scenegraph.js').then((m) => m.sceneSelected() === 'benchlamp')`);
 await evalJson(`(() => { const s = ${hier}.querySelector('.schema-scroll'); s.focus(); s.dispatchEvent(new KeyboardEvent('keydown', { code: 'ArrowDown', bubbles: true, cancelable: true })); return true; })()`);
 check('↓ in the focused tree selects the next row (lamp3)', await waitFor(`import('/lib/scenegraph.js').then((m) => m.sceneSelected() === 'lamp3')`), 'sel=' + JSON.stringify(await evalJson(`import('/lib/scenegraph.js').then((m) => m.sceneSelected())`)) + ' rows=' + JSON.stringify(await evalJson(`globalThis.__editPanels?.().rows`)) + ' focus=' + JSON.stringify(await evalJson(`document.activeElement?.className`)) + ' inFrame=' + JSON.stringify(await evalJson(`${hier}.contains(${hier}.querySelector('.schema-scroll'))`)));
-check('…and the keystroke never reached the walking keys', !(await evalJson(`window.__keys.includes('ArrowDown')`)), 'keys=' + JSON.stringify(await evalJson(`window.__keys.slice(-5)`)));
+check('…and the keystroke never reached the walking keys (positive control: W did)', (await evalJson(`window.__keys.includes('KeyW')`)) && !(await evalJson(`window.__keys.includes('ArrowDown')`)), 'keys=' + JSON.stringify(await evalJson(`window.__keys.slice(-5)`)));
 await evalJson(`(() => { const s = ${hier}.querySelector('.schema-scroll'); s.focus(); s.dispatchEvent(new KeyboardEvent('keydown', { code: 'ArrowUp', bubbles: true, cancelable: true })); return true; })()`);
 check('↑ selects the previous', await waitFor(`import('/lib/scenegraph.js').then((m) => m.sceneSelected() === 'benchlamp')`));
-await evalJson(`dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyD', shiftKey: true, bubbles: true })), true`);
-check('Shift+D duplicates: a new light carrying the SOURCE\'s components (minus lock), nudged', await waitFor(`import('/lib/world.js').then((m) => { const id = [...m.entities.keys()].find((k) => /^benchlamp-[0-9a-f]{4}$/.test(k)); const o = m.entities.get(id); if (!o) return false; const strip = (b) => { const c = { ...(b ?? {}) }; delete c.lock; return JSON.stringify(c); }; return strip(m.comps.get(id)) === strip(m.comps.get('benchlamp')) && Math.abs(o.position.x - 1.5) < 0.01; })`), await evalJson(`import('/lib/world.js').then((m) => { const id = [...m.entities.keys()].find((k) => /^benchlamp-[0-9a-f]{4}$/.test(k)); return JSON.stringify({ id, comps: m.comps.get(id), src: m.comps.get('benchlamp'), pos: m.entities.get(id)?.position.toArray() }); })`));
-check('…and the copy is selected', await waitFor(`import('/lib/scenegraph.js').then((m) => /^benchlamp-[0-9a-f]{4}$/.test(m.sceneSelected() ?? ''))`));
+await evalJson(`dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyD', altKey: true, bubbles: true })), true`);
+check('Alt+D duplicates: a new light carrying the SOURCE\'s components (minus lock), nudged', await waitFor(`import('/lib/world.js').then((m) => { const id = [...m.entities.keys()].find((k) => /^benchlamp~[0-9a-f]{4}$/.test(k)); const o = m.entities.get(id); if (!o) return false; const strip = (b) => { const c = { ...(b ?? {}) }; delete c.lock; return JSON.stringify(c); }; return strip(m.comps.get(id)) === strip(m.comps.get('benchlamp')) && Math.abs(o.position.x - 1.5) < 0.01; })`), await evalJson(`import('/lib/world.js').then((m) => { const id = [...m.entities.keys()].find((k) => /^benchlamp~[0-9a-f]{4}$/.test(k)); return JSON.stringify({ id, comps: m.comps.get(id), src: m.comps.get('benchlamp'), pos: m.entities.get(id)?.position.toArray() }); })`));
+check('…and the copy is selected', await waitFor(`import('/lib/scenegraph.js').then((m) => /^benchlamp~[0-9a-f]{4}$/.test(m.sceneSelected() ?? ''))`));
 await evalJson(`import('/lib/scenegraph.js').then((m) => m.sceneSelect('benchlamp')), true`);
 await waitFor(`${insp}.querySelector('.sp-info')?.textContent.startsWith('benchlamp')`);
 
@@ -233,9 +237,9 @@ await evalJson(`dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape' })),
 await sleep(200);
 await evalJson(`dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape' })), true`);   // deselect, then leave
 check('leaving undocks: frames are back on the body, workspace chrome hidden', await waitFor(`document.querySelector('[data-frame="hierarchy"]').parentElement === document.body && document.querySelector('[data-frame="inspector"]').parentElement === document.body && document.querySelector('.edit-top').hidden && !document.querySelector('.frame.docked')`));
-check('Esc hides the frames', await waitFor(`[...document.querySelectorAll('.frame.edit')].every((f) => getComputedStyle(f).display === 'none')`));
+check('Esc hides the frames', await waitFor(`(() => { const F = [...document.querySelectorAll('.frame.edit')]; return F.length === 2 && F.every((f) => getComputedStyle(f).display === 'none'); })()`));
 const errs: string[] = (await evalJson(`window.__errs`)) ?? [];
-const mine = errs.filter((e) => /editpanels|panels\.js|inspect\.js|lights\.js|scenegraph/.test(e));
+const mine = errs.filter((e) => /editpanels|editlayout|editschema|panels\.js|inspect\.js|lights\.js|seatedit|scenegraph/.test(e));
 check('no page errors from the edit surface', mine.length === 0, mine.slice(0, 3).join(' | '));
 
 console.log(`\n${tally.passed} passed, ${tally.failed} failed`);

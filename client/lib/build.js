@@ -64,7 +64,7 @@ export function setEditMode(on, { quiet = false } = {}) {
   if (on) panelFrame().show();
   if (!quiet) {
     flashHint(on
-      ? 'edit mode — <kbd>G</kbd> move · <kbd>R</kbd> rotate · <kbd>S</kbd> scale · <kbd>Q</kbd> select · <kbd>F</kbd> find · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>B</kbd> leaves'
+      ? 'edit mode — <kbd>G</kbd> move · <kbd>E</kbd> rotate · <kbd>R</kbd> scale · <kbd>Q</kbd> select · <kbd>F</kbd> find · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>B</kbd> leaves'
       : 'looking again');
   }
   bus.emit('edit-mode', on);
@@ -123,8 +123,8 @@ function showInspector(id) {
     `<span style="color:var(--dim)">by ${meta.actor ?? '?'}</span>` +
     (locked
       ? `<span style="color:var(--dim)">🔒 locked — nothing moves or removes it until unchecked</span>`
-      : `<span style="color:var(--dim)">drag move · <kbd>Shift</kbd>+drag or <kbd>R</kbd><kbd>F</kbd> up/down · ` +
-        `<kbd>G</kbd> move · <kbd>R</kbd> rotate · <kbd>S</kbd> scale · <kbd>F</kbd> find · <kbd>X</kbd> remove · <kbd>Esc</kbd> done</span>`) +
+      : `<span style="color:var(--dim)">drag move · <kbd>Shift</kbd>+drag up/down · ` +
+        `<kbd>G</kbd> move · <kbd>E</kbd> rotate · <kbd>R</kbd> scale · <kbd>F</kbd> find · <kbd>X</kbd> remove · <kbd>Esc</kbd> done</span>`) +
     `<label title="nail it down: while locked, nobody's drags, verbs or scripts can move, replace or remove it (server-enforced) — sitting on it and content edits stay open" style="display:flex;gap:4px;align-items:center;cursor:pointer">` +
     `<input type="checkbox" data-bact="lock"${locked ? ' checked' : ''}> 🔒 lock</label>` +
     `<button data-bact="seat" title="declare a sit anchor: click the spot where a sitter goes">+ seat</button>`;
@@ -199,7 +199,7 @@ export async function holdGhost(lib, label) {
     collapseAll();
     flashHint(lib === '@light'
       ? 'placing a <b>light</b> — click to place · <kbd>Esc</kbd> cancel'
-      : `placing <b>${label ?? ''}</b> — click to place, then <kbd>R</kbd> rotate / <kbd>S</kbd> scale · <kbd>Esc</kbd> cancel`, 6000);
+      : `placing <b>${label ?? ''}</b> — click to place, then <kbd>E</kbd> rotate / <kbd>R</kbd> scale · <kbd>Esc</kbd> cancel`, 6000);
   } catch (e) { report('ghost', e); }
 }
 
@@ -486,13 +486,13 @@ bus.on('key', (e) => {
 
   // a selected seat anchor holds the editing keys before things do
   if (seatKeyDown(e)) return;
-  // Blender's keys (R, 09-13 22:07): G grab/move, R rotate, S scale, Q select,
-  // F find, X or Del removes, Esc steps out, B toggles the mode. Not Maya's
-  // QWER — here the camera is a BODY and WASD is walking, which no tool may
-  // take. The old per-key nudges (Q/E turn, ,/. size, R/F raise) are retired;
-  // the tools do those with a drag.
+  // Tool keys, every one OFF the walking set (the camera here is a BODY and
+  // WASD walks — Maya's W and Blender's S both collide, found in review):
+  // G move (Blender), E rotate and R scale (Maya), Q select, F find, X or Del
+  // removes, Esc steps out, B toggles the mode. The old per-key nudges (Q/E
+  // turn, ,/. size, R/F raise) are retired; the tools do those with a drag.
   if (!e.ctrlKey && !e.metaKey && !e.altKey) {
-    const t = { KeyQ: 'select', KeyG: 'move', KeyR: 'rotate', KeyS: 'scale' }[e.code];
+    const t = { KeyQ: 'select', KeyG: 'move', KeyE: 'rotate', KeyR: 'scale' }[e.code];
     if (t) { setTool(t); return; }
     if (e.code === 'KeyF' && selected) { bus.emit('edit-find', selected.id); return; }
     if (e.code === 'KeyX' && selected) { removeSelected(); return; }

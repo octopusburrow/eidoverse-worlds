@@ -481,7 +481,7 @@ let _lastVW = innerWidth, _lastVH = innerHeight;
 addEventListener('resize', () => {
   const dw = innerWidth - _lastVW, dh = innerHeight - _lastVH;
   for (const f of frames.values()) {
-    const st = f._state; if (!st) continue;
+    const st = f._state; if (!st || f.docked) continue;   // a docked frame's box is the column's, not its own
     const hgt = f.el.offsetHeight || st.h;
     // stickiness judged against the OLD viewport (pre-resize geometry)
     const wasR = _lastVW - (st.x + st.w) <= 8 + STICKY;

@@ -27,11 +27,11 @@ try { L = { ...DEF, ...JSON.parse(localStorage.getItem(LS) || '{}') }; } catch {
 const save = () => { try { localStorage.setItem(LS, JSON.stringify(L)); } catch { /* fine */ } };
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
-const TOOLS = [   // Blender's letters: WASD is walking here, so Maya's QWER can't be
+const TOOLS = [   // every letter off the walking set: WASD walks here (Maya's W and Blender's S both collide)
   { id: 'select', glyph: '↖', key: 'Q', title: 'select (Q) — click picks, a drag never moves' },
   { id: 'move', glyph: '✥', key: 'G', title: 'move (G) — drag moves; Shift+drag raises' },
-  { id: 'rotate', glyph: '↻', key: 'R', title: 'rotate (R) — drag turns about up' },
-  { id: 'scale', glyph: '⤢', key: 'S', title: 'scale (S) — drag sizes, uniform' },
+  { id: 'rotate', glyph: '↻', key: 'E', title: 'rotate (E) — drag turns about up' },
+  { id: 'scale', glyph: '⤢', key: 'R', title: 'scale (R) — drag sizes, uniform' },
   { id: 'pivot', glyph: '⊙', key: '', title: 'pivot — later, with rot/scale[] in the protocol', disabled: true },
 ];
 
@@ -219,7 +219,7 @@ function exit() {
   if (els.top.querySelector('.edit-vbtn[data-view="wire"]')) els.top.querySelector('.edit-vbtn[data-view="wire"]').classList.remove('on');
   const c = getFrame('chat');
   for (const f of [getFrame('hierarchy'), getFrame('inspector'), c]) { if (f) { f.el.style.flex = ''; f.undock(); } }
-  if (c && prevChat === false) c.hide();
+  if (c && prevChat != null) c[prevChat ? 'show' : 'hide']();   // exactly as it was before the workspace
   if (prevWorld) getFrame('world')?.show();
   prevChat = prevWorld = null;
   closeMenus();
