@@ -1126,6 +1126,40 @@ body.touch #touch { display: block; }
 .sp-tree { display: flex; flex-direction: column; gap: 1px; max-height: 260px; overflow-y: auto; }
 .sp-tree-row .sp-item-label { font-weight: 500; }
 .sp-mini.on { background: var(--brand); color: #14100c; }
+/* ---- edit mode: the Hierarchy and Inspector frames wear a utilitarian
+   grey, not the brand glass — an editor is a tool, and the world behind it is
+   the colour. The tokens are re-pointed INSIDE the frame so the shared
+   renderers (panels.js) and frame chrome are reused untouched. */
+.frame.edit {
+  --panel-rgb: 30 30 32; --panel-a: .96;
+  --well: rgb(0 0 0 / .32); --edge: rgb(255 255 255 / .09); --edge-hi: rgb(255 255 255 / .28);
+  --brand: #d2d2d6; --brand-deep: #9a9aa0; --ink-on-brand: #141416;
+  --fg: #e6e6e8; --dim: #8e8e94; --hov: rgb(255 255 255 / .05); --act: rgb(255 255 255 / .09);
+  --r: 6px; font-family: var(--font); font-variant-numeric: tabular-nums;
+}
+/* editor frames wear their names (the house hides frame heads outside
+   arrangement mode — index.html .frame .fr-head — because the dock rail IS
+   the title; an inspector without a name is not a tool anyone recognises) */
+.frame.edit .fr-head { display: flex; }
+.frame.edit .fr-title { letter-spacing: .02em; text-transform: none; font-size: 12px; color: var(--fg); }
+.frame.edit .sp-row { margin: 3px 0; }
+.frame.edit .sp-label { min-width: 72px; }
+.frame.edit .sp-btn { background: #3a3a3f; color: var(--fg); font-weight: 500; }
+.frame.edit .sp-btn:hover { background: #4a4a50; }
+.frame.edit .sp-btn.danger { background: #5a2a2a; }
+.frame.edit .sp-group { color: var(--fg); border-bottom-color: var(--edge-hi); margin-top: 8px; }
+.frame.edit .sp-mini.on { background: #d2d2d6; }
+/* channels: the numeric lane — one label, one number, nothing else */
+.sp-step.compact .sp-num { width: 76px; text-align: right; padding-right: 6px; }
+.sp-num { cursor: ew-resize; }
+.sp-num:focus { cursor: text; }
+.sp-num.scrub { cursor: ew-resize; user-select: none; border-color: var(--edge-hi); background: var(--well); }
+.sp-num:disabled, .sp-bump:disabled { opacity: .45; cursor: not-allowed; }
+/* provenance: a value something else owns (a motion comp composes onto it) */
+.sp-row.driven .sp-label { color: #b48cff; }
+.sp-row.driven .sp-num { border-color: rgb(180 140 255 / .45); }
+.sp-row.disabled .sp-label { opacity: .55; }
+.sp-f-text .sp-label { align-self: center; }
 /* the VR chip beside the dock rail (xr.js seats it; only appears when the
    browser answers isSessionSupported('immersive-vr')) */
 .xr-chip { position: fixed; z-index: 30; font-size: 13px; padding: 5px 10px; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }

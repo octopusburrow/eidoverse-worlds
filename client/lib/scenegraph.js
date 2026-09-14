@@ -266,12 +266,17 @@ function paintScene(force = false) {
  *  same act, so the inspector (transform, semantic editors, comp bag) arrives
  *  with the selection instead of hiding behind a second gesture. */
 export const sceneSelected = () => selected;
+// while the edit-mode frames are up they ARE the inspector: a selection must
+// not also yank the World panel open onto the section they retire
+let editUI = false;
+bus.on('edit-mode', (on) => { editUI = !!on; });
 export function sceneSelect(id) {
   if (!sceneApi || !entities.has(id)) return;
   selected = id;
   arming = null;
   editingComp = null;
   bus.emit('sg:selected', selected);
+  if (editUI) { if (sceneApi.isOpen) paintScene(true); return; }
   const reveal = () => {
     paintScene(true);
     sceneBody?.querySelector(`.sg-row[data-id="${CSS.escape(id)}"]`)

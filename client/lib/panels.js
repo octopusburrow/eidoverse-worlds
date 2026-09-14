@@ -16,23 +16,39 @@
 //
 // field specs (plain JSON, no closures — actions are string keys):
 //   { t:'info',   label, value }
-//   { t:'num',    k, label, value, step=0.1, dp=2, min?, max? }   → edit(k, newValue)
-//   { t:'vec3',   k, label, value:[x,y,z], step=0.1, dp=2 }       → edit(k, [x,y,z])
+//   { t:'num',    k, label, value, step=0.1, dp=2, min?, max?, softMin?, softMax?,
+//                 unit?, deg?, compact?, drag? }                  → edit(k, newValue)
+//   { t:'vec3',   k, label, value:[x,y,z], step=0.1, dp=2, link? } → edit(k, [x,y,z], axis|null)
 //   { t:'text',   k, label, value, placeholder? }                 → edit(k, string)  [desktop only]
 //   { t:'btn',    k, label, danger? }                             → edit(k)
 //   { t:'list',   label, empty?, rows:[{ id, label, sub?, active?,
 //                 actions:[{k, label, danger?}] }] }              → edit(k, rowId) / edit('row', rowId)
-//   { t:'check',  k, label, value }                               → edit(k, bool)
+//   { t:'check',  k, label, value, hint? }                        → edit(k, bool)
 //   { t:'enum',   k, label, value, options:[{v,label}] }          → edit(k, v)
 //   { t:'color',  k, label, value:0xRRGGBB }                      → edit(k, int)
 //   { t:'group',  k, label, open? }   marker: rows until the next marker belong to it;
 //                 collapsed groups skip their rows                → edit('fold', k)
 //   { t:'tree',   k, rows:[{ id, label, sub?, depth, active?, badges?:[], locked? }] }
 //                                                                 → edit(k, id) / edit('lock', id)
-// num also takes { unit?, deg? } (deg: value is radians on the wire, degrees
-// on the face); vec3 also takes { link? } (one stepper drives all three) and
-// reports edit(k, [x,y,z], axisIndex|null) — the third arg is Godot's `field`:
-// multi-select assigns one component without clobbering the others.
+// Every field also takes { disabled?, driven?, hint? }: disabled draws it
+// read-only (a locked thing's pose); driven names what owns the value (a
+// motion comp composes onto this rest pose) and tints the row — Blender's
+// purple-driver / Maya's channel colour, as ambient provenance.
+//
+// The dispatcher is edit(k, value, field?, opts?). `field` is Godot's third
+// signal arg (an axis index for vec3) so multi-select can assign one component
+// without clobbering the others. `opts.live` is true while a drag is in
+// progress: PREVIEW locally, no log traffic; a call without it is the gesture
+// ending — commit ONE verb.
+//
+// num entry (desktop): drag the number to scrub — Godot's EditorSpinSlider
+// shape (editor_spin_slider.cpp:108-136): the value is ALWAYS start + step ×
+// distance, never accumulated, so a drag that wanders comes back to exactly
+// where it began (Blender's #37453 drift is the failure this avoids). Shift =
+// 0.1×, Ctrl = snap to whole units, Esc mid-drag restores the start value.
+// Click without travel focuses the box to type; typed entry takes Maya's
+// relative math: `+=2`, `-=.5`, `*=-1`, `/=2`, `+=10%`. Soft limits bound the
+// drag; hard limits bound everything.
 
 import { makeFrame } from './frames.js';
 
@@ -46,10 +62,22 @@ export function makeSchemaFrame(key, opts) {
   const scroll = document.createElement('div');
   scroll.className = 'schema-scroll';
   frame.body.append(scroll);
+  guardActions(scroll);
+  let live = null;                 // { key, rows, box } of the current paint
   let lastFields = null, pendingWhileFocused = false;
 
   function set(fields, edit) {
     lastFields = { fields, edit };
+    // Same shape as what is on screen → update values in place: no node is
+    // destroyed, a hovered button stays hovered, a scroll position holds.
+    // (Godot routes a changed property to its one widget through
+    // editor_property_map, editor_inspector.cpp:4870; this is that.)
+    const key = shapeKey(fields);
+    if (live && live.key === key) {
+      live.box.edit = edit;
+      fields.forEach((f, i) => live.rows[i]?.update?.(f));
+      return;
+    }
     // Rebuilding under a focused input eats the caret mid-edit; hold the
     // refresh until focus leaves the panel, then paint the queued state.
     if (scroll.contains(document.activeElement) &&
@@ -58,24 +86,57 @@ export function makeSchemaFrame(key, opts) {
         pendingWhileFocused = true;
         document.activeElement.addEventListener('blur', () => {
           pendingWhileFocused = false;
-          if (lastFields) renderDOM(scroll, lastFields.fields, lastFields.edit);
+          if (lastFields) set(lastFields.fields, lastFields.edit);
         }, { once: true });
       }
       return;
     }
-    renderDOM(scroll, fields, edit);
+    live = { key, ...renderDOM(scroll, fields, edit) };
   }
   return { frame, set };
 }
 
+/** What makes two paints the same SHAPE: types, keys, fold state, options,
+ *  and list membership. Values and labels are not shape — they update in
+ *  place. */
+export function shapeKey(fields) {
+  return fields.map((f) => [f.t, f.k ?? '', f.disabled ? 1 : 0, f.driven ?? '',
+    f.t === 'group' ? (f.open !== false ? 'o' : 'c') : '',
+    f.t === 'enum' ? JSON.stringify(f.options ?? []) : '',
+    (f.t === 'tree' || f.t === 'list') ? JSON.stringify(f.rows ?? []) : '',
+    f.t === 'vec3' ? (f.link ? 'L' : '') : '',
+  ].join('|')).join('\n');
+}
+
+/** Nav/action separation: a drag that BEGINS on a button must scroll, never
+ *  fire the button. Resonite #707 / Neos #1040 — eight years of "I scrolled
+ *  the component list and it nulled a field". Measured from pointerdown; a
+ *  click that travelled is swallowed at capture, before any onclick. */
+function guardActions(root) {
+  let down = null;
+  root.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY }; }, true);
+  root.addEventListener('click', (e) => {
+    if (!down) return;
+    const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
+    down = null;
+    if (moved > 6 && !e.target.closest('.sp-num')) { e.preventDefault(); e.stopImmediatePropagation(); }
+  }, true);
+}
+
 export function renderDOM(body, fields, edit) {
   body.innerHTML = '';
+  const box = { edit };
+  const via = (...a) => box.edit(...a);
+  const rows = [];
   let folded = false;
   for (const f of fields) {
-    if (f.t === 'group') { folded = f.open === false; body.append(fieldDOM(f, edit)); continue; }
-    if (folded) continue;
-    body.append(fieldDOM(f, edit));
+    let row = null;
+    if (f.t === 'group') { folded = f.open === false; row = fieldDOM(f, via); }
+    else if (!folded) row = fieldDOM(f, via);
+    rows.push(row);
+    if (row) body.append(row);
   }
+  return { rows, box };
 }
 
 function el(tag, cls, text) {
@@ -86,41 +147,158 @@ function el(tag, cls, text) {
 }
 
 const R2D = 180 / Math.PI;
-function stepper(value, { step = 0.1, dp = 2, min, max, unit, deg }, commit) {
-  const wrap = el('span', 'sp-step');
-  const minus = el('button', 'sp-bump', '−');
+
+/** Typed entry → number, with Maya's relative operators. null = not a number. */
+export function parseEntry(text, current) {
+  const t = String(text).trim();
+  const m = /^([+\-*/])=\s*(-?\d*\.?\d+)\s*(%?)$/.exec(t);
+  if (m) {
+    let n = +m[2];
+    if (m[3]) n = current * n / 100;
+    switch (m[1]) {
+      case '+': return current + n;
+      case '-': return current - n;
+      case '*': return current * n;
+      case '/': return n ? current / n : null;
+    }
+  }
+  const v = parseFloat(t);
+  return Number.isFinite(v) ? v : null;
+}
+
+function stepper(value, f, commit) {
+  const { step = 0.1, dp = 2, min, max, softMin, softMax, unit, deg, compact, disabled } = f;
+  const wrap = el('span', `sp-step${compact ? ' compact' : ''}`);
   const num = el('input', 'sp-num');
-  const face = deg ? +value * R2D : +value;
-  num.value = face.toFixed(deg ? 0 : dp);
-  const plus = el('button', 'sp-bump', '+');
-  const clamp = (v) => Math.min(max ?? Infinity, Math.max(min ?? -Infinity, v));
-  const send = (v) => commit(deg ? clamp(v) / R2D : clamp(v));
-  minus.onclick = () => send(+num.value - step);
-  plus.onclick = () => send(+num.value + step);
-  num.onchange = () => { const v = parseFloat(num.value); if (Number.isFinite(v)) send(v); };
-  wrap.append(minus, num, plus);
+  num.type = 'text'; num.inputMode = 'decimal'; num.autocomplete = 'off'; num.spellcheck = false;
+  if (disabled) num.disabled = true;
+  const toFace = (w) => (deg ? w * R2D : w).toFixed(deg ? 0 : dp);
+  const toWire = (face) => (deg ? face / R2D : face);
+  const hard = (w) => Math.min(max ?? Infinity, Math.max(min ?? -Infinity, w));
+  const soft = (w) => Math.min(softMax ?? max ?? Infinity, Math.max(softMin ?? min ?? -Infinity, w));
+  let wire = +value;
+  const show = (w) => { num.value = toFace(w); };
+  show(wire);
+  const send = (w, o) => { wire = hard(w); show(wire); commit(wire, o); };
+
+  // typed entry: relative math against the CURRENT face value, hard limits
+  num.onchange = () => {
+    const face = parseEntry(num.value, +toFace(wire));
+    if (face == null) { show(wire); return; }
+    send(toWire(face));
+    num.blur();   // release focus so held repaints resume
+  };
+  num.onkeydown = (e) => {
+    if (e.key === 'Escape') { if (drag?.armed) cancelDrag(); else { show(wire); num.blur(); } e.stopPropagation(); }
+    else if (e.key === 'Enter') { num.onchange(); }
+    else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      const d = (e.key === 'ArrowUp' ? 1 : -1) * step * (e.shiftKey ? 10 : 1);
+      send(toWire(+toFace(wire) + d));
+    }
+  };
+
+  // drag-to-scrub: absolute from origin, on the FACE scale, soft limits
+  const perPx = f.drag ?? step * 0.2;
+  let drag = null;
+  const cancelDrag = () => {
+    if (!drag) return;
+    const d = drag; drag = null;
+    num.classList.remove('scrub');
+    try { num.releasePointerCapture(d.id); } catch { /* already released */ }
+    if (d.armed) { show(d.w0); commit(d.w0, { live: true }); wire = d.w0; }
+  };
+  num.addEventListener('pointerdown', (e) => {
+    if (disabled || e.button !== 0) return;
+    drag = { id: e.pointerId, x0: e.clientX, lastX: e.clientX, w0: wire, face0: +toFace(wire), dist: 0, armed: false };
+  });
+  num.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const dx = e.clientX - drag.lastX; drag.lastX = e.clientX;
+    // accumulate BEFORE the arm check (Godot :113 then :117): the pixels
+    // inside the click slop still count, or a drag that wanders back lands
+    // short of where it began — the drift this whole shape exists to avoid
+    drag.dist += dx * (e.shiftKey ? 0.1 : 1);
+    if (!drag.armed) {
+      if (Math.abs(e.clientX - drag.x0) < 4) return;           // click-vs-drag slop
+      drag.armed = true;
+      try { num.setPointerCapture(drag.id); } catch { /* no capture here */ }
+      num.classList.add('scrub');
+      num.blur();
+    }
+    let face = drag.face0 + drag.dist * perPx;
+    if (e.ctrlKey || e.metaKey) face = Math.round(face);
+    const w = soft(toWire(face));
+    drag.cur = w; wire = w; show(w);
+    commit(w, { live: true });
+  });
+  const endDrag = (e) => {
+    if (!drag) return;
+    const d = drag; drag = null;
+    if (d.armed) {
+      num.classList.remove('scrub');
+      try { num.releasePointerCapture(d.id); } catch { /* fine */ }
+      if (d.cur != null && d.cur !== d.w0) commit(d.cur); else if (d.cur != null) commit(d.w0, { live: true });
+    } else if (e.type === 'pointerup') { num.focus(); num.select(); }   // a click: type
+  };
+  num.addEventListener('pointerup', endDrag);
+  num.addEventListener('pointercancel', endDrag);
+  num.addEventListener('lostpointercapture', () => { if (drag?.armed) endDrag({ type: 'lost' }); });
+
+  if (!compact) {
+    const minus = el('button', 'sp-bump', '−');
+    const plus = el('button', 'sp-bump', '+');
+    minus.disabled = plus.disabled = !!disabled;
+    minus.onclick = () => send(toWire(+toFace(wire) - step));
+    plus.onclick = () => send(toWire(+toFace(wire) + step));
+    wrap.append(minus, num, plus);
+  } else wrap.append(num);
   if (unit || deg) wrap.append(el('span', 'sp-unit', deg ? '°' : unit));
+
+  // in-place update from a repaint: never under a caret or a drag
+  wrap.update = (nf) => {
+    if (drag || document.activeElement === num) return;
+    wire = +nf.value; show(wire);
+  };
   return wrap;
 }
 
 function fieldDOM(f, edit) {
   const row = el('div', `sp-row sp-f-${f.t}`);   // sp-f- prefix: never collide with element classes
-  if (f.label != null && f.t !== 'btn' && f.t !== 'group') row.append(el('label', 'sp-label', f.label));
+  if (f.disabled) row.classList.add('disabled');
+  if (f.driven) { row.classList.add('driven'); row.title = `driven by ${f.driven}`; }
+  else if (f.hint) row.title = f.hint;
+  let label = null;
+  if (f.label != null && f.t !== 'btn' && f.t !== 'group') { label = el('label', 'sp-label', f.label); row.append(label); }
+  const setLabel = (nf) => { if (label && nf.label != null) label.textContent = nf.label; };
   switch (f.t) {
-    case 'info': row.append(el('span', 'sp-info', String(f.value ?? ''))); break;
-    case 'num':  row.append(stepper(f.value ?? 0, f, (v) => edit(f.k, v))); break;
+    case 'info': {
+      const s = el('span', 'sp-info', String(f.value ?? ''));
+      row.append(s);
+      row.update = (nf) => { setLabel(nf); s.textContent = String(nf.value ?? ''); };
+      break;
+    }
+    case 'num': {
+      const st = stepper(f.value ?? 0, f, (v, o) => edit(f.k, v, null, o));
+      row.append(st);
+      row.update = (nf) => { setLabel(nf); st.update(nf); };
+      break;
+    }
     case 'vec3': {
       const box = el('span', 'sp-vec');
-      const cur = [...(f.value ?? [0, 0, 0])];
-      cur.forEach((c, i) => box.append(stepper(c, f, (v) => {
-        if (f.link) { edit(f.k, [v, v, v], null); return; }
-        const next = [...cur]; next[i] = v; edit(f.k, next, i);
-      })));
+      let cur = [...(f.value ?? [0, 0, 0])];
+      const parts = cur.map((c, i) => stepper(c, f, (v, o) => {
+        if (f.link) { cur = [v, v, v]; edit(f.k, cur, null, o); return; }
+        cur = [...cur]; cur[i] = v; edit(f.k, cur, i, o);
+      }));
+      box.append(...parts);
       row.append(box);
+      row.update = (nf) => { setLabel(nf); cur = [...(nf.value ?? cur)]; parts.forEach((p, i) => p.update({ value: cur[i] })); };
       break;
     }
     case 'enum': {
       const sel = el('select', 'sp-enum');
+      sel.disabled = !!f.disabled;
       for (const o of f.options ?? []) {
         const op = new Option(o.label ?? String(o.v), String(o.v));
         op.selected = o.v === f.value;
@@ -128,14 +306,19 @@ function fieldDOM(f, edit) {
       }
       sel.onchange = () => { const o = (f.options ?? []).find((x) => String(x.v) === sel.value); edit(f.k, o ? o.v : sel.value); };
       row.append(sel);
+      row.update = (nf) => { setLabel(nf); if (document.activeElement !== sel) sel.value = String(nf.value); };
       break;
     }
     case 'color': {
       const inp = el('input', 'sp-color');
       inp.type = 'color';
-      inp.value = '#' + (f.value ?? 0xffffff).toString(16).padStart(6, '0');
-      inp.onchange = () => edit(f.k, parseInt(inp.value.slice(1), 16));
+      inp.disabled = !!f.disabled;
+      const hex = (v) => '#' + (v ?? 0xffffff).toString(16).padStart(6, '0');
+      inp.value = hex(f.value);
+      inp.oninput = () => edit(f.k, parseInt(inp.value.slice(1), 16), null, { live: true });
+      inp.onchange = () => { edit(f.k, parseInt(inp.value.slice(1), 16)); inp.blur(); };
       row.append(inp);
+      row.update = (nf) => { setLabel(nf); if (document.activeElement !== inp) inp.value = hex(nf.value); };
       break;
     }
     case 'group': {
@@ -143,6 +326,7 @@ function fieldDOM(f, edit) {
       const h = el('button', 'sp-group', `${f.open === false ? '▸' : '▾'} ${f.label}`);
       h.onclick = () => edit('fold', f.k);
       row.innerHTML = ''; row.append(h);
+      row.update = (nf) => { h.textContent = `${nf.open === false ? '▸' : '▾'} ${nf.label}`; };
       break;
     }
     case 'tree': {
@@ -156,35 +340,44 @@ function fieldDOM(f, edit) {
         if (r.sub || r.badges?.length) main.append(el('span', 'sp-item-sub', [r.sub, ...(r.badges ?? [])].filter(Boolean).join(' · ')));
         main.onclick = () => edit(f.k, r.id);
         line.append(main);
-        const lock = el('button', `sp-mini${r.locked ? ' on' : ''}`, r.locked ? '🔒' : '🔓');
-        lock.title = r.locked ? 'locked — click to unlock' : 'click to lock in place';
-        lock.onclick = (e) => { e.stopPropagation(); edit('lock', r.id); };
-        line.append(lock);
+        if (r.locked != null) {
+          const lock = el('button', `sp-mini${r.locked ? ' on' : ''}`, r.locked ? '🔒' : '🔓');
+          lock.title = r.locked ? 'locked — click to unlock' : 'click to lock in place';
+          lock.onclick = (e) => { e.stopPropagation(); edit('lock', r.id); };
+          line.append(lock);
+        }
         box.append(line);
       }
       row.append(box);
-      break;
+      break;   // rows are shape: a changed tree repaints
     }
     case 'text': {
       const inp = el('input', 'sp-text');
       inp.value = f.value ?? '';
+      inp.disabled = !!f.disabled;
       if (f.placeholder) inp.placeholder = f.placeholder;
-      inp.onchange = () => edit(f.k, inp.value);
+      inp.onchange = () => { edit(f.k, inp.value); inp.blur(); };
+      inp.onkeydown = (e) => { if (e.key === 'Escape') { inp.value = f.value ?? ''; inp.blur(); e.stopPropagation(); } };
       row.append(inp);
+      row.update = (nf) => { setLabel(nf); if (document.activeElement !== inp) inp.value = nf.value ?? ''; };
       break;
     }
     case 'btn': {
       const b = el('button', `sp-btn${f.danger ? ' danger' : ''}`, f.label);
+      b.disabled = !!f.disabled;
       b.onclick = () => edit(f.k);
       row.append(b);
+      row.update = (nf) => { b.textContent = nf.label; };
       break;
     }
     case 'check': {
       const inp = el('input');
       inp.type = 'checkbox';
       inp.checked = !!f.value;
+      inp.disabled = !!f.disabled;
       inp.onchange = () => edit(f.k, inp.checked);
       row.append(inp);
+      row.update = (nf) => { setLabel(nf); inp.checked = !!nf.value; };
       break;
     }
     case 'list': {
@@ -218,7 +411,7 @@ function fieldDOM(f, edit) {
 
 const C = {
   bg: '#101318', row: '#161b22', label: '#8b96a5', text: '#e8edf4',
-  accent: '#e8956b', danger: '#e06060', line: '#242b35',
+  accent: '#e8956b', danger: '#e06060', line: '#242b35', driven: '#b48cff',
 };
 
 export function renderCanvas(canvas, fields, { width = 512, rowH = 44, pad = 12, title = '' } = {}) {
@@ -283,8 +476,9 @@ export function renderCanvas(canvas, fields, { width = 512, rowH = 44, pad = 12,
       regions.push({ x: pad, y, w: width - pad * 2, h: rowH, action: 'fold', payload: f.k });
       y += rowH; continue;
     }
-    if (f.label != null) { font(13); g.fillStyle = C.label; g.fillText(f.label, pad, y + rowH * 0.6); }
+    if (f.label != null) { font(13); g.fillStyle = f.driven ? C.driven : C.label; g.fillText(f.label, pad, y + rowH * 0.6); }
     const vx = width * 0.34;
+    const mark = regions.length;   // a disabled field paints but takes no hits
     switch (f.t) {
       case 'enum': {
         let bx = vx;
@@ -351,6 +545,7 @@ export function renderCanvas(canvas, fields, { width = 512, rowH = 44, pad = 12,
         break;
       }
     }
+    if (f.disabled) regions.length = mark;
     y += rowH;
   }
   return regions;

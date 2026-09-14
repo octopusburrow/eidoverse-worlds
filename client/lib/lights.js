@@ -25,7 +25,7 @@
 import { THREE } from './core.js';
 import { bus } from './base.js';
 import { requestLight, updateRequest, releaseLight, isCasting } from './lightrig.js';
-import { registerEditor } from './inspect.js';
+import { registerFields } from './inspect.js';
 
 // governor compatibility re-exports (main.js's shed lever; 5d replaces)
 export { shedALight, litCount } from './lightrig.js';
@@ -162,56 +162,32 @@ bus.on('verb-refused', () => {
 // Registered here because the MEANING of these fields lives in this module:
 // what a sane brightness range is, and what `keep` honestly promises (top
 // priority in the slot pool — but still glow-only when the pool is spent on
-// other keeps). Dragging previews locally through updateLight and commits
-// through the coalescer above — at most one partial `light` verb per
-// EDIT_COMMIT_MS (just the touched field — the fold merges), with the
-// gesture's final value always sent on release.
-registerEditor(({ id, obj, commit }) => {
+// other keeps). Declared as FIELDS: the inspector, the channel box and the VR
+// quad all render this one declaration. A drag previews locally through
+// updateLight and commits through the coalescer above — at most one partial
+// `light` verb per EDIT_COMMIT_MS (just the touched field — the fold merges),
+// with the gesture's final value always sent on release.
+registerFields(({ id, obj, commit }) => {
   if (!obj?.userData?.isLight) return null;
   const p = obj.userData.lightParams ?? {};
-  const hex = '#' + (p.color ?? 0xffd9a0).toString(16).padStart(6, '0');
   const inten = p.intensity ?? 16;
   const range = p.range ?? 10;
+  const fields = [
+    { t: 'color', k: 'color', label: 'color', value: p.color ?? 0xffd9a0 },
+    // soft max: the drag stops here, typing may exceed it (Blender's soft limit)
+    { t: 'num', k: 'intensity', label: 'brightness', value: inten, step: 1, dp: 0, min: 0, softMax: Math.max(64, inten) },
+    { t: 'num', k: 'range', label: 'range', value: range, step: 1, dp: 0, min: 1, softMax: Math.max(40, range), unit: 'm' },
+    { t: 'check', k: 'keep', label: 'keep lit', value: !!p.keep, hint: 'first claim on a light slot, never governor-shed' },
+    { t: 'check', k: 'noon', label: 'burns at noon', value: p.day === false, hint: 'opts out of the day cycle' },
+  ];
+  if (!isCasting(obj.userData.rigKey)) fields.push({ t: 'info', label: '', value: 'glow-only right now (slot pool spent) — it may still cast for others' });
   return {
-    html: `<div style="display:flex;flex-direction:column;gap:4px;margin:4px 0">
-      <label style="display:flex;gap:6px;align-items:center">color
-        <input type="color" data-lp="color" value="${hex}"></label>
-      <label style="display:flex;gap:6px;align-items:center">brightness
-        <input type="range" data-lp="intensity" min="0" max="${Math.max(64, inten)}" step="1" value="${inten}" style="flex:1">
-        <span data-lp-out="intensity" style="min-width:2.5em;text-align:right">${inten}</span></label>
-      <label style="display:flex;gap:6px;align-items:center">range
-        <input type="range" data-lp="range" min="1" max="${Math.max(40, range)}" step="1" value="${range}" style="flex:1">
-        <span data-lp-out="range" style="min-width:2.5em;text-align:right">${range}</span></label>
-      <label style="display:flex;gap:6px;align-items:center;cursor:pointer">
-        <input type="checkbox" data-lp="keep" ${p.keep ? 'checked' : ''}>
-        keep lit — first claim on a light slot, never governor-shed</label>
-      <label style="display:flex;gap:6px;align-items:center;cursor:pointer">
-        <input type="checkbox" data-lp="day" ${p.day === false ? 'checked' : ''}>
-        burns at noon — opts out of the day cycle</label>
-      ${isCasting(obj.userData.rigKey) ? '' : '<div style="color:var(--dim);font-size:11px">glow-only right now (slot pool spent) — it may still cast for others</div>'}
-    </div>`,
-    wire(root) {
-      for (const el of root.querySelectorAll('[data-lp]')) {
-        const field = el.dataset.lp;
-        const read = () =>
-          field === 'color' ? parseInt(el.value.slice(1), 16)
-            : field === 'keep' ? el.checked
-              : field === 'day' ? !el.checked   // checked = burns at noon = day:false
-                : Number(el.value);
-        el.addEventListener('input', () => {
-          updateLight(obj, { [field]: read() });
-          // commit rides the drag, coalesced — the fold tracks the preview
-          // instead of hearing one stale gesture-end after a rate refusal
-          queueCommit(id, commit, { [field]: read() });
-          const out = root.querySelector(`[data-lp-out="${field}"]`);
-          if (out) out.textContent = el.value;
-        });
-        el.addEventListener('change', () => {
-          updateLight(obj, { [field]: read() });
-          queueCommit(id, commit, { [field]: read() });   // final value, always sent (trailing)
-          el.blur();   // release focus so the panel's held repaints resume
-        });
-      }
+    group: 'light',
+    fields,
+    dispatch(k, v) {
+      const patch = k === 'noon' ? { day: !v } : { [k]: v };
+      updateLight(obj, patch);
+      queueCommit(id, commit, patch);   // live and final alike: the coalescer paces the wire
     },
   };
 });
