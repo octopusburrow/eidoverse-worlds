@@ -87,6 +87,10 @@ export function setTool(t) {
 export const hasGhost = () => ghost !== null;
 export const hasSelection = () => selected !== null;
 setPointerClaim(() => ghost !== null || !!dragging?.armed);
+// the gizmo (gizmo.js) vetoes the mesh-grab while one of its handles is hot —
+// a probe, not an import: gizmo imports us
+let pointerVeto = () => false;
+export function setPointerVeto(fn) { pointerVeto = fn; }
 setEditingProbe(() => editMode);
 
 // ============================================================ selection
@@ -391,6 +395,7 @@ canvas.addEventListener('mousedown', (e) => {
   // gizmo picks next — a marker is small and deliberate, and the mesh it
   // floats over would otherwise win every contested click
   if (seatMouseDown(e)) { e.preventDefault(); return; }
+  if (pointerVeto()) return;                // a gizmo handle under the pointer owns this press
   // Pick from THIS event's coordinates. Relying on the last mousemove to have
   // left `mouse` in the right place works for a real pointer and fails for
   // anything that presses without moving first — a touch, a synthetic click,

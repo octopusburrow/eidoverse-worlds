@@ -1,0 +1,118 @@
+// gizmo — three's TransformControls on the selected thing, in edit mode.
+//
+// The tools column's move / rotate / scale already drive build.js's own drag
+// (grab anywhere on the mesh). The gizmo is the precise version of the same
+// three gestures: axis handles you can see. It never replaces their drag —
+// build.js vetoes its mesh-grab while a handle is hot (setPointerVeto), and
+// both commit the same way: ONE `place` carrying the full pose on release,
+// an inverse from the fold on the undo stack, others watching the drag at
+// pose cadence. Constraints from the fold's shape: rotate is yaw only (the
+// log has no pitch/roll), scale is uniform (the log has one number).
+// Locked or mounted things get no gizmo — the schema says their transform is
+// read-only, and a handle you can't drag is a lie.
+
+import { THREE, scene, camera, canvas } from './core.js';
+import { bus } from './base.js';
+import { entities, comps } from './world.js';
+import { sendDrag } from './net.js';
+import { registerSystem } from './frame.js';
+import { sceneSelected } from './scenegraph.js';
+import { getTool, isEditing, pushUndo, refreshOutline, setPointerVeto } from './build.js';
+import { reindexCollider } from './colliders.js';
+import { foldRecord, inverseOf } from './inspect.js';
+import { editVerbs, inspectSchema, fieldAt } from '../../shared/editschema.js';
+import { TransformControls } from 'three/addons/controls/TransformControls.js';
+
+const R2D = 180 / Math.PI;
+let controls = null;
+let helper = null;
+let attachedId = null;
+let start = null;        // { rec, scale } at drag start
+let lastSent = 0;
+
+function ensure() {
+  if (controls) return controls;
+  controls = new TransformControls(camera, canvas);
+  controls.size = 0.8;
+  helper = controls.getHelper();
+  helper.name = 'edit-gizmo';
+  scene.add(helper);
+  controls.addEventListener('dragging-changed', (e) => (e.value ? beginDrag() : endDrag()));
+  controls.addEventListener('objectChange', onChange);
+  setPointerVeto(() => !!controls?.axis || !!controls?.dragging);
+  // Ctrl held = snapping (Blender's Ctrl, Maya's grid): 10 cm, 5°, 0.1×
+  addEventListener('keydown', (e) => { if (e.key === 'Control') { controls.setTranslationSnap(0.1); controls.setRotationSnap(5 / R2D); controls.setScaleSnap(0.1); } });
+  addEventListener('keyup', (e) => { if (e.key === 'Control') { controls.setTranslationSnap(null); controls.setRotationSnap(null); controls.setScaleSnap(null); } });
+  return controls;
+}
+
+const MODE = { move: 'translate', rotate: 'rotate', scale: 'scale' };
+/** Can this thing take THIS gesture? The schema decides: a mounted or locked
+ *  thing's transform is read-only; a light has no yaw or scale to drag. */
+function editable(id, mode) {
+  const rec = foldRecord(id); const obj = entities.get(id);
+  if (!rec || !obj || rec.parent || comps.get(id)?.lock) return false;
+  const sc = inspectSchema(rec, id);
+  const key = mode === 'rotate' ? 'pos.yaw' : mode === 'scale' ? 'pos.scale' : 'pos.x';
+  const f = fieldAt(sc, key);
+  return !!f && !f.disabled;
+}
+
+function sync() {
+  const id = sceneSelected();
+  // scenegraph's selection is THE selection (a tree click never sets build.js's viewport `selected`)
+  const want = isEditing() && id && MODE[getTool()] && editable(id, MODE[getTool()]) ? id : null;
+  if (!want) { if (attachedId) { controls?.detach(); attachedId = null; } return; }
+  const c = ensure();
+  if (attachedId !== want) { c.attach(entities.get(want)); attachedId = want; }
+  const mode = MODE[getTool()];
+  if (c.mode !== mode) c.setMode(mode);
+  // yaw only: the log has no pitch or roll; uniform only: the log has one scale
+  c.showX = mode !== 'rotate'; c.showZ = mode !== 'rotate'; c.showY = true;
+}
+
+function beginDrag() {
+  if (!attachedId) return;
+  const rec = foldRecord(attachedId);
+  start = rec ? { rec: JSON.parse(JSON.stringify(rec)), scale: entities.get(attachedId).scale.x } : null;
+}
+function onChange() {
+  const obj = attachedId && entities.get(attachedId); if (!obj) return;
+  if (controls.mode === 'scale' && start) {
+    // whichever handle moved, the thing scales uniformly by that ratio
+    const ax = (controls.axis ?? 'X')[0].toLowerCase();
+    const k = ['x', 'y', 'z'].includes(ax) ? obj.scale[ax] / start.scale : obj.scale.x / start.scale;
+    obj.scale.setScalar(THREE.MathUtils.clamp(start.scale * k, 0.1, 12));
+  }
+  if (controls.mode === 'rotate') { obj.rotation.x = 0; obj.rotation.z = 0; }
+  reindexCollider(attachedId); refreshOutline();
+  const now = performance.now();
+  if (now - lastSent >= 66) { lastSent = now; const p = obj.position; sendDrag(attachedId, [p.x, p.y, p.z], obj.rotation.y); }
+}
+function endDrag() {
+  const id = attachedId; const obj = id && entities.get(id);
+  if (!obj || !start?.rec) { start = null; return; }
+  const rec = foldRecord(id) ?? start.rec;
+  const sc = inspectSchema(rec, id);
+  // only the transform fields this thing HAS (a light has no yaw/scale) —
+  // editVerbs coalesces them into one place carrying the full pose
+  const all = { 'pos.x': +obj.position.x.toFixed(3), 'pos.y': +obj.position.y.toFixed(3), 'pos.z': +obj.position.z.toFixed(3),
+    'pos.yaw': obj.rotation.y * R2D, 'pos.scale': +obj.scale.x.toFixed(3) };
+  const set = Object.fromEntries(Object.entries(all).filter(([k]) => fieldAt(sc, k)));
+  const { verbs, errors } = editVerbs(rec, id, set);
+  if (errors.length || !verbs.length) { start = null; return; }
+  for (const v of verbs) {
+    const inv = inverseOf(v, start.rec, id);
+    if (inv) pushUndo(inv, `${controls.mode === 'translate' ? 'moving' : controls.mode === 'rotate' ? 'turning' : 'sizing'} ${id}`);
+    bus.emit('gizmo-commit', v);
+  }
+  start = null;
+}
+/** The commit itself rides one seam so the bench can watch it; net.js speaks the wire. */
+bus.on('gizmo-commit', (v) => import('./net.js').then((m) => m.sendVerb(v.verb, v.args)));
+
+export function initGizmo() {
+  registerSystem('gizmo', sync, { every: 4 });   // selection/tool/lock changes are rare; a few frames' lag is invisible
+  bus.on('tool', sync); bus.on('sg:selected', sync); bus.on('edit-mode', sync); bus.on('comp', sync);
+  globalThis.__gizmo = () => ({ attached: attachedId, mode: controls?.mode ?? null, showX: controls?.showX, showZ: controls?.showZ, controls });   // harness window
+}

@@ -254,6 +254,40 @@ check('…and once more undoes the detach → mounted again with its old offset'
 await evalJson(`import('/lib/scenegraph.js').then((m) => m.sceneSelect('benchlamp')), true`);
 await waitFor(`${insp}.querySelector('.sp-info')?.textContent.startsWith('benchlamp')`);
 
+console.log('\ngizmo: TransformControls on the selection, yaw-only rotate, one place on release, undo:');
+await sleep(1200);
+await evalJson(`import('/lib/build.js').then((m) => m.setTool('move')), true`);
+check('move tool + a selection → the gizmo is attached to it in translate mode', await waitFor(`globalThis.__gizmo?.().attached === 'benchlamp' && globalThis.__gizmo().mode === 'translate'`), JSON.stringify(await evalJson(`(() => { const g = globalThis.__gizmo?.(); return g && { attached: g.attached, mode: g.mode }; })()`)));
+check('the helper is in the scene', await evalJson(`import('/lib/core.js').then((m) => !!m.scene.getObjectByName('edit-gizmo'))`));
+await evalJson(`import('/lib/build.js').then((m) => m.setTool('rotate')), true`);
+check('rotate tool on a LIGHT → no gizmo (a light has no yaw)', await waitFor(`globalThis.__gizmo?.().attached === null`), JSON.stringify(await evalJson(`(() => { const g = globalThis.__gizmo?.(); return g && { attached: g.attached, mode: g.mode }; })()`)));
+await evalJson(`import('/lib/net.js').then((m) => m.sendVerb('spawn', { id: 'crate1', lib: 'eidoverse/assets/models/unit_quad_picture_plane.glb', pos: [3, 0, 3], yaw: 0 })), true`);
+await waitFor(`import('/lib/world.js').then((m) => !!m.entities.get('crate1'))`, 8000);
+await evalJson(`import('/lib/scenegraph.js').then((m) => m.sceneSelect('crate1')), true`);
+check('rotate tool on a MODEL → rotate mode with only the Y ring (the log has no pitch/roll)', await waitFor(`globalThis.__gizmo?.().attached === 'crate1' && globalThis.__gizmo().mode === 'rotate' && globalThis.__gizmo().showX === false && globalThis.__gizmo().showZ === false`), JSON.stringify(await evalJson(`(() => { const g = globalThis.__gizmo?.(); return g && { attached: g.attached, mode: g.mode, lib: null }; })()`)) + ' lib=' + JSON.stringify(await evalJson(`import('/lib/world.js').then((m) => m.entityMeta.get('crate1')?.lib)`)));
+await evalJson(`import('/lib/scenegraph.js').then((m) => m.sceneSelect('benchlamp')), true`);
+await evalJson(`import('/lib/build.js').then((m) => m.setTool('move')), true`);
+await waitFor(`globalThis.__gizmo?.().mode === 'translate'`);
+// a drag, driven through the controls' own events (headless has no pointer on a WebGPU handle):
+// begin → the object moves → change → end → ONE place with the full pose
+const gx0 = await evalJson(`import('/lib/state.js').then((m) => m.state.st.entities.benchlamp.pos[0])`);
+await evalJson(`(() => { const c = globalThis.__gizmo().controls; c.dispatchEvent({ type: 'dragging-changed', value: true }); return import('/lib/world.js').then((m) => { m.entities.get('benchlamp').position.x += 1; c.dispatchEvent({ type: 'objectChange' }); c.dispatchEvent({ type: 'dragging-changed', value: false }); return true; }); })()`);
+check('release commits ONE place: pos.x +1 in the fold', await waitFor(`import('/lib/state.js').then((m) => Math.abs(m.state.st.entities.benchlamp.pos[0] - (${gx0} + 1)) < 1e-6)`), 'x=' + JSON.stringify(await evalJson(`import('/lib/state.js').then((m) => m.state.st.entities.benchlamp.pos)`)) + ' refused=' + JSON.stringify(await evalJson(`window.__refused`)));
+await sleep(600);
+await evalJson(`import('/lib/build.js').then((m) => m.undo()), true`);
+check('undo puts it back — and pops the GIZMO\'s entry, not an older one (the copy still exists)', await waitFor(`import('/lib/state.js').then((m) => Math.abs(m.state.st.entities.benchlamp.pos[0] - ${gx0}) < 1e-6 && Object.keys(m.state.st.entities).some((k) => /^benchlamp~/.test(k)))`), JSON.stringify(await evalJson(`import('/lib/state.js').then((m) => Object.keys(m.state.st.entities))`)));
+await evalJson(`import('/lib/scenegraph.js').then((m) => m.sceneSelect('benchlamp')), true`);
+await waitFor(`globalThis.__gizmo?.().attached === 'benchlamp'`);
+await evalJson(`import('/lib/inspect.js').then((m) => m.commitEdit('benchlamp', 'flags.lock', true)), true`);
+check('locking the thing detaches the gizmo (a handle you can\'t drag is a lie)', await waitFor(`import('/lib/world.js').then((m) => !!m.comps.get('benchlamp')?.lock) && globalThis.__gizmo?.().attached === null`), JSON.stringify(await evalJson(`(() => { const g = globalThis.__gizmo?.(); return g && { attached: g.attached }; })()`)));
+await sleep(600);
+await evalJson(`import('/lib/inspect.js').then((m) => m.commitEdit('benchlamp', 'flags.lock', false)), true`);
+check('unlocking re-attaches', await waitFor(`import('/lib/world.js').then((m) => !m.comps.get('benchlamp')?.lock) && globalThis.__gizmo?.().attached === 'benchlamp'`));
+await evalJson(`import('/lib/build.js').then((m) => m.setTool('select')), true`);
+check('select tool → no gizmo', await waitFor(`globalThis.__gizmo?.().attached === null`));
+await evalJson(`import('/lib/build.js').then((m) => m.setTool('move')), true`);
+await sleep(600);
+
 console.log('\nmulti-selection: intersected channels, field-wise writes, one undo:');
 await sleep(1500);   // verb window
 const copyId = await evalJson(`import('/lib/world.js').then((m) => [...m.entities.keys()].find((k) => /^benchlamp~[0-9a-f]{4}$/.test(k)))`);

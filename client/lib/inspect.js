@@ -53,7 +53,7 @@ let gesture = null;   // { id, rec } — the record as it stood when a drag bega
 export function endGesture() { gesture = null; }
 
 /** Inverse of a verb about to be sent, against the record it was computed from. */
-function inverseOf(v, rec, id) {
+export function inverseOf(v, rec, id) {
   switch (v.verb) {
     case 'place': return { verb: 'place', args: { id, pos: [...(rec.pos ?? [0, 0, 0])], yaw: rec.yaw ?? 0, ...(rec.scale != null ? { scale: rec.scale } : {}) } };
     case 'light': {
