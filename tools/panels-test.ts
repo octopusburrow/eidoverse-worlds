@@ -17,7 +17,7 @@ GlobalRegistrator.register();
 (Element.prototype as any).setPointerCapture = function (id: number) { (this as any).__cap = id; };
 (Element.prototype as any).releasePointerCapture = function (id: number) { (this as any).__cap = undefined; };
 
-const { parseEntry, shapeKey, renderDOM, makeSchemaFrame } = await import("../client/lib/panels.js");
+const { parseEntry, shapeKey, renderDOM, makeSchemaFrame, resolveDelta } = await import("../client/lib/panels.js");
 
 let pass = 0, fail = 0;
 const check = (name: string, ok: boolean, detail = "") => {
@@ -186,6 +186,46 @@ console.log("\ndisabled and driven:");
   dis.dispatchEvent(pe("pointerdown", 0)); dis.dispatchEvent(pe("pointermove", 100)); dis.dispatchEvent(pe("pointerup", 100));
   check("a disabled number ignores the drag", calls.length === 0 && dis.disabled);
   check("a driven row is tinted and titled", drv.closest(".sp-row")!.classList.contains("driven") && /motion/.test((drv.closest(".sp-row") as HTMLElement).title));
+}
+
+console.log("\nresolveDelta — a VR stepper's {axis, delta} becomes the number the DOM sends:");
+{
+  const F = [{ t: "num", k: "a", value: 16 }, { t: "vec3", k: "p", value: [1, 2, 3] }];
+  check("num + delta", resolveDelta(F, "a", { axis: null, delta: 1 }) === 17);
+  check("vec3 axis delta keeps the other components", JSON.stringify(resolveDelta(F, "p", { axis: 2, delta: 0.5 })) === "[1,2,3.5]");
+  check("a plain number passes through", resolveDelta(F, "a", 40) === 40);
+  check("an unknown key is null, never an object", resolveDelta(F, "zz", { axis: null, delta: 1 }) === null);
+}
+
+console.log("\nsoft limits are LIVE across an in-place update (typing past softMax raises the next drag's cap):");
+{
+  const sf = makeSchemaFrame("t-soft", { title: "t", x: 10, y: 10, w: 300, h: 200 });
+  const calls: any[] = [];
+  const edit = (...a: any[]) => calls.push(a);
+  const F = (v: number) => [{ t: "num", k: "b", value: v, step: 1, dp: 0, min: 0, softMax: Math.max(64, v) }];
+  sf.set(F(16), edit);
+  const inp = sf.frame.body.querySelector(".sp-num") as HTMLInputElement;
+  sf.set(F(120), edit);                       // same shape: update in place, softMax now 120
+  check("same node", sf.frame.body.querySelector(".sp-num") === inp);
+  // off the origin: happy-dom gives every frame a zero rect, so (0,0) sits in
+  // frames.js's document-level resize band and the FRAME takes the pointer
+  inp.dispatchEvent(pe("pointerdown", 300)); inp.dispatchEvent(pe("pointermove", 400)); inp.dispatchEvent(pe("pointerup", 400));
+  // the drag previews at the cap and ends where it began → nothing to commit;
+  // the binding is that no preview ever went ABOVE the refreshed cap, and none sat at the stale one
+  check("drag from 120 previews at the NEW softMax (120), never the stale 64", calls.length > 0 && calls.every((c) => c[1] === 120), JSON.stringify(calls.map((c) => c[1])));
+}
+
+console.log("\nguard forgets its origin after a release outside the scroller:");
+{
+  const sf = makeSchemaFrame("t-guard2", { title: "t", x: 10, y: 10, w: 300, h: 200 });
+  const calls: any[] = [];
+  sf.set([{ t: "btn", k: "go", label: "go" }], (...a: any[]) => calls.push(a));
+  const btn = sf.frame.body.querySelector(".sp-btn") as HTMLButtonElement;
+  btn.dispatchEvent(pe("pointerdown", 200));
+  document.dispatchEvent(pe("pointerup", 900));                 // released far away, no click reached the scroller
+  await new Promise((r) => setTimeout(r, 5));
+  btn.dispatchEvent(new (globalThis as any).MouseEvent("click", { clientX: 0, clientY: 0, bubbles: true }));   // keyboard activation
+  check("a later keyboard click fires", calls.length === 1, String(calls.length));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

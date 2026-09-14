@@ -149,9 +149,11 @@ export function deselect() {
   outline.visible = false;
   hideInspector();
 }
-function refreshOutline() {
+export function refreshOutline() {
   if (selected) outline.box.setFromObject(selected.obj);
 }
+// the echo of a place (ours from the inspector, or anyone's) moves the mesh; the box follows
+bus.on('entity', ({ id } = {}) => { if (selected && id === selected.id) refreshOutline(); });
 
 // ============================================================ ghost placement
 

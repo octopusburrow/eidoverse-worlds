@@ -21,10 +21,10 @@ import { bus } from './base.js';
 import { entities, entityMeta, comps, avatarMounts } from './world.js';
 import { sendVerb, requestDebug } from './net.js';
 import { flashHint } from './ui.js';
-import { makeSchemaFrame } from './panels.js';
+import { makeSchemaFrame, resolveDelta } from './panels.js';
 import { registerXRPanel } from './xrpanels.js';
 import { treeData, sceneSelected, sceneSelect, sceneAttach, sceneDetach } from './scenegraph.js';
-import { pushUndo } from './build.js';
+import { pushUndo, refreshOutline } from './build.js';
 import { fieldEditorsFor } from './inspect.js';
 import { myState } from './controller.js';
 import { reindexCollider } from './colliders.js';
@@ -127,16 +127,16 @@ function findSelected() {
 
 // ---------------------------------------------------------------- inspector
 let editors = [];      // the registry's claims on the current selection, as painted
+let painted = [];      // the inspector's last field list (a canvas stepper's delta resolves against it)
 let gesture = null;    // { before } while a transform drag is in flight
 
 /** Is a whole-entity motion composing onto this thing's rest pose? */
 function drivenBy(id, obj) {
   if (obj?.userData?.mountedTo) return null;
   const bag = comps.get(id) ?? {};
-  for (const k in bag) {
-    if ((k === 'motion' && bag[k]?.type && !bag[k]?.part) || k.startsWith('motion:')) return k;
-  }
-  return null;
+  // motion:<part> and motion{part} move a child node (motion.js mbase), never the root
+  const m = bag.motion;
+  return m?.type && !m.part ? 'motion' : null;
 }
 /** The pose `place` edits: the rest pose when a motion drives the object. */
 function restPose(obj, driven) {
@@ -169,8 +169,10 @@ function inspectorFields() {
 
   // CHANNELS — the numeric lane. Transform first (the entity's LOCAL frame,
   // exactly what `place` takes), then every num any editor declared.
-  f.push({ t: 'group', k: 'channels', label: `Channels${locked ? ' 🔒' : ''}${obj.userData.mountedTo ? ' (local)' : ''}`, open: isOpen(id, 'channels') });
-  const tf = { compact: true, disabled: locked, driven: driven ?? undefined, hint: locked ? 'locked — uncheck lock to move it' : undefined };
+  f.push({ t: 'group', k: 'channels', label: `Channels${locked ? ' 🔒' : ''}${obj.userData.mountedTo ? ' (mounted)' : ''}`, open: isOpen(id, 'channels') });
+  const mounted = !!obj.userData.mountedTo;
+  const tf = { compact: true, disabled: locked || mounted, driven: driven ?? undefined,
+    hint: locked ? 'locked — uncheck lock to move it' : mounted ? 'mounted — the attach offset owns this pose; detach to move it' : undefined };
   ['x', 'y', 'z'].forEach((ax, i) => f.push({ t: 'num', k: `ch:pos:${i}`, label: `pos ${ax}`, value: pose.pos[i], step: 0.1, dp: 2, unit: 'm', ...tf }));
   if (!isLight) {
     f.push({ t: 'num', k: 'ch:yaw', label: 'yaw', value: pose.yaw, step: 5, deg: true, ...tf });
@@ -213,6 +215,7 @@ function inspectorFields() {
     f.push({ t: 'list', k: 'bhv', rows: mine.map((b) => ({ id: b.id, label: `${b.status === 'running' ? '▶' : '⏸'} ${b.id}`, sub: `${b.timers ? `${b.timers}⏲ ` : ''}${b.status ?? ''}`, actions: [{ k: 'unbind', label: 'unbind', danger: true }] })) });
   }
   f.push({ t: 'btn', k: 'remove', label: 'remove', danger: true });
+  painted = f;
   return f;
 }
 
@@ -235,10 +238,11 @@ function inspectorDispatch(action, payload, field, opts = {}) {
     else next.scale = Math.max(0.01, round(val(before.scale)));
     if (next.pos.some(Number.isNaN)) return;
     if (live) {
-      gesture ??= { before };
+      // a live call back AT the start pose is a cancelled/no-op drag ending
+      if (JSON.stringify(next) === JSON.stringify(before)) gesture = null; else gesture ??= { before };
       if (!driven) {   // a driven thing can't preview: the motion owns the frame
         obj.position.set(...next.pos); obj.rotation.y = next.yaw; obj.scale.setScalar(next.scale);
-        reindexCollider(id);
+        reindexCollider(id); refreshOutline();
       }
       return;
     }
@@ -253,7 +257,12 @@ function inspectorDispatch(action, payload, field, opts = {}) {
   const m = /^(ch|ed):(\d+):(.+)$/.exec(action);
   if (m) {
     const e = editors[+m[2]];
-    try { e?.dispatch(m[3], payload, field, opts); } catch (err) { flashHint(`editor error: ${err.message}`, 5000); }
+    // a VR stepper sends {axis, delta}; editors expect the number. Only a delta
+    // can fail to resolve — a button legitimately dispatches with no payload
+    const isDelta = typeof payload === 'object' && payload && 'delta' in payload;
+    const v = isDelta ? resolveDelta(painted, action, payload) : payload;
+    if (isDelta && v == null) return;
+    try { e?.dispatch(m[3], v, field, opts); } catch (err) { flashHint(`editor error: ${err.message}`, 5000); }
     if (!live) repaintAll();
     return;
   }
@@ -290,7 +299,10 @@ function removeWithUndo(id) {
   if (!obj) return;
   if (comps.get(id)?.lock) { flashHint(`${id} is locked — unlock it first`, 4000); return; }
   const pose = restPose(obj, drivenBy(id, obj));
-  pushUndo({ verb: 'spawn', args: { id, lib: meta.lib, ...pose } }, `removing ${id}`);
+  const lp = obj.userData.isLight ? obj.userData.lightParams ?? {} : null;
+  pushUndo(lp
+    ? { verb: 'light', args: { id, pos: pose.pos, color: lp.color, intensity: lp.intensity, range: lp.range, keep: !!lp.keep, day: lp.day !== false } }
+    : { verb: 'spawn', args: { id, lib: meta.lib, ...pose } }, `removing ${id}`);
   sendVerb('remove', { id });
 }
 
@@ -320,6 +332,7 @@ export function initEditPanels() {
     frames.set(p.id, sf);
   }
   for (const ev of ['entity', 'comp', 'mount', 'edit-mode', 'sg:selected']) bus.on(ev, repaintAll);
+  bus.on('sg:selected', () => { gesture = null; });   // a drag's `before` never outlives its selection
   bus.on('sg:selected', () => { if (shown) refreshBehaviors(); });
   repaintAll();
   globalThis.__editPanels = editPanelsDebug;   // harness window (probes read it, nothing else does)

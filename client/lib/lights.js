@@ -167,7 +167,8 @@ bus.on('verb-refused', () => {
 // updateLight and commits through the coalescer above — at most one partial
 // `light` verb per EDIT_COMMIT_MS (just the touched field — the fold merges),
 // with the gesture's final value always sent on release.
-registerFields(({ id, obj, commit }) => {
+let gestureStart = null;   // lightParams as they were when the current drag began
+registerFields(({ id, obj, commit, undo }) => {
   if (!obj?.userData?.isLight) return null;
   const p = obj.userData.lightParams ?? {};
   const inten = p.intensity ?? 16;
@@ -184,8 +185,16 @@ registerFields(({ id, obj, commit }) => {
   return {
     group: 'light',
     fields,
-    dispatch(k, v) {
+    dispatch(k, v, _field, opts) {
       const patch = k === 'noon' ? { day: !v } : { [k]: v };
+      // one undo per finished gesture (drags arrive live many times, then once
+      // final); the inverse is the value the fold held when the gesture began
+      if (!opts?.live) {
+        const prev = gestureStart ?? { ...p };
+        const key = Object.keys(patch)[0];
+        undo?.({ verb: 'light', args: { id, [key]: prev[key] } }, `${key} of ${id}`);
+        gestureStart = null;
+      } else gestureStart ??= { ...p };
       updateLight(obj, patch);
       queueCommit(id, commit, patch);   // live and final alike: the coalescer paces the wire
     },

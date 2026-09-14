@@ -115,6 +115,9 @@ export function shapeKey(fields) {
 function guardActions(root) {
   let down = null;
   root.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY }; }, true);
+  // a release outside the scroller never clicks it: forget the origin, or the
+  // next keyboard activation (clientX/Y 0) reads as travel and is swallowed
+  for (const ev of ['pointerup', 'pointercancel']) document.addEventListener(ev, () => { setTimeout(() => { down = null; }, 0); }, true);
   root.addEventListener('click', (e) => {
     if (!down) return;
     const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
@@ -167,15 +170,16 @@ export function parseEntry(text, current) {
 }
 
 function stepper(value, f, commit) {
-  const { step = 0.1, dp = 2, min, max, softMin, softMax, unit, deg, compact, disabled } = f;
+  const cur = { step: 0.1, dp: 2, ...f };   // options are LIVE: update() refreshes them (a typed value past softMax raises the next drag's cap)
+  const { unit, deg, compact, disabled } = cur;
   const wrap = el('span', `sp-step${compact ? ' compact' : ''}`);
   const num = el('input', 'sp-num');
   num.type = 'text'; num.inputMode = 'decimal'; num.autocomplete = 'off'; num.spellcheck = false;
   if (disabled) num.disabled = true;
-  const toFace = (w) => (deg ? w * R2D : w).toFixed(deg ? 0 : dp);
+  const toFace = (w) => (deg ? w * R2D : w).toFixed(deg ? 0 : cur.dp);
   const toWire = (face) => (deg ? face / R2D : face);
-  const hard = (w) => Math.min(max ?? Infinity, Math.max(min ?? -Infinity, w));
-  const soft = (w) => Math.min(softMax ?? max ?? Infinity, Math.max(softMin ?? min ?? -Infinity, w));
+  const hard = (w) => Math.min(cur.max ?? Infinity, Math.max(cur.min ?? -Infinity, w));
+  const soft = (w) => Math.min(cur.softMax ?? cur.max ?? Infinity, Math.max(cur.softMin ?? cur.min ?? -Infinity, w));
   let wire = +value;
   const show = (w) => { num.value = toFace(w); };
   show(wire);
@@ -193,13 +197,13 @@ function stepper(value, f, commit) {
     else if (e.key === 'Enter') { num.onchange(); }
     else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
       e.preventDefault();
-      const d = (e.key === 'ArrowUp' ? 1 : -1) * step * (e.shiftKey ? 10 : 1);
+      const d = (e.key === 'ArrowUp' ? 1 : -1) * cur.step * (e.shiftKey ? 10 : 1);
       send(toWire(+toFace(wire) + d));
     }
   };
 
   // drag-to-scrub: absolute from origin, on the FACE scale, soft limits
-  const perPx = f.drag ?? step * 0.2;
+  const perPx = () => cur.drag ?? cur.step * 0.2;
   let drag = null;
   // Esc while scrubbing: the input was BLURRED when the drag armed (so the
   // caret never fights the pointer), which means the key lands on the
@@ -232,7 +236,7 @@ function stepper(value, f, commit) {
       num.blur();
       document.addEventListener('keydown', onDragKey, true);
     }
-    let face = drag.face0 + drag.dist * perPx;
+    let face = drag.face0 + drag.dist * perPx();
     if (e.ctrlKey || e.metaKey) face = Math.round(face);
     const w = soft(toWire(face));
     drag.cur = w; wire = w; show(w);
@@ -256,14 +260,15 @@ function stepper(value, f, commit) {
     const minus = el('button', 'sp-bump', '−');
     const plus = el('button', 'sp-bump', '+');
     minus.disabled = plus.disabled = !!disabled;
-    minus.onclick = () => send(toWire(+toFace(wire) - step));
-    plus.onclick = () => send(toWire(+toFace(wire) + step));
+    minus.onclick = () => send(toWire(+toFace(wire) - cur.step));
+    plus.onclick = () => send(toWire(+toFace(wire) + cur.step));
     wrap.append(minus, num, plus);
   } else wrap.append(num);
   if (unit || deg) wrap.append(el('span', 'sp-unit', deg ? '°' : unit));
 
   // in-place update from a repaint: never under a caret or a drag
   wrap.update = (nf) => {
+    Object.assign(cur, nf);
     if (drag || document.activeElement === num) return;
     wire = +nf.value; show(wire);
   };
@@ -454,7 +459,7 @@ export function renderCanvas(canvas, fields, { width = 512, rowH = 44, pad = 12,
         font(11); g.fillStyle = C.label;
         g.fillText([r.sub, ...(r.badges ?? [])].filter(Boolean).join(' · ').slice(0, 40), pad + 10 + ind + Math.min(220, r.label.length * 9 + 14), y + rowH * 0.62);
       }
-      regions.push({ x: pad, y, w: width * 0.6, h: rowH, action: tree ? f.parent.k : 'row', payload: r.id });
+      regions.push({ x: pad, y, w: width * 0.6, h: rowH, action: f.parent.k ?? 'row', payload: r.id });
       if (tree) {
         const bw = 34, bx = width - pad - bw;
         g.fillStyle = r.locked ? C.accent : '#2a3342';
@@ -575,6 +580,17 @@ function paintStepper(g, regions, f, val, x, y, rowH, k, axis, dp = 2, w = 150) 
   const d = f.deg ? (f.step ?? 1) / R2D : (f.step ?? 0.1);
   regions.push({ x, y: y + 7, w: bump, h: rowH - 14, action: k, payload: { axis, delta: -d } });
   regions.push({ x: x + bump + mid, y: y + 7, w: bump, h: rowH - 14, action: k, payload: { axis, delta: +d } });
+}
+
+/** A canvas stepper reports { axis, delta } (it has no value to add to); a
+ *  dispatcher that expects the NUMBER the DOM path sends resolves it here
+ *  against the painted field. Numbers pass through untouched. */
+export function resolveDelta(fields, k, payload) {
+  if (!(typeof payload === 'object' && payload && 'delta' in payload)) return payload;
+  const f = fields.find((x) => x.k === k);
+  if (!f) return null;
+  if (f.t === 'vec3') { const v = [...(f.value ?? [0, 0, 0])]; const i = payload.axis ?? 0; v[i] = +v[i] + payload.delta; return v; }
+  return +(f.value ?? 0) + payload.delta;
 }
 
 /** Resolve a UV hit (0..1, v measured from the top) against regions. */

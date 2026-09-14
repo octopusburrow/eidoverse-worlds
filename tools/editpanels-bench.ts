@@ -75,6 +75,26 @@ check('…and the light group agrees (same declaration, two lanes)', await waitF
 await sleep(1500);   // past EDIT_COMMIT_MS and the echo: a refusal would have rolled it back by now
 check('…and it stayed (the verb was accepted, not rolled back)', (await evalJson(`import('/lib/world.js').then((m) => m.entities.get('benchlamp')?.userData?.lightParams?.intensity)`)) === 20);
 
+console.log('\nundo: Ctrl+Z after a light edit restores the fold value:');
+await evalJson(`dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyZ', ctrlKey: true, bubbles: true })), true`);
+check('brightness back to 16', await waitFor(`import('/lib/world.js').then((m) => m.entities.get('benchlamp')?.userData?.lightParams?.intensity === 16)`));
+
+console.log('\na no-op scrub on one thing must not leak its pose into the next selection:');
+{
+  const inpX = `[...${insp}.querySelectorAll('.sp-f-num')].find((r) => r.querySelector('.sp-label').textContent === 'pos x').querySelector('.sp-num')`;
+  const pe = (t: string, x: number, extra = '') => `new PointerEvent('${t}', { clientX: ${x}, clientY: 0, button: 0, pointerId: 9, bubbles: true, isPrimary: true${extra} })`;
+  // ctrl-scrub a few px and release: rounds back to the start value (a live call AT the start pose)
+  await evalJson(`(() => { const i = ${inpX}; i.dispatchEvent(${pe('pointerdown', 100)}); i.dispatchEvent(${pe('pointermove', 108, ', ctrlKey: true')}); i.dispatchEvent(${pe('pointerup', 108, ', ctrlKey: true')}); return true; })()`);
+  await evalJson(`import('/lib/net.js').then((m) => m.sendVerb('light', { id: 'lamp2', pos: [5, 1, 5], color: 0xffd9a0, intensity: 8, range: 6 })), true`);
+  await waitFor(`import('/lib/world.js').then((m) => !!m.entities.get('lamp2'))`);
+  await evalJson(`import('/lib/scenegraph.js').then((m) => m.sceneSelect('lamp2')), true`);
+  await waitFor(`${insp}.querySelector('.sp-info')?.textContent === 'lamp2'`);
+  await evalJson(`(() => { const i = ${inpX}; i.dispatchEvent(${pe('pointerdown', 100)}); i.dispatchEvent(${pe('pointermove', 150)}); i.dispatchEvent(${pe('pointerup', 150)}); return true; })()`);
+  check('lamp2 moved by +1 on x from ITS OWN pose (6,1,5), not benchlamp\'s', await waitFor(`import('/lib/world.js').then((m) => { const p = m.entities.get('lamp2')?.position; return p && Math.abs(p.x - 6) < 0.01 && Math.abs(p.z - 5) < 0.01; })`), await evalJson(`import('/lib/world.js').then((m) => m.entities.get('lamp2')?.position.toArray().map((v) => +v.toFixed(2)))`));
+  await evalJson(`import('/lib/scenegraph.js').then((m) => m.sceneSelect('benchlamp')), true`);
+  await waitFor(`${insp}.querySelector('.sp-info')?.textContent === 'benchlamp'`);
+}
+
 console.log('\nEsc mid-scrub, in a real browser (the key lands on the document, not the blurred input):');
 {
   const pe = (t: string, x: number) => `new PointerEvent('${t}', { clientX: ${x}, clientY: 0, button: 0, pointerId: 7, bubbles: true, isPrimary: true })`;
