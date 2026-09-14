@@ -72,6 +72,18 @@ export function setEditMode(on, { quiet = false } = {}) {
 }
 export const toggleEditMode = () => setEditMode(!editMode);
 
+// The TOOL is what a drag does. Move is the drag everyone has today; rotate
+// and scale are the Q/E and ,/. gestures with the pointer instead of keys;
+// select never moves anything. Gizmos (P2) will draw handles for the same
+// three verbs — the tool state is theirs to read when they arrive.
+let tool = 'move';
+export const getTool = () => tool;
+export function setTool(t) {
+  if (!['select', 'move', 'rotate', 'scale'].includes(t) || t === tool) return tool;
+  tool = t;
+  bus.emit('tool', tool);
+  return tool;
+}
 export const hasGhost = () => ghost !== null;
 export const hasSelection = () => selected !== null;
 setPointerClaim(() => ghost !== null || !!dragging?.armed);
@@ -232,7 +244,13 @@ export function updateBuild() {
     }
   }
   if (dragging?.armed && selected) {
-    if (dragging.vertical) {
+    if (tool === 'rotate') {
+      selected.obj.rotation.y = dragging.startYaw - (dragging.clientX - dragging.startX) * 0.012;   // ~1° per px, drag right = clockwise from above
+      reindexCollider(selected.id); refreshOutline(); relayDrag();
+    } else if (tool === 'scale') {
+      selected.obj.scale.setScalar(THREE.MathUtils.clamp(dragging.startScale * Math.exp((dragging.clientX - dragging.startX) * 0.006), 0.1, 12));
+      reindexCollider(selected.id); refreshOutline();
+    } else if (dragging.vertical) {
       // map screen-vertical pixels to world metres at the object's depth, so a
       // drag feels the same whether the thing is near or far
       const fov = camera.fov * Math.PI / 180;
@@ -403,6 +421,9 @@ canvas.addEventListener('mousedown', (e) => {
     // express height, so hold Shift and the pointer's up/down maps to world Y
     // with the horizontal position pinned. The standard editor gesture.
     vertical: e.shiftKey,
+    clientX: e.clientX,
+    startYaw: root.rotation.y,
+    startScale: root.scale.x,
     startPos: entities.get(id).position.clone(),
     depth: camera.position.distanceTo(entities.get(id).position),
     grab: aim ? entities.get(id).position.clone().sub(aim.point) : new THREE.Vector3(),
@@ -416,6 +437,8 @@ const DRAG_SLOP = 4;
 addEventListener('mousemove', (e) => {
   if (!dragging) return;
   dragging.clientY = e.clientY;                 // vertical drag reads this each frame
+  dragging.clientX = e.clientX;                 // rotate/scale tools read this one
+  if (tool === 'select') return;                // select: a press picks, travel never moves
   if (!dragging.armed
       && Math.hypot(e.clientX - dragging.startX, e.clientY - dragging.startY) > DRAG_SLOP) {
     // the press selected it; travel is where a move would begin — a locked
@@ -431,7 +454,9 @@ addEventListener('mouseup', () => {
     const o = selected.obj;
     const same = Math.abs(o.position.x - moved.pos[0]) < 0.005
       && Math.abs(o.position.y - moved.pos[1]) < 0.005
-      && Math.abs(o.position.z - moved.pos[2]) < 0.005;
+      && Math.abs(o.position.z - moved.pos[2]) < 0.005
+      && Math.abs(o.rotation.y - moved.yaw) < 1e-4
+      && Math.abs(o.scale.x - moved.scale) < 1e-4;
     if (!same) commitPlace(moved);          // release commits ONE clean entry
   }
   dragging = null;

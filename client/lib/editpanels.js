@@ -336,6 +336,7 @@ export function initEditPanels() {
   bus.on('sg:selected', () => { if (shown) refreshBehaviors(); });
   repaintAll();
   globalThis.__editPanels = editPanelsDebug;   // harness window (probes read it, nothing else does)
+  import('./editlayout.js').then((m) => { globalThis.__editLayout = m.editLayoutDebug; });
   const show = (on) => {
     shown = !!on;
     for (const sf of frames.values()) on ? sf.frame.show() : sf.frame.hide();

@@ -236,10 +236,33 @@ export function makeFrame(id, opts = {}) {
     hidden: saved?.hidden ?? hidden,
   };
 
+  // Docked: the frame lives INSIDE a layout container (edit mode's columns)
+  // and its floating geometry is suspended, not lost — undock puts it back
+  // on the body exactly where it floated. Not persisted: a workspace decides
+  // docking, the frame remembers only how it floats.
+  let docked = null;
   const api = {
     id, el: root, body, head,
     _state: state, _paint: () => paint(),      // live refs for the edge-rider
     get state() { return { ...state }; },
+    get docked() { return docked; },
+    dock(container) {
+      if (docked === container) return api;
+      docked = container;
+      root.classList.add('docked');
+      container.appendChild(root);
+      paint();
+      return api;
+    },
+    undock() {
+      if (!docked) return api;
+      docked = null;
+      root.classList.remove('docked');
+      document.body.appendChild(root);
+      paint();
+      if (!state.hidden) raise();
+      return api;
+    },
     show() {
       state.hidden = false;
       paint();
@@ -297,6 +320,13 @@ export function makeFrame(id, opts = {}) {
   }
   function paint() {
     root.style.display = state.hidden ? 'none' : 'flex';
+    if (docked) {   // the container lays it out; inline geometry would fight it
+      root.style.left = root.style.top = root.style.width = '';
+      body.style.height = '';
+      root.classList.toggle('collapsed', state.collapsed);
+      if (!state.collapsed) onResize?.(root.clientWidth, body.clientHeight);
+      return;
+    }
     root.style.left = `${state.x}px`;
     root.style.top = `${state.y}px`;
     root.style.width = `${state.w}px`;
@@ -325,7 +355,7 @@ export function makeFrame(id, opts = {}) {
 
   // ---- dragging
   head.addEventListener('pointerdown', (e) => {
-    if (locked || e.target.closest('.fr-btn')) return;
+    if (locked || docked || e.target.closest('.fr-btn')) return;
     e.preventDefault();
     raise();
     root.classList.add('lifting');   // depth returns only while held
@@ -359,7 +389,7 @@ export function makeFrame(id, opts = {}) {
     root.style.cursor = (!_hit(e) && _grabbableAt(e)) ? 'grab' : '';
   });
   root.addEventListener('pointerdown', (e) => {
-    if (locked || !e.isTrusted) return;                // isTrusted: our own
+    if (locked || docked || !e.isTrusted) return;                // isTrusted: our own
     if (!e.altKey && (_hit(e) || !_grabbableAt(e))) return;
     // re-dispatch below bubbles back through this capture handler — without
     // the guard it recurses to stack overflow (exposed when heads went
@@ -373,7 +403,7 @@ export function makeFrame(id, opts = {}) {
   // OUTSIDE a frame's border without an overlay stealing its content's events
   // (the ::before halo painted over scrollbars and buttons).
   if (resizable) _resizables.push({ root, state, minW, minH, paint, save, raise,
-    active: () => !locked && !state.collapsed && !state.hidden });
+    active: () => !locked && !docked && !state.collapsed && !state.hidden });
 
   root.addEventListener('pointerdown', raise);
   head.addEventListener('dblclick', () => api.collapse());
@@ -391,6 +421,7 @@ export function makeFrame(id, opts = {}) {
   addEventListener('resize', fit);
 
   function fit() {
+    if (docked) return;
     const hh = root.offsetHeight;
     if (!hh) return;
     if (opts.y != null && opts.y < 0) state.y = Math.max(8, innerHeight + opts.y - hh);

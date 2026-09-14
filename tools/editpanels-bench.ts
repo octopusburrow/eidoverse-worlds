@@ -50,6 +50,21 @@ check('titles are Hierarchy / Inspector', await evalJson(`[...document.querySele
 check('empty world: hierarchy says so', await evalJson(`!!document.querySelector('#frame-hierarchy .sp-empty, .frame.edit .sp-empty')`));
 check('nothing selected: inspector says so', await evalJson(`/nothing selected/.test(document.querySelector('.frame.edit .sp-info')?.textContent ?? '')`));
 
+console.log('\nthe workspace: docked columns, strips, a slim rail:');
+check('hierarchy is docked in the left column, above chat', await evalJson(`(() => { const L = document.querySelector('.edit-left'); const ids = [...L.children].map((c) => c.dataset?.frame ?? c.className); return JSON.stringify(ids) === JSON.stringify(['hierarchy', 'edit-split edit-split-h', 'chat']); })()`), await evalJson(`JSON.stringify([...document.querySelector('.edit-left').children].map((c) => c.dataset?.frame ?? c.className))`));
+check('inspector is docked in the right column', await evalJson(`document.querySelector('.edit-right [data-frame="inspector"]') !== null`));
+check('top strip + tools column are up', await evalJson(`!document.querySelector('.edit-top').hidden && document.querySelectorAll('.edit-tools .edit-tool').length === 5`));
+check('rail shows only the wrench among toggles', await evalJson(`[...document.querySelectorAll('#dock button[data-toggles]')].filter((b) => getComputedStyle(b).display !== 'none').map((b) => b.dataset.toggles).join() === 'edit'`));
+check('the World panel is parked (it would sit behind the Inspector)', await evalJson(`!document.querySelector('[data-frame="world"]') || getComputedStyle(document.querySelector('[data-frame="world"]')).display === 'none'`));
+check('docked frames ignore their floating geometry', await evalJson(`(() => { const h = document.querySelector('[data-frame="hierarchy"]'); const cs = getComputedStyle(h); return cs.position === 'relative' && h.getBoundingClientRect().left >= 40; })()`));
+await evalJson(`document.querySelector('.edit-tool[data-tool="rotate"]').click(), true`);
+check('clicking a tool sets it (rotate)', await evalJson(`globalThis.__editLayout?.().tool === 'rotate'`));
+await evalJson(`document.querySelector('.edit-tool[data-tool="move"]').click(), true`);
+check('Edit ▾ opens a menu with undo', await evalJson(`(() => { [...document.querySelectorAll('.edit-menu > .edit-btn')].find((b) => /^Edit/.test(b.textContent)).click(); const pop = [...document.querySelectorAll('.edit-menu-pop')].find((p) => !p.hidden); return !!pop && [...pop.querySelectorAll('.edit-menu-item')].some((i) => /undo/.test(i.textContent)); })()`));
+await evalJson(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })), true`);
+check('Esc closes the menu', await evalJson(`[...document.querySelectorAll('.edit-menu-pop')].every((p) => p.hidden)`));
+console.log('  [diag] under the strip at (350,36): ' + await evalJson(`(() => { const e = document.elementFromPoint(350, 36); return e ? e.tagName + '#' + e.id + '.' + e.className : null; })()`));
+
 console.log('\na placed light lands in the tree and the inspector:');
 await evalJson(`import('/lib/net.js').then((m) => m.sendVerb('light', { id: 'benchlamp', pos: [1, 1, 1], color: 0xffd9a0, intensity: 16, range: 10 })), true`);
 {
@@ -134,8 +149,8 @@ if (process.env.EDIT_SHOT) {   // a look, not a trust: the grey scope is a desig
   console.log(`  screenshot → ${process.env.EDIT_SHOT}`);
 }
 check('no raw-JSON row for a type an editor speaks for', await evalJson(`![...${insp}.querySelectorAll('.sp-f-text .sp-label')].some((l) => /^(sockets|motion)$/.test(l.textContent))`));
-await evalJson(`(() => { const b = [...${insp}.querySelectorAll('.sp-mini.danger')].find((x) => x.textContent === '✕'); b.dispatchEvent(new PointerEvent('pointerdown', { clientX: 1, clientY: 1, bubbles: true })); b.click(); return true; })()`);
-check('✕ removes the only seat → sockets comp gone', await waitFor(`import('/lib/world.js').then((m) => !m.comps.get('benchlamp')?.sockets)`));
+const xinfo = await evalJson(`(() => { const all = [...${insp}.querySelectorAll('.sp-mini.danger')]; const b = all.find((x) => x.textContent === '✕'); if (!b) return { found: false, n: all.length, texts: all.map((x) => x.textContent) }; const r = b.getBoundingClientRect(); b.dispatchEvent(new PointerEvent('pointerdown', { clientX: 1, clientY: 1, bubbles: true })); b.click(); return { found: true, rect: [r.left | 0, r.top | 0, r.width | 0, r.height | 0], vis: getComputedStyle(b).display }; })()`);
+check('✕ removes the only seat → sockets comp gone', await waitFor(`import('/lib/world.js').then((m) => !m.comps.get('benchlamp')?.sockets)`), JSON.stringify(xinfo) + ' sockets=' + JSON.stringify(await evalJson(`import('/lib/world.js').then((m) => m.comps.get('benchlamp')?.sockets)`)) + ' errs=' + JSON.stringify(await evalJson(`window.__errs.filter((e) => !/popErrorScope|createBuffer/.test(e)).slice(-3)`)));
 
 console.log('\nthe legacy World›Scene section still gets the light editor (adapter):');
 await evalJson(`document.querySelector('#sec-scene .head')?.click(), true`);
@@ -145,6 +160,7 @@ console.log('\nleaving:');
 await evalJson(`dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape' })), true`);
 await sleep(200);
 await evalJson(`dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape' })), true`);   // deselect, then leave
+check('leaving undocks: frames are back on the body, workspace chrome hidden', await waitFor(`document.querySelector('[data-frame="hierarchy"]').parentElement === document.body && document.querySelector('[data-frame="inspector"]').parentElement === document.body && document.querySelector('.edit-top').hidden && !document.querySelector('.frame.docked')`));
 check('Esc hides the frames', await waitFor(`[...document.querySelectorAll('.frame.edit')].every((f) => getComputedStyle(f).display === 'none')`));
 const errs: string[] = (await evalJson(`window.__errs`)) ?? [];
 const mine = errs.filter((e) => /editpanels|panels\.js|inspect\.js|lights\.js|scenegraph/.test(e));
