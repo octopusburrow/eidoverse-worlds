@@ -288,6 +288,22 @@ check('select tool → no gizmo', await waitFor(`globalThis.__gizmo?.().attached
 await evalJson(`import('/lib/build.js').then((m) => m.setTool('move')), true`);
 await sleep(600);
 
+console.log('\npick: an armed attach completes on a viewport click, not only a row click; both attach paths undo:');
+await sleep(1500);   // verb window
+check('crate1 is a root to start', await evalJson(`import('/lib/state.js').then((m) => !m.state.st.entities.crate1?.parent)`));
+await evalJson(`import('/lib/scenegraph.js').then((m) => m.sceneSelect('crate1')), true`);
+await evalJson(`(() => { const row = [...${hier}.querySelectorAll('.sp-tree-row')].find((r) => /crate1/.test(r.textContent)); row.dispatchEvent(new MouseEvent('contextmenu', { clientX: 120, clientY: 130, bubbles: true, cancelable: true })); const it = [...document.querySelectorAll('.sp-ctx .sp-ctx-item')].find((i) => /attach/.test(i.textContent)); it.click(); return true; })()`);
+check('attach armed on crate1: the hint names the world as a target', await waitFor(`globalThis.__editPanels?.().arming === 'crate1' && /in the world/.test(document.querySelector('#hintbar')?.textContent ?? '')`), JSON.stringify(await evalJson(`({ arming: globalThis.__editPanels?.().arming, hint: document.querySelector('#hintbar')?.textContent })`)));
+// a viewport pick = build.js select(id) → sceneSelect(id): the same seam, driven directly
+await evalJson(`import('/lib/build.js').then((m) => m.select('benchlamp')), true`);
+check('picking benchlamp in the viewport mounts crate1 on it and re-selects crate1', await waitFor(`import('/lib/state.js').then((m) => m.state.st.entities.crate1?.parent?.to === 'benchlamp') && import('/lib/scenegraph.js').then((m) => m.sceneSelected() === 'crate1')`), 'parent=' + JSON.stringify(await evalJson(`import('/lib/state.js').then((m) => m.state.st.entities.crate1?.parent)`)) + ' sel=' + JSON.stringify(await evalJson(`import('/lib/scenegraph.js').then((m) => m.sceneSelected())`)) + ' refused=' + JSON.stringify(await evalJson(`window.__refused`)));
+check('…and arming is cleared', await evalJson(`globalThis.__editPanels?.().arming === null`));
+await sleep(600);
+await evalJson(`import('/lib/build.js').then((m) => m.undo()), true`);
+check('undo frees it again (the row-click path now shares this undo)', await waitFor(`import('/lib/state.js').then((m) => !m.state.st.entities.crate1?.parent)`), JSON.stringify(await evalJson(`import('/lib/state.js').then((m) => m.state.st.entities.crate1?.parent)`)));
+await evalJson(`import('/lib/scenegraph.js').then((m) => m.sceneSelect('benchlamp')), true`);
+await waitFor(`${insp}.querySelector('.sp-info')?.textContent.startsWith('benchlamp')`);
+
 console.log('\nmulti-selection: intersected channels, field-wise writes, one undo:');
 await sleep(1500);   // verb window
 const copyId = await evalJson(`import('/lib/world.js').then((m) => [...m.entities.keys()].find((k) => /^benchlamp~[0-9a-f]{4}$/.test(k)))`);

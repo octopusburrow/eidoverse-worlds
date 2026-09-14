@@ -171,7 +171,7 @@ function hierarchyDispatch(action, payload, _field, opts = {}) {
   switch (action) {
     case 'sel': {
       if (String(payload).startsWith('rider:')) return;
-      if (arming && payload !== arming) { sceneAttach(arming, payload); arming = null; break; }
+      if (arming && payload !== arming) { const child = arming; arming = null; reparent(child, payload); break; }
       if (opts.extend) { extendSelection(payload); return; }
       sceneSelect(payload);
       break;
@@ -182,7 +182,7 @@ function hierarchyDispatch(action, payload, _field, opts = {}) {
     case 'attach': {
       if (arming === payload) { arming = null; flashHint('attach cancelled', 3000); break; }
       arming = payload ?? sel;
-      if (arming) { sceneSelect(arming); flashHint(`now click the row of <b>${arming}</b>'s new parent`, 5000); }
+      if (arming) { sceneSelect(arming); flashHint(`now click <b>${arming}</b>'s new parent — a row here, or the thing itself in the world`, 5000); }
       break;
     }
     case 'detach': sceneDetach(payload ?? sel); break;
@@ -480,6 +480,14 @@ export function initEditPanels() {
   for (const ev of ['entity', 'comp', 'mount', 'edit-mode', 'sg:selected']) bus.on(ev, repaintAll);
   bus.on('sg:selected', () => { gesture = null; endGesture(); if (!extending) clearExtras(); });   // a plain select collapses the set; a drag's `before` never outlives its selection
   bus.on('edit-extend', (id) => extendSelection(id));   // Ctrl-click in the viewport (build.js)
+  // an armed attach completes on a VIEWPORT pick too: build.js select → sceneSelect
+  // → this. The child is re-selected after, so the inspector shows what moved.
+  bus.on('sg:selected', (id) => {
+    if (!arming || !id || id === arming || String(id).startsWith('rider:')) return;
+    const child = arming; arming = null;
+    reparent(child, id);
+    sceneSelect(child);
+  });
   bus.on('entity', () => { if (extra.size) syncOutlines(); });
   bus.on('edit-mode', (on) => { if (!on) clearExtras(); });
   setEditHooks({ undo: pushUndo, commitLight, casting: lightCasting });
