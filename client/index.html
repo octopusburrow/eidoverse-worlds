@@ -609,10 +609,7 @@ body.arranging #dock #hud.emark:hover, body.arranging #dock button:not(.dock-gri
 body.arranging #dock #hud.emark {
   color: var(--ink-on-brand); background: var(--brand-deep); border-radius: 8px; animation: none;  /* inverted: you're holding the chrome */
 }
-#hud.emark.editing::after {
-  content: ''; position: absolute; right: 5px; top: 5px; width: 7px; height: 7px;
-  border-radius: 50%; background: var(--warn);
-}
+/* (the editing dot on the ∃ retired 09-13 — the wrench says it) */
 @keyframes netpulse { 50% { opacity: .35; } }
 #emenu {
   position: fixed; top: 54px; left: 10px; z-index: 40;
@@ -709,10 +706,7 @@ body.arranging .frame.st-b { --st-b-s: inset 0 -2px 0 var(--sg); }
    the viewport gets a thin warm frame, so it is obvious why a drag just moved
    a crate instead of the camera. */
 body.edit-mode canvas { cursor: crosshair; }
-body.edit-mode::after {
-  content: ''; position: fixed; inset: 0; z-index: 2; pointer-events: none;
-  border: 2px solid color-mix(in srgb, var(--attn) 50%, transparent); border-radius: 3px;
-}
+/* (the warm rim around the whole frame retired 09-13: the wrench wears the accent) */
 
 #trayzone {
   position: fixed; right: 10px; bottom: 10px; z-index: 28;
@@ -1130,7 +1124,7 @@ body.touch #touch { display: block; }
    grey, not the brand glass — an editor is a tool, and the world behind it is
    the colour. The tokens are re-pointed INSIDE the frame so the shared
    renderers (panels.js) and frame chrome are reused untouched. */
-.frame.edit {
+.frame.edit, body.edit-workspace .frame.docked {
   --panel-rgb: 30 30 32; --panel-a: .96;
   --well: rgb(0 0 0 / .32); --edge: rgb(255 255 255 / .09); --edge-hi: rgb(255 255 255 / .28);
   --brand: #d2d2d6; --brand-deep: #9a9aa0; --ink-on-brand: #141416;
@@ -1140,10 +1134,12 @@ body.touch #touch { display: block; }
 /* editor frames wear their names (the house hides frame heads outside
    arrangement mode — index.html .frame .fr-head — because the dock rail IS
    the title; an inspector without a name is not a tool anyone recognises) */
-.frame.edit .fr-head { display: flex; }
-.frame.edit .fr-title { letter-spacing: .02em; text-transform: none; font-size: 12px; color: var(--fg); }
+.frame.edit .fr-head, body.edit-workspace .frame.docked .fr-head { display: flex; }
+.frame.edit .fr-title, body.edit-workspace .frame.docked .fr-title { letter-spacing: .02em; text-transform: none; font-size: 12px; color: var(--fg); }
 .frame.edit .sp-row { margin: 3px 0; }
-.frame.edit .sp-label { min-width: 72px; }
+.frame.edit .sp-label { min-width: 72px; text-align: right; }
+.frame.edit .sp-f-num.sp-row { justify-content: flex-end; }
+.frame.edit .sp-f-num .sp-label { flex: 1 1 auto; }
 .frame.edit .sp-btn { background: #3a3a3f; color: var(--fg); font-weight: 500; }
 .frame.edit .sp-btn:hover { background: #4a4a50; }
 .frame.edit .sp-btn.danger { background: #5a2a2a; }
@@ -1196,7 +1192,20 @@ body.touch #touch { display: block; }
 body.edit-workspace .frame.docked { --panel-a: 1; }
 /* the rail slims to what edit mode needs: ∃, the wrench (mic / ear / goggles are their own elements) */
 body.edit-workspace #dock button[data-toggles]:not([data-toggles="edit"]) { display: none !important; }
-body.edit-workspace #dock { top: 4px !important; left: 4px !important; }
+body.edit-workspace #dock { top: 80px !important; left: 3px !important; }   /* room above the ∃: mic/ear stack there, inside the band */
+body.edit-workspace .edit-tools { border-radius: 0; border-right: 1px solid rgb(255 255 255 / .08); background: #1a1a1c; }
+/* the wrench carries the mode: an amber box, instead of a rim around the world */
+body.edit-workspace #dock button[data-toggles="edit"].on {
+  color: var(--attn); background: color-mix(in srgb, var(--attn) 16%, transparent);
+  box-shadow: inset 0 0 0 1.5px var(--attn); border-radius: 7px;
+}
+body.edit-workspace #dock button[data-toggles="edit"].on::before { display: none; }
+/* a row's context menu (panels.js contextMenu) */
+.sp-ctx { position: fixed; z-index: 45; min-width: 160px; padding: 4px; background: #232326; border: 1px solid rgb(255 255 255 / .12);
+  border-radius: 6px; box-shadow: 0 10px 28px rgb(0 0 0 / .5); display: flex; flex-direction: column; }
+.sp-ctx-item { text-align: left; background: none; border: none; color: #e4e4e8; font: 12.5px var(--font); padding: 5px 9px; border-radius: 4px; cursor: pointer; }
+.sp-ctx-item:hover { background: rgb(255 255 255 / .09); }
+.sp-ctx-item.danger { color: #ff9e9e; }
 /* fixed chrome from before the columns keeps to the VIEWPORT between them */
 body.edit-workspace #structbar { left: calc(var(--edit-left-edge, 0px) + 12px) !important; }
 body.edit-workspace #trayzone { right: calc(var(--edit-right-w, 0px) + 10px); }

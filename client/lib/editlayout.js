@@ -145,10 +145,11 @@ function apply() {
   if (!els || !on) return;
   const { top, tools, left, right, split, lsplit, rsplit } = els;
   const TOP = 34, RAIL = 48;
-  // the strip starts past ∃ AND the mic/ear glyphs, which fold to its right
-  // when the rail has no room above it (mictoggle.placeMic)
-  top.style.cssText = `left:108px; right:0; top:0; height:${TOP}px`;
-  tools.style.cssText = `left:0; top:${TOP + 76}px; width:${RAIL}px`;
+  // the rail is a full-height neutral BAND: mic/ear stack above the ∃ inside
+  // it (the dock is pushed down so placeMic finds room), the wrench below,
+  // then the tools. The strip starts at the band's edge — no gaps (R, 09-13).
+  top.style.cssText = `left:${RAIL}px; right:0; top:0; height:${TOP}px`;
+  tools.style.cssText = `left:0; top:0; bottom:0; width:${RAIL}px; padding-top:172px`;
   const leftW = Math.round(L.leftW), rightW = Math.round(L.rightW);
   left.style.cssText = `left:${RAIL}px; top:${TOP}px; bottom:0; width:${leftW}px`;
   right.style.cssText = `right:0; top:${TOP}px; bottom:0; width:${rightW}px`;

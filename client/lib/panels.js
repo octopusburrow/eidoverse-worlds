@@ -28,8 +28,9 @@
 //   { t:'color',  k, label, value:0xRRGGBB }                      → edit(k, int)
 //   { t:'group',  k, label, open? }   marker: rows until the next marker belong to it;
 //                 collapsed groups skip their rows                → edit('fold', k)
-//   { t:'tree',   k, rows:[{ id, label, sub?, depth, active?, badges?:[], locked? }] }
-//                                                                 → edit(k, id) / edit('lock', id)
+//   { t:'tree',   k, rows:[{ id, label, sub?, depth, active?, badges?:[], locked?, menu? }],
+//                 menu?:[{k, label, danger?}] }   right-click a row → its menu (row.menu wins)
+//                                                                 → edit(k, id) / edit('lock', id) / edit(item.k, id)
 // Every field also takes { disabled?, driven?, hint? }: disabled draws it
 // read-only (a locked thing's pose); driven names what owns the value (a
 // motion comp composes onto this rest pose) and tints the row — Blender's
@@ -140,6 +141,31 @@ export function renderDOM(body, fields, edit) {
     if (row) body.append(row);
   }
   return { rows, box };
+}
+
+/** One context menu at a time, anywhere; closes on a click, Esc, or scroll. */
+export function contextMenu(x, y, items, pick) {
+  closeContextMenu();
+  const m = el('div', 'sp-ctx');
+  for (const it of items) {
+    const b = el('button', `sp-ctx-item${it.danger ? ' danger' : ''}`, it.label);
+    b.onclick = () => { closeContextMenu(); pick(it.k); };
+    m.append(b);
+  }
+  document.body.append(m);
+  const r = m.getBoundingClientRect();
+  m.style.left = `${Math.min(x, innerWidth - r.width - 6)}px`;
+  m.style.top = `${Math.min(y, innerHeight - r.height - 6)}px`;
+  const off = (e) => { if (e.type === 'keydown' && e.key !== 'Escape') return; if (e.type === 'pointerdown' && m.contains(e.target)) return; closeContextMenu(); };
+  m._off = off;
+  for (const ev of ['pointerdown', 'keydown', 'wheel']) document.addEventListener(ev, off, true);
+  return m;
+}
+export function closeContextMenu() {
+  const m = document.querySelector('.sp-ctx');
+  if (!m) return;
+  for (const ev of ['pointerdown', 'keydown', 'wheel']) document.removeEventListener(ev, m._off, true);
+  m.remove();
 }
 
 function el(tag, cls, text) {
@@ -351,6 +377,8 @@ function fieldDOM(f, edit) {
         main.append(el('span', 'sp-item-label', `${r.depth ? '└ ' : ''}${r.label}`));
         if (r.sub || r.badges?.length) main.append(el('span', 'sp-item-sub', [r.sub, ...(r.badges ?? [])].filter(Boolean).join(' · ')));
         main.onclick = () => edit(f.k, r.id);
+        const items = r.menu ?? f.menu;
+        if (items?.length) line.oncontextmenu = (e) => { e.preventDefault(); contextMenu(e.clientX, e.clientY, items, (k) => edit(k, r.id)); };
         line.append(main);
         if (r.locked != null) {
           const lock = el('button', `sp-mini${r.locked ? ' on' : ''}`, r.locked ? '🔒' : '🔓');

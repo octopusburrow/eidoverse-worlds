@@ -44,7 +44,7 @@ function toggleFold(id, g) {
   const k = foldKey(id); folds[k] ??= {}; folds[k][g] = !folds[k][g];
   try { localStorage.setItem(FOLD_LS, JSON.stringify(folds)); } catch { /* fine */ }
 }
-let arming = null;   // 'attach' while waiting for the next selection to become the parent
+let arming = null;   // the child id waiting for a row click to name its parent
 
 // ---------------------------------------------------------------- scripts roster
 // the behavior runtime, for 📜 badges in the tree and the Behaviors group —
@@ -87,29 +87,41 @@ function hierarchyFields() {
     for (const k of kids.get(id) ?? []) walk(k, depth + 1);
   };
   for (const id of roots.sort()) walk(id, 0);
-  const f = [{ t: 'tree', k: 'sel', rows, empty: 'nothing placed yet' }];
-  if (sel && entities.has(sel)) {
-    f.push({ t: 'btn', k: 'find', label: 'find' });
-    f.push({ t: 'btn', k: 'attach', label: arming ? 'click new parent…' : 'attach to…' });
-    if (entities.get(sel)?.userData?.mountedTo) f.push({ t: 'btn', k: 'detach', label: 'detach' });
-    f.push({ t: 'btn', k: 'remove', label: 'remove', danger: true });
+  // no button row: a row's actions live on its right-click menu (and the
+  // keys — F find, Del remove); the tree is the tree
+  for (const r of rows) {
+    if (String(r.id).startsWith('rider:')) continue;
+    const mounted = !!entities.get(r.id)?.userData?.mountedTo;
+    r.menu = [
+      { k: 'find', label: 'find  (F)' },
+      { k: 'attach', label: arming === r.id ? 'cancel attach' : 'attach to…' },
+      ...(mounted ? [{ k: 'detach', label: 'detach' }] : []),
+      { k: 'lock', label: r.locked ? 'unlock' : 'lock in place' },
+      { k: 'remove', label: 'remove  (Del)', danger: true },
+    ];
   }
-  return f;
+  return [{ t: 'tree', k: 'sel', rows, empty: 'nothing placed yet — press B in the world to place things' }];
 }
 function hierarchyDispatch(action, payload) {
-  const sel = sceneSelected();
+  let sel = sceneSelected();
   switch (action) {
     case 'sel': {
       if (String(payload).startsWith('rider:')) return;
-      if (arming && sel && payload !== sel) { sceneAttach(sel, payload); arming = null; break; }
+      if (arming && payload !== arming) { sceneAttach(arming, payload); arming = null; break; }
       sceneSelect(payload);
       break;
     }
     case 'lock': toggleLock(payload); break;
-    case 'find': findSelected(); break;
-    case 'attach': arming = arming ? null : 'attach'; flashHint(arming ? 'now pick its new parent' : 'attach cancelled', 4000); break;
-    case 'detach': if (sel) sceneDetach(sel); break;
-    case 'remove': if (sel) removeWithUndo(sel); break;
+    // menu items act on the row they were opened on: select it first
+    case 'find': if (payload && payload !== sel) sceneSelect(payload); findSelected(); break;
+    case 'attach': {
+      if (arming === payload) { arming = null; flashHint('attach cancelled', 3000); break; }
+      arming = payload ?? sel;
+      if (arming) { sceneSelect(arming); flashHint(`now click the row of <b>${arming}</b>'s new parent`, 5000); }
+      break;
+    }
+    case 'detach': sceneDetach(payload ?? sel); break;
+    case 'remove': if (payload ?? sel) removeWithUndo(payload ?? sel); break;
   }
   repaintAll();
 }
@@ -333,6 +345,7 @@ export function initEditPanels() {
   }
   for (const ev of ['entity', 'comp', 'mount', 'edit-mode', 'sg:selected']) bus.on(ev, repaintAll);
   bus.on('sg:selected', () => { gesture = null; });   // a drag's `before` never outlives its selection
+  bus.on('edit-find', () => findSelected());              // F in the viewport
   bus.on('sg:selected', () => { if (shown) refreshBehaviors(); });
   repaintAll();
   globalThis.__editPanels = editPanelsDebug;   // harness window (probes read it, nothing else does)

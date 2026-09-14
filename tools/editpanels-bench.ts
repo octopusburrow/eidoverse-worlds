@@ -110,6 +110,21 @@ console.log('\na no-op scrub on one thing must not leak its pose into the next s
   await waitFor(`${insp}.querySelector('.sp-info')?.textContent === 'benchlamp'`);
 }
 
+console.log('\nstandard keys and the hierarchy context menu:');
+await evalJson(`dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyE', bubbles: true })), true`);
+check('E → rotate tool', await evalJson(`globalThis.__editLayout?.().tool === 'rotate'`));
+await evalJson(`dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyW', bubbles: true })), true`);
+check('W → move tool', await evalJson(`globalThis.__editLayout?.().tool === 'move'`));
+check('hierarchy has no button row', await evalJson(`document.querySelector('.edit-left [data-frame="hierarchy"] .sp-btn') === null`));
+await evalJson(`(() => { const row = [...document.querySelectorAll('.edit-left .sp-tree-row')].find((r) => /lamp2/.test(r.textContent)); row.dispatchEvent(new MouseEvent('contextmenu', { clientX: 120, clientY: 130, bubbles: true, cancelable: true })); return true; })()`);
+check('right-click opens the row menu with find / attach / lock / remove', await evalJson(`(() => { const m = document.querySelector('.sp-ctx'); const T = m ? [...m.querySelectorAll('.sp-ctx-item')].map((i) => i.textContent) : []; return T.some((t) => /find/.test(t)) && T.some((t) => /attach/.test(t)) && T.some((t) => /lock/.test(t)) && T.some((t) => /remove/.test(t)); })()`));
+await evalJson(`[...document.querySelectorAll('.sp-ctx-item')].find((i) => /remove/.test(i.textContent)).click(), true`);
+check('menu → remove takes lamp2 out of the world', await waitFor(`import('/lib/world.js').then((m) => !m.entities.has('lamp2'))`));
+check('…and the menu is gone', await evalJson(`document.querySelector('.sp-ctx') === null`));
+check('rim is gone; the wrench wears the amber box', await evalJson(`(() => { const w = document.querySelector('#dock button[data-toggles="edit"]'); return w && w.classList.contains('on') && getComputedStyle(w).boxShadow !== 'none' && getComputedStyle(document.body, '::after').content !== '""'; })()`));
+await evalJson(`import('/lib/scenegraph.js').then((m) => m.sceneSelect('benchlamp')), true`);
+await waitFor(`${insp}.querySelector('.sp-info')?.textContent === 'benchlamp'`);
+
 console.log('\nEsc mid-scrub, in a real browser (the key lands on the document, not the blurred input):');
 {
   const pe = (t: string, x: number) => `new PointerEvent('${t}', { clientX: ${x}, clientY: 0, button: 0, pointerId: 7, bubbles: true, isPrimary: true })`;

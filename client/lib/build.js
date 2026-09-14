@@ -64,7 +64,7 @@ export function setEditMode(on, { quiet = false } = {}) {
   if (on) panelFrame().show();
   if (!quiet) {
     flashHint(on
-      ? 'edit mode — click to select · drag to move · <b>build</b> for the catalog · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Esc</kbd> to leave'
+      ? 'edit mode — <kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd><kbd>R</kbd> select · move · rotate · scale · <kbd>F</kbd> find · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>B</kbd> leaves'
       : 'looking again');
   }
   bus.emit('edit-mode', on);
@@ -124,7 +124,7 @@ function showInspector(id) {
     (locked
       ? `<span style="color:var(--dim)">🔒 locked — nothing moves or removes it until unchecked</span>`
       : `<span style="color:var(--dim)">drag move · <kbd>Shift</kbd>+drag or <kbd>R</kbd><kbd>F</kbd> up/down · ` +
-        `<kbd>Q</kbd><kbd>E</kbd> turn · <kbd>,</kbd><kbd>.</kbd> size · <kbd>Del</kbd> remove · <kbd>Esc</kbd> done</span>`) +
+        `<kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd><kbd>R</kbd> tool · <kbd>F</kbd> find · <kbd>Del</kbd> remove · <kbd>Esc</kbd> done</span>`) +
     `<label title="nail it down: while locked, nobody's drags, verbs or scripts can move, replace or remove it (server-enforced) — sitting on it and content edits stay open" style="display:flex;gap:4px;align-items:center;cursor:pointer">` +
     `<input type="checkbox" data-bact="lock"${locked ? ' checked' : ''}> 🔒 lock</label>` +
     `<button data-bact="seat" title="declare a sit anchor: click the spot where a sitter goes">+ seat</button>`;
@@ -199,7 +199,7 @@ export async function holdGhost(lib, label) {
     collapseAll();
     flashHint(lib === '@light'
       ? 'placing a <b>light</b> — click to place · <kbd>Esc</kbd> cancel'
-      : `placing <b>${label ?? ''}</b> — click to place · <kbd>Q</kbd><kbd>E</kbd> turn · <kbd>,</kbd><kbd>.</kbd> size · <kbd>Esc</kbd> cancel`, 6000);
+      : `placing <b>${label ?? ''}</b> — click to place, then rotate/scale with <kbd>E</kbd>/<kbd>R</kbd> · <kbd>Esc</kbd> cancel`, 6000);
   } catch (e) { report('ghost', e); }
 }
 
@@ -484,48 +484,15 @@ bus.on('key', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') { e.preventDefault(); undo(); return; }
   if (!editMode) return;
 
-  const turn = (d) => {
-    if (ghost) ghost.yaw += d;
-    else if (selected) {
-      const before = snapshotOf(selected.obj);
-      selected.obj.rotation.y += d;
-      reindexCollider(selected.id); refreshOutline();
-      commitPlace(before);
-    }
-  };
-  const size = (f) => {
-    if (ghost) ghost.scale = THREE.MathUtils.clamp(ghost.scale * f, 0.1, 12);
-    else if (selected) {
-      const before = snapshotOf(selected.obj);
-      selected.obj.scale.multiplyScalar(f);
-      selected.obj.scale.clampScalar(0.1, 12);
-      reindexCollider(selected.id); refreshOutline();
-      commitPlace(before);
-    }
-  };
-  // R/F raise/lower — the keyboard counterpart to Shift+drag, for precise
-  // heights. Never underground. (R is ragdoll globally, but that is gated to
-  // NOT fire while editing, so it is free here.)
-  const raise = (dy) => {
-    if (ghost) { ghost.obj.position.y = Math.max(0, ghost.obj.position.y + dy); return; }
-    if (!selected) return;
-    const before = snapshotOf(selected.obj);
-    const floor = heightAt(selected.obj.position.x, selected.obj.position.z);
-    selected.obj.position.y = Math.max(floor, selected.obj.position.y + dy);
-    reindexCollider(selected.id); refreshOutline();
-    commitPlace(before);
-  };
   // a selected seat anchor holds the editing keys before things do
   if (seatKeyDown(e)) return;
-  // Q/E only steer objects when something is being edited — otherwise they're
-  // photo-mode fly keys and must stay free.
-  if (ghost || selected) {
-    if (e.code === 'KeyQ') turn(e.shiftKey ? 0.02 : Math.PI / 12);
-    if (e.code === 'KeyE') turn(e.shiftKey ? -0.02 : -Math.PI / 12);
-    if (e.code === 'Comma') size(0.92);
-    if (e.code === 'Period') size(1.087);
-    if (e.code === 'KeyR') raise(e.shiftKey ? 0.05 : 0.25);
-    if (e.code === 'KeyF') raise(e.shiftKey ? -0.05 : -0.25);
+  // Standard editor keys (R, 09-13): Q/W/E/R pick the tool, F finds, Del
+  // removes, Esc steps out, B toggles the mode. The old per-key nudges (Q/E
+  // turn, ,/. size, R/F raise) are retired — the tools do those with a drag.
+  if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+    const t = { KeyQ: 'select', KeyW: 'move', KeyE: 'rotate', KeyR: 'scale' }[e.code];
+    if (t) { setTool(t); return; }
+    if (e.code === 'KeyF' && selected) { bus.emit('edit-find', selected.id); return; }
   }
   if ((e.code === 'Delete' || e.code === 'Backspace') && selected) removeSelected();
 });
