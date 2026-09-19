@@ -254,7 +254,7 @@ export const xrIntent = { fwd: 0, strafe: 0, yawDelta: 0, jump: false, active: f
 let xrPresenting = () => false;
 export function setXrProbe(fn) { xrPresenting = fn; }
 let posture = null;              // 'sit' | 'lie' | null
-let vy = 0, grounded = true, mantle = null, airborneFor = 0, jumped = false;
+let vy = 0, grounded = true, mantle = null, airborneFor = 0, jumped = false, wantMove = false;
 
 // camera
 export let camYaw = 0, camPitch = 0.32, camDist = 4.2;
@@ -525,6 +525,7 @@ export function updateMe(dt, me) {
   if (!Number.isFinite(camYaw)) camYaw = 0;
   if (!(Number.isFinite(myState.pos.x) && Number.isFinite(myState.pos.y) && Number.isFinite(myState.pos.z))) myState.pos.copy(_lastFinitePos); else _lastFinitePos.copy(myState.pos);
   const moving = Math.abs(fwd) > 0.08 || Math.abs(strafe) > 0.08;
+  wantMove = moving;   // INTENT, for the clip choice below: the walk→idle blend starts on key release, not 0.34 s later when the coast ends
   const running = keys.has('ShiftLeft') || keys.has('ShiftRight');
   // A slow walk for precise positioning — placing a chair exactly where you
   // want it at 1.55 m/s is a fight.
@@ -696,7 +697,10 @@ export function updateMe(dt, me) {
   const seatedClip = myState.seat?.chair ? 'sitchair' : 'sit';
   myState.clip = mantle ? 'climb'
     : (jumped || airborneFor > 0.04) ? 'jump'   // a jump press is immediate; a walk-off starts at once too (2 frames against stair flicker) and EASES in over 0.5 s (R 09-19)
-      : myState.speed >= 0.05 ? (myState.speed < 2.6 ? 'walk' : 'run')
+      // walk/run while the KEY is down (or the stick deflected); on release the speed coasts down over ~0.3 s but the
+      // clip goes to idle NOW and the 0.22 s crossfade covers the coast (R 09-19: 'blends very late… start as soon as
+      // the key is released'). Flight picks its own clip and returns before this line.
+      : (wantMove && myState.speed >= 0.05) ? (myState.speed < 2.6 ? 'walk' : 'run')
         : posture === 'sit' ? seatedClip
           : posture === 'lie' ? 'lie'
             : 'idle';
