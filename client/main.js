@@ -308,7 +308,8 @@ function start() {
     // boot re-resolves instead of failing the same way forever. Only if the
     // default fails too is there nothing to wear — that one is reported.
     const DEFAULT_BODY = 'eidoverse/assets/vrms/claude.vrm';
-    const wear = (path) => makeAvatar(CONFIG.name, path, { urgent: true });   // your body skips the load queue
+    // ?capsule=1: refuse every body load so the REAL fallback chain runs end to end (R 09-19: 'leave other avatars offline')
+    const wear = (path) => CONFIG.params.has('capsule') ? Promise.reject(new Error('?capsule=1: body loads refused')) : makeAvatar(CONFIG.name, path, { urgent: true });   // your body skips the load queue
     resolveMyAvatarPath()
       .then((path) => wear(path).then((av) => ({ av, path })).catch((e) => {
         report('avatar', e);
