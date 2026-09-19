@@ -705,7 +705,7 @@ export function updateMe(dt, me) {
           : posture === 'lie' ? 'lie'
             : 'idle';
 
-  me.setClip(myState.clip, myState.speed, myState.clip === 'jump' ? (jumped ? { fade: 0.1, airborne: true } : { fade: 0.5, ease: true, airborne: true }) : undefined);
+  me.setClip(myState.clip, myState.speed, myState.clip === 'jump' ? (jumped ? { fade: 0.1 } : { fade: 0.5, ease: true }) : undefined);
   me.root.position.copy(myState.pos);
   me.root.rotation.y = myState.yaw;
   // your head follows your camera — you could always look up, your body never

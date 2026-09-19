@@ -500,20 +500,6 @@ function clipTakeoff(clip) {
   clip.userData.takeoff = out;
   return out;
 }
-/** The clip's touchdown: after the apex, the first frame the hips come back DOWN to rest height. The airborne
- *  pose is held just before it until the controller reports the real landing. No hips track → clip end. */
-function clipTouchdown(clip) {
-  if (clip.userData.touchdown != null) return clip.userData.touchdown;
-  const tr = clip.tracks.find((t) => /hips\.position$/i.test(t.name));
-  let out = clip.duration;
-  if (tr && tr.values.length >= 6) {
-    const n = tr.times.length, rest = tr.values[1];
-    let apex = 0; for (let i = 0; i < n; i++) if (tr.values[i * 3 + 1] > tr.values[apex * 3 + 1]) apex = i;
-    for (let i = apex; i < n; i++) if (tr.values[i * 3 + 1] <= rest) { out = tr.times[Math.max(apex, i - 1)]; break; }
-  }
-  clip.userData.touchdown = out;
-  return out;
-}
 export class Avatar {
   /** Monotonic, so one identity's successive bodies never share a lamp owner. */
   static _seq = 0;
@@ -1042,8 +1028,7 @@ export class Avatar {
   }
 
   // ---- locomotion / clips
-  setClip(slot, speed = 0, { fade, ease = false, airborne = false } = {}) {
-    this.airborne = airborne;
+  setClip(slot, speed = 0, { fade, ease = false } = {}) {
     // Moving cancels an emote. Standing frozen mid-cheer while walking away
     // is worse than cutting the cheer short.
     if (this.emote && speed > 0.05) this.cancelEmote();
@@ -1643,13 +1628,6 @@ export class Avatar {
   }
 
   update(dt, now = performance.now()) {
-    // AIRBORNE HOLD (R 09-19: 'landing fires before the avatar touches the ground'): the jump clip's own
-    // landing begins ~0.46 s after take-off; our physics stays up ~0.7 s (and any drop is longer). Park the
-    // clip just before its touchdown frame while the controller still says airborne.
-    if (this.currentSlot === 'jump' && this.current && this.airborne) {
-      const a = this.current, td = clipTouchdown(a.getClip()) - 0.05;
-      if (a.time >= td) { a.time = td; a.timeScale = 0; } else a.timeScale = 1;
-    }
     if (this._xfade) {   // the eased crossfade (see _setAction): smoothstep in, its complement out
       const x = this._xfade; x.t += dt; const u = Math.min(1, x.t / x.dur), w = u * u * (3 - 2 * u);
       x.in.setEffectiveWeight(w); if (x.out && x.out !== x.in) x.out.setEffectiveWeight(1 - w);
