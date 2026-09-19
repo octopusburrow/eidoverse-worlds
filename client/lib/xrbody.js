@@ -416,7 +416,7 @@ export function solveLeg(vrm, side, targetPos, footYaw) {
 // BasisLocalCharacterDriver.cs:134), weight in at 20/s, out at 15/s (Planner:71–72), applied as slerp(animated,
 // solved, w) per bone (BasisEerieMovement.Legs.cs:112–118). Each 0→>0 re-seeds the plants from the animated feet.
 const LEGIK = { STATIONARY: 0.15, IN: 20, OUT: 15 };
-const ANIM_OWNS = new Set(['walk', 'run', 'jump', 'land', 'climb', 'fly', 'soar', 'ragdoll']);
+const ANIM_OWNS = new Set(['walk', 'run', 'jump', 'climb', 'fly', 'soar', 'ragdoll']);
 const _legQ = { left: [new THREE.Quaternion(), new THREE.Quaternion(), new THREE.Quaternion()], right: [new THREE.Quaternion(), new THREE.Quaternion(), new THREE.Quaternion()] };
 function feetTick(vrm, av, dt) {
   if (NOFOOT || !measureLegs(vrm)) return;

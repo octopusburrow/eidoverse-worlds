@@ -502,7 +502,6 @@ function clipTakeoff(clip) {
 }
 /** The clip's touchdown: after the apex, the first frame the hips come back DOWN to rest height. The airborne
  *  pose is held just before it until the controller reports the real landing. No hips track → clip end. */
-export function landDuration(av) { const a = av.actions?.jump; return a ? Math.max(0.1, a.getClip().duration - clipTouchdown(a.getClip())) : 0; }
 function clipTouchdown(clip) {
   if (clip.userData.touchdown != null) return clip.userData.touchdown;
   const tr = clip.tracks.find((t) => /hips\.position$/i.test(t.name));
@@ -1049,12 +1048,6 @@ export class Avatar {
     // is worse than cutting the cheer short.
     if (this.emote && speed > 0.05) this.cancelEmote();
     if (this.emote) return;        // otherwise it owns the body until it finishes
-    // 'land' = the jump clip's tail from its touchdown frame (R 09-19: 'splitting that seems correct') — same
-    // action, resumed where the airborne hold parked it, so nothing pops
-    if (slot === 'land') { const a = this.actions.jump; if (!a) return;
-      if (this.current !== a) this._setAction(a, 'land', 0.1); else this.currentSlot = 'land';
-      if (a.time < clipTouchdown(a.getClip()) - 0.05) a.time = clipTouchdown(a.getClip()) - 0.05;
-      a.timeScale = 1; return; }
     let use = slot;
     while (!this.actions[use] && CLIP_FALLBACK[use]) use = CLIP_FALLBACK[use];
     this._setAction(this.actions[use], use, fade, ease);

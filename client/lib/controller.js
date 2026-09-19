@@ -10,7 +10,6 @@ import { THREE, camera, canvas } from './core.js';
 import { CONFIG, angleDelta, bus } from './base.js';
 import { heightAt } from './terrain.js';
 import { resolveColliders, lastBlockedTop, findSeat, raySegment } from './colliders.js';
-import { landDuration } from './avatar.js';
 import { chat } from './chat.js';
 import { isOverlayOpen, flashHint } from './ui.js';
 import {
@@ -255,7 +254,7 @@ export const xrIntent = { fwd: 0, strafe: 0, yawDelta: 0, jump: false, active: f
 let xrPresenting = () => false;
 export function setXrProbe(fn) { xrPresenting = fn; }
 let posture = null;              // 'sit' | 'lie' | null
-let vy = 0, grounded = true, mantle = null, airborneFor = 0, jumped = false, wantMove = false, landing = 0, wasAir = false;
+let vy = 0, grounded = true, mantle = null, airborneFor = 0, jumped = false, wantMove = false;
 
 // camera
 export let camYaw = 0, camPitch = 0.32, camDist = 4.2;
@@ -687,11 +686,6 @@ export function updateMe(dt, me) {
   }
   airborneFor = grounded || mantle ? 0 : airborneFor + dt;
   if (grounded || mantle) jumped = false;
-  // LANDING: the jump clip's tail plays on the REAL touchdown, for its own length; moving cancels it
-  const air = !grounded && !mantle;
-  if (wasAir && !air) landing = landDuration(me);
-  wasAir = air;
-  landing = wantMove || air ? 0 : Math.max(0, landing - dt);
   if (myState.speed >= 0.05) {
     posture = null; myState.seat = null; // standing up is just walking away
     // ...and so is escaping a held pose (puppet, restored, or ragdoll-settled).
@@ -707,7 +701,6 @@ export function updateMe(dt, me) {
       // clip goes to idle NOW and the 0.22 s crossfade covers the coast (R 09-19: 'blends very late… start as soon as
       // the key is released'). Flight picks its own clip and returns before this line.
       : (wantMove && myState.speed >= 0.05) ? (myState.speed < 2.6 ? 'walk' : 'run')
-      : landing > 0 ? 'land'
         : posture === 'sit' ? seatedClip
           : posture === 'lie' ? 'lie'
             : 'idle';
@@ -728,7 +721,7 @@ export function updateMe(dt, me) {
 // Clips whose head sits where the fixed standing-height guess puts it. Any
 // other clip — sit/sitchair/lie, whatever pose a socket declares — moves the
 // head somewhere a constant offset from the root can't know.
-const STANDING_CLIPS = new Set(['idle', 'walk', 'run', 'jump', 'land', 'climb']);
+const STANDING_CLIPS = new Set(['idle', 'walk', 'run', 'jump', 'climb']);
 const _headWp = new THREE.Vector3();
 
 export function updateFollowCamera(dt, me) {
