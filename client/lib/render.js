@@ -40,11 +40,20 @@ export function renderAside(sc, cam, target = null) {
 // count every renderer.render() per animation frame while presenting and remember the last one that was
 // NOT the main pass — camera type/fov/parent and whether it targeted a render target. A second render
 // into the eye framebuffer with a non-XR camera is exactly a wide frame stamped across both eyes.
-export const renderCensus = { perFrame: 0, maxPerFrame: 0, foreign: null, frames: 0 };
+export const renderCensus = { perFrame: 0, maxPerFrame: 0, foreign: null, frames: 0, burst: null };
+// A BURST is more renderer.render() calls between two loop ticks than any pass structure explains. On
+// 2026-09-20 renders.max read 6131 while the loop reported 60 fps — i.e. ~6000 renders inside ONE tick —
+// and the census could not say who called. The first call past the threshold in a frame keeps its
+// caller (the top frames above this wrapper) until the next take; the number alone was uninterpretable.
+export const RENDER_BURST = 64;
 let mainPassCam = null;
 if (typeof renderer.render === 'function') { const orig = renderer.render.bind(renderer);   // node-side suites mock core.js with a renderer that has no render (wing-owner-wire-test)
   renderer.render = (sc, cam) => {
     renderCensus.perFrame++;
+    if (renderCensus.perFrame === RENDER_BURST && !renderCensus.burst) {
+      const st = (new Error().stack ?? '').split('\n').slice(2, 6).map((l) => l.trim().replace(/^at\s+/, '')).join(' < ');
+      renderCensus.burst = { frame: renderCensus.frames, at: +performance.now().toFixed(0), presenting: !!renderer.xr?.isPresenting, stack: st };
+    }
     if (renderer.xr?.isPresenting && cam !== mainPassCam) {
       const rt = renderer.getRenderTarget();
       renderCensus.foreign = { cam: cam?.type, name: cam?.name || null, fov: cam?.fov ?? null, parent: !!cam?.parent, target: rt ? (rt.isXRRenderTarget ? 'xr' : 'rt') : 'canvas', xrEnabled: renderer.xr.enabled, t: +performance.now().toFixed(0) };
@@ -53,7 +62,17 @@ if (typeof renderer.render === 'function') { const orig = renderer.render.bind(r
   }; }
 export function renderCensusTick() { renderCensus.frames++; if (renderCensus.perFrame > renderCensus.maxPerFrame) renderCensus.maxPerFrame = renderCensus.perFrame; renderCensus.perFrame = 0; }
 export const renderCensusPeek = () => renderCensus.foreign;
-export function renderCensusTake() { const o = { max: renderCensus.maxPerFrame, foreign: renderCensus.foreign }; renderCensus.maxPerFrame = 0; renderCensus.foreign = null; return o; }
+let takeFrames = 0, takeDraws = 0;
+/** Since the last take: worst renders-in-one-frame, the last foreign camera, the first burst's caller, and
+ *  per-frame DELTAS (frames ticked, draws per frame) — renderer.info.render.calls is lifetime-cumulative and
+ *  was read as per-frame three times on 2026-09-20. */
+export function renderCensusTake() {
+  const calls = renderer.info?.render?.calls ?? 0;
+  const frames = renderCensus.frames - takeFrames, draws = calls - takeDraws;
+  const o = { max: renderCensus.maxPerFrame, foreign: renderCensus.foreign, burst: renderCensus.burst, frames, drawsPerFrame: frames ? +(draws / frames).toFixed(1) : draws };
+  renderCensus.maxPerFrame = 0; renderCensus.foreign = null; renderCensus.burst = null; takeFrames = renderCensus.frames; takeDraws = calls;
+  return o;
+}
 
 // ENTRY CURTAIN: while up, the eye pass draws a closed dark sphere around the head (the page's own
 // --bg) instead of the world — cheap, one material — so the headset gets frames (no runtime construct)
