@@ -17,7 +17,7 @@
 // 'layers' dropped from optionalFeatures (MSAA via classic XRWebGLLayer),
 // foveation 1 standalone / 0 PC (Basis split; ?fov=), local-floor, and the settled law: NEVER navigate mid-session.
 
-import { installRenderListTolerance, THREE, renderer, camera, scene, XR_BOOT, PREF_HEADSET_SEEN } from './core.js';
+import { installRenderListTolerance, THREE, renderer, camera, scene, XR_BOOT, PREF_HEADSET_SEEN, xrPixelRatio } from './core.js';
 import { decideEntryFailure } from './xr_entry_policy.js';   // what a failed session request MEANS (#197 B1)
 import { makeEntryEffects, handleEntryFailure } from './xr_entry_effects.js';
 import { installEntryClock } from './xr_frame_clock.js';   // who owns window.rAF while presenting (#197 B2)
@@ -742,7 +742,8 @@ async function enterVR({ retryOf = null } = {}) {
       camera.fov = 60; camera.aspect = innerWidth / innerHeight; camera.zoom = 1;
       camera.updateProjectionMatrix();
       // Defensive: the canvas back to the window's size and ratio (three restores its own record; ours is the truth)
-      try { renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(innerWidth, innerHeight); } catch (e) { report('xr exit resize', e); }
+      // a pixel ratio asked for mid-session (the #32 guard deferred it) lands now
+      try { renderer.setPixelRatio(xrPixelRatio?.takeDeferred() ?? Math.min(devicePixelRatio, 2)); renderer.setSize(innerWidth, innerHeight); } catch (e) { report('xr exit resize', e); }
       // THE BLACK DESKTOP (owner, 09-06 12:46 → 23:43; reproduced 09-07 00:05 with an emulated headset, smoke/xr-exit-probe.mjs):
       // three's WebGL backend (0.185–0.186) keeps `_currentContext` = the last XR frame's render context after the session
       // ends (that frame's finishRender never ran). Every desktop render then ends with finishRender → _setFramebuffer

@@ -14,6 +14,7 @@ import * as TSL from 'three/tsl';
 import { CONFIG } from './base.js';
 import { decideBackend } from './backend_choice.js';
 import { headsetSeenRecently as _headsetSeenRecently, migrateHeadsetSeen as _migrateHeadsetSeen } from './headset_seen.js';
+import { guardPixelRatioInXR } from './xrpixelratio.js';
 import { patchShadowNodeForXR } from './xrshadow.js';
 
 export { THREE, TSL };
@@ -154,6 +155,9 @@ globalThis.__xrShadowPatched = patchShadowNodeForXR(THREE.ShadowNode?.prototype)
 // hour, not maximum sharpness. Adaptive scaling adjusts from here.
 export const BASE_PIXEL_RATIO = Math.min(devicePixelRatio, CONFIG.spectate ? 1.5 : 2);
 renderer.setPixelRatio(BASE_PIXEL_RATIO);
+// #32 split vision: while presenting, the pixel ratio belongs to the XR layer — xrpixelratio.js says why.
+export const xrPixelRatio = guardPixelRatioInXR(renderer);
+globalThis.__xrPixelRatioGuarded = !!xrPixelRatio;   // boot-check asserts the guard was APPLIED, not just importable
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 await renderer.init();
