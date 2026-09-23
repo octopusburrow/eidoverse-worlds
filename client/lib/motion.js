@@ -195,3 +195,8 @@ export function tickMotion() {
 // graph circular). For anything that rests AWAY from base (a ferry stopping
 // mid-route), the stopper emits `place` alongside — that IS the
 // plane-transition stamp.
+
+// The inspector's motion fields are declared in shared/editschema.js (one
+// declaration for the desktop, the VR quad and a model's inspect/edit).
+// There is no live preview on purpose: a component is parameters the log
+// owns, and previewing would mean writing a bag this module does not own.

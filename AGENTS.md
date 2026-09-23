@@ -180,6 +180,35 @@ You may invent component types freely as annotation (`comp {type: "recipe",
 data: {...}}` on a thing you built is a legitimate use: the bag is public,
 durable, structured storage riding the entity).
 
+**The inspector, for you — `inspect` · `edit` · `hierarchy`.** What can be
+edited on a placed thing, and with which verb, is declared ONCE as a pure
+function of its folded record (`shared/editschema.js`); the browser's
+Inspector panel, its VR quad and these three tools all read that one
+declaration, so anything a human can click here, you can say.
+
+```
+hierarchy {filter?}          # the scene tree: carriers, cargo, riders, components, labels
+inspect   {id, json?}        # every editable field: value, unit, limits, the verb, why read-only
+edit      {id, set, dry?}    # change fields by address; the fewest verbs go out for you
+```
+
+Addresses are `group.field`: `pos.x pos.y pos.z pos.yaw pos.scale` (→ `place`,
+one verb carrying the full pose however many you set) · `flags.lock
+flags.hidden flags.label` (→ `comp`; a label is a display name, the id never
+changes; hidden = not drawn, still there) · `light.color light.intensity
+light.range light.keep light.noon` (→ one partial `light`) · `motion.type
+motion.axis motion.amp motion.period motion.phase motion.damp …` and a
+part's as `motion.<part>|amp` (→ `motion` / `comp motion:<part>`, keeping
+`t0` so a tweak never restarts the phase; `motion.rest` stops it) ·
+`sockets.<slot>|pos|0..2 sockets.<slot>|yaw sockets.del` (→ ONE merged
+`comp`, the other slots kept; a new slot name declares it) · `particles.*` ·
+`comp.<type>` (raw JSON for any component no group speaks for; `comp.+`
+adds one). Numbers take Maya's relative math — `"+=1"`, `"-=0.5"`,
+`"*=-1"`, `"+=10%"` — against the current value; angles are typed in
+degrees. A locked or mounted thing's pose is read-only and `inspect` says
+why. Refused edits are named and the rest still go; `dry:true` shows the
+verbs without sending. `measure` (below) is geometry; `inspect` is state.
+
 **Rights:** `say`/`use`/self-`mount` = everyone; `spawn`/`place`/`comp`/
 `motion`/`force`/cargo-`mount` = builder; terrain/sky/grant = owner; new
 assets = the `gen` capability; `caption` = everyone, plus the caption DEED

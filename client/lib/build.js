@@ -100,7 +100,7 @@ export function setEditMode(on, { quiet = false } = {}) {
   if (on) panelFrame().show();
   if (!quiet) {
     flashHint(on
-      ? 'edit mode — click to select · drag to move · <b>build</b> for the catalog · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Esc</kbd> to leave'
+      ? 'edit mode — <kbd>G</kbd> move · <kbd>E</kbd> rotate · <kbd>R</kbd> scale · <kbd>Q</kbd> select · <kbd>F</kbd> find · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>B</kbd> leaves'
       : 'looking again');
   }
   bus.emit('edit-mode', on);
@@ -108,9 +108,25 @@ export function setEditMode(on, { quiet = false } = {}) {
 }
 export const toggleEditMode = () => setEditMode(!editMode);
 
+// The TOOL is what a drag does. Move is the drag everyone has today; rotate
+// and scale are the Q/E and ,/. gestures with the pointer instead of keys;
+// select never moves anything. Gizmos (P2) will draw handles for the same
+// three verbs — the tool state is theirs to read when they arrive.
+let tool = 'move';
+export const getTool = () => tool;
+export function setTool(t) {
+  if (!['select', 'move', 'rotate', 'scale'].includes(t) || t === tool) return tool;
+  tool = t;
+  bus.emit('tool', tool);
+  return tool;
+}
 export const hasGhost = () => ghost !== null;
 export const hasSelection = () => selected !== null;
 setPointerClaim(() => ghost !== null || !!dragging?.armed);
+// the gizmo (gizmo.js) vetoes the mesh-grab while one of its handles is hot —
+// a probe, not an import: gizmo imports us
+let pointerVeto = () => false;
+export function setPointerVeto(fn) { pointerVeto = fn; }
 setEditingProbe(() => editMode);
 
 // ============================================================ selection
@@ -159,8 +175,8 @@ function showInspector(id) {
       ? `<span style="color:var(--dim)">🛡 guarded by ${placerName(id)} — only they or the world's owner can change, move or remove it</span>`
       : locked
         ? `<span style="color:var(--dim)">🔒 locked — nothing moves or removes it until unchecked</span>`
-        : `<span style="color:var(--dim)">drag move · <kbd>Shift</kbd>+drag or <kbd>R</kbd><kbd>F</kbd> up/down · ` +
-          `<kbd>Q</kbd><kbd>E</kbd> turn · <kbd>,</kbd><kbd>.</kbd> size · <kbd>Del</kbd> remove · <kbd>Esc</kbd> done</span>`) +
+        : `<span style="color:var(--dim)">drag move · <kbd>Shift</kbd>+drag up/down · ` +
+          `<kbd>G</kbd> move · <kbd>E</kbd> rotate · <kbd>R</kbd> scale · <kbd>F</kbd> find · <kbd>X</kbd> remove · <kbd>Esc</kbd> done</span>`) +
     `<label title="nail it down: while locked, nobody's drags, verbs or scripts can move, replace or remove it (server-enforced) — sitting on it and content edits stay open" style="display:flex;gap:4px;align-items:center;cursor:pointer">` +
     `<input type="checkbox" data-bact="lock"${locked ? ' checked' : ''}${held ? ' disabled' : ''}> 🔒 lock</label>` +
     `<label title="${mine
@@ -207,9 +223,11 @@ export function deselect() {
   outline.visible = false;
   hideInspector();
 }
-function refreshOutline() {
+export function refreshOutline() {
   if (selected) outline.box.setFromObject(selected.obj);
 }
+// the echo of a place (ours from the inspector, or anyone's) moves the mesh; the box follows
+bus.on('entity', ({ id } = {}) => { if (selected && id === selected.id) refreshOutline(); });
 
 // ============================================================ ghost placement
 
@@ -243,7 +261,7 @@ export async function holdGhost(lib, label) {
     collapseAll();
     flashHint(lib === '@light'
       ? 'placing a <b>light</b> — click to place · <kbd>Esc</kbd> cancel'
-      : `placing <b>${label ?? ''}</b> — click to place · <kbd>Q</kbd><kbd>E</kbd> turn · <kbd>,</kbd><kbd>.</kbd> size · <kbd>Esc</kbd> cancel`, 6000);
+      : `placing <b>${label ?? ''}</b> — click to place, then <kbd>E</kbd> rotate / <kbd>R</kbd> scale · <kbd>Esc</kbd> cancel`, 6000);
   } catch (e) { report('ghost', e); }
 }
 
@@ -288,7 +306,13 @@ export function updateBuild() {
     }
   }
   if (dragging?.armed && selected) {
-    if (dragging.vertical) {
+    if (tool === 'rotate') {
+      selected.obj.rotation.y = dragging.startYaw - (dragging.clientX - dragging.startX) * 0.012;   // ~1° per px, drag right = clockwise from above
+      reindexCollider(selected.id); refreshOutline(); relayDrag();
+    } else if (tool === 'scale') {
+      selected.obj.scale.setScalar(THREE.MathUtils.clamp(dragging.startScale * Math.exp((dragging.clientX - dragging.startX) * 0.006), 0.1, 12));
+      reindexCollider(selected.id); refreshOutline();
+    } else if (dragging.vertical) {
       // map screen-vertical pixels to world metres at the object's depth, so a
       // drag feels the same whether the thing is near or far
       const fov = camera.fov * Math.PI / 180;
@@ -413,7 +437,8 @@ export function undo() {
   if (!step) { flashHint('nothing to undo'); return; }
   // Undo is inverse ENTRIES — history stays append-only, which is what keeps
   // the log replayable and the world forkable.
-  sendVerb(step.inverse.verb, step.inverse.args);
+  // a compound inverse ({verbs: [...]}) undoes a multi-selection edit as ONE step
+  for (const inv of step.inverse.verbs ?? [step.inverse]) sendVerb(inv.verb, inv.args);
   flashHint(`undid ${step.describe}`);
   deselect();
 }
@@ -438,6 +463,7 @@ canvas.addEventListener('mousedown', (e) => {
   // gizmo picks next — a marker is small and deliberate, and the mesh it
   // floats over would otherwise win every contested click
   if (seatMouseDown(e)) { e.preventDefault(); return; }
+  if (pointerVeto()) return;                // a gizmo handle under the pointer owns this press
   // Pick from THIS event's coordinates. Relying on the last mousemove to have
   // left `mouse` in the right place works for a real pointer and fails for
   // anything that presses without moving first — a touch, a synthetic click,
@@ -453,6 +479,10 @@ canvas.addEventListener('mousedown', (e) => {
   while (root && !root.userData.entityId) root = root.parent;
   if (!root) return;
   const id = root.userData.entityId;
+  // Ctrl-click EXTENDS the selection (editpanels owns the set; Shift is the
+  // vertical drag here, so it can't double as the extend modifier it is in
+  // the tree). No drag starts from an extend.
+  if (e.ctrlKey || e.metaKey) { bus.emit('edit-extend', id); e.preventDefault(); return; }
   select(id);
   // A press is a SELECT. It only becomes a drag once the pointer actually
   // travels — otherwise clicking a thing to look at its label moved it.
@@ -469,6 +499,9 @@ canvas.addEventListener('mousedown', (e) => {
     // express height, so hold Shift and the pointer's up/down maps to world Y
     // with the horizontal position pinned. The standard editor gesture.
     vertical: e.shiftKey,
+    clientX: e.clientX,
+    startYaw: root.rotation.y,
+    startScale: root.scale.x,
     startPos: entities.get(id).position.clone(),
     depth: camera.position.distanceTo(entities.get(id).position),
     grab: aim ? entities.get(id).position.clone().sub(aim.point) : new THREE.Vector3(),
@@ -482,6 +515,8 @@ const DRAG_SLOP = 4;
 addEventListener('mousemove', (e) => {
   if (!dragging) return;
   dragging.clientY = e.clientY;                 // vertical drag reads this each frame
+  dragging.clientX = e.clientX;                 // rotate/scale tools read this one
+  if (tool === 'select') return;                // select: a press picks, travel never moves
   if (!dragging.armed
       && Math.hypot(e.clientX - dragging.startX, e.clientY - dragging.startY) > DRAG_SLOP) {
     // the press selected it; travel is where a move would begin — a locked
@@ -497,7 +532,9 @@ addEventListener('mouseup', () => {
     const o = selected.obj;
     const same = Math.abs(o.position.x - moved.pos[0]) < 0.005
       && Math.abs(o.position.y - moved.pos[1]) < 0.005
-      && Math.abs(o.position.z - moved.pos[2]) < 0.005;
+      && Math.abs(o.position.z - moved.pos[2]) < 0.005
+      && Math.abs(o.rotation.y - moved.yaw) < 1e-4
+      && Math.abs(o.scale.x - moved.scale) < 1e-4;
     if (!same) commitPlace(moved);          // release commits ONE clean entry
   }
   dragging = null;
@@ -525,48 +562,18 @@ bus.on('key', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') { e.preventDefault(); undo(); return; }
   if (!editMode) return;
 
-  const turn = (d) => {
-    if (ghost) ghost.yaw += d;
-    else if (selected) {
-      const before = snapshotOf(selected.obj);
-      selected.obj.rotation.y += d;
-      reindexCollider(selected.id); refreshOutline();
-      commitPlace(before);
-    }
-  };
-  const size = (f) => {
-    if (ghost) ghost.scale = THREE.MathUtils.clamp(ghost.scale * f, 0.1, 12);
-    else if (selected) {
-      const before = snapshotOf(selected.obj);
-      selected.obj.scale.multiplyScalar(f);
-      selected.obj.scale.clampScalar(0.1, 12);
-      reindexCollider(selected.id); refreshOutline();
-      commitPlace(before);
-    }
-  };
-  // R/F raise/lower — the keyboard counterpart to Shift+drag, for precise
-  // heights. Never underground. (R is ragdoll globally, but that is gated to
-  // NOT fire while editing, so it is free here.)
-  const raise = (dy) => {
-    if (ghost) { ghost.obj.position.y = Math.max(0, ghost.obj.position.y + dy); return; }
-    if (!selected) return;
-    const before = snapshotOf(selected.obj);
-    const floor = heightAt(selected.obj.position.x, selected.obj.position.z);
-    selected.obj.position.y = Math.max(floor, selected.obj.position.y + dy);
-    reindexCollider(selected.id); refreshOutline();
-    commitPlace(before);
-  };
   // a selected seat anchor holds the editing keys before things do
   if (seatKeyDown(e)) return;
-  // Q/E only steer objects when something is being edited — otherwise they're
-  // photo-mode fly keys and must stay free.
-  if (ghost || selected) {
-    if (e.code === 'KeyQ') turn(e.shiftKey ? 0.02 : Math.PI / 12);
-    if (e.code === 'KeyE') turn(e.shiftKey ? -0.02 : -Math.PI / 12);
-    if (e.code === 'Comma') size(0.92);
-    if (e.code === 'Period') size(1.087);
-    if (e.code === 'KeyR') raise(e.shiftKey ? 0.05 : 0.25);
-    if (e.code === 'KeyF') raise(e.shiftKey ? -0.05 : -0.25);
+  // Tool keys, every one OFF the walking set (the camera here is a BODY and
+  // WASD walks — Maya's W and Blender's S both collide, found in review):
+  // G move (Blender), E rotate and R scale (Maya), Q select, F find, X or Del
+  // removes, Esc steps out, B toggles the mode. The old per-key nudges (Q/E
+  // turn, ,/. size, R/F raise) are retired; the tools do those with a drag.
+  if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+    const t = { KeyQ: 'select', KeyG: 'move', KeyE: 'rotate', KeyR: 'scale' }[e.code];
+    if (t) { setTool(t); return; }
+    if (e.code === 'KeyF' && selected) { bus.emit('edit-find', selected.id); return; }
+    if (e.code === 'KeyX' && selected) { removeSelected(); return; }
   }
   if ((e.code === 'Delete' || e.code === 'Backspace') && selected) removeSelected();
 });

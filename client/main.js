@@ -51,6 +51,9 @@ import { initConjure } from './lib/conjure.js';
 import './lib/mictoggle.js'; // mic + headphone toggles beside the HUD, both off by default
 import { initAudioPanel } from './lib/audiopanel.js';
 import { initSceneGraph, sceneSelect } from './lib/scenegraph.js';
+import { initEditPanels } from './lib/editpanels.js';
+import { initEditLayout } from './lib/editlayout.js';
+import { initGizmo } from './lib/gizmo.js';
 import { initXR, updateXR, bindXRSelf, isPresenting } from './lib/xr.js';
 import { tickXRMirror } from './lib/xrmirror.js';
 import { ensureXRBodyHook, bindXRBodySelf, xrAvatarYaw, xrLookPitch, xrWire, xrSimActive } from './lib/xrbody.js';
@@ -306,7 +309,12 @@ function start() {
     // the join completes.
     .then((vs) => vs.speakOwnSays(bus, () => net.myId || CONFIG.name))
     .catch((e) => console.warn('[voice] own-say hook not installed:', e));
-  initSceneGraph();   // 🌳 the world as a tree + 📜 the scripts that animate it
+  initSceneGraph();
+// hierarchy + inspector as fields: desktop frames now, VR quads through the same declaration
+const editPanels = initEditPanels();
+bus.on('edit-mode', (on) => editPanels.show(!!on));
+initGizmo();        // TransformControls on the selection while a transform tool is up
+initEditLayout();   // the workspace: docks the frames while the mode is on (registered AFTER show, so it docks visible frames)   // 🌳 the world as a tree + 📜 the scripts that animate it
   setHint('<kbd>WASD</kbd> move · <kbd>Enter</kbd> chat · <kbd>B</kbd> build · <kbd>?</kbd> help');
 
   if (!isViewer) {

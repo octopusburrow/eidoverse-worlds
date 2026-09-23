@@ -784,6 +784,7 @@ body.arranging #dock #hud.emark:hover, body.arranging #dock button:not(.dock-gri
 body.arranging #dock #hud.emark {
   color: var(--ink-on-brand); background: var(--brand-deep); border-radius: 8px; animation: none;  /* inverted: you're holding the chrome */
 }
+/* (the editing dot on the ∃ retired 09-13 — the wrench says it) */
 @keyframes netpulse { 50% { opacity: .35; } }
 /* presence on the profile icon: a dot in the bottom-right corner (the
    Discord/Slack convention) — brand = present, attention = away, err = busy */
@@ -939,10 +940,7 @@ body.arranging .frame.st-b { --st-b-s: inset 0 -2px 0 var(--sg); }
    the viewport gets a thin warm frame, so it is obvious why a drag just moved
    a crate instead of the camera. */
 body.edit-mode canvas { cursor: crosshair; }
-body.edit-mode::after {
-  content: ''; position: fixed; inset: 0; z-index: 2; pointer-events: none;
-  border: 2px solid color-mix(in srgb, var(--attn) 50%, transparent); border-radius: 3px;
-}
+/* (the warm rim around the whole frame retired 09-13: the wrench wears the accent) */
 
 #trayzone {
   position: fixed; right: 10px; bottom: 10px; z-index: 28;
@@ -1475,6 +1473,124 @@ body.touch #touch { display: block; }
 .sp-item-sub { color: var(--dim); font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sp-mini { background: var(--well); border: none; color: var(--fg); border-radius: 4px; padding: 2px 7px; cursor: pointer; }
 .sp-empty { color: var(--dim); font-style: italic; padding: 4px 7px; }
+/* schema fields added for edit mode (panels.js: group / enum / color / tree, units) */
+.sp-unit { color: var(--dim); font-size: 11px; margin-left: 2px; }
+.sp-enum { background: var(--panel); border: 1px solid var(--edge); color: var(--fg); border-radius: 4px; padding: 2px 4px; font: inherit; }
+.sp-color { width: 34px; height: 22px; padding: 0; border: 1px solid var(--edge); border-radius: 4px; background: none; }
+.sp-tree-row .sp-item-label { font-weight: 500; }
+/* ---- edit mode: the Hierarchy and Inspector frames wear a utilitarian
+   grey, not the brand glass — an editor is a tool, and the world behind it is
+   the colour. The tokens are re-pointed INSIDE the frame so the shared
+   renderers (panels.js) and frame chrome are reused untouched. */
+.frame.edit, body.edit-workspace .frame.docked {
+  --panel-rgb: 30 30 32; --panel-a: .96;
+  --well: rgb(0 0 0 / .32); --edge: rgb(255 255 255 / .09); --edge-hi: rgb(255 255 255 / .28);
+  --brand: #d2d2d6; --brand-deep: #9a9aa0; --ink-on-brand: #141416;
+  --fg: #e6e6e8; --dim: #8e8e94; --hov: rgb(255 255 255 / .05); --act: rgb(255 255 255 / .09);
+  --r: 6px; font-family: var(--font); font-variant-numeric: tabular-nums;
+}
+/* editor frames wear their names (the house hides frame heads outside
+   arrangement mode — index.html .frame .fr-head — because the dock rail IS
+   the title; an inspector without a name is not a tool anyone recognises) */
+.frame.edit .fr-head, body.edit-workspace .frame.docked .fr-head { display: flex; }
+.frame.edit .fr-title, body.edit-workspace .frame.docked .fr-title { letter-spacing: .02em; text-transform: none; font-size: 12px; color: var(--fg); }
+.frame.edit .sp-row { margin: 3px 0; }
+.frame.edit .sp-label { min-width: 72px; text-align: right; }
+.frame.edit .sp-f-num.sp-row { justify-content: flex-end; }
+.frame.edit .sp-f-num .sp-label { flex: 1 1 auto; }
+.frame.edit .sp-btn { background: #3a3a3f; color: var(--fg); font-weight: 500; }
+.frame.edit .sp-btn:hover { background: #4a4a50; }
+.frame.edit .sp-btn.danger { background: #5a2a2a; }
+.frame.edit .sp-group { color: var(--fg); border-bottom-color: var(--edge-hi); margin-top: 8px; }
+.frame.edit .sp-mini.on { background: #d2d2d6; }
+/* channels: the numeric lane — one label, one number, nothing else */
+.sp-step.compact .sp-num { width: 76px; text-align: right; padding-right: 6px; }
+.sp-num { cursor: ew-resize; }
+.sp-num:focus { cursor: text; }
+.sp-num.scrub { cursor: ew-resize; user-select: none; border-color: var(--edge-hi); background: var(--well); }
+.sp-num:disabled, .sp-bump:disabled { opacity: .45; cursor: not-allowed; }
+/* provenance: a value something else owns (a motion comp composes onto it) */
+.sp-row.driven .sp-label { color: #b48cff; }
+.sp-row.driven .sp-num { border-color: rgb(180 140 255 / .45); }
+.sp-row.disabled .sp-label { opacity: .55; }
+.sp-f-text .sp-label { align-self: center; }
+/* ---- the edit WORKSPACE: strips and columns the frames dock into ---- */
+.edit-strip, .edit-col, .edit-split { position: fixed; z-index: 26; }
+.edit-strip { z-index: 27; background: #1c1c1e; border: 1px solid rgb(255 255 255 / .08); box-sizing: border-box; }
+.edit-top { display: flex; align-items: center; gap: 6px; padding: 0 8px; border-top: none; border-right: none; }
+.edit-tools { display: flex; flex-direction: column; gap: 2px; padding: 4px; border-left: none; border-radius: 0 6px 6px 0; }
+.edit-tool { width: 36px; height: 34px; padding: 0; font-size: 17px; line-height: 1; background: none; border: none; color: #b8b8bd; border-radius: 6px; cursor: pointer; }
+.edit-tool:hover { background: rgb(255 255 255 / .07); color: #f0f0f2; }
+.edit-tool.on { background: #3a3a3f; color: #ffffff; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .18); }
+.edit-tool:disabled { opacity: .35; cursor: not-allowed; }
+.edit-tool { position: relative; }
+.edit-tool-key { position: absolute; right: 3px; bottom: 2px; font: 9px var(--font-code); color: #8e8e94; }
+.edit-tool.on .edit-tool-key { color: #dcdce0; }
+.edit-menus { display: flex; gap: 2px; }
+.edit-menu { position: relative; display: inline-block; }
+.edit-btn { background: none; border: none; color: #cfcfd4; font: 500 12px var(--font); letter-spacing: .01em; padding: 5px 9px; border-radius: 5px; cursor: pointer; }
+.edit-btn:hover { background: rgb(255 255 255 / .08); color: #fff; }
+.edit-menu-pop { position: absolute; top: 100%; left: 0; min-width: 210px; margin-top: 2px; padding: 4px; z-index: 40;
+  background: #232326; border: 1px solid rgb(255 255 255 / .12); border-radius: 6px; box-shadow: 0 10px 28px rgb(0 0 0 / .5);
+  display: flex; flex-direction: column; }
+.edit-menu-pop[hidden] { display: none; }   /* an author display rule outranks the UA's [hidden] — say it explicitly */
+.edit-menu-item { display: flex; justify-content: space-between; gap: 18px; width: 100%; text-align: left; background: none; border: none;
+  color: #e4e4e8; font: 12.5px var(--font); padding: 5px 9px; border-radius: 4px; cursor: pointer; }
+.edit-menu-item:hover { background: rgb(255 255 255 / .09); }
+.edit-menu-item kbd { color: #8e8e94; font: 11px var(--font-code); }
+.edit-mode-label { margin-left: auto; margin-right: 10px; color: #8e8e94; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.edit-col { display: flex; flex-direction: column; gap: 0; background: #151517; border-left: 1px solid rgb(255 255 255 / .06); border-right: 1px solid rgb(255 255 255 / .06); box-sizing: border-box; overflow: hidden; }
+.edit-split { background: transparent; z-index: 29; }
+.edit-split-v { width: 6px; cursor: ew-resize; }
+.edit-split-h { height: 6px; cursor: ns-resize; flex: 0 0 6px; position: relative; }
+.edit-split:hover { background: rgb(255 255 255 / .12); }
+/* a docked frame: the column lays it out; the floating geometry paint() writes is ignored */
+.frame.docked { position: relative !important; left: auto !important; top: auto !important; width: auto !important;
+  border-radius: 0; box-shadow: none; min-height: 0; z-index: auto !important; }
+.frame.docked .fr-body { height: auto !important; flex: 1 1 auto; min-height: 0; }
+.frame.docked .fr-head { cursor: default; }
+.frame.docked .fr-btn { display: none; }        /* a docked frame is closed from the View menu, not with ✕ */
+body.edit-workspace .frame.docked { --panel-a: 1; }
+/* the rail slims to what edit mode needs: ∃, the wrench (mic / ear / goggles are their own elements) */
+body.edit-workspace #dock button[data-toggles]:not([data-toggles="edit"]) { display: none !important; }
+body.edit-workspace #dock { top: 46px !important; left: 3px !important; }   /* under the bar: ∃ then the wrench; mic/ear/goggles moved up into the bar */
+/* mic · ear · goggles live in the top bar while editing. They are fixed
+   elements positioned inline by their own modules (mictoggle.placeMic,
+   xr.js seat); author !important outranks inline, so the bar wins without
+   touching either module. Scaled to the bar's glyph size. */
+body.edit-workspace #micbtn { top: 7px !important; left: auto !important; right: 132px !important; transform: scale(.85); transform-origin: center; }
+body.edit-workspace #earbtn { top: 7px !important; left: auto !important; right: 100px !important; transform: scale(.85); transform-origin: center; }
+.edit-viewbtns { display: flex; gap: 2px; margin-left: 10px; padding-left: 10px; border-left: 1px solid rgb(255 255 255 / .1); }
+.edit-vbtn { width: 30px; height: 28px; padding: 0; font-size: 15px; line-height: 1; background: none; border: none; color: #b8b8bd; border-radius: 5px; cursor: pointer; }
+.edit-vbtn:hover { background: rgb(255 255 255 / .08); color: #fff; }
+.edit-vbtn.on { background: #3a3a3f; color: #fff; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .18); }
+.edit-seat { width: 190px; flex: none; }   /* the bar keeps this much clear for the three seated glyphs */
+body.edit-workspace .edit-tools { z-index: 26; border-radius: 0; border-right: 1px solid rgb(255 255 255 / .08); background: #1a1a1c; }   /* under the dock (27): the band is behind the ∃, never over it */
+/* the wrench carries the mode: an amber box, instead of a rim around the world */
+body.edit-workspace #dock button[data-toggles="edit"].on {
+  color: var(--attn); background: color-mix(in srgb, var(--attn) 16%, transparent);
+  box-shadow: inset 0 0 0 1.5px var(--attn); border-radius: 7px;
+}
+body.edit-workspace #dock button[data-toggles="edit"].on::before { display: none; }
+/* a row's context menu (panels.js contextMenu) */
+.sp-ctx { position: fixed; z-index: 45; min-width: 160px; padding: 4px; background: #232326; border: 1px solid rgb(255 255 255 / .12);
+  border-radius: 6px; box-shadow: 0 10px 28px rgb(0 0 0 / .5); display: flex; flex-direction: column; }
+.sp-ctx-item { text-align: left; background: none; border: none; color: #e4e4e8; font: 12.5px var(--font); padding: 5px 9px; border-radius: 4px; cursor: pointer; }
+.sp-ctx-item:hover { background: rgb(255 255 255 / .09); }
+.sp-ctx-item.danger { color: #ff9e9e; }
+.sp-disc { width: 14px; flex: none; padding: 0; background: none; border: none; color: var(--dim); font-size: 10px; cursor: pointer; line-height: 1; }
+.sp-disc.none { cursor: default; }
+.sp-disc:not(.none):hover { color: var(--fg); }
+.sp-item.dim .sp-item-label, .sp-item.dim .sp-item-sub { opacity: .45; }
+.sp-item.multi { box-shadow: inset 2px 0 0 var(--brand); background: color-mix(in srgb, var(--well) 60%, transparent); }
+.sp-tree-row.dragging { opacity: .4; }
+.sp-tree-row.drop { box-shadow: inset 0 0 0 1px var(--brand); background: color-mix(in srgb, var(--brand) 14%, transparent); }
+.frame.edit .sp-f-text .sp-label:empty { display: none; }
+.frame.edit .sp-f-text .sp-text { font-size: 12px; }
+/* fixed chrome from before the columns keeps to the VIEWPORT between them */
+body.edit-workspace #structbar { left: calc(var(--edit-left-edge, 0px) + 12px) !important; }
+body.edit-workspace #trayzone { right: calc(var(--edit-right-w, 0px) + 10px); }
+body.edit-workspace #hintbar { left: calc(var(--edit-left-edge, 0px) + (100vw - var(--edit-left-edge, 0px) - var(--edit-right-w, 0px)) / 2); }
 </style>
 <script>
 /* pre-paint token restore (the default accent flashed for a beat before

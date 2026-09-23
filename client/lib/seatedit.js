@@ -21,6 +21,7 @@ import { mouse } from './controller.js';
 import { flashHint } from './ui.js';
 import { setEditMode, isEditing, deselect, pushUndo,
   setInspectorHtml, hideInspector } from './build.js';
+import { registerHandler } from './inspect.js';
 
 const raycaster = new THREE.Raycaster();
 
@@ -122,7 +123,7 @@ function socketsOf(id) { return structuredClone(comps.get(id)?.sockets ?? {}); }
 /** One merged comp entry per gesture, with its inverse on the undo stack —
  *  merged, because comp data replaces wholesale and a naive write would
  *  silently eat every OTHER anchor on the thing. */
-function commitSockets(id, next, describe) {
+export function commitSockets(id, next, describe) {
   const before = comps.get(id)?.sockets;
   sendVerb('comp', { id, type: 'sockets', data: Object.keys(next).length ? next : null });
   pushUndo({ verb: 'comp', args: { id, type: 'sockets', data: before ? structuredClone(before) : null } }, describe);
@@ -292,4 +293,22 @@ addEventListener('mousemove', (e) => {
 addEventListener('mouseup', () => {
   if (seatDrag?.armed) commitSeatDrag();
   seatDrag = null;
+});
+
+
+// ---- the inspector's sockets GESTURES + preview --------------------------------
+// The fields are declared in shared/editschema.js. What only this module can
+// add: '+ seat here' arms the click-to-place, a row click selects the gizmo,
+// a live drag on a slot's channels moves the gizmo before the merged comp
+// commits (the shared path merges and pushes the undo).
+registerHandler('sockets', (id, obj, k, value, opts) => {
+  if (k === 'add') { armSeatPlacement(id); return true; }
+  if (k === 'slots') { if (entities.get(id)) selectSeat({ id, slot: value }); return true; }
+  if (k === 'del') { if (seatSel?.id === id && seatSel.slot === value) deselectSeat(); return false; }
+  if (!opts?.live) return false;
+  const [slot, what, idx] = k.split('|');
+  const g = seatGizmos.get(`${id}\x00${slot}`);
+  if (!g) return true;
+  if (what === 'pos') { const p = g.position.toArray(); p[+idx] = +value; g.position.set(...p); } else g.rotation.y = +value;
+  return true;
 });

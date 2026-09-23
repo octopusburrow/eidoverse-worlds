@@ -305,6 +305,10 @@ bus.on('key', (e) => {
   // build.js binds R/F and the arrows to nudge/raise/turn, where holding the
   // key to keep moving a thing is the whole interaction.
   if (e.repeat) return;
+  // the body's toggles yield while editing: X/F/G are the editor's there
+  // (remove / find / move tool) and a chorded Z is undo, never 'lie'
+  if (editingNow?.()) return;
+  if (e.ctrlKey || e.metaKey) return;
   if (e.code === 'KeyX') toggleSit();
   if (e.code === 'KeyF') { const m = toggleFlight(); if (m) flashHint?.(m); }
   if (e.code === 'KeyZ') { posture = posture === 'lie' ? null : 'lie'; myState.seat = null; }

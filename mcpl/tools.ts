@@ -26,6 +26,7 @@ import sharp from "sharp";
 import { validatePose, validateTracks, tracksSpan, poseReport } from "../shared/humanoid.js";
 import { CONTACT_POINTS, canonicalPoint } from "../shared/contact.js";
 import { rawShapeError } from "./shape.ts";
+import { inspectSchema, editVerbs, describeSchema } from "../shared/editschema.js";
 import type { WorldAgent } from "./agent.ts";
 
 /** The slice of WorldAgent the tools touch — typed loosely on purpose: the
@@ -119,6 +120,9 @@ export const TOOLS = [
   { name: "travel", description: "Walk to another world this door fronts, keeping your identity, avatar and attention settings — no reconnect. Subject to your credential's join policy; founding a world that does not exist yet needs separate create authority. Your held pose and posture do NOT survive the move (they are world-local, like a disconnect), and your chat cursor resets to the new world.", inputSchema: { type: "object", properties: { world: { type: "string", description: "world name, e.g. \"commons\"" } }, required: ["world"] } },
   { name: "world_verb", description: "Raw world-log verb. The verb set is CLOSED by design — say, use, punt, force, mount, dismount, spawn, place, remove, light, comp, motion, behavior, asset, terrain, grass, sky, weather, grant, kick, ban, unban, caption (one line of what a screen said; needs the per-screen caption deed) — and the door refuses others; extend STATE with comp types you invent, EVENTS with use actions, SEMANTICS with behavior scripts, never by hoping a new verb exists. This is also the authoring surface for components: comp {id, type, data|null} attaches data to an entity (sockets, reactions, or anything you invent); motion {id, type: pendulum|spin|orbit|bob|path, …} sets it moving; see AGENTS.md in the eidoverse-worlds repo for the full vocabulary.", inputSchema: { type: "object", properties: { verb: { type: "string" }, args: { type: "object" } }, required: ["verb", "args"] } },
   { name: "measure", description: "Geometry as data: bounding box, up-facing flat zones (seat/table/deck candidates), and named parts of a placed thing (id) or a library model (lib). Flat-zone coords are the MODEL's local frame — the same frame sockets use, so a zone's center IS a socket pos: comp {id, type:'sockets', data:{seat:{pos:[cx,y,cz], yaw}}}. Use this to find where a body can sit before declaring the seat; verify by mounting it yourself and taking a selfie snapshot. Raw GLB bytes are at GET <sequencer>/library/<lib> if you want to process the mesh locally.", inputSchema: { type: "object", properties: { id: { type: "string" }, lib: { type: "string" } } } },
+  { name: "inspect", description: "The inspector, for you: every editable field on a placed thing with its current value, units, limits, and the verb that changes it — the same declaration the browser's Inspector panel renders (shared/editschema.js). Fields are addressed group.field: pos.x pos.yaw pos.scale · flags.lock flags.hidden flags.label · light.color light.intensity light.range light.keep light.noon · motion.type motion.axis motion.amp motion.period … (a part's motion as motion.<part>|amp) · sockets.<slot>|pos|0..2 sockets.<slot>|yaw sockets.del · particles.* · comp.<type> (raw JSON for any component no group speaks for; comp.+ adds one). Read-only fields say why (locked, mounted). Pass json:true for the raw schema.", inputSchema: { type: "object", properties: { id: { type: "string" }, json: { type: "boolean" } }, required: ["id"] } },
+  { name: "edit", description: "Change fields on a placed thing by address (see inspect) — the fewest verbs that commit them, sent for you: three transform channels become ONE place carrying the full pose; two socket fields ONE merged comp. Numbers take Maya's relative math: \"+=1\", \"-=0.5\", \"*=-1\", \"+=10%\". Angles are typed in DEGREES. Refused edits (locked, mounted, unknown field, bad JSON) are reported by name and the rest still go. set: {\"pos.x\": \"+=1\", \"light.intensity\": 24, \"flags.label\": \"the good chair\", \"sockets.seat|pos|1\": 0.55, \"comp.recipe\": \"{...}\"}. Pass dry:true to see the verbs without sending.", inputSchema: { type: "object", properties: { id: { type: "string" }, set: { type: "object" }, dry: { type: "boolean" } }, required: ["id", "set"] } },
+  { name: "hierarchy", description: "The scene tree, as the browser's Hierarchy panel shows it: every placed thing, mounted things indented under their carrier, seated people as riders, with each thing's label, lib, components and lock state. filter narrows to ids/labels/libs/component types containing the text (matches keep their ancestors). Cheaper than look() when you want structure, not surroundings.", inputSchema: { type: "object", properties: { filter: { type: "string" } } } },
   { name: "world_history", description: "Pull raw entries from the world log — the append-only record every world IS. Filter by verbs (e.g. ['use','motion'] to trace an interaction, ['comp'] to see how something was built), page backwards with before. Every entry has {seq, ts, actor, verb, args}; reaction-authored entries carry {cause, by}. This is the debugging primitive: the log is the world, so reading it is reading the world's source.", inputSchema: { type: "object", properties: { verbs: { type: "array", items: { type: "string" } }, before: { type: "number" }, after: { type: "number" }, limit: { type: "number" } } } },
   { name: "world_debug", description: "The world's flight recorder: why things BOUNCED. The log answers 'what happened'; this answers 'why didn't it' — denied verbs (rights), rejected shapes (malformed/oversized comp, bad mount), rate limits, reaction outcomes ('reaction' fired with cause→effect seqs, 'reaction-skip' with the reason, 'reaction-error'), and script events ('script-error', 'script-pause'). Pass behavior: <id> to read ONE runtime script's own log ring (its world.log() console + status); pass behaviors: true to list what scripts run here and whether they're alive. IMPORTANT: motion/comp components are NOT scripts — they are passive data evaluated client-side and NEVER appear in the behaviors roster (absence there does not mean your component failed or was deleted; check world_history verbs:['comp','motion'] for its fold, and look for kind 'motion-lint' in the plain recorder: the server lints every folded motion for params the evaluator will ignore, unknown types, and part names that no client renders). In-memory, recent events only. Check here first when something doesn't do what you expected.", inputSchema: { type: "object", properties: { limit: { type: "number" }, kinds: { type: "array", items: { type: "string" } }, behavior: { type: "string" }, behaviors: { type: "boolean" } } } },
   { name: "kick", description: "MODERATION: remove a participant from this world right now. They may rejoin — a kick interrupts, a ban excludes. Needs owner rights here (same gate as grant); operators and fellow owners cannot be kicked.", inputSchema: { type: "object", properties: { id: { type: "string" }, reason: { type: "string" } }, required: ["id"] } },
@@ -677,6 +681,64 @@ export const HANDLERS: Record<string, ToolHandler> = {
       if (a.id && Object.keys(d.comp ?? {}).length) L.push(`components already on it: ${Object.keys(d.comp).join(", ")}`);
       return text(L.join("\n"));
 
+  },
+  inspect: async (ag, a) => {
+      const id = String(a.id ?? "");
+      // the FOLDED record, not the perception view (which thins a light to
+      // its position): the schema wants every field the fold keeps
+      const rec = ag.foldRecord(id) as any;
+      if (!rec) return text(`inspect: no placed thing "${id}" here (ids are in look() and hierarchy)`);
+      const schema = inspectSchema(rec, id);
+      if (a.json) return text(JSON.stringify(schema));
+      const head = `[${id}] ${rec.kind === "light" ? "light" : String(rec.lib ?? "").split("/").pop()}${rec.comp?.label ? ` "${rec.comp.label}"` : ""}${rec.parent ? ` — mounted on ${rec.parent.to}` : ""}`;
+      return text(`${head}\n${describeSchema(schema)}`);
+  },
+  edit: async (ag, a) => {
+      const id = String(a.id ?? "");
+      const rec = ag.foldRecord(id) as any;
+      if (!rec) return text(`edit: no placed thing "${id}" here`);
+      const { verbs, errors } = editVerbs(rec, id, (a.set ?? {}) as Record<string, unknown>);
+      const L: string[] = [];
+      for (const e of errors) L.push(`refused: ${e}`);
+      if (!verbs.length) return { content: [{ type: "text", text: L.length ? L.join("\n") : "edit: nothing to change" }], isError: errors.length > 0 };
+      for (const v of verbs) {
+        const why = rawShapeError(v.verb, v.args as Record<string, unknown>);
+        if (why) { L.push(`refused ${v.verb}: ${why}`); continue; }
+        if (!a.dry) ag.verb(v.verb, v.args as Record<string, unknown>);
+        L.push(`${a.dry ? "would send" : "sent"} ${v.verb} ${JSON.stringify(v.args)}`);
+      }
+      L.push("(the fold echoes in a beat — inspect again to read the new values; refusals of rank or rate land in world_debug)");
+      return text(L.join("\n"));
+  },
+  hierarchy: async (ag, a) => {
+      const q = String(a.filter ?? "").trim().toLowerCase();
+      const ents = [...ag.entities.values()] as any[];
+      const kids = new Map<string, string[]>(); const roots: string[] = [];
+      for (const e of ents) { const p = ag.mounts.get(e.id)?.to; if (p && ag.entities.has(p)) { (kids.get(p) ?? kids.set(p, []).get(p)!).push(e.id); } else roots.push(e.id); }
+      const riders = new Map<string, string[]>();
+      for (const [who, m] of ag.mounts) if (!ag.entities.has(who)) (riders.get(m.to) ?? riders.set(m.to, []).get(m.to)!).push(m.slot ? `${who} (${m.slot})` : who);
+      const line = (e: any) => {
+        const c = e.comp ?? {};
+        const comps = Object.keys(c).filter((k) => k !== "lock" && k !== "label").map((k) => (k === "motion" || k.startsWith("motion:")) ? `${k}(${c[k]?.type ?? "…"})` : k === "sockets" ? `sockets(${Object.keys(c.sockets ?? {}).join(",")})` : k);
+        return `[${e.id}]${c.label ? ` "${c.label}"` : ""} ${e.lib === "(light)" ? "light" : String(e.lib ?? "").split("/").pop()}${comps.length ? ` · ${comps.join(" · ")}` : ""}${c.lock ? " · 🔒" : ""}${c.hidden ? " · hidden" : ""}`;
+      };
+      const hit = (e: any) => !q || [e.id, e.lib, e.comp?.label ?? "", ...Object.keys(e.comp ?? {})].join(" ").toLowerCase().includes(q);
+      const L: string[] = [];
+      const walk = (id: string, depth: number): boolean => {
+        const e = ag.entities.get(id) as any; if (!e) return false;
+        const subs: string[] = [];
+        let any = hit(e);
+        for (const r of riders.get(id) ?? []) if (!q || r.toLowerCase().includes(q)) { subs.push(`${"  ".repeat(depth + 1)}└ 🧍 ${r}`); any = true; }
+        const before = L.length;
+        for (const k of kids.get(id) ?? []) if (walk(k, depth + 1)) any = true;
+        const childLines = L.splice(before);
+        if (any) L.push(`${"  ".repeat(depth)}${depth ? "└ " : ""}${line(e)}`, ...subs, ...childLines);
+        return any;
+      };
+      for (const r of roots.sort()) walk(r, 0);
+      if (!L.length) return text(q ? `hierarchy: nothing matches "${q}"` : "hierarchy: nothing placed yet");
+      L.push(`(${ents.length} things${q ? `, filtered` : ""} · inspect {id} for fields · edit {id, set} to change them)`);
+      return text(L.join("\n"));
   },
   world_history: async (ag, a, ctx, name) => {
       const r = await ag.history({

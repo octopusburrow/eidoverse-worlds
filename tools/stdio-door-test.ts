@@ -101,6 +101,30 @@ try {
   const act = await rpc('tools/call', { name: 'activity', arguments: {} });
   check('activity tells the pollless-host truth (held digests)', /HELD|held/.test(toolText(act)), toolText(act).slice(0, 120));
 
+  // the inspector, for models: inspect / edit / hierarchy read ONE shared
+  // declaration (shared/editschema.js) — the same one the browser renders
+  check('inspect · edit · hierarchy are listed', ['inspect', 'edit', 'hierarchy'].every((n) => names.includes(n)));
+  await rpc('tools/call', { name: 'world_verb', arguments: { verb: 'light', args: { id: 'lamp1', pos: [1, 2, 3], color: 0xff8800, intensity: 16, range: 6 } } });
+  // poll for the fold echo instead of guessing a sleep
+  let ins: any = null;
+  for (let i = 0; i < 30; i++) { ins = await rpc('tools/call', { name: 'inspect', arguments: { id: 'lamp1' } }); if (/light\.intensity = 16  \(/.test(toolText(ins))) break; await sleep(200); }
+  check('inspect reads the FOLDED light (intensity 16, range 6 m, colour) — not the thinned perception view', /light\.intensity = 16  \(/.test(toolText(ins)) && /light\.range = 6 m  \(/.test(toolText(ins)) && /0xff8800/.test(toolText(ins)) && /pos\.y = 2 m/.test(toolText(ins)), toolText(ins).slice(0, 200));
+  const dry = await rpc('tools/call', { name: 'edit', arguments: { id: 'lamp1', dry: true, set: { 'pos.x': '+=1', 'pos.z': 0, 'light.intensity': '+=25%' } } });
+  check('edit dry: three edits → ONE place (full pose) + ONE partial light', (toolText(dry).match(/would send/g) ?? []).length === 2 && /would send place .*"pos":\[2,2,0\]/.test(toolText(dry)) && /would send light .*"intensity":20[,}]/.test(toolText(dry)), toolText(dry));
+  const ed = await rpc('tools/call', { name: 'edit', arguments: { id: 'lamp1', set: { 'light.intensity': '+=4', 'flags.label': 'the porch lamp' } } });
+  check('edit sends', /sent light/.test(toolText(ed)) && /sent comp .*"label"/.test(toolText(ed)), toolText(ed));
+  let ins2: any = null;
+  for (let i = 0; i < 30; i++) { ins2 = await rpc('tools/call', { name: 'inspect', arguments: { id: 'lamp1' } }); if (/light\.intensity = 20  \(/.test(toolText(ins2)) && /porch lamp/.test(toolText(ins2))) break; await sleep(200); }
+  check('…and the fold came back with 20 and the label', /light\.intensity = 20  \(/.test(toolText(ins2)) && /"the porch lamp"/.test(toolText(ins2)), toolText(ins2).slice(0, 160));
+  const bad = await rpc('tools/call', { name: 'edit', arguments: { id: 'lamp1', set: { 'pos.yaw': 90 } } });
+  check('a field a light does not have is refused by name, nothing sent, marked isError', /refused: pos\.yaw/.test(toolText(bad)) && !/sent/.test(toolText(bad)) && bad.result?.isError === true, toolText(bad));
+  const hier = await rpc('tools/call', { name: 'hierarchy', arguments: {} });
+  check('hierarchy lists the lamp with its label', /\[lamp1\] "the porch lamp" light/.test(toolText(hier)), toolText(hier).slice(0, 160));
+  const hf = await rpc('tools/call', { name: 'hierarchy', arguments: { filter: 'nothing-like-this' } });
+  check('a filter with no match says so', /nothing matches/.test(toolText(hf)), toolText(hf));
+  const lk = await rpc('tools/call', { name: 'look', arguments: {} });
+  check('look() carries the label too', /"the porch lamp"/.test(toolText(lk)), toolText(lk).slice(0, 200));
+
   const unknown = await rpc('tools/call', { name: 'no_such_tool', arguments: {} });
   check('an unknown tool is a marked error', unknown.result?.isError === true || !!unknown.error,
     JSON.stringify(unknown).slice(0, 120));

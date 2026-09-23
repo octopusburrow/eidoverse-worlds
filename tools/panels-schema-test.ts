@@ -35,7 +35,9 @@ const check = (name: string, ok: boolean, detail = '') => {
 };
 const edits: any[][] = [];
 const edit = (...a: any[]) => { edits.push(a); };
-const last = () => JSON.stringify(edits.at(-1));
+// panels' dispatcher is edit(k, value, field?, opts?) — field = Godot's axis index, opts.live = a preview.
+// Trailing empty args are not part of what a case asserts; a meaningful one (an axis, {live}) still is.
+const last = () => { const a = [...(edits.at(-1) ?? [])]; while (a.length && a.at(-1) == null) a.pop(); return JSON.stringify(a); };
 const FIELDS = [
   { t: 'info', label: 'world', value: 'garden' },
   { t: 'text', k: 'name', label: 'name', value: 'lamp', placeholder: 'a name' },
@@ -63,7 +65,9 @@ check('info shows the value as text', rows[0].querySelector('.sp-info')?.textCon
   plus.onclick!(new Event('click'));
   check('+ steps by step and clamps to max: edit("h", 2)', last() === '["h",2]', last());
   minus.onclick!(new Event('click'));
-  check('− steps down from the typed value: edit("h", 1)', last() === '["h",1]', last());
+  // the stepper shows what it just set (p1 edit mode): + then − returns to the start, 1.5 — the old face stayed
+  // at 1.5 after a + and stepped to 1, i.e. two clicks that should cancel moved the value
+  check('− steps down from the SHOWN value (+ then − cancel): edit("h", 1.5)', last() === '["h",1.5]', last());
   num.value = '-4'; num.onchange!(new Event('change'));
   check('a typed value clamps to min: edit("h", 0)', last() === '["h",0]', last());
   num.value = 'nope'; const n = edits.length; num.onchange!(new Event('change'));
@@ -72,7 +76,9 @@ check('info shows the value as text', rows[0].querySelector('.sp-info')?.textCon
   check('slider: type=range with min/max/step and a unit readout', sl?.type === 'range' && sl.min === '0' && sl.max === '1' && sl.step === '0.05' && out.textContent === '0.25×', `${sl?.type} ${sl?.min}..${sl?.max}/${sl?.step} "${out.textContent}"`);
   check('progress fill --p follows the value', sl.style.getPropertyValue('--p') === '25%', sl.style.getPropertyValue('--p'));
   sl.value = '0.6'; sl.oninput!(new Event('input'));
-  check('slider input → edit("vol", 0.6) as a NUMBER, readout repainted', last() === '["vol",0.6]' && out.textContent === '0.60×', `${last()} "${out.textContent}"`); }
+  check('slider drag PREVIEWS: edit("vol", 0.6, null, {live}) as a NUMBER, readout repainted', last() === '["vol",0.6,null,{"live":true}]' && out.textContent === '0.60×', `${last()} "${out.textContent}"`);
+  sl.onchange!(new Event('change'));
+  check('slider release COMMITS once: edit("vol", 0.6)', last() === '["vol",0.6]', last()); }
 { const on = rows[4].querySelector('input[type=checkbox]') as HTMLInputElement, off = rows[5].querySelector('input[type=checkbox]') as HTMLInputElement;
   check('check: checkbox reflects value', on?.checked === true && off?.checked === false);
   on.checked = false; on.onchange!(new Event('change'));
@@ -86,7 +92,7 @@ check('info shows the value as text', rows[0].querySelector('.sp-info')?.textCon
 { const steps = [...rows[7].querySelectorAll('.sp-step')];
   check('vec3: three steppers', steps.length === 3);
   (steps[1].lastElementChild as HTMLButtonElement).onclick!(new Event('click'));
-  check('bumping y → edit("pos", [1,3,3])', last() === '["pos",[1,3,3]]', last()); }
+  check('bumping y → edit("pos", [1,3,3], 1) — the axis rides along for multi-select', last() === '["pos",[1,3,3],1]', last()); }
 { const item = rows[8].querySelector('.sp-item') as HTMLElement;
   check('list: row is active, label + sub', item?.classList.contains('active') && item.querySelector('.sp-item-label')?.textContent === 'bench' && item.querySelector('.sp-item-sub')?.textContent === 'north');
   (item.querySelector('.sp-item-main') as HTMLElement).onclick!(new Event('click'));
