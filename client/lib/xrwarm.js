@@ -11,12 +11,13 @@
 // Hooked at renderer.compileAsync, where every content warm already passes (assets, avatars, flora, sky, terrain —
 // through the warm conductor). Only calls with the MAIN camera and no bound render target are doubled: portraits,
 // shadow depth and bakes keep their own cameras/targets and are left alone.
-//   desktop  the call built the desktop variant → also compile through a two-eye stand-in (the XR variant)
+//   desktop  the call built the desktop variant → also compile through three's own XR camera + its persistent eyes
+//            (xrpass.js withXREyes — a look-alike camera would rebind the stereo uniforms to ITS matrices)
 //   in VR    three swapped in the XR camera, so the call built the XR variant → also compile with the main camera
 //            into a 1×1 twin of the desktop framebuffer target (same attachment key, so the same render context
 //            the desktop frames use; binding it is also what keeps three from swapping the XR camera back in)
 // tools/xr-dual-warm-probe.mjs measures it: enter and exit build nothing for content that arrived in the other mode.
-import { stereoStandIn } from './xrpass.js';
+import { withXREyes } from './xrpass.js';
 
 export function installDualWarm({ THREE, renderer, camera, wantStereo, presenting }) {
   if (!renderer || renderer.__dualWarm) return false;
@@ -39,7 +40,7 @@ export function installDualWarm({ THREE, renderer, camera, wantStereo, presentin
     }
     // no target bound: the eyes draw through the same tone-mapping target shape as the desktop (measured: the
     // probe's births land in the desktop's render context), so only the eye COUNT differs
-    if (wantStereo()) return unculled(obj, () => compile(obj, stereoStandIn(THREE, camera), target));
+    if (wantStereo()) return unculled(obj, () => withXREyes(renderer, (eyes) => compile(obj, eyes, target)));
     return null;
   };
   // THE LEAK (three r186): after an XR frame Renderer._renderScene "restores" the bound target to

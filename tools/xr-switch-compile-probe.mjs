@@ -24,7 +24,7 @@ const PAGE = `<!doctype html><html><body><script type="importmap">{"imports":{"t
 <script type="module">
 import * as THREE from 'three';
 import { vec3 } from 'three/tsl';
-import { separateXRPass, stereoStandIn } from './lib/xrpass.js';
+import { separateXRPass, withXREyes } from './lib/xrpass.js';
 const N = ${N}, W = 64, H = 32;
 async function run(mode) {
   const canvas = document.createElement('canvas'); document.body.appendChild(canvas);
@@ -41,11 +41,13 @@ async function run(mode) {
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 0.1), m); mesh.position.set((i % 10) * 0.1 - 0.5, Math.floor(i / 10) * 0.1 - 0.3, -2); mesh.frustumCulled = false; scene.add(mesh);
   }
   const desk = new THREE.PerspectiveCamera(60, 2, 0.1, 10);
-  const eye = (x) => { const c = new THREE.PerspectiveCamera(60, 1, 0.1, 10); c.viewport = new THREE.Vector4(x, 0, W, H); c.updateMatrixWorld(); return c; };
-  const xrCam = new THREE.ArrayCamera([eye(0), eye(W)]); xrCam.updateMatrixWorld();
+  // three's own XR camera and its persistent eyes (a look-alike rebinds the stereo uniforms: xr-eye-binding-probe.mjs)
+  const xrCam = renderer.xr.getCamera();
+  renderer.xr._cameras.forEach((c, i) => { c.viewport = new THREE.Vector4(i * W, 0, W, H); });
   const out = new THREE.RenderTarget(2 * W, H, { depthBuffer: true });
   const steps = [];
   const frame = async (label, xr) => {
+    if (xr && xrCam.cameras.length === 0) xrCam.cameras.push(...renderer.xr._cameras);   // three fills them on the first XR frame
     renderer.setOutputRenderTarget(xr ? out : null);   // what XRManager does at session start / end
     const c0 = { ...count }, t0 = performance.now();
     renderer.render(scene, xr ? xrCam : desk);
@@ -57,7 +59,7 @@ async function run(mode) {
   await frame('desktop (boot)', false);
   if (mode === 'prewarmed') {
     const c0 = { ...count }, t0 = performance.now();
-    await renderer.compileAsync(scene, stereoStandIn(THREE, desk), scene);   // on the desktop, before any session
+    await withXREyes(renderer, (eyes) => renderer.compileAsync(scene, eyes, scene));   // on the desktop, before any session
     steps.push({ label: 'prewarm (async)', programs: count.programs - c0.programs, pipelines: count.pipelines - c0.pipelines, ms: Math.round(performance.now() - t0) });
     await frame('desktop again', false);
   }

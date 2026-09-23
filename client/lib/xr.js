@@ -19,7 +19,7 @@
 
 import { installRenderListTolerance, THREE, renderer, camera, scene, XR_BOOT, PREF_HEADSET_SEEN, xrPixelRatio } from './core.js';
 import { decideEntryFailure } from './xr_entry_policy.js';
-import { stereoStandIn } from './xrpass.js';   // a warm needs TWO eyes: xr.getCamera() has none before a session
+import { withXREyes } from './xrpass.js';   // a warm needs THREE'S two eyes: xr.getCamera() has none before a session
 import { installDualWarm } from './xrwarm.js';   // content warms build both variants (BasisVR's warm-at-load)   // what a failed session request MEANS (#197 B1)
 import { makeEntryEffects, handleEntryFailure } from './xr_entry_effects.js';
 import { installEntryClock } from './xr_frame_clock.js';   // who owns window.rAF while presenting (#197 B2)
@@ -1219,7 +1219,7 @@ function warmXRPipelines() {
     // a stereo name), a hand-built 64² target keyed a different context, and the next desktop frame evicted what it built
     // (both variants shared one slot until xrpass.js).
     const t0 = performance.now();
-    try { await compileEverything(stereoStandIn(THREE, camera)); }
+    try { await withXREyes(renderer, (eyes) => compileEverything(eyes)); }
     catch (e) { report('xr pipeline warm', e); }
     tee(`[xr] pipelines pre-warmed for the eyes in ${(performance.now() - t0).toFixed(0)} ms (entry should now show programs≈0)`);
   }, { p: P_AMBIENT });

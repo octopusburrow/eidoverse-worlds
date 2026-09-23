@@ -26,7 +26,7 @@ const PAGE = `<!doctype html><html><body><script type="importmap">{"imports":{"t
 <script type="module">
 import * as THREE from 'three';
 import { vec3 } from 'three/tsl';
-import { separateXRPass, stereoStandIn } from './lib/xrpass.js';
+import { separateXRPass, withXREyes } from './lib/xrpass.js';
 import { installDualWarm } from './lib/xrwarm.js';
 const N = ${N}, M = ${M}, W = 64, H = 32;
 async function run(mode) {
@@ -46,15 +46,15 @@ async function run(mode) {
   const set = (n) => { const g = new THREE.Group(); for (let i = 0; i < n; i++, k++) {
     const m = new THREE.MeshBasicNodeMaterial(); m.colorNode = vec3(k / 97, 0.5, 1 - k / 97);
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 0.1), m); mesh.position.set((i % 10) * 0.1 - 0.5, Math.floor(i / 10) * 0.1 - 0.2, -2); g.add(mesh); } return g; };
-  const eye = (x) => { const c = new THREE.PerspectiveCamera(60, 1, 0.1, 10); c.viewport = new THREE.Vector4(x, 0, W, H); return c; };
   // three's CLASSIC eye buffer, as XRManager.setSession builds it (the branch xr.js takes)
   const out = new THREE.RenderTarget(2 * W, H, { format: THREE.RGBAFormat, type: THREE.UnsignedByteType, colorSpace: renderer.outputColorSpace, stencilBuffer: renderer.stencil });
-  const xrCam = renderer.xr.getCamera(); xrCam.cameras.length = 0; xrCam.cameras.push(eye(0), eye(W)); xrCam.updateMatrixWorld(true);
+  const xrCam = renderer.xr.getCamera();   // three's own, with its PERSISTENT eyes (filled at the first XR frame, in present())
+  renderer.xr._cameras.forEach((c, i) => { c.viewport = new THREE.Vector4(i * W, 0, W, H); });
   // three swaps in the XR camera only if xr.ENABLED as well (Renderer._updateCamera) — xr.js sets it at session start;
   // without it the first run of this probe rendered every 'VR' frame mono and both controls read vacuously green
   // three itself leaves the eye buffer bound after the first XR frame (the leak xrwarm.js works around); exit unbinds
   // it (xr.js's black-desktop fix)
-  const present = (on) => { vr = on; if (on) renderer.xr.enabled = true; renderer.setOutputRenderTarget(on ? out : null); if (!on) renderer.setRenderTarget(null); renderer.xr.cameraAutoUpdate = !on; renderer.xr.isPresenting = on; };
+  const present = (on) => { vr = on; if (on) { renderer.xr.enabled = true; if (xrCam.cameras.length === 0) xrCam.cameras.push(...renderer.xr._cameras); } renderer.setOutputRenderTarget(on ? out : null); if (!on) renderer.setRenderTarget(null); renderer.xr.cameraAutoUpdate = !on; renderer.xr.isPresenting = on; };
   const steps = []; let born = {};
   { const objs = renderer._objects, cro = objs.createRenderObject.bind(objs);
     const seenCtx = new Set(), seenLights = new Set();
@@ -66,7 +66,7 @@ async function run(mode) {
   const frames = () => { renderer.render(scene, desk); renderer.render(scene, desk); };
   const A = set(N); scene.add(A);
   await measure('boot', async () => frames());
-  await measure('pre-warm A (stand-in)', async () => { await renderer.compileAsync(scene, stereoStandIn(THREE, desk), scene); });
+  await measure('pre-warm A (stand-in)', async () => { await withXREyes(renderer, (eyes) => renderer.compileAsync(scene, eyes, scene)); });
   const B = set(M); scene.add(B);
   await measure('load B (desktop)', async () => { await renderer.compileAsync(B, desk, scene); frames(); });
   await measure('enter', async () => { present(true); frames(); });

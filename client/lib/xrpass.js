@@ -26,17 +26,20 @@ export function separateXRPass(renderer) {
   return true;
 }
 
-/** A two-eye stand-in for renderer.xr.getCamera(), which has ZERO sub-cameras until the first XR frame (three pushes
- *  the eyes per frame) — a warm with it compiled the mono variant under a stereo name. Viewports and projections
- *  don't enter the shader; the eye count does. */
-export function stereoStandIn(THREE, from) {
-  const eye = (x) => {
-    const c = from?.isPerspectiveCamera ? from.clone() : new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
-    c.viewport = new THREE.Vector4(x, 0, 1, 1);
-    return c;
-  };
-  const cam = new THREE.ArrayCamera([eye(0), eye(1)]);
-  if (from) { cam.position.copy(from.getWorldPosition(new THREE.Vector3())); cam.quaternion.copy(from.getWorldQuaternion(new THREE.Quaternion())); }
-  cam.updateMatrixWorld(true);
-  return cam;
+/** Run a stereo warm through THREE'S OWN XR camera and its persistent eye cameras (renderer.xr._cameras, updated in
+ *  place every XR frame). Not a look-alike: r186 binds the stereo camera uniforms to ONE module-global array
+ *  (`_cameraProjectionMatrixArray.array = matrices`, inside a .once() Fn, no per-frame refresh), pointed at whichever
+ *  ArrayCamera's matrix objects built a shader last. A warm through a stand-in left the headset's eyes reading the
+ *  stand-in's matrices — head tracking frozen to the desktop view (tools/xr-eye-binding-probe.mjs: red where green).
+ *  Before a session xr.getCamera() has ZERO eyes (three fills them on the first XR frame), which compiles the MONO
+ *  variant, so the two eyes are put in for the warm's whole duration (node builds happen after compileAsync yields)
+ *  and taken out again if no session started meanwhile. */
+export async function withXREyes(renderer, fn) {
+  const xr = renderer.xr, cam = xr.getCamera();
+  if (cam.cameras.length > 0) return fn(cam);
+  const eyes = (xr._cameras ?? []).slice(0, 2);
+  if (eyes.length !== 2) throw new Error('withXREyes: renderer.xr._cameras is not the two persistent eyes (three changed?)');
+  cam.cameras.push(...eyes);
+  try { return await fn(cam); }
+  finally { if (!xr.isPresenting && cam.cameras[0] === eyes[0] && cam.cameras.length === 2) cam.cameras.length = 0; }
 }
