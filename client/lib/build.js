@@ -452,6 +452,8 @@ let removeHook = null;
 export function setRemoveHook(fn) { removeHook = fn; }
 /** What the keys act on: the inspector's selection, else the viewport's. */
 const keyTarget = () => sceneSelected() ?? selected?.id ?? null;
+/** Edit ▸ delete: the same act as the Del key. */
+export function removeKeyTargets() { if (keyTarget()) removeTargets(); }
 function removeTargets() {
   if (removeHook) { if (removeHook()) deselect(); return; }
   removeSelected();

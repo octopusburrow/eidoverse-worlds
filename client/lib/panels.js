@@ -38,7 +38,8 @@
 //                 another dispatches edit('drop', {id, onto}) — onto empty tree space: {onto: null}
 //                 menu?:[{k, label, danger?}] }   right-click a row → its menu (row.menu wins)
 //                 kids>0 draws a disclosure → edit('open', id)   → edit(k, id) / edit('lock', id) / edit(item.k, id)
-// Every field also takes { disabled?, driven?, hint? }: disabled draws it
+// Every field also takes { disabled?, driven?, hint?, vrOnly? } (vrOnly: painted on the VR quad, skipped
+// on desktop — a button standing in for a key a headset lacks). Of the rest: disabled draws it
 // read-only (a locked thing's pose); driven names what owns the value (a
 // motion comp composes onto this rest pose) and tints the row — Blender's
 // purple-driver / Maya's channel colour, as ambient provenance.
@@ -157,7 +158,7 @@ export function renderDOM(body, fields, edit) {
   for (const f of fields) {
     let row = null;
     if (f.t === 'group') { folded = f.open === false; row = fieldDOM(f, via); }
-    else if (!folded) row = fieldDOM(f, via);
+    else if (!folded && !f.vrOnly) row = fieldDOM(f, via);   // vrOnly: the quad's stand-in for a key the desktop has
     rows.push(row);
     if (row) body.append(row);
   }

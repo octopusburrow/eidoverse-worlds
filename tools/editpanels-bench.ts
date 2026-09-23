@@ -88,7 +88,7 @@ await waitFor(`!!document.querySelector('.frame.edit .sp-tree-row.active')`);
 const insp = `[...document.querySelectorAll('.frame.edit')].find((f) => /Inspector/.test(f.querySelector('.fr-title')?.textContent))`;
 check('row is active', await evalJson(`!!document.querySelector('.frame.edit .sp-tree-row.active')`));
 check('channels: pos x/y/z + light brightness + range', await evalJson(`(() => { const L = [...${insp}.querySelectorAll('.sp-f-num .sp-label')].map((l) => l.textContent); return L.includes('pos x') && L.includes('pos z') && L.includes('light · brightness') && L.includes('light · range') && !L.includes('yaw'); })()`), 'a light has no yaw');
-check('the light group renders from the registry', await evalJson(`[...${insp}.querySelectorAll('.sp-group')].some((g) => /light/.test(g.textContent)) && !!${insp}.querySelector('input[type=color]')`));
+check('the light group renders from the registry', await evalJson(`[...${insp}.querySelectorAll('.sp-group')].some((g) => /light/i.test(g.textContent)) && !!${insp}.querySelector('input[type=color]')`));
 check('lock / keep / noon toggles', await evalJson(`${insp}.querySelectorAll('input[type=checkbox]').length >= 3`));
 check('compact channels have no bumpers', await evalJson(`${insp}.querySelectorAll('.sp-step.compact .sp-bump').length === 0 && ${insp}.querySelectorAll('.sp-step.compact').length >= 5`));
 check('grey scope: the edit frame re-points --brand to the grey', await evalJson(`getComputedStyle(${insp}).getPropertyValue('--brand').trim() === '#d2d2d6'`));
@@ -160,7 +160,7 @@ console.log('\nEsc mid-scrub, in a real browser (the key lands on the document, 
 
 console.log('\nmotion: a bob on the light — group, driven channels, an edit that keeps t0:');
 await evalJson(`import('/lib/net.js').then((m) => m.sendVerb('motion', { id: 'benchlamp', type: 'bob', amp: 0.3, period: 2 })), true`);
-check('motion group renders from motion.js', await waitFor(`[...${insp}.querySelectorAll('.sp-group')].some((g) => /motion/.test(g.textContent)) && [...${insp}.querySelectorAll('select.sp-enum')].some((s) => s.value === 'bob')`));
+check('motion group renders from motion.js', await waitFor(`[...${insp}.querySelectorAll('.sp-group')].some((g) => /motion/i.test(g.textContent)) && [...${insp}.querySelectorAll('select.sp-enum')].some((s) => s.value === 'bob')`));
 check('pos channels are DRIVEN (rest pose, tinted)', await evalJson(`${insp}.querySelectorAll('.sp-f-num.driven').length >= 3`));
 check('amp / period reach the channel box', await evalJson(`(() => { const L = [...${insp}.querySelectorAll('.sp-f-num .sp-label')].map((l) => l.textContent); return L.includes('motion · amp') && L.includes('motion · period'); })()`));
 const t0 = await evalJson(`import('/lib/world.js').then((m) => m.comps.get('benchlamp')?.motion?.t0)`);
@@ -173,7 +173,7 @@ check('come to rest removes the motion', await waitFor(`import('/lib/world.js').
 
 console.log('\nsockets: a seat on the light — list, per-slot channels, ✕ through the merged write:');
 await evalJson(`import('/lib/net.js').then((m) => m.sendVerb('comp', { id: 'benchlamp', type: 'sockets', data: { seat: { pos: [0, 0.5, 0], yaw: 0 } } })), true`);
-check('sockets group with the seat row', await waitFor(`[...${insp}.querySelectorAll('.sp-group')].some((g) => /sockets/.test(g.textContent)) && [...${insp}.querySelectorAll('.sp-item-label')].some((l) => l.textContent === 'seat')`));
+check('sockets group with the seat row', await waitFor(`[...${insp}.querySelectorAll('.sp-group')].some((g) => /sockets/i.test(g.textContent)) && [...${insp}.querySelectorAll('.sp-item-label')].some((l) => l.textContent === 'seat')`));
 check('seat x/y/z/yaw reach the channel box', await evalJson(`(() => { const L = [...${insp}.querySelectorAll('.sp-f-num .sp-label')].map((l) => l.textContent); return L.includes('sockets · seat x') && L.includes('sockets · seat yaw'); })()`));
 await evalJson(`import('/lib/net.js').then((m) => m.sendVerb('motion', { id: 'benchlamp', type: 'spin', degPerSec: 30 })), true`);
 await waitFor(`[...${insp}.querySelectorAll('select.sp-enum')].some((s) => s.value === 'spin')`);

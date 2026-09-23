@@ -1501,6 +1501,25 @@ body.touch #touch { display: block; }
 .frame.edit .sp-btn { background: #3a3a3f; color: var(--fg); font-weight: 500; }
 .frame.edit .sp-btn:hover { background: #4a4a50; }
 .frame.edit .sp-btn.danger { background: #5a2a2a; }
+/* ---- edit-mode polish (09-23): an editor's grammar — full-width section bars, actions inline,
+   gray glyphs; the world is the only colour ---- */
+.frame.edit .sp-f-group.sp-row { margin: 8px -10px 2px; }
+.frame.edit .sp-group { background: rgb(255 255 255 / .045); border: none; border-top: 1px solid var(--edge); border-bottom: 1px solid var(--edge);
+  color: var(--fg); padding: 5px 10px; margin: 0; font: 600 11.5px var(--font); letter-spacing: .02em; border-radius: 0; }
+.frame.edit .sp-group::first-letter { text-transform: uppercase; }
+.frame.edit .sp-group:hover { background: rgb(255 255 255 / .08); }
+.frame.edit .sp-f-btn.sp-row { display: inline-flex; margin: 4px 4px 4px 0; vertical-align: top; }   /* consecutive actions share a line */
+.frame.edit .sp-btn { padding: 3px 9px; font-size: 12px; border-radius: 4px; }
+.frame.edit .sp-btn.danger { background: transparent; color: #e59a9a; box-shadow: inset 0 0 0 1px rgb(229 154 154 / .35); }
+.frame.edit .sp-btn.danger:hover { background: rgb(229 154 154 / .12); }
+.frame.edit .sp-tree .sp-mini { filter: grayscale(1) brightness(1.3); opacity: .45; background: none; }
+.frame.edit .sp-tree .sp-mini.on { opacity: 1; background: rgb(255 255 255 / .12); }
+.frame.edit .sp-tree .sp-mini:hover { opacity: .9; }
+body.edit-workspace [data-frame="emotes"] { display: none !important; }   /* the workspace owns the top strip */
+/* restored 09-23: the port's conflict resolution dropped these three as 'duplicates' of main — main never had them */
+.sp-group { width: 100%; text-align: left; background: none; border: none; border-bottom: 1px solid var(--edge); color: var(--brand); font-weight: 600; padding: 4px 0 3px; margin-top: 4px; cursor: pointer; }
+.sp-tree { display: flex; flex-direction: column; gap: 1px; max-height: 260px; overflow-y: auto; }
+.sp-mini.on { background: var(--brand); color: #14100c; }
 .frame.edit .sp-group { color: var(--fg); border-bottom-color: var(--edge-hi); margin-top: 8px; }
 .frame.edit .sp-mini.on { background: #d2d2d6; }
 /* channels: the numeric lane — one label, one number, nothing else */
@@ -1585,6 +1604,7 @@ body.edit-workspace #dock button[data-toggles="edit"].on::before { display: none
 .sp-item.multi { box-shadow: inset 2px 0 0 var(--brand); background: color-mix(in srgb, var(--well) 60%, transparent); }
 .sp-tree-row.dragging { opacity: .4; }
 .sp-tree-row.drop { box-shadow: inset 0 0 0 1px var(--brand); background: color-mix(in srgb, var(--brand) 14%, transparent); }
+.sp-tree { min-height: 48px; }   /* room to drop onto empty space (→ root) */
 .frame.edit .sp-f-text .sp-label:empty { display: none; }
 .frame.edit .sp-f-text .sp-text { font-size: 12px; }
 /* fixed chrome from before the columns keeps to the VIEWPORT between them */

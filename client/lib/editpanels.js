@@ -319,7 +319,7 @@ function multiFields(ids) {
     const on = vals.every(Boolean), mixed = vals.some(Boolean) && !on;
     f.push({ t: 'check', k: `ed:flags.${k}`, label: `${k === 'lock' ? 'locked' : 'hidden'}${mixed ? ' ≠' : ''}`, value: on, hint: mixed ? 'differs — checking sets all' : undefined });
   }
-  f.push({ t: 'btn', k: 'remove', label: `remove ${ids.length}`, danger: true });
+  f.push({ t: 'btn', k: 'remove', label: `remove ${ids.length}`, danger: true, vrOnly: true });   // desktop removes with Del / Backspace / X / right-click / Edit ▸ delete; a headset has no keys
   painted = f;
   return f;
 }
@@ -358,9 +358,11 @@ function inspectorFields() {
   const groupOf = (name) => schema.groups.find((g) => g.group === name);
   const addGroup = (g, key, title) => {
     if (!g) return;
-    f.push({ t: 'group', k: `g:${key}`, label: title ?? g.label ?? g.group, open: isOpen(id, `g:${key}`) });
+    const name = String(title ?? g.label ?? g.group);
+    f.push({ t: 'group', k: `g:${key}`, label: name.charAt(0).toUpperCase() + name.slice(1), open: isOpen(id, `g:${key}`) });
     for (const nf of g.fields) {
-      const row = { ...nf, k: nf.k != null ? `ed:${g.group}.${nf.k}` : undefined };
+      // numbers read the same everywhere on desktop: scrub or type, no ± (the quad keeps its steppers)
+      const row = { ...nf, k: nf.k != null ? `ed:${g.group}.${nf.k}` : undefined, ...(nf.t === 'num' ? { compact: true } : {}) };
       if (nf.t === 'ref') row.arming = !!armingRef && armingRef.id === id && armingRef.key === `${g.group}.${nf.k}`;
       if (nf.t === 'list') row.rows = (nf.rows ?? []).map((r) => ({ ...r, actions: (r.actions ?? []).map((a) => ({ ...a, k: `ed:${g.group}.${a.k}` })) }));
       if (nf.t === 'text' && g.group === 'comp' && nf.k !== '+') { f.push(row); f.push({ t: 'btn', k: `uncomp:${nf.k}`, label: `remove ${nf.k}`, danger: true }); continue; }
@@ -376,7 +378,7 @@ function inspectorFields() {
     f.push({ t: 'group', k: 'behaviors', label: `Behaviors (${mine.length})`, open: isOpen(id, 'behaviors') });
     f.push({ t: 'list', k: 'bhv', rows: mine.map((b) => ({ id: b.id, label: `${b.status === 'running' ? '▶' : '⏸'} ${b.id}`, sub: `${b.timers ? `${b.timers}⏲ ` : ''}${b.status ?? ''}`, actions: [{ k: 'unbind', label: 'unbind', danger: true }] })) });
   }
-  f.push({ t: 'btn', k: 'remove', label: 'remove', danger: true });
+  f.push({ t: 'btn', k: 'remove', label: 'remove', danger: true, vrOnly: true });   // desktop removes with Del / Backspace / X / right-click / Edit ▸ delete; a headset has no keys
   painted = f;
   return f;
 }
