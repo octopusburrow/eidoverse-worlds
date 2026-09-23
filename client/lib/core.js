@@ -15,6 +15,7 @@ import { CONFIG } from './base.js';
 import { decideBackend } from './backend_choice.js';
 import { headsetSeenRecently as _headsetSeenRecently, migrateHeadsetSeen as _migrateHeadsetSeen } from './headset_seen.js';
 import { guardPixelRatioInXR } from './xrpixelratio.js';
+import { separateXRPass } from './xrpass.js';
 import { patchShadowNodeForXR } from './xrshadow.js';
 
 export { THREE, TSL };
@@ -161,6 +162,9 @@ globalThis.__xrPixelRatioGuarded = !!xrPixelRatio;   // boot-check asserts the g
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 await renderer.init();
+// VR enter/exit: stereo renders keep their own render objects, so the switch never rebuilds either variant (xrpass.js).
+// Inert without a stereo camera, so every boot gets it — sessions can start from a non-XR boot too.
+globalThis.__xrPassSplit = separateXRPass(renderer);
 // the splash watchdog (index.html) stops worrying: modules resolved and the
 // GPU answered — everything past this point can report its own failures
 globalThis.__ewEngineUp = true;

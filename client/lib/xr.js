@@ -19,7 +19,7 @@
 
 import { installRenderListTolerance, THREE, renderer, camera, scene, XR_BOOT, PREF_HEADSET_SEEN, xrPixelRatio } from './core.js';
 import { decideEntryFailure } from './xr_entry_policy.js';
-import { keepProgramsAcrossXR } from './xrprogramkeep.js';   // the exit hang: both shader variants survive the switch   // what a failed session request MEANS (#197 B1)
+import { stereoStandIn } from './xrpass.js';   // a warm needs TWO eyes: xr.getCamera() has none before a session   // what a failed session request MEANS (#197 B1)
 import { makeEntryEffects, handleEntryFailure } from './xr_entry_effects.js';
 import { installEntryClock } from './xr_frame_clock.js';   // who owns window.rAF while presenting (#197 B2)
 import { CONFIG, report, bus, tee, wornNameOf } from './base.js';
@@ -618,9 +618,6 @@ async function enterVR({ retryOf = null } = {}) {
     try { localStorage.setItem(PREF_HEADSET_SEEN, String(Date.now())); } catch {}   // a REAL session, not a capability answer (phones say yes to Cardboard): next boot picks WebGL up front. The TIME, not a flag: it expires (#197 B3)
     tee(`[xr] enter #${sessionNo}: session granted (${session.enabledFeatures?.length ?? '?'} features)`); markXrAbsent(false);
     renderer.xr.enabled = true;
-    // BEFORE the first XR frame: that frame releases every desktop variant, and they must stay findable for the exit
-    // (xrprogramkeep.js; idempotent, so re-entry and a WebGL-XR boot both land here)
-    globalThis.__xrProgramKeep = keepProgramsAcrossXR(renderer) ?? globalThis.__xrProgramKeep ?? null;
     // Tier A6 (gap list 09-05): CHOOSE the floor reference space — before this it
     // was only requested, and three's default is 'local' (eye-level origin), so
     // the world's floor could sit anywhere relative to the real one. The type
@@ -1226,7 +1223,7 @@ function warmXRPipelines() {
       // the compile CONTEXT (render target, camera count) is captured in compileAsync's synchronous pass; restore the
       // desktop target BEFORE awaiting the async link, or every desktop frame renders into the 64×64 warm target for
       // the 6–10 s the link takes (round 2 N1 — the round-1 'gate the healer' shape did exactly that, measured)
-      renderer.setRenderTarget(rt); const pr = compileEverything(renderer.xr.getCamera?.() ?? camera);
+      renderer.setRenderTarget(rt); const pr = compileEverything(stereoStandIn(THREE, camera));   // xr.getCamera() has ZERO eyes before a session: it compiled the MONO variant (tools/xr-switch-compile-probe.mjs)
       renderer.setRenderTarget(prev); renderer._samples = prevSamples;
       await pr; }   // compile only: a real draw here took 4.2 s on the desktop and the entry still rebuilt 17 (09-19 17:00)
     catch (e) { report('xr pipeline warm', e); }

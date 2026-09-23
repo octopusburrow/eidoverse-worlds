@@ -8,7 +8,9 @@
 // first EXIT — the one it threw away at entry (60 materials: 61 programs, 314 ms in SwiftShader); after one round
 // trip it settles. So the first exit of every session recompiles every material that existed before entry.
 // This probe renders N distinct materials desktop → XR → desktop → XR → desktop and counts programs/pipelines
-// built per switch, stock vs with client/lib/xrprogramkeep.js installed.
+// built per switch: stock; with client/lib/xrpass.js (stereo in its own pass); and xrpass + a desktop-side
+// pre-warm through a two-eye stand-in camera (xr.getCamera() has ZERO eyes before a session — the old warm
+// compiled the mono variant under a stereo name).
 //
 // Run: node tools/xr-switch-compile-probe.mjs   (wrap in perf-guard.sh; ~30 s)
 import { chromium } from 'playwright';
@@ -22,7 +24,7 @@ const PAGE = `<!doctype html><html><body><script type="importmap">{"imports":{"t
 <script type="module">
 import * as THREE from 'three';
 import { vec3 } from 'three/tsl';
-import { keepProgramsAcrossXR } from './lib/xrprogramkeep.js';
+import { separateXRPass, stereoStandIn } from './lib/xrpass.js';
 const N = ${N}, W = 64, H = 32;
 async function run(mode) {
   const canvas = document.createElement('canvas'); document.body.appendChild(canvas);
@@ -30,7 +32,7 @@ async function run(mode) {
   renderer.setSize(2 * W, H); renderer.setPixelRatio(1);
   renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.outputColorSpace = THREE.SRGBColorSpace;
   await renderer.init();
-  const keep = mode === 'kept' ? keepProgramsAcrossXR(renderer) : null;
+  if (mode !== 'stock') separateXRPass(renderer);
   const be = renderer.backend, count = { programs: 0, pipelines: 0 };
   for (const [k, f] of [['createProgram', 'programs'], ['createRenderPipeline', 'pipelines']]) { const o = be[k].bind(be); be[k] = (...a) => { count[f]++; return o(...a); }; }
   const scene = new THREE.Scene();
@@ -48,19 +50,26 @@ async function run(mode) {
     const c0 = { ...count }, t0 = performance.now();
     renderer.render(scene, xr ? xrCam : desk);
     renderer.render(scene, xr ? xrCam : desk);           // a second frame: settles, must cost nothing new
-    const px = xr ? await renderer.readRenderTargetPixelsAsync(out, 0, 0, 1, 1) : null;
-    steps.push({ label, programs: count.programs - c0.programs, pipelines: count.pipelines - c0.pipelines, ms: Math.round(performance.now() - t0) });
+    const tr = performance.now();
+    const px = xr ? await renderer.readRenderTargetPixelsAsync(out, 0, 0, 1, 1) : null;   // GPU sync: charged separately
+    steps.push({ label, programs: count.programs - c0.programs, pipelines: count.pipelines - c0.pipelines, ms: Math.round(tr - t0), readMs: Math.round(performance.now() - tr) });
   };
   await frame('desktop (boot)', false);
+  if (mode === 'prewarmed') {
+    const c0 = { ...count }, t0 = performance.now();
+    await renderer.compileAsync(scene, stereoStandIn(THREE, desk), scene);   // on the desktop, before any session
+    steps.push({ label: 'prewarm (async)', programs: count.programs - c0.programs, pipelines: count.pipelines - c0.pipelines, ms: Math.round(performance.now() - t0) });
+    await frame('desktop again', false);
+  }
   await frame('enter 1', true);
   await frame('exit 1', false);
   await frame('enter 2', true);
   await frame('exit 2', false);
-  const r = { mode, steps, kept: keep?.size ?? null };
+  const r = { mode, steps };
   renderer.dispose(); canvas.remove();
   return r;
 }
-window.__probe = (async () => ({ stock: await run('stock'), kept: await run('kept') }))()
+window.__probe = (async () => ({ stock: await run('stock'), split: await run('split'), prewarmed: await run('prewarmed') }))()
   .catch((e) => ({ error: String(e && e.stack || e) }));
 </script></body></html>`;
 
@@ -85,16 +94,21 @@ try {
   const check = (n, ok, note = '') => { if (ok) { pass++; console.log(`  ok    ${n}`); } else { fail++; console.log(`  FAIL  ${n}${note ? `  -- ${note}` : ''}`); } };
   if (res.error) check('probe ran', false, res.error);
   else {
-    for (const r of [res.stock, res.kept]) {
-      console.log(`\n${r.mode}${r.kept !== null ? ` (retained at end: ${r.kept})` : ''}`);
-      for (const s of r.steps) console.log(`  ${s.label.padEnd(15)} programs+${String(s.programs).padStart(4)}  pipelines+${String(s.pipelines).padStart(4)}  ${s.ms} ms`);
+    for (const r of [res.stock, res.split, res.prewarmed]) {
+      console.log(`\n${r.mode}`);
+      for (const st of r.steps) console.log(`  ${st.label.padEnd(16)} programs+${String(st.programs).padStart(4)}  pipelines+${String(st.pipelines).padStart(4)}  render ${st.ms} ms${st.readMs ? ` (+ readback ${st.readMs} ms)` : ''}`);
     }
     console.log('');
-    const S = Object.fromEntries(res.stock.steps.map((s) => [s.label, s])), K = Object.fromEntries(res.kept.steps.map((s) => [s.label, s]));
+    const by = (r) => Object.fromEntries(r.steps.map((st) => [st.label, st]));
+    const S = by(res.stock), X = by(res.split), P = by(res.prewarmed);
+    const none = (st) => st && st.programs === 0 && st.pipelines === 0;
     check(`stock: boot builds the desktop variants (≥ ${N} pipelines)`, S['desktop (boot)'].pipelines >= N, JSON.stringify(S['desktop (boot)']));
     check('stock REPRODUCES: the first exit rebuilds the discarded desktop variant (≥ N pipelines)', S['exit 1'].pipelines >= N, JSON.stringify(S['exit 1']));
-    check('kept: the first entry still builds the XR variants (nothing to reuse yet)', K['enter 1'].pipelines >= N, JSON.stringify(K['enter 1']));
-    check('kept: exit 1, enter 2, exit 2 build NOTHING — the other variant was retained', ['exit 1', 'enter 2', 'exit 2'].every((l) => K[l].programs === 0 && K[l].pipelines === 0), JSON.stringify(res.kept.steps));
+    check('split: the first entry builds the XR variants (nothing warmed them)', X['enter 1'].pipelines >= N, JSON.stringify(X['enter 1']));
+    check('split: exit 1, enter 2, exit 2 build NOTHING — both variants live side by side', ['exit 1', 'enter 2', 'exit 2'].every((l) => none(X[l])), JSON.stringify(res.split.steps));
+    check('prewarmed: the stand-in warm built the XR variants (≥ N pipelines) — a zero-eye camera would build none', P['prewarm (async)'].pipelines >= N, JSON.stringify(P['prewarm (async)']));
+    check('prewarmed: …and the desktop frame after it rebuilt nothing (the warm did not evict desktop)', none(P['desktop again']), JSON.stringify(P['desktop again']));
+    check('prewarmed: EVERY switch builds nothing, the first entry included', ['enter 1', 'exit 1', 'enter 2', 'exit 2'].every((l) => none(P[l])), JSON.stringify(res.prewarmed.steps));
   }
   console.log(`\n${pass} passed, ${fail} failed`);
   code = fail ? 1 : 0;
