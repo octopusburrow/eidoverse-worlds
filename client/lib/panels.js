@@ -150,6 +150,8 @@ function guardActions(root) {
   }, true);
 }
 
+let fieldClip = null;   // { value } — a copied field value, pasted by type (the OS clipboard gets a copy too)
+export const _fieldClip = () => fieldClip;   // probes
 let treeDrag = null;   // the tree row being dragged (id), across the dragstart → drop pair
 
 export function renderDOM(body, fields, edit) {
@@ -579,6 +581,30 @@ function fieldDOM(f, edit) {
       row.append(box);
       break;
     }
+  }
+  // right-click a value field → copy value / paste value / copy path / reset to default. Reads
+  // the LIVE field (update() keeps it current: the closure's f is the value at build time).
+  if (f.k != null && ['num', 'text', 'enum', 'check', 'color', 'range', 'json'].includes(f.t)) {
+    let live = f;
+    const upd = row.update;
+    row.update = (nf) => { live = nf; upd?.(nf); };
+    row.oncontextmenu = (e) => {
+      if (/INPUT|TEXTAREA|SELECT/.test(e.target?.tagName ?? '') && e.target.type !== 'checkbox' && e.target.type !== 'color') return;   // keep the native text menu in a text box
+      e.preventDefault();
+      const canPaste = fieldClip != null && typeof fieldClip.value === typeof live.value && !live.disabled;
+      const items = [
+        { k: 'copy', label: 'copy value' },
+        ...(canPaste ? [{ k: 'paste', label: `paste value  (${String(fieldClip.value).slice(0, 18)})` }] : []),
+        ...(live.path ? [{ k: 'path', label: `copy path  (${live.path})` }] : []),
+        ...(live.def !== undefined && live.value !== live.def && !live.disabled ? [{ k: 'reset', label: 'reset to default' }] : []),
+      ];
+      contextMenu(e.clientX, e.clientY, items, (k) => {
+        if (k === 'copy') { fieldClip = { value: live.value }; try { navigator.clipboard?.writeText?.(typeof live.value === 'string' ? live.value : JSON.stringify(live.value)); } catch { /* the in-page clip is enough */ } }
+        else if (k === 'paste') edit(live.k, fieldClip.value);
+        else if (k === 'path') { fieldClip = { value: live.path }; try { navigator.clipboard?.writeText?.(live.path); } catch { /* ok */ } }
+        else if (k === 'reset') edit(live.k, live.def);
+      });
+    };
   }
   // revert-to-default (Godot's ↺ / Blender's Backspace): a field that declares `def` grows a
   // small ↺ while its value differs; clicking commits the default through the same edit path

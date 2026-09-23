@@ -485,6 +485,30 @@ console.log('\nrevert to default (↺): shown only when a value differs; an ordi
   check('position has no ↺ (no meaningful default)', await evalJson(`!${rowOf('pos x')}?.querySelector('.sp-revert')`));
 }
 
+console.log('\nright-click a field: copy value, paste value, copy path, reset to default:');
+{
+  await evalJson(`import('/lib/scenegraph.js').then((m) => (m.sceneSelect('benchlamp'), true))`);
+  await sleep(300);
+  const rowOf = (label: string) => `[...${insp}.querySelectorAll('.sp-f-num')].find((r) => r.querySelector('.sp-label')?.textContent === ${JSON.stringify(label)})`;
+  const menuOn = (label: string) => evalJson(`(() => { const l = ${rowOf(label)}.querySelector('.sp-label'); l.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 1400, clientY: 300 })); return [...document.querySelectorAll('.sp-ctx-item')].map((i) => i.textContent); })()`);
+  const pick = (re: string) => evalJson(`(() => { const i = [...document.querySelectorAll('.sp-ctx-item')].find((x) => new RegExp(${JSON.stringify(re)}).test(x.textContent)); i?.click(); return !!i; })()`);
+  const E = (k: string) => evalJson(`import('/lib/state.js').then((m) => m.state.st.entities.benchlamp.${k})`);
+  await evalJson(`(() => { const i = ${rowOf('brightness')}.querySelector('.sp-num'); i.value = '25'; i.dispatchEvent(new Event('change')); return true; })()`);
+  await waitFor(`import('/lib/state.js').then((m) => m.state.st.entities.benchlamp.intensity === 25)`);
+  const items = await menuOn('brightness') as string[];
+  check('the menu offers copy value, copy path (light.intensity) and reset to default', items.some((t) => /^copy value/.test(t)) && items.some((t) => /copy path\s+\(light\.intensity\)/.test(t)) && items.some((t) => /reset to default/.test(t)), JSON.stringify(items));
+  await pick('^copy value');
+  check('copy value holds the LIVE value (25)', await evalJson(`import('/lib/panels.js').then((m) => m._fieldClip()?.value === 25)`), JSON.stringify(await evalJson(`import('/lib/panels.js').then((m) => m._fieldClip())`)));
+  const rItems = await menuOn('range') as string[];
+  check('another number field offers "paste value (25)"', rItems.some((t) => /paste value\s+\(25\)/.test(t)), JSON.stringify(rItems));
+  await pick('^paste value');
+  check('paste commits it: range = 25', await waitFor(`import('/lib/state.js').then((m) => m.state.st.entities.benchlamp.range === 25)`), JSON.stringify(await E('range')));
+  await menuOn('range'); await pick('reset to default');
+  check('reset to default: range = 10', await waitFor(`import('/lib/state.js').then((m) => m.state.st.entities.benchlamp.range === 10)`), JSON.stringify(await E('range')));
+  await menuOn('brightness'); await pick('^copy path');
+  check('copy path puts the address a model uses on the clip', await evalJson(`import('/lib/panels.js').then((m) => m._fieldClip()?.value === 'light.intensity')`));
+}
+
 console.log('\ninspector filter: non-matches hide, groups holding a hit open (even folded ones):');
 {
   await evalJson(`import('/lib/scenegraph.js').then((m) => (m.sceneSelect('benchlamp'), true))`);
