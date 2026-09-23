@@ -456,6 +456,30 @@ console.log('\npicture + sound in the inspector (schema groups; uploads through 
   await cdp.send('Page.setInterceptFileChooserDialog', { enabled: false });
 }
 
+console.log('\ninspector filter: non-matches hide, groups holding a hit open (even folded ones):');
+{
+  await evalJson(`import('/lib/scenegraph.js').then((m) => (m.sceneSelect('benchlamp'), true))`);
+  await sleep(300);
+  // field labels only — the header's info lines (id, lib, placed by, world) stay by design
+  const labels = `[...${insp}.querySelectorAll('.sp-row:not(.sp-f-info) .sp-label')].map((l) => l.textContent).filter(Boolean)`;
+  const groups = `[...${insp}.querySelectorAll('.sp-group')].map((g) => g.textContent.slice(2))`;
+  const setFilter = (v: string) => evalJson(`(() => { const i = [...${insp}.querySelectorAll('.sp-f-text .sp-text')].find((x) => /filter properties/.test(x.placeholder)); i.value = ${JSON.stringify(v)}; i.dispatchEvent(new Event('change')); i.blur(); return true; })()`);
+  // (no \s in these page regexes: inside a TS template literal it collapses to a plain 's')
+  // fold the Light group first: a hit inside it must still show
+  await evalJson(`([...${insp}.querySelectorAll('.sp-group')].find((g) => /^▾ Light/.test(g.textContent))?.click(), true)`);
+  check('Light folded before filtering', await waitFor(`[...${insp}.querySelectorAll('.sp-group')].some((g) => /^▸ Light/.test(g.textContent))`), JSON.stringify(await evalJson(groups)));
+  await setFilter('range');
+  check('"range": only range rows remain, and the folded Light group OPENS for its hit', await waitFor(`(() => { const L = ${labels}; return L.length > 0 && L.every((l) => /range/.test(l)) && [...${insp}.querySelectorAll('.sp-group')].some((g) => /^▾ Light/.test(g.textContent)); })()`), JSON.stringify({ labels: await evalJson(labels), groups: await evalJson(groups) }));
+  check('…and Flags (no hit) is gone', !(await evalJson(groups) as string[]).some((g) => /Flags/.test(g)));
+  await setFilter('flags');
+  check('a matching GROUP name keeps all its fields', await waitFor(`(() => { const L = ${labels}; return L.includes('locked') && L.includes('hidden') && L.includes('label'); })()`), JSON.stringify(await evalJson(labels)));
+  await setFilter('zzzz');
+  check('no match says so', await waitFor(`/no property matches "zzzz"/.test(${insp}.textContent)`));
+  await setFilter('');
+  check('clearing brings everything back (Flags and Channels)', await waitFor(`(() => { const G = ${groups}; return G.some((g) => /Flags/.test(g)) && G.some((g) => /Channels/.test(g)); })()`), JSON.stringify(await evalJson(groups)));
+  await evalJson(`([...${insp}.querySelectorAll('.sp-group')].find((g) => /^▸ Light/.test(g.textContent))?.click(), true)`);   // unfold for later checks
+}
+
 console.log('\nrename in the tree: double-click, F2, or the row menu; commits the label comp:');
 {
   const label = () => evalJson(`import('/lib/world.js').then((m) => m.comps.get('crate1')?.label ?? null)`);

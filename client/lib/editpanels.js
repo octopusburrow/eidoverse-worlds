@@ -333,6 +333,31 @@ function multiFields(ids) {
   return f;
 }
 
+// ---------------------------------------------------------------- inspector filter
+// Hide non-matches and OPEN the groups that hold a hit — the two known-failed designs are
+// Blender's highlight-only search and Godot's hits left buried under a collapsed header
+// (proposals#10043). Matches a field's label or key; a group whose name matches keeps all
+// of its fields. The header lines and the filter box itself always stay.
+let ifilter = '';
+function filterFields(f, q) {
+  const needle = String(q ?? '').trim().toLowerCase();
+  if (!needle) return f;
+  const has = (x) => [x.label, x.k].some((v) => v != null && String(v).toLowerCase().replace(/^(ch|ed):/, '').includes(needle));
+  const out = []; let group = null, rows = [], groupHit = false, any = false;
+  const flush = () => {
+    const keep = groupHit ? rows : rows.filter((x) => x.t !== 'info' && x.t !== 'btn' && has(x));
+    if (group && keep.length) { out.push({ ...group, open: true }); out.push(...keep); any = true; }
+  };
+  for (const x of f) {
+    if (x.t === 'group') { flush(); group = x; rows = []; groupHit = has(x); continue; }
+    if (!group) { out.push(x); continue; }   // the header and the filter box
+    rows.push(x);
+  }
+  flush();
+  if (!any) out.push({ t: 'info', label: '', value: `no property matches "${q}"` });
+  return out;
+}
+
 function inspectorFields() {
   const id = sceneSelected();
   if (!id || !entities.has(id)) return [{ t: 'info', label: 'selection', value: 'nothing selected — click a thing, or a row in the hierarchy' }];
@@ -357,6 +382,7 @@ function inspectorFields() {
   ];
 
   // CHANNELS — the numeric lane: every num in the schema, transform first
+  f.push({ t: 'text', k: 'ifilter', label: '', value: ifilter, placeholder: 'filter properties ⏎', hint: 'non-matching fields hide; groups with a hit open' });
   f.push({ t: 'group', k: 'channels', label: `Channels${locked ? ' 🔒' : ''}${obj.userData.mountedTo ? ' (mounted)' : ''}`, open: isOpen(id, 'channels') });
   for (const c of channels(schema)) {
     f.push({ ...c, k: `ch:${c.key}`, label: c.group === 'pos' ? c.label : `${c.group} · ${c.label ?? c.k}`, compact: true });
@@ -389,13 +415,15 @@ function inspectorFields() {
     f.push({ t: 'list', k: 'bhv', rows: mine.map((b) => ({ id: b.id, label: `${b.status === 'running' ? '▶' : '⏸'} ${b.id}`, sub: `${b.timers ? `${b.timers}⏲ ` : ''}${b.status ?? ''}`, actions: [{ k: 'unbind', label: 'unbind', danger: true }] })) });
   }
   f.push({ t: 'btn', k: 'remove', label: 'remove', danger: true, vrOnly: true });   // desktop removes with Del / Backspace / X / right-click / Edit ▸ delete; a headset has no keys
-  painted = f;
-  return f;
+  const shown = filterFields(f, ifilter);
+  painted = shown;
+  return shown;
 }
 
 function inspectorDispatch(action, payload, field, opts = {}) {
   const id = sceneSelected(); const obj = entities.get(id);
   if (action === 'fold') { toggleFold(id, payload); repaintAll(); return; }
+  if (action === 'ifilter') { ifilter = String(payload ?? ''); repaintAll(); return; }
   if (!obj) return;
 
   // ref field: a click with NO payload arms the pick (or cancels it); a null
