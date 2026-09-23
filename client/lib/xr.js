@@ -18,7 +18,8 @@
 // foveation 1 standalone / 0 PC (Basis split; ?fov=), local-floor, and the settled law: NEVER navigate mid-session.
 
 import { installRenderListTolerance, THREE, renderer, camera, scene, XR_BOOT, PREF_HEADSET_SEEN, xrPixelRatio } from './core.js';
-import { decideEntryFailure } from './xr_entry_policy.js';   // what a failed session request MEANS (#197 B1)
+import { decideEntryFailure } from './xr_entry_policy.js';
+import { keepProgramsAcrossXR } from './xrprogramkeep.js';   // the exit hang: both shader variants survive the switch   // what a failed session request MEANS (#197 B1)
 import { makeEntryEffects, handleEntryFailure } from './xr_entry_effects.js';
 import { installEntryClock } from './xr_frame_clock.js';   // who owns window.rAF while presenting (#197 B2)
 import { CONFIG, report, bus, tee, wornNameOf } from './base.js';
@@ -617,6 +618,9 @@ async function enterVR({ retryOf = null } = {}) {
     try { localStorage.setItem(PREF_HEADSET_SEEN, String(Date.now())); } catch {}   // a REAL session, not a capability answer (phones say yes to Cardboard): next boot picks WebGL up front. The TIME, not a flag: it expires (#197 B3)
     tee(`[xr] enter #${sessionNo}: session granted (${session.enabledFeatures?.length ?? '?'} features)`); markXrAbsent(false);
     renderer.xr.enabled = true;
+    // BEFORE the first XR frame: that frame releases every desktop variant, and they must stay findable for the exit
+    // (xrprogramkeep.js; idempotent, so re-entry and a WebGL-XR boot both land here)
+    globalThis.__xrProgramKeep = keepProgramsAcrossXR(renderer) ?? globalThis.__xrProgramKeep ?? null;
     // Tier A6 (gap list 09-05): CHOOSE the floor reference space — before this it
     // was only requested, and three's default is 'local' (eye-level origin), so
     // the world's floor could sit anywhere relative to the real one. The type

@@ -231,6 +231,9 @@ check('clicking the visor drove the real enterVR to a granted session',
 check('installEntryClock SHIMMED window.requestAnimationFrame on the NON-EMULATED product path',
   afterEnter.rafIsNative === false,
   `window.rAF is still native — the install was bypassed (IWER visible to the product? ${await ev(() => !!globalThis.IWER)})`);
+check('entry installed the shader-variant keep (xrprogramkeep.js — the exit-hang fix) before the first XR frame',
+  await ev(() => (globalThis.__xrProgramKeep?.cap ?? 0) > 0),   // the handle exists only if install found live Pipelines
+  await ev(() => JSON.stringify(globalThis.__xrProgramKeep ?? null)));
 await pg.waitForTimeout(600);
 const sf = await ev(() => window.__probe.sessionFrames);
 check('the XR frame loop is DRIVEN: session callbacks fired after the grant', sf > 5, `sessionFrames=${sf} in 600 ms`);
