@@ -152,5 +152,51 @@ console.log("\nguard (AGENTS.md \"Guarding\"): named from the placer STAMP, read
   check("an entity from before the stamp falls back to its actor", /only bea /.test(fieldAt(legacy, "flags.guard")?.hint ?? ""));
 }
 
+console.log("\npicture + sound: schema groups, validated before any verb:");
+{
+  const PNG = "store/images/abc.png", MP3 = "store/audio/abc.mp3";
+  const crate = { pos: [0, 0, 0], lib: "crate", comp: {} };
+  const parts = ["screenplane", "frame"];
+  const sch = inspectSchema(crate, "c", { parts });
+  const addBtns = sch.groups.find((g: any) => g.group === "comp").fields.filter((f: any) => f.t === "btn").map((f: any) => f.k);
+  check("no picture/sound yet: Components offers + picture… and + sound… (client gestures)", addBtns.includes("add:picture") && addBtns.includes("add:sound"), JSON.stringify(addBtns));
+  check("…but not to a model reading the schema without parts (it sets fields instead)", !inspectSchema(crate, "c").groups.find((g: any) => g.group === "comp").fields.some((f: any) => String(f.k).startsWith("add:")));
+  const lamp = { kind: "light", pos: [0, 1, 0], comp: {} };
+  check("a light is offered neither", !inspectSchema(lamp, "l", { parts: [] }).groups.find((g: any) => g.group === "comp").fields.some((f: any) => String(f.k).startsWith("add:")));
+  const gesture = editVerbs(crate, "c", { "comp.add:picture": true }, { parts });
+  check("the add button is a gesture: editVerbs refuses it, sends nothing", !gesture.verbs.length && /gesture/.test(gesture.errors[0] ?? ""), JSON.stringify(gesture));
+  const hang = editVerbs(crate, "c", { "picture.src": PNG }, { parts });
+  check("setting src on a fresh thing hangs it on the FIRST named part, normalized", hang.verbs[0]?.args?.type === "picture" && hang.verbs[0].args.data?.part === "screenplane" && hang.verbs[0].args.data.src === PNG && hang.verbs[0].args.data.lit === "scene", JSON.stringify(hang));
+  const url = editVerbs(crate, "c", { "picture.src": "https://evil.example/x.png" }, { parts });
+  check("a URL is refused with the rule, and nothing is sent", !url.verbs.length && /not an allowed picture source/.test(url.errors[0] ?? ""), JSON.stringify(url.errors));
+  const model = editVerbs(crate, "c", { "picture.src": PNG, "picture.part": "frame", "picture.look": "a red square" });
+  check("a model with no parts list creates one by setting src + part together (validated once, at the end)", model.verbs[0]?.args?.data?.part === "frame" && model.verbs[0].args.data.look === "a red square", JSON.stringify(model));
+  const hung = { ...crate, comp: { picture: { src: PNG, part: "screenplane", lit: "scene", flip: false } } };
+  const g = inspectSchema(hung, "c", { parts }).groups.find((x: any) => x.group === "picture");
+  check("a hung picture: part is a dropdown of the model's parts", fieldAt({ groups: [g] }, "picture.part")?.t === "enum" && fieldAt({ groups: [g] }, "picture.part")?.options.length === 2);
+  check("…and the normalizer's advice shows (no look line)", g.fields.some((f: any) => f.t === "info" && /no look line/.test(f.value)));
+  check("…and picture is claimed (no raw-JSON row)", !fieldAt(inspectSchema(hung, "c", { parts }), "comp.picture"));
+  const lit = editVerbs(hung, "c", { "picture.lit": "self" }, { parts });
+  check("changing lit keeps src and part", lit.verbs[0]?.args?.data?.lit === "self" && lit.verbs[0].args.data.src === PNG && lit.verbs[0].args.data.part === "screenplane", JSON.stringify(lit));
+  check("take down → comp picture null", editVerbs(hung, "c", { "picture.down": true }).verbs[0]?.args?.data === null);
+
+  const snd = editVerbs(crate, "c", { "sound.src": MP3 }, { parts, now: 1000 });
+  check("setting a file on a fresh thing makes a sound that starts PAUSED (play is the deliberate start)", snd.verbs[0]?.args?.data?.playing === false && snd.verbs[0].args.data.t0 === undefined && snd.verbs[0].args.data.src === MP3, JSON.stringify(snd));
+  const paused = { ...crate, comp: { sound: { src: MP3, playing: false, loop: true, volume: 0.8, radius: 12 } } };
+  const play = editVerbs(paused, "c", { "sound.play": true }, { now: 5000 });
+  check("play stamps t0 = now, so everyone seeks together", play.verbs[0]?.args?.data?.playing === true && play.verbs[0].args.data.t0 === 5000, JSON.stringify(play));
+  const playing = { ...crate, comp: { sound: { src: MP3, playing: true, loop: true, volume: 0.8, radius: 12, t0: 5000 } } };
+  const vol = editVerbs(playing, "c", { "sound.volume": "*=0.5" }, { now: 9000 });
+  check("tuning a PLAYING sound keeps its t0 (nobody's playhead jumps)", vol.verbs[0]?.args?.data?.t0 === 5000 && vol.verbs[0].args.data.volume === 0.4, JSON.stringify(vol));
+  check("volume clamps to 1", editVerbs(playing, "c", { "sound.volume": 3 }).verbs[0]?.args?.data?.volume === 1);
+  const pause = editVerbs(playing, "c", { "sound.pause": true });
+  check("pause drops t0", pause.verbs[0]?.args?.data?.playing === false && !("t0" in pause.verbs[0].args.data));
+  check("silence → comp sound null", editVerbs(playing, "c", { "sound.silence": true }).verbs[0]?.args?.data === null);
+  const sg = inspectSchema(playing, "c").groups.find((x: any) => x.group === "sound");
+  check("a playing sound offers pause + restart, not play", sg.fields.some((f: any) => f.k === "pause") && sg.fields.find((f: any) => f.k === "play")?.label === "restart");
+  const held = inspectSchema({ ...playing, placer: { id: "ana" }, comp: { ...playing.comp, guard: true } }, "c", { mayAuthor: false });
+  check("guarded by someone else: sound fields read-only too", fieldAt(held, "sound.volume")?.disabled === true && fieldAt(held, "sound.pause")?.disabled === true);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

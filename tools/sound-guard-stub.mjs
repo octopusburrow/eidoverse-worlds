@@ -5,6 +5,8 @@
 // audio seams only have to EXIST; a call is a test bug and says so.
 export const editors = [];
 export const registerEditor = (fn) => { editors.push(fn); };
+export const registerHandler = () => {};   // the edit-mode gestures (upload); these suites test the html block
+export const commitEdit = () => ({ ok: true, errors: [] });
 export const toast = () => {};
 export const flashHint = () => {};
 export const audioContext = () => { throw new Error('sound-guard-test builds no graph'); };

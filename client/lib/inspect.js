@@ -29,13 +29,14 @@ import { sendVerb } from './net.js';
 import { renderDOM } from './panels.js';
 import { inspectSchema, editVerbs, fieldAt } from '../../shared/editschema.js';
 import { mayAuthor } from './placer.js';
+import { namedParts } from './parts.js';
 const R2D = 180 / Math.PI;
 
-const handlers = new Map();      // group → fn
+const handlers = new Map();      // group → [fn] — consulted in order; the first to return true handled it
 const htmlEditors = [];
 let hooks = { undo: null, commitLight: null, casting: null };
 
-export function registerHandler(group, fn) { handlers.set(group, fn); }
+export function registerHandler(group, fn) { if (!handlers.has(group)) handlers.set(group, []); handlers.get(group).push(fn); }
 export function registerEditor(fn) { htmlEditors.push(fn); }
 /** editpanels installs the undo stack and the light coalescer at init —
  *  importing build.js from here would close an import loop through
@@ -44,10 +45,15 @@ export function setEditHooks(h) { hooks = { ...hooks, ...h }; }
 
 /** The folded record for a placed thing — exactly what the schema reads. */
 export const foldRecord = (id) => state.st.entities?.[id] ?? null;
+/** What only a live client knows about a thing: the schema AND the commit path read the same. */
+export function liveFor(id) {
+  const obj = entities.get(id);
+  const light = !!obj?.userData?.isLight;
+  return { casting: light ? hooks.casting?.(obj) : undefined, mayAuthor: mayAuthor(id), parts: obj && !light ? namedParts(obj) : undefined };
+}
 export function schemaFor(id) {
   const rec = foldRecord(id); if (!rec) return { id, groups: [] };
-  const obj = entities.get(id);
-  return inspectSchema(rec, id, { casting: obj?.userData?.isLight ? hooks.casting?.(obj) : undefined, mayAuthor: mayAuthor(id) });
+  return inspectSchema(rec, id, liveFor(id));
 }
 
 let gesture = null;   // { id, rec } — the record as it stood when a drag began
@@ -76,10 +82,11 @@ export function planEdit(id, key, value, base = null) {
   if (!rec) return { verbs: [], inverses: [], errors: [`${id} is not in the fold`] };
   const dot = key.indexOf('.');
   const group = key.slice(0, dot), k = key.slice(dot + 1);
-  const f = fieldAt(inspectSchema(rec, id), key);
+  const live = liveFor(id);
+  const f = fieldAt(inspectSchema(rec, id, live), key);
   if (f?.deg && typeof value === 'number') value = value * R2D;   // panel steppers speak wire (radians); editVerbs takes the face
   if (group === 'comp' && k !== '+' && value === '') return { verbs: [], inverses: [], errors: [`${k}: empty — use "remove ${k}" to remove it`] };
-  const { verbs, errors } = editVerbs(rec, id, { [key]: value });
+  const { verbs, errors } = editVerbs(rec, id, { [key]: value }, live);
   const inverses = verbs.map((v) => inverseOf(v, base ?? rec, id)).filter(Boolean);
   return { verbs, inverses, errors };
 }
@@ -97,8 +104,9 @@ export function commitEdit(id, key, value, opts = {}) {
   const group = key.slice(0, dot), k = key.slice(dot + 1);
   const live = !!opts.live;
   if (live && (!gesture || gesture.id !== id)) gesture = { id, rec: JSON.parse(JSON.stringify(rec)) };
-  const h = handlers.get(group);
-  if (h) { try { if (h(id, obj, k, value, opts)) { if (!live) gesture = null; return { ok: true, handled: true }; } } catch (e) { console.warn(`[inspect] ${group} handler`, e); } }
+  for (const h of handlers.get(group) ?? []) {
+    try { if (h(id, obj, k, value, opts)) { if (!live) gesture = null; return { ok: true, handled: true }; } } catch (e) { console.warn(`[inspect] ${group} handler`, e); }
+  }
   if (live) return { ok: true, live: true };
   const base = gesture?.id === id ? gesture.rec : rec;   // the pose/values before the drag began
   gesture = null;
@@ -119,7 +127,9 @@ export function editorsFor(ctx) {
   const out = [];
   for (const fn of htmlEditors) { try { const e = fn(ctx); if (e) out.push(e); } catch { /* skip it */ } }
   const schema = schemaFor(ctx.id);
-  schema.groups.filter((g) => !['pos', 'flags', 'comp'].includes(g.group)).forEach((g, i) => {
+  // picture/sound keep their reviewed html blocks here (the registered editors
+  // above) until this panel retires; the edit-mode inspector renders the groups
+  schema.groups.filter((g) => !['pos', 'flags', 'comp', 'picture', 'sound'].includes(g.group)).forEach((g, i) => {
     const host = `data-fe="${i}"`;
     out.push({
       html: `<div style="margin:4px 0"><b>${ctx.esc?.(g.label ?? g.group) ?? g.group}</b><div ${host}></div></div>`,

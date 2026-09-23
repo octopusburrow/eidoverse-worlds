@@ -21,6 +21,9 @@
 //   Edits that share a verb coalesce: three transform channels are ONE place
 //   carrying the full pose; two socket fields are ONE merged comp.
 
+import { normalizePicture, PICTURE_LIT, PICTURE_LOOK_MAX } from './picture.js';
+import { normalizeSound, SOUND_LOOK_MAX } from './sound.js';
+
 const R2D = 180 / Math.PI;
 export const AXES = { x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1], '-x': [-1, 0, 0], '-y': [0, -1, 0], '-z': [0, 0, -1] };
 export const MOTION_TYPES = ['pendulum', 'spin', 'orbit', 'bob', 'path'];
@@ -62,7 +65,9 @@ const motionKeys = (ent) => Object.keys(ent?.comp ?? {}).filter((k) => (k === 'm
 
 /** @param ent   the folded entity record (shared/fold.js), or null
  *  @param id    its id
- *  @param live  optional viewer extras: { casting?: boolean, mayAuthor?: boolean }
+ *  @param live  optional viewer extras: { casting?: boolean, mayAuthor?: boolean,
+ *               parts?: string[] (the model's named mesh parts — a picture's `part`
+ *               becomes a dropdown and '+ picture' is offered), now?: number }
  *               mayAuthor — may THIS viewer author the thing (its placer, the
  *               owner, an operator)? undefined = unknown: nothing is disabled
  *               on its account and the server decides, as it always does. */
@@ -213,11 +218,57 @@ export function inspectSchema(ent, id, live = {}) {
     ] });
   }
 
+  // picture (shared/picture.js): an image on a named part. Every field edit
+  // merges into the bag and must pass normalizePicture before a verb goes out.
+  if (c.picture && typeof c.picture === 'object') {
+    const p = c.picture; const parts = live.parts;
+    const partOpts = parts?.length ? [...new Set([...(p.part && !parts.includes(p.part) ? [p.part] : []), ...parts])] : null;
+    const fields = [
+      partOpts ? { t: 'enum', k: 'part', label: 'part', value: p.part, options: partOpts.map((v) => ({ v, label: v })), hint: 'the named mesh part the image goes on' }
+        : { t: 'text', k: 'part', label: 'part', value: p.part ?? '', hint: 'the GLB node to texture — measure {id} lists them' },
+      { t: 'text', k: 'src', label: 'image', value: p.src ?? '', placeholder: 'eidoverse/assets/… or store/images/…', hint: 'a library path — never a URL' },
+      { t: 'btn', k: 'upload', label: 'upload image…', client: true, hint: 'PNG, JPEG or WebP into the store; the path fills in' },
+      { t: 'text', k: 'look', label: 'what it shows', value: p.look ?? '', placeholder: 'what text-tier residents read', hint: `≤${PICTURE_LOOK_MAX} chars; without it they see only the file name` },
+      { t: 'enum', k: 'lit', label: 'lit', value: p.lit === 'self' ? 'self' : 'scene', options: Object.entries(PICTURE_LIT).map(([v, label]) => ({ v, label })) },
+      { t: 'check', k: 'flip', label: 'flip', value: p.flip === true, hint: 'for a part whose UVs were exported upside down' },
+    ];
+    const n = normalizePicture(p);
+    if (!n.ok) fields.unshift({ t: 'info', label: '', value: `⚠ not shown: ${n.why}` });
+    else if (n.notes.length) fields.push({ t: 'info', label: '', value: n.notes.join(' · ') });
+    fields.push({ t: 'btn', k: 'down', label: 'take down', danger: true });
+    groups.push({ group: 'picture', label: 'picture', verb: 'comp', types: ['picture'], fields });
+  }
+
+  // sound (shared/sound.js): positional audio. Tuning a PLAYING sound keeps its
+  // t0 (nobody's playhead jumps); only play re-stamps it, so everyone seeks together.
+  if (c.sound && typeof c.sound === 'object') {
+    const d = c.sound; const playing = d.playing !== false;
+    const fields = [
+      { t: 'info', label: 'state', value: playing ? '▶ playing' : '⏸ paused' },
+      { t: 'text', k: 'src', label: 'file', value: d.src ?? '', placeholder: 'eidoverse/assets/… or store/audio/…', hint: 'a library path — never a URL' },
+      { t: 'btn', k: 'upload', label: 'upload audio…', client: true, hint: 'MP3, Ogg, WAV, WebM or M4A into the store; the path fills in' },
+      { t: 'text', k: 'look', label: 'what is playing', value: d.look ?? '', placeholder: 'what text-tier residents read', hint: `≤${SOUND_LOOK_MAX} chars` },
+      { t: 'num', k: 'volume', label: 'volume', value: d.volume ?? 0.8, step: 0.05, dp: 2, min: 0, max: 1 },
+      { t: 'num', k: 'radius', label: 'radius', value: d.radius ?? 12, step: 1, dp: 0, min: 1, max: 200, unit: 'm' },
+      { t: 'check', k: 'loop', label: 'loop', value: d.loop !== false },
+    ];
+    const n = normalizeSound(d);
+    if (!n.ok) fields.unshift({ t: 'info', label: '', value: `⚠ not heard: ${n.why}` });
+    fields.push(playing ? { t: 'btn', k: 'pause', label: 'pause' } : { t: 'btn', k: 'play', label: '▶ play', hint: 'starts it for everyone at the same moment' });
+    if (playing) fields.push({ t: 'btn', k: 'play', label: 'restart', hint: 'back to the top, for everyone at once' });
+    fields.push({ t: 'btn', k: 'silence', label: 'silence', danger: true });
+    groups.push({ group: 'sound', label: 'sound', verb: 'comp', types: ['sound'], fields });
+  }
+
   // every type no group speaks for: raw JSON, the blind fold's UI twin —
   // a type invented this morning is editable today
-  const claimed = new Set(['lock', 'guard', 'hidden', 'label', 'sockets', 'particles', ...mk]);
+  const claimed = new Set(['lock', 'guard', 'hidden', 'label', 'sockets', 'particles', 'picture', 'sound', ...mk]);
   const rest = Object.keys(c).filter((t) => !claimed.has(t));
   const fields = rest.map((type) => ({ t: 'text', k: type, label: type, value: JSON.stringify(c[type]), hint: 'raw JSON — a saved edit replaces this type\'s data wholesale; empty removes it' }));
+  // Add Component (Unity's pattern) for the kinds that need a gesture to begin:
+  // a picture needs an image and a part, a sound a file. Both are uploads.
+  if (!c.picture && live.parts?.length) fields.push({ t: 'btn', k: 'add:picture', label: '+ picture…', client: true, hint: 'upload an image and hang it on this thing' });
+  if (!c.sound && !isLight(ent) && live.parts) fields.push({ t: 'btn', k: 'add:sound', label: '+ sound…', client: true, hint: 'upload audio and put it on this thing (starts paused)' });
   fields.push({ t: 'text', k: '+', label: '+ component', value: '', placeholder: 'type (recipe, notice…) ⏎', hint: 'attach a component — any type folds, evaluators give known ones behavior' });
   groups.push({ group: 'comp', label: `Components (${rest.length})`, verb: 'comp', fields });
 
@@ -250,8 +301,8 @@ export function fieldAt(schema, key) {
 /** Turn edits into the fewest verbs that commit them. Numbers may be
  *  relative expressions; a field's hard min/max clamp; disabled fields
  *  refuse. Pure: never sends, never mutates `ent`. */
-export function editVerbs(ent, id, edits) {
-  const schema = inspectSchema(ent, id);
+export function editVerbs(ent, id, edits, live = {}) {
+  const schema = inspectSchema(ent, id, live);
   const errors = [];
   const verbs = [];
   const c = ent?.comp ?? {};
@@ -260,6 +311,10 @@ export function editVerbs(ent, id, edits) {
   const comps = new Map();          // type → next data (null = remove)
   const motions = new Map();        // key → next params (null = rest)
   const flagsComp = (type, data) => comps.set(type, data);
+  // picture/sound: raw bags accumulate across this call's edits and are
+  // validated ONCE at the end, so {src, part} can create a picture together
+  const bags = new Map();            // type → raw next bag (null = remove)
+  const bag = (type, fresh) => { if (!bags.has(type)) bags.set(type, c[type] && typeof c[type] === 'object' ? { ...c[type] } : fresh()); return bags.get(type); };
 
   const num = (f, v) => {
     const cur = +f.value;
@@ -276,7 +331,8 @@ export function editVerbs(ent, id, edits) {
     const dot = key.indexOf('.'); const group = key.slice(0, dot); const k = key.slice(dot + 1);
     // actions and creations that have no field row: comp.<any>, sockets.del,
     // a socket slot that does not exist yet (sockets.<new>|pos|1 declares it)
-    const known = f || (group === 'comp' && k) || (group === 'sockets' && (k === 'del' || k.includes('|')));
+    const known = f || (group === 'comp' && k) || (group === 'sockets' && (k === 'del' || k.includes('|')))
+      || ((group === 'picture' || group === 'sound') && !['upload'].includes(k));   // creation needs no row
     if (!known) { errors.push(`${key}: no such field on ${id}`); continue; }
     if (f?.disabled) { errors.push(`${key}: ${f.hint ?? 'read-only'}`); continue; }
     if (f?.client) { errors.push(`${key}: a viewport gesture, not a value — set the fields it would have set`); continue; }
@@ -346,6 +402,25 @@ export function editVerbs(ent, id, edits) {
         comps.set('particles', next);
         break;
       }
+      case 'picture': {
+        if (k === 'down') { bags.set('picture', null); break; }
+        const b = bag('picture', () => (live.parts?.length ? { part: live.parts[0] } : {})); if (!b) { errors.push('picture: taken down in this same edit'); break; }
+        if (!['part', 'src', 'look', 'lit', 'flip'].includes(k)) { errors.push(`${key}: no such field`); break; }
+        if (k === 'flip') b.flip = bool(raw);
+        else { const v = String(raw ?? '').trim(); if (v) b[k] = v; else if (k === 'look') delete b.look; else b[k] = v; }
+        break;
+      }
+      case 'sound': {
+        if (k === 'silence') { bags.set('sound', null); break; }
+        const b = bag('sound', () => ({ playing: false, loop: true, volume: 0.8, radius: 12 })); if (!b) { errors.push('sound: silenced in this same edit'); break; }
+        if (k === 'play') { b.playing = true; b.t0 = live.now ?? Date.now(); }
+        else if (k === 'pause') { b.playing = false; delete b.t0; }
+        else if (k === 'loop') b.loop = bool(raw);
+        else if (k === 'volume' || k === 'radius') { const n = num(f ?? { value: b[k] ?? (k === 'volume' ? 0.8 : 12), min: k === 'volume' ? 0 : 1, max: k === 'volume' ? 1 : 200 }, raw); if (n == null) break; b[k] = round(n); }
+        else if (k === 'src' || k === 'look') { const v = String(raw ?? '').trim(); if (v) b[k] = v; else if (k === 'look') delete b.look; else b[k] = v; }
+        else errors.push(`${key}: no such field`);
+        break;
+      }
       case 'look': {
         // the ref field commits the target id, or null to clear it. The whole
         // `look` comp goes away when its only field is cleared.
@@ -367,6 +442,12 @@ export function editVerbs(ent, id, edits) {
       }
       default: errors.push(`${key}: no such group`);
     }
+  }
+  for (const [type, b] of bags) {
+    if (b === null) { comps.set(type, null); continue; }
+    const n = type === 'picture' ? normalizePicture(b) : normalizeSound(b);
+    if (!n.ok) { errors.push(`${type}: ${n.why}`); continue; }   // the rule, before any round-trip
+    comps.set(type, type === 'picture' ? n.picture : n.sound);
   }
   if (place) verbs.push({ verb: 'place', args: place });
   if (light) verbs.push({ verb: 'light', args: light });

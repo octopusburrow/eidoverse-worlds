@@ -12,7 +12,7 @@
 
 import { scratchBench, mkCheck, sleep } from './harness.ts';
 
-const { cdp, evalJson, cleanup, die, BASE } = await scratchBench('editpanels');
+const { cdp, cws, evalJson, cleanup, die, BASE, SCRATCH } = await scratchBench('editpanels');
 const { check, tally } = mkCheck();
 
 // Headless Chrome (no working swap chain) delivers rAF callbacks late — the
@@ -387,6 +387,54 @@ console.log('\nDel / Backspace act on what the INSPECTOR shows (a tree pick), no
   await key('KeyX');
   await sleep(600);
   check('X on a locked thing removes nothing', await evalJson(alive('delA')));
+}
+
+console.log('\npicture + sound in the inspector (schema groups; uploads through the real chooser and /upload):');
+{
+  const { writeFileSync } = await import('node:fs');
+  const png = `${SCRATCH}/bench-red.png`, wav = `${SCRATCH}/bench-tone.wav`;
+  writeFileSync(png, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAAEElEQVR4nGM4oaEBRwzEcQDRQxGBSNLB6wAAAABJRU5ErkJggg==', 'base64'));
+  { // 0.25 s of 8 kHz mono 16-bit silence: a real RIFF/WAVE the store sniffs as audio
+    const n = 2000, b = Buffer.alloc(44 + n * 2);
+    b.write('RIFF', 0); b.writeUInt32LE(36 + n * 2, 4); b.write('WAVE', 8); b.write('fmt ', 12); b.writeUInt32LE(16, 16);
+    b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22); b.writeUInt32LE(8000, 24); b.writeUInt32LE(16000, 28); b.writeUInt16LE(2, 32); b.writeUInt16LE(16, 34);
+    b.write('data', 36); b.writeUInt32LE(n * 2, 40); writeFileSync(wav, b);
+  }
+  // answer the NATIVE file chooser the gesture opens, with our fixture
+  let nextFile = '';
+  await cdp.send('Page.setInterceptFileChooserDialog', { enabled: true });
+  cws.addEventListener('message', (ev: any) => {
+    const m = JSON.parse(String(ev.data));
+    if (m.method === 'Page.fileChooserOpened' && nextFile) void cdp.send('DOM.setFileInputFiles', { files: [nextFile], backendNodeId: m.params.backendNodeId });
+  });
+  const comp = (t: string) => evalJson(`import('/lib/world.js').then((m) => m.comps.get('crate1')?.${t} ?? null)`);
+  // a person's click carries user ACTIVATION, which the file chooser requires (Chrome: "File chooser dialog can only be
+  // shown with a user activation"); a plain Runtime.evaluate click does not — say it is a gesture
+  const btn = async (label: string) => (await cdp.send<any>('Runtime.evaluate', { userGesture: true, returnByValue: true, expression: `(() => { const b = [...${insp}.querySelectorAll('button')].find((x) => x.textContent.trim() === ${JSON.stringify(label)}); if (!b) return false; b.click(); return true; })()` }))?.result?.value;
+  const field = (label: string, value: string) => evalJson(`(() => { const r = [...${insp}.querySelectorAll('.sp-row')].find((x) => x.querySelector('.sp-label')?.textContent === ${JSON.stringify(label)}); const i = r?.querySelector('input, select'); if (!i) return false; i.value = ${JSON.stringify(value)}; i.dispatchEvent(new Event('change')); return true; })()`);
+  await evalJson(`import('/lib/scenegraph.js').then((m) => (m.sceneSelect('crate1'), true))`);
+  check('a model with named parts: Components offers "+ picture…" and "+ sound…"', await waitFor(`(() => { const t = [...${insp}.querySelectorAll('button')].map((b) => b.textContent.trim()); return t.includes('+ picture…') && t.includes('+ sound…'); })()`), JSON.stringify(await evalJson(`[...${insp}.querySelectorAll('button')].map((b) => b.textContent.trim())`)));
+  nextFile = png;
+  check('+ picture… opens the chooser', await btn('+ picture…'));
+  check('…the image goes through /upload and hangs on the first named part', await waitFor(`import('/lib/world.js').then((m) => { const p = m.comps.get('crate1')?.picture; return !!p && p.src.startsWith('store/images/') && typeof p.part === 'string' && p.part.length > 0; })`, 10000), JSON.stringify(await comp('picture')) + ' refused=' + JSON.stringify(await evalJson(`window.__refused`)));
+  check('the inspector grows a picture group whose part is a dropdown', await waitFor(`!![...${insp}.querySelectorAll('.sp-f-enum')].find((r) => r.querySelector('.sp-label')?.textContent === 'part')`));
+  await field('what it shows', 'a red square, hung by the bench');
+  check('typing "what it shows" updates look, keeps src', await waitFor(`import('/lib/world.js').then((m) => m.comps.get('crate1')?.picture?.look === 'a red square, hung by the bench' && m.comps.get('crate1').picture.src.startsWith('store/images/'))`), JSON.stringify(await comp('picture')));
+  await field('image', 'https://example.com/x.png');
+  await sleep(500);
+  check('a URL is refused before the wire (src unchanged)', ((await comp('picture')) as any)?.src?.startsWith('store/images/'), JSON.stringify(await comp('picture')));
+  check('the legacy Scene section still shows ONE picture editor, its own (no double from the schema)', await evalJson(`document.querySelectorAll('#sec-scene [data-pe-root]').length === 1 && ![...document.querySelectorAll('#sec-scene [data-fe] .sp-label')].some((l) => l.textContent === 'what it shows')`));
+  check('take down removes it', (await btn('take down')) && await waitFor(`import('/lib/world.js').then((m) => !m.comps.get('crate1')?.picture)`));
+  nextFile = wav;
+  check('+ sound… opens the chooser', await btn('+ sound…'));
+  check('…the audio goes through /upload and lands PAUSED (no t0)', await waitFor(`import('/lib/world.js').then((m) => { const s = m.comps.get('crate1')?.sound; return !!s && s.src.startsWith('store/audio/') && s.playing === false && s.t0 == null; })`, 10000), JSON.stringify(await comp('sound')) + ' refused=' + JSON.stringify(await evalJson(`window.__refused`)));
+  check('▶ play starts it with a t0', (await btn('▶ play')) && await waitFor(`import('/lib/world.js').then((m) => m.comps.get('crate1')?.sound?.playing === true && m.comps.get('crate1').sound.t0 > 0)`), JSON.stringify(await comp('sound')));
+  const t0 = ((await comp('sound')) as any)?.t0;
+  await sleep(300);
+  await field('volume', '0.5');
+  check('turning the volume of a PLAYING sound keeps its t0', await waitFor(`import('/lib/world.js').then((m) => m.comps.get('crate1')?.sound?.volume === 0.5 && m.comps.get('crate1').sound.t0 === ${t0})`), JSON.stringify(await comp('sound')));
+  check('silence removes it', (await btn('silence')) && await waitFor(`import('/lib/world.js').then((m) => !m.comps.get('crate1')?.sound)`));
+  await cdp.send('Page.setInterceptFileChooserDialog', { enabled: false });
 }
 
 console.log('\nleaving:');

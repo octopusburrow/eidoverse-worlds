@@ -36,7 +36,7 @@ import { entities } from './world.js';
 import { audioContext } from './audioctx.js';
 import { playWhenAllowed } from './audiounlock.js';
 import { volumeFor } from './voiceconsent.js';
-import { registerEditor } from './inspect.js';
+import { registerEditor, registerHandler, commitEdit } from './inspect.js';
 import { toast, flashHint } from './ui.js';
 import { guardedByOther, placerName } from './placer.js';   // the server's who-may-author rule, mirrored — by placer, never latest actor (#190)
 import { normalizeSound, SOUND_LOOK_MAX, SOUND_STORE } from '../../shared/sound.js';
@@ -238,3 +238,25 @@ registerEditor(({ id, obj, meta, bag, commit }) => {
     },
   };
 });
+
+// ---- the edit-mode inspector's gestures (fields: the schema's `sound` group).
+// A new sound lands PAUSED — play is the deliberate start that stamps t0.
+function pickFile(accept) {
+  return new Promise((resolve) => {
+    const inp = Object.assign(document.createElement('input'), { type: 'file', accept });
+    inp.onchange = () => resolve(inp.files?.[0] ?? null);
+    inp.click();
+  });
+}
+async function uploadThenSet(id) {
+  const file = await pickFile(SOUND_ACCEPT); if (!file) return;
+  flashHint(`uploading ${esc(file.name)}…`);
+  try {
+    const path = await uploadSound(file);
+    const r = commitEdit(id, 'sound.src', path);
+    if (r.errors?.length) flashHint(`🔊 ${esc(r.errors.join(' · '))}`, 6000);
+    else flashHint(`🔊 ${esc(path.split('/').pop())} — press play`, 3000);
+  } catch (err) { toast(`sound upload failed — ${err.message}`, 'warn', 8000); }
+}
+registerHandler('sound', (id, _obj, k, _v, opts) => { if (k !== 'upload' || opts?.live) return false; uploadThenSet(id); return true; });
+registerHandler('comp', (id, _obj, k, _v, opts) => { if (k !== 'add:sound' || opts?.live) return false; uploadThenSet(id); return true; });

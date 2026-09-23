@@ -25,7 +25,8 @@ import { bus } from './base.js';
 import { primeFiles } from './assets.js';
 import { entities, findPart, comps } from './world.js';
 import { CONFIG } from './base.js';
-import { registerEditor } from './inspect.js';
+import { registerEditor, registerHandler, commitEdit } from './inspect.js';
+import { namedParts } from './parts.js';
 import { toast, flashHint } from './ui.js';
 import { guardedByOther, placerName } from './placer.js';   // the server's who-may-author rule, mirrored — and its one name (#190)
 import { normalizePicture, PICTURE_LIT, PICTURE_LOOK_MAX, PICTURE_STORE } from '../../shared/picture.js';
@@ -232,12 +233,7 @@ export { THREE as _THREE };
 const PICTURE_ACCEPT = 'image/png,image/jpeg,image/webp';
 const esc = (v) => String(v).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-/** Named mesh parts under `root`, in traversal order — what `part` may name. */
-export function namedParts(root) {
-  const out = [];
-  root?.traverse?.((c) => { if (c !== root && c.isMesh && c.name && c.material && !out.includes(c.name)) out.push(c.name); });
-  return out;
-}
+export { namedParts };   // lives in parts.js now: the inspector's `parts` extra reads the same list
 
 /** POST an image file through the store door; resolves to the library-relative path. */
 export async function uploadPicture(file) {
@@ -326,4 +322,33 @@ registerEditor(({ id, obj, meta, bag, commit }) => {
       });
     },
   };
+});
+
+// ---- the edit-mode inspector's gestures (the fields themselves are the schema's
+// `picture` group, shared/editschema.js). An upload is a GESTURE, not a value:
+// pick a file, send it through the store door, then commit the path like any edit.
+function pickFile(accept) {
+  return new Promise((resolve) => {
+    const inp = Object.assign(document.createElement('input'), { type: 'file', accept });
+    inp.onchange = () => resolve(inp.files?.[0] ?? null);
+    inp.click();
+  });
+}
+async function uploadThenSet(id, key) {
+  const file = await pickFile(PICTURE_ACCEPT); if (!file) return;
+  flashHint(`uploading ${esc(file.name)}…`);
+  try {
+    const path = await uploadPicture(file);
+    const r = commitEdit(id, key, path);
+    if (r.errors?.length) flashHint(`🖼 ${esc(r.errors.join(' · '))}`, 6000);
+    else flashHint(`🖼 hung ${esc(path.split('/').pop())}`, 3000);
+  } catch (err) { toast(`picture upload failed — ${err.message}`, 'warn', 8000); }
+}
+registerHandler('picture', (id, _obj, k, _v, opts) => {
+  if (k !== 'upload' || opts?.live) return false;
+  uploadThenSet(id, 'picture.src'); return true;
+});
+registerHandler('comp', (id, _obj, k, _v, opts) => {
+  if (k !== 'add:picture' || opts?.live) return false;
+  uploadThenSet(id, 'picture.src'); return true;   // part defaults to the first named part (the schema's `parts`)
 });
