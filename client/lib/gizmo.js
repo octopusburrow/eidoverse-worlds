@@ -20,6 +20,7 @@ import { sceneSelected } from './scenegraph.js';
 import { getTool, isEditing, pushUndo, refreshOutline, setPointerVeto } from './build.js';
 import { reindexCollider } from './colliders.js';
 import { foldRecord, inverseOf } from './inspect.js';
+import { mayAuthor } from './placer.js';
 import { editVerbs, inspectSchema, fieldAt } from '../../shared/editschema.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
 
@@ -52,7 +53,7 @@ const MODE = { move: 'translate', rotate: 'rotate', scale: 'scale' };
 function editable(id, mode) {
   const rec = foldRecord(id); const obj = entities.get(id);
   if (!rec || !obj || rec.parent || comps.get(id)?.lock) return false;
-  const sc = inspectSchema(rec, id);
+  const sc = inspectSchema(rec, id, { mayAuthor: mayAuthor(id) });   // guarded by someone else → no handles
   const key = mode === 'rotate' ? 'pos.yaw' : mode === 'scale' ? 'pos.scale' : 'pos.x';
   const f = fieldAt(sc, key);
   return !!f && !f.disabled;

@@ -26,7 +26,7 @@ import { heightAt } from './terrain.js';
 import { net, sendVerb, sendDrag } from './net.js';
 import { myState, mouse, setPointerClaim, setEditingProbe } from './controller.js';
 import { flashHint, collapseAll, panelFrame } from './ui.js';
-import { sceneSelect } from './scenegraph.js';
+import { sceneSelect, sceneSelected } from './scenegraph.js';
 import { claimEscape } from './frames.js';
 import { mayAuthor, placerOf, placerName } from './placer.js';   // one rule for who may author (and one name for them), shared with the scene panel
 import { refreshSeatGizmos, resetSeats, armSeatPlacement, seatArmed, seatSelected,
@@ -443,6 +443,20 @@ export function undo() {
   deselect();
 }
 
+// Edit mode's panels own the selection the inspector SHOWS (a tree pick sets
+// it without touching `selected`, which only a viewport pick sets). editpanels
+// installs its remover here — it can't be imported (editpanels imports us).
+// Without it, Del after a tree pick removed nothing, or the last thing picked
+// in the viewport while the inspector showed another.
+let removeHook = null;
+export function setRemoveHook(fn) { removeHook = fn; }
+/** What the keys act on: the inspector's selection, else the viewport's. */
+const keyTarget = () => sceneSelected() ?? selected?.id ?? null;
+function removeTargets() {
+  if (removeHook) { if (removeHook()) deselect(); return; }
+  removeSelected();
+}
+
 function removeSelected() {
   if (!selected) return;
   if (lockedHint(selected.id)) return;   // an accidental Del is the worst accident
@@ -572,8 +586,8 @@ bus.on('key', (e) => {
   if (!e.ctrlKey && !e.metaKey && !e.altKey) {
     const t = { KeyQ: 'select', KeyG: 'move', KeyE: 'rotate', KeyR: 'scale' }[e.code];
     if (t) { setTool(t); return; }
-    if (e.code === 'KeyF' && selected) { bus.emit('edit-find', selected.id); return; }
-    if (e.code === 'KeyX' && selected) { removeSelected(); return; }
+    if (e.code === 'KeyF' && keyTarget()) { bus.emit('edit-find', keyTarget()); return; }
+    if (e.code === 'KeyX' && keyTarget()) { removeTargets(); return; }
   }
-  if ((e.code === 'Delete' || e.code === 'Backspace') && selected) removeSelected();
+  if ((e.code === 'Delete' || e.code === 'Backspace') && keyTarget()) { e.preventDefault?.(); removeTargets(); }
 });

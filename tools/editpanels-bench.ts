@@ -350,6 +350,45 @@ check('…and the ref field now shows the target id, not "pick"', await waitFor(
 await evalJson(`(() => { const w = ${insp}; const r = [...w.querySelectorAll('.sp-f-ref')].find((x) => x.querySelector('.sp-label')?.textContent === 'target'); r.querySelector('.sp-ref-clear').click(); return true; })()`);
 check('the ✕ clears the reference → look comp gone (its only field emptied)', await waitFor(`import('/lib/world.js').then((m) => !m.comps.get('benchlamp')?.look)`), 'look=' + JSON.stringify(await evalJson(`import('/lib/world.js').then((m) => m.comps.get('benchlamp')?.look)`)));
 
+console.log('\nDel / Backspace act on what the INSPECTOR shows (a tree pick), not the last viewport pick:');
+{
+  const L = (id: string, x: number) => evalJson(`import('/lib/net.js').then((m) => m.sendVerb('light', { id: '${id}', pos: [${x}, 1, -3], color: 0xffffff, intensity: 4, range: 3 })), true`);
+  const alive = (id: string) => `import('/lib/world.js').then((m) => !!m.entities.get('${id}'))`;
+  const rowClick = (id: string, extra = '') => evalJson(`(() => { const r = [...${hier}.querySelectorAll('.sp-tree-row')].find((x) => x.querySelector('.sp-item-label').textContent.trim() === '${id}' || new RegExp('\\\\b${id}\\\\b').test(x.querySelector('.sp-item-label').textContent)); if (!r) return false; const m = r.querySelector('.sp-item-main'); const b = m.getBoundingClientRect(); const at = { bubbles: true, clientX: b.left + 8, clientY: b.top + b.height / 2${extra} }; m.dispatchEvent(new PointerEvent('pointerdown', at)); m.dispatchEvent(new PointerEvent('pointerup', at)); m.dispatchEvent(new MouseEvent('click', at)); return true; })()`);
+  // click the way a pointer does — down, up, click at the row's own spot — or panels.js's nav/action
+  // guard (guardActions) measures travel from some earlier step's pointerdown and swallows it, correctly
+  const key = (code: string) => evalJson(`(document.activeElement?.blur?.(), dispatchEvent(new KeyboardEvent('keydown', { code: '${code}' })), true)`);
+  await L('delA', -2); await L('delB', 2);
+  await waitFor(`(async () => (await ${alive('delA')}) && (await ${alive('delB')}))()`);
+  // AWAIT the import: a trailing `, true` returned before it resolved, and the pick landed AFTER the tree click below
+  await evalJson(`import('/lib/build.js').then((m) => (m.select('delA'), true))`);          // viewport pick: build.js's own `selected`
+  await sleep(150);
+  await evalJson(`(window.__clk = [], document.addEventListener('click', (e) => __clk.push(['cap', e.target.className]), true), addEventListener('click', (e) => __clk.push(['bub', e.target.className]))), import('/lib/scenegraph.js').then((m) => { window.__sgs = m.sceneSelected; }), true`);
+  await evalJson(`import('/lib/base.js').then((m) => { window.__sel = []; m.bus.on('sg:selected', (id) => __sel.push(id)); }), true`);
+  check('the tree row for delB is clickable', await rowClick('delB'));
+  check('…and the inspector now shows delB', await waitFor(`import('/lib/scenegraph.js').then((m) => m.sceneSelected() === 'delB')`));
+  await key('Delete');
+  check('Delete removed delB — the thing the inspector showed', await waitFor(`${alive('delB')}.then((a) => !a)`));
+  check('…and NOT delA, the stale viewport pick', await evalJson(alive('delA')), 'refused=' + JSON.stringify(await evalJson(`window.__refused`)));
+  await evalJson(`import('/lib/build.js').then((m) => m.undo()), true`);
+  check('one undo brings delB back', await waitFor(alive('delB')));
+  await sleep(300);
+  await rowClick('delA'); await sleep(100);
+  await rowClick('delB', ', ctrlKey: true');
+  check('Ctrl-click extends: two selected', await waitFor(`Promise.resolve(globalThis.__editPanels?.().selection?.length === 2 || (document.querySelectorAll('.sp-tree-row.multi').length + document.querySelectorAll('.sp-tree-row.active').length) >= 2)`));
+  await key('Backspace');
+  check('Backspace removes BOTH selected', await waitFor(`(async () => !(await ${alive('delA')}) && !(await ${alive('delB')}))()`));
+  await evalJson(`import('/lib/build.js').then((m) => m.undo()), true`);
+  check('…and ONE undo restores both', await waitFor(`(async () => (await ${alive('delA')}) && (await ${alive('delB')}))()`));
+  await sleep(300);
+  await rowClick('delA'); await sleep(100);
+  await evalJson(`import('/lib/net.js').then((m) => m.sendVerb('comp', { id: 'delA', type: 'lock', data: true })), true`);
+  await waitFor(`import('/lib/world.js').then((m) => !!m.comps.get('delA')?.lock)`);
+  await key('KeyX');
+  await sleep(600);
+  check('X on a locked thing removes nothing', await evalJson(alive('delA')));
+}
+
 console.log('\nleaving:');
 await evalJson(`dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape' })), true`);
 await sleep(200);

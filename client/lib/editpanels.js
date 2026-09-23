@@ -24,12 +24,12 @@ import { flashHint } from './ui.js';
 import { makeSchemaFrame, resolveDelta } from './panels.js';
 import { registerXRPanel } from './xrpanels.js';
 import { treeData, sceneSelected, sceneSelect, sceneAttach, sceneDetach } from './scenegraph.js';
-import { pushUndo, refreshOutline } from './build.js';
+import { pushUndo, refreshOutline, setRemoveHook } from './build.js';
 import { schemaFor, commitEdit, planEdit, sendPlanned, setEditHooks, endGesture, foldRecord } from './inspect.js';
 import { channels } from '../../shared/editschema.js';
 import { commitLight, lightCasting } from './lights.js';
 import { myState } from './controller.js';
-import { placerOf } from './placer.js';
+import { placerOf, guardedByOther, placerName } from './placer.js';
 import { reindexCollider } from './colliders.js';
 
 const _wp = new THREE.Vector3();
@@ -479,13 +479,19 @@ function removeInverse(id) {
 }
 function removeMany(ids) {
   const locked = ids.filter((id) => comps.get(id)?.lock);
-  if (locked.length) { flashHint(`${locked.join(', ')} ${locked.length > 1 ? 'are' : 'is'} locked — unlock first`, 4000); }
-  const go = ids.filter((id) => entities.get(id) && !comps.get(id)?.lock);
-  if (!go.length) return;
+  const held = ids.filter((id) => !comps.get(id)?.lock && guardedByOther(id));
+  const why = [];
+  if (locked.length) why.push(`${locked.join(', ')} ${locked.length > 1 ? 'are' : 'is'} locked — unlock first`);
+  // the server would refuse these anyway; say so instead of a silent bounce
+  if (held.length) why.push(held.map((id) => `${id} is guarded by ${placerName(id)}`).join(' · '));
+  if (why.length) flashHint(why.join(' · '), 4000);
+  const go = ids.filter((id) => entities.get(id) && !locked.includes(id) && !held.includes(id));
+  if (!go.length) return false;
   const inverses = go.map(removeInverse).filter(Boolean);
   pushUndo(inverses.length === 1 ? inverses[0] : { verbs: inverses }, go.length === 1 ? `removing ${go[0]}` : `removing ${go.length} things`);
   for (const id of go) sendVerb('remove', { id });
   clearExtras();
+  return true;
 }
 
 // ---------------------------------------------------------------- mounting
@@ -533,6 +539,8 @@ export function initEditPanels() {
   bus.on('entity', () => { if (extra.size) syncOutlines(); });
   bus.on('edit-mode', (on) => { if (!on) { clearExtras(); armingRef = null; } });
   setEditHooks({ undo: pushUndo, commitLight, casting: lightCasting });
+  // Del / Backspace / X act on what the inspector shows — every selected thing, one undo
+  setRemoveHook(() => removeMany(selection()));
   bus.on('edit-find', () => findSelected());              // F in the viewport
   bus.on('key', (e) => {   // Alt+D duplicates: D strafes, and Shift+D strafes faster
     if (!shown || e.ctrlKey || e.metaKey || !e.altKey) return;
