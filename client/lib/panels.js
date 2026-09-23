@@ -39,6 +39,7 @@
 //                 a Shift/Ctrl-click row dispatches edit(k, id, f, {extend:true}); dragging a row onto
 //                 another dispatches edit('drop', {id, onto}) — onto empty tree space: {onto: null}
 //                 menu?:[{k, label, danger?}] }   right-click a row → its menu (row.menu wins)
+//                 rename?: current label — double-click / menu 'rename' edits it inline → edit('rename', id, f, {value})
 //                 kids>0 draws a disclosure → edit('open', id)   → edit(k, id) / edit('lock', id) / edit(item.k, id)
 // Every field also takes { disabled?, driven?, hint?, vrOnly? } (vrOnly: painted on the VR quad, skipped
 // on desktop — a button standing in for a key a headset lacks). Of the rest: disabled draws it
@@ -434,8 +435,32 @@ function fieldDOM(f, edit) {
         main.append(el('span', 'sp-item-label', r.label));
         if (r.sub || r.badges?.length) main.append(el('span', 'sp-item-sub', [r.sub, ...(r.badges ?? [])].filter(Boolean).join(' · ')));
         main.onclick = (e) => edit(f.k, r.id, f, { extend: e.shiftKey || e.ctrlKey || e.metaKey });   // Shift/Ctrl-click extends a selection
+        // inline rename (Godot F2 / Blender double-click): a row that carries `rename` (its
+        // current label) swaps the label for an input; Enter or blur commits
+        // edit('rename', id, f, {value}), Esc cancels. The panel holds repaints while it's focused.
+        let beginRename = null;
+        if (r.rename != null) {
+          const lab = main.querySelector('.sp-item-label');
+          beginRename = () => {
+            const inp = el('input', 'sp-rename'); inp.value = r.rename; inp.placeholder = String(r.id);
+            lab.replaceWith(inp); line.draggable = false; inp.focus(); inp.select();
+            let done = false;
+            const end = (commit) => {
+              if (done) return; done = true;
+              const v = inp.value.trim();
+              inp.replaceWith(lab); line.draggable = !r.noDrag;
+              if (commit && v !== r.rename) edit('rename', r.id, f, { value: v });
+            };
+            inp.onkeydown = (e) => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); end(true); } else if (e.key === 'Escape') { e.preventDefault(); end(false); } };
+            inp.onblur = () => end(true);
+            inp.onclick = (e) => e.stopPropagation();
+          };
+          main.ondblclick = (e) => { e.stopPropagation(); beginRename(); };
+          line.dataset.id = String(r.id);
+          line._rename = beginRename;
+        }
         const items = r.menu ?? f.menu;
-        if (items?.length) line.oncontextmenu = (e) => { e.preventDefault(); contextMenu(e.clientX, e.clientY, items, (k) => edit(k, r.id)); };
+        if (items?.length) line.oncontextmenu = (e) => { e.preventDefault(); contextMenu(e.clientX, e.clientY, items, (k) => (k === 'rename' && beginRename ? beginRename() : edit(k, r.id))); };
         line.append(main);
         if (r.locked != null) {
           const lock = el('button', `sp-mini${r.locked ? ' on' : ''}`, r.locked ? '🔒' : '🔓');

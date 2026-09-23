@@ -456,6 +456,29 @@ console.log('\npicture + sound in the inspector (schema groups; uploads through 
   await cdp.send('Page.setInterceptFileChooserDialog', { enabled: false });
 }
 
+console.log('\nrename in the tree: double-click, F2, or the row menu; commits the label comp:');
+{
+  const label = () => evalJson(`import('/lib/world.js').then((m) => m.comps.get('crate1')?.label ?? null)`);
+  const rowOf = `[...${hier}.querySelectorAll('.sp-tree-row')].find((x) => x.dataset.id === 'crate1')`;
+  await evalJson(`import('/lib/scenegraph.js').then((m) => (m.sceneSelect('crate1'), true))`);
+  await sleep(300);
+  await evalJson(`(${rowOf}.querySelector('.sp-item-main').dispatchEvent(new MouseEvent('dblclick', { bubbles: true })), true)`);
+  check('double-click swaps the label for an input', await waitFor(`!!${rowOf}?.querySelector('input.sp-rename')`));
+  await evalJson(`(() => { const i = ${rowOf}.querySelector('input.sp-rename'); i.value = 'the old bell'; i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); return true; })()`);
+  check('Enter commits the label comp', await waitFor(`import('/lib/world.js').then((m) => m.comps.get('crate1')?.label === 'the old bell')`), JSON.stringify(await label()));
+  check('…and the row shows it', await waitFor(`/the old bell/.test(${rowOf}?.querySelector('.sp-item-label')?.textContent ?? '')`));
+  await evalJson(`(() => { const sc = ${hier}.querySelector('.schema-scroll'); sc.focus(); sc.dispatchEvent(new KeyboardEvent('keydown', { code: 'F2', key: 'F2', bubbles: true })); return true; })()`);
+  check('F2 on the focused tree renames the selected row', await waitFor(`!!${rowOf}?.querySelector('input.sp-rename')`));
+  await evalJson(`(() => { const i = ${rowOf}.querySelector('input.sp-rename'); i.value = 'nope'; i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return true; })()`);
+  await sleep(400);
+  check('Esc cancels: the label is unchanged', (await label()) === 'the old bell', JSON.stringify(await label()));
+  await evalJson(`(${rowOf}.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 200, clientY: 200 })), true)`);
+  await evalJson(`([...document.querySelectorAll('.sp-ctx-item')].find((i) => /rename/.test(i.textContent))?.click(), true)`);
+  check('the row menu has "rename (F2)" and it opens the input', await waitFor(`!!${rowOf}?.querySelector('input.sp-rename')`));
+  await evalJson(`(() => { const i = ${rowOf}.querySelector('input.sp-rename'); i.value = ''; i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); return true; })()`);
+  check('an empty name clears the label (the row shows its id again)', await waitFor(`import('/lib/world.js').then((m) => m.comps.get('crate1')?.label == null)`), JSON.stringify(await label()));
+}
+
 console.log('\nJSON: raw comps as a multi-line editor; every typed group keeps a { } JSON hatch:');
 {
   const V = (v: string, a: any) => evalJson(`import('/lib/net.js').then((m) => (m.sendVerb('${v}', ${JSON.stringify(a)}), true))`);

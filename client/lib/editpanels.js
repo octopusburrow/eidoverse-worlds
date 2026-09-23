@@ -170,7 +170,10 @@ function hierarchyFields() {
   for (const r of rows) {
     if (String(r.id).startsWith('rider:')) continue;
     const mounted = !!entities.get(r.id)?.userData?.mountedTo;
+    const lab = comps.get(r.id)?.label;
+    r.rename = typeof lab === 'string' ? lab : '';   // the label comp; empty = the row shows its id
     r.menu = [
+      { k: 'rename', label: 'rename  (F2)' },
       { k: 'find', label: 'find  (F)' },
       { k: 'duplicate', label: 'duplicate  (Alt+D)' },
       { k: 'attach', label: arming === r.id ? 'cancel attach' : 'attach to…' },
@@ -198,6 +201,11 @@ function hierarchyDispatch(action, payload, _field, opts = {}) {
       break;
     }
     case 'lock': toggleLock(payload); break;
+    case 'rename': {   // an empty name clears the label: the row shows its id again
+      const r = commitEdit(payload, 'flags.label', opts?.value ?? '');
+      if (r.errors?.length) flashHint(r.errors.join(' · '), 5000);
+      break;
+    }
     // menu items act on the row they were opened on: select it first
     case 'find': if (payload && payload !== sel) sceneSelect(payload); findSelected(); break;
     case 'attach': {
@@ -604,6 +612,12 @@ export function initEditPanels() {
     scroll.addEventListener('pointerdown', () => { if (!/INPUT|TEXTAREA/.test(document.activeElement?.tagName ?? '')) scroll.focus({ preventScroll: true }); });
     hf.frame.el.addEventListener('keydown', (e) => {
       if (/INPUT|TEXTAREA/.test(e.target?.tagName ?? '')) return;
+      if (e.code === 'F2') {   // rename the selected row in place
+        const sel = sceneSelected(); if (!sel) return;
+        const line = [...scroll.querySelectorAll('.sp-tree-row')].find((x) => x.dataset.id === sel);
+        if (line?._rename) { e.preventDefault(); e.stopPropagation(); line._rename(); }
+        return;
+      }
       if (e.code !== 'ArrowUp' && e.code !== 'ArrowDown') return;
       e.preventDefault(); e.stopPropagation();
       hierarchyDispatch('step', e.code === 'ArrowUp' ? -1 : 1);
