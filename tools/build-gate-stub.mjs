@@ -75,6 +75,7 @@ export const collapseAll = () => {};
 export const panelFrame = () => ({ show() {}, hide() {}, visible: false });
 export const sceneSelect = () => {};
 export const sceneSelected = () => null;   // build.js: Del/X/F act on the inspector's selection
+export const sceneDeselect = () => {};   // build.js: Esc / Edit ▸ deselect clear it
 export const claimEscape = () => {};
 
 // seatedit.js — build.js imports ten symbols from it at line 31

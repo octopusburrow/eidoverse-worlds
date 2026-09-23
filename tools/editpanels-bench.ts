@@ -389,6 +389,24 @@ console.log('\nDel / Backspace act on what the INSPECTOR shows (a tree pick), no
   check('X on a locked thing removes nothing', await evalJson(alive('delA')));
 }
 
+console.log('\ndeselect is deliberate (Esc / Edit ▸ deselect); undo keeps what you are working on; badges once:');
+{
+  const L = (id: string, x: number) => evalJson(`import('/lib/net.js').then((m) => (m.sendVerb('light', { id: '${id}', pos: [${x}, 1, -5], color: 0xffffff, intensity: 4, range: 3 }), true))`);
+  await L('selA', -1);
+  await waitFor(`import('/lib/world.js').then((m) => !!m.entities.get('selA'))`);
+  await evalJson(`import('/lib/scenegraph.js').then((m) => (m.sceneSelect('selA'), true))`);
+  await evalJson(`import('/lib/net.js').then((m) => (m.sendVerb('comp', { id: 'selA', type: 'hidden', data: true }), true))`);
+  check('a hidden thing wears "hidden" ONCE in the tree', await waitFor(`(() => { const r = [...${hier}.querySelectorAll('.sp-tree-row')].find((x) => /selA/.test(x.querySelector('.sp-item-label').textContent)); const sub = r?.querySelector('.sp-item-sub')?.textContent ?? ''; return (sub.match(/hidden/g) ?? []).length === 1; })()`), JSON.stringify(await evalJson(`[...${hier}.querySelectorAll('.sp-tree-row')].map((x) => x.querySelector('.sp-item-sub')?.textContent)`)));
+  await evalJson(`(document.activeElement?.blur?.(), true)`);
+  const inspectorId = `(${insp}.querySelector('.sp-info')?.textContent ?? '')`;
+  await evalJson(`import('/lib/build.js').then((m) => (m.undo(), true))`);   // undoes the hidden flag
+  await sleep(400);
+  check('undo keeps the inspector on selA (Unity/Godot: undo never drops your selection)', await waitFor(`import('/lib/scenegraph.js').then((m) => m.sceneSelected() === 'selA')`), JSON.stringify(await evalJson(`import('/lib/scenegraph.js').then((m) => m.sceneSelected())`)));
+  await evalJson(`(dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape' })), true)`);
+  check('Esc clears what the inspector shows (not only a viewport pick)', await waitFor(`import('/lib/scenegraph.js').then((m) => m.sceneSelected() == null)`) && await waitFor(`/nothing selected/.test(${inspectorId})`), await evalJson(inspectorId));
+  check('…and the first Esc did NOT leave edit mode', await evalJson(`import('/lib/build.js').then((m) => m.isEditing())`));
+}
+
 console.log('\npicture + sound in the inspector (schema groups; uploads through the real chooser and /upload):');
 {
   const { writeFileSync } = await import('node:fs');

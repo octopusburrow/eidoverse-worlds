@@ -276,6 +276,13 @@ export const sceneSelected = () => selected;
 // not also yank the World panel open onto the section they retire
 let editUI = false;
 bus.on('edit-mode', (on) => { editUI = !!on; });
+/** Clear the inspector's selection (Esc, Edit ▸ deselect) — sceneSelect refuses a null id. */
+export function sceneDeselect() {
+  if (selected == null) return;
+  selected = null; arming = null; editingComp = null;
+  bus.emit('sg:selected', null);
+  if (sceneApi?.isOpen) paintScene(true);
+}
 export function sceneSelect(id) {
   if (!sceneApi || !entities.has(id)) return;
   selected = id;

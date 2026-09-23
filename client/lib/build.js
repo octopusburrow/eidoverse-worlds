@@ -26,7 +26,7 @@ import { heightAt } from './terrain.js';
 import { net, sendVerb, sendDrag } from './net.js';
 import { myState, mouse, setPointerClaim, setEditingProbe } from './controller.js';
 import { flashHint, collapseAll, panelFrame } from './ui.js';
-import { sceneSelect, sceneSelected } from './scenegraph.js';
+import { sceneSelect, sceneSelected, sceneDeselect } from './scenegraph.js';
 import { claimEscape } from './frames.js';
 import { mayAuthor, placerOf, placerName } from './placer.js';   // one rule for who may author (and one name for them), shared with the scene panel
 import { refreshSeatGizmos, resetSeats, armSeatPlacement, seatArmed, seatSelected,
@@ -216,6 +216,10 @@ export function select(id) {
   // transform fields, semantic editors, comp bag — scrolled into view
   sceneSelect(id);
 }
+/** The deliberate deselect (Esc, Edit ▸ deselect): the viewport pick AND what the
+ *  inspector shows. Plain deselect() stays viewport-only — undo calls it, and an undo
+ *  must not throw away the selection you are working on. */
+export function deselectAll() { deselect(); sceneDeselect(); }
 export function deselect() {
   if (selected) editHolds.delete(selected.id);
   selected = null;
@@ -569,7 +573,7 @@ bus.on('key', (e) => {
     if (cancelSeatArm()) { /* an armed placement is the most transient state */ }
     else if (ghost) cancelGhost();
     else if (seatSelected()) deselectSeat();
-    else if (selected) deselect();
+    else if (selected || sceneSelected()) deselectAll();
     else if (editMode) setEditMode(false);
     return;
   }

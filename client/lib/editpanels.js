@@ -128,7 +128,8 @@ function badgesFor(id) {
   const out = [];
   const bag = comps.get(id) ?? {};
   for (const [type, data] of Object.entries(bag)) {
-    if (type === 'lock') continue;
+    if (type === 'lock' || type === 'hidden' || type === 'label') continue;   // lock has its glyph, label IS the row's name, hidden is added once below
+    if (type === 'guard') { out.push('🛡'); continue; }
     if (type === 'motion' || type.startsWith('motion:')) out.push(`${type}(${data?.type ?? '…'})`);
     else if (type === 'sockets' || type === 'reactions') out.push(`${type}(${Object.keys(data ?? {}).join(',')})`);
     else out.push(type);

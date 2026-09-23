@@ -16,7 +16,7 @@
 
 import { bus } from './base.js';
 import { getFrame, allFrames } from './frames.js';
-import { setTool, getTool, undo, deselect, setEditMode, removeKeyTargets } from './build.js';
+import { setTool, getTool, undo, deselectAll, setEditMode, removeKeyTargets } from './build.js';
 import { panelFrame } from './ui.js';
 import { THREE, scene } from './core.js';
 
@@ -72,7 +72,7 @@ function build() {
     ]),
     menu('Edit', () => [
       { label: 'undo\tCtrl+Z', run: undo },
-      { label: 'deselect\tEsc', run: deselect },
+      { label: 'deselect\tEsc', run: deselectAll },
       { label: 'delete\tDel', run: removeKeyTargets },
       { label: 'leave edit mode', run: () => setEditMode(false) },
     ]),
