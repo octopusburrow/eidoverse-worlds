@@ -97,5 +97,28 @@ console.log("\nhitRegion: a UV maps to the region under it, top-down:");
   check("the canvas grew to fit its rows (30px title + 2 rows + pad)", c.height === 30 + ROW * 2 + 24, String(c.height));
 }
 
+console.log("\nfields added 09-23 paint on the quad without throwing, and stay display-only where they must:");
+{
+  const at = (regions: any[], k: string) => regions.filter((r: any) => r.action === k);
+  let threw = "";
+  let out: any = null;
+  try {
+    out = paint([
+      { t: "json", k: "ed:comp.recipe", label: "recipe", value: '{\n  "wood": 3\n}' },
+      { t: "log", k: "clines", lines: ["02:36:19  bell hung", "02:36:24  still here, check #1"] },
+      { t: "log", k: "empty", lines: [], empty: "(console empty)" },
+      { t: "btn", k: "remove", label: "remove", danger: true, vrOnly: true },
+      { t: "num", k: "ed:light.intensity", label: "brightness", value: 40, def: 16, step: 1 },
+    ]);
+  } catch (e: any) { threw = String(e?.stack ?? e); }
+  check("json + log + a vrOnly button + a num with def paint without throwing", !threw && !!out, threw.slice(0, 200));
+  if (out) {
+    check("json is display-only on the quad (no keyboard in a headset): no region", at(out.regions, "ed:comp.recipe").length === 0);
+    check("log is display-only: no region", at(out.regions, "clines").length === 0 && at(out.regions, "empty").length === 0);
+    check("the vrOnly remove button IS on the quad, with its region (desktop skips it; a headset has no Del)", at(out.regions, "remove").length === 1);
+    check("a num with def keeps its two stepper regions (↺ is desktop-only for now)", at(out.regions, "ed:light.intensity").length === 2);
+  }
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
