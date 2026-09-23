@@ -25,6 +25,7 @@
 //                 target and commits edit(k, id). value shows the current target or '—'.
 //                 A ✕ on a filled ref clears it: edit(k, null).
 //   { t:'btn',    k, label, danger? }                             → edit(k)
+//   { t:'log',    lines:[string], empty? }   a scrolling console tail; the VR quad shows the newest line
 //   { t:'range',  k, label, value, min=0, max=1, step=0.01, dp=2, unit? } → edit(k, number)  [a slider on BOTH renderers]
 //   { t:'list',   k?, label, empty?, rows:[{ id, label, sub?, active?,
 //                 actions:[{k, label, danger?}] }] }              → edit(a.k, rowId) / edit(k ?? 'row', rowId)
@@ -314,6 +315,20 @@ function fieldDOM(f, edit) {
   if (f.label != null && f.t !== 'btn' && f.t !== 'group') { label = el('label', 'sp-label', f.label); row.append(label); }
   const setLabel = (nf) => { if (label && nf.label != null) label.textContent = nf.label; };
   switch (f.t) {
+    case 'log': {
+      // a scrolling monospace tail (a script console): follows the bottom unless you scrolled up to read
+      const pre = el('pre', 'sp-log');
+      const put = (nf) => {
+        const atBottom = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 8;
+        pre.textContent = (nf.lines ?? []).length ? nf.lines.join('\n') : (nf.empty ?? '');
+        pre.classList.toggle('empty', !(nf.lines ?? []).length);
+        if (atBottom) pre.scrollTop = pre.scrollHeight;
+      };
+      put(f);
+      row.append(pre);
+      row.update = (nf) => put(nf);
+      break;
+    }
     case 'info': {
       const s = el('span', 'sp-info', String(f.value ?? ''));
       row.append(s);
@@ -643,6 +658,7 @@ export function renderCanvas(canvas, fields, { width = 512, rowH = 44, pad = 12,
         break;
       }
       case 'info': font(15); g.fillStyle = C.text; g.fillText(String(f.value ?? '').slice(0, 30), vx, y + rowH * 0.6); break;
+      case 'log': font(13); g.fillStyle = C.label; g.fillText(String((f.lines ?? []).at(-1) ?? f.empty ?? '').slice(0, 44), pad, y + rowH * 0.6); break;   // newest line only: a quad has no scrollback
       case 'text': font(15); g.fillStyle = C.label; g.fillText(String(f.value ?? '—').slice(0, 26), vx, y + rowH * 0.6); break;
       case 'btn': {
         const bw = Math.max(90, f.label.length * 9 + 24);

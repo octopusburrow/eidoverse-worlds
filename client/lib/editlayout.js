@@ -79,6 +79,7 @@ function build() {
     menu('View', () => [
       { label: 'reset workspace layout', run: () => { L = { ...DEF }; save(); apply(); } },
       { label: `${getFrame('chat')?.visible ? 'hide' : 'show'} chat`, run: () => { getFrame('chat')?.toggle(); apply(); } },
+      { label: `${getFrame('console')?.visible ? 'hide' : 'show'} console (scripts)`, run: () => getFrame('console')?.toggle() },
     ]),
     menu('Panels', () => allFrames().filter((f) => !f.docked).map((f) => ({
       label: `${f.visible ? '● ' : '○ '}${f.id}`, run: () => f.toggle(),

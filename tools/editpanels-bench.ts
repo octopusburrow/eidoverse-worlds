@@ -49,12 +49,13 @@ await cdp.send('Page.navigate', { url: `${BASE}/?name=editbot&world=editbench` }
 }
 
 console.log('\nedit mode shows the two frames:');
-check('frames exist before edit mode, hidden', await evalJson(`[...document.querySelectorAll('.frame.edit')].length === 2 && [...document.querySelectorAll('.frame.edit')].every((f) => getComputedStyle(f).display === 'none')`));
+// three edit frames since the Console joined (09-23): Hierarchy + Inspector show on entry, the Console is opt-in
+check('frames exist before edit mode, hidden', await evalJson(`[...document.querySelectorAll('.frame.edit')].length === 3 && [...document.querySelectorAll('.frame.edit')].every((f) => getComputedStyle(f).display === 'none')`));
 await evalJson(`dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyB' })), true`);
-check('B shows both', await waitFor(`(() => { const F = [...document.querySelectorAll('.frame.edit')]; return F.length === 2 && F.every((f) => getComputedStyle(f).display !== 'none'); })()`));
-check('titles are Hierarchy / Inspector', await evalJson(`[...document.querySelectorAll('.frame.edit .fr-title')].map((t) => t.textContent).sort().join('|') === 'Hierarchy|Inspector'`));
+check('B shows both, and NOT the console', await waitFor(`(() => { const F = [...document.querySelectorAll('.frame.edit')]; const vis = F.filter((f) => getComputedStyle(f).display !== 'none').map((f) => f.dataset.frame).sort().join(); return vis === 'hierarchy,inspector'; })()`), JSON.stringify(await evalJson(`[...document.querySelectorAll('.frame.edit')].map((f) => [f.dataset.frame, getComputedStyle(f).display])`)));
+check('titles are Console / Hierarchy / Inspector', await evalJson(`[...document.querySelectorAll('.frame.edit .fr-title')].map((t) => t.textContent).sort().join('|') === 'Console|Hierarchy|Inspector'`));
 check('empty world: hierarchy says so', await evalJson(`!!document.querySelector('#frame-hierarchy .sp-empty, .frame.edit .sp-empty')`));
-check('nothing selected: inspector says so', await evalJson(`/nothing selected/.test(document.querySelector('.frame.edit .sp-info')?.textContent ?? '')`));
+check('nothing selected: inspector says so', await evalJson(`/nothing selected/.test(document.querySelector('[data-frame="inspector"] .sp-info')?.textContent ?? '')`));
 
 console.log('\nthe workspace: docked columns, strips, a slim rail:');
 check('hierarchy is docked in the left column, above chat', await evalJson(`(() => { const L = document.querySelector('.edit-left'); const ids = [...L.children].map((c) => c.dataset?.frame ?? c.className); return JSON.stringify(ids) === JSON.stringify(['hierarchy', 'edit-split edit-split-h', 'chat']); })()`), await evalJson(`JSON.stringify([...document.querySelector('.edit-left').children].map((c) => c.dataset?.frame ?? c.className))`));
@@ -455,12 +456,32 @@ console.log('\npicture + sound in the inspector (schema groups; uploads through 
   await cdp.send('Page.setInterceptFileChooserDialog', { enabled: false });
 }
 
+console.log('\nConsole: every bound script, and one script\'s live world.log() (the legacy 📜 scripts panel, as a frame):');
+{
+  const con = `document.querySelector('[data-frame="console"]')`;
+  const src = `world.log('bench says hello'); world.every(5, () => world.log('tick'));`;
+  const up = await evalJson(`fetch('/upload?as=script', { method: 'POST', body: ${JSON.stringify(src)} }).then((r) => r.json()).then((j) => j.path ?? JSON.stringify(j))`);
+  check('a script uploads into the store', typeof up === 'string' && up.startsWith('store/scripts/'), String(up));
+  await evalJson(`import('/lib/net.js').then((m) => (m.sendVerb('behavior', { id: 'benchbhv', src: ${JSON.stringify(up)}, attach: 'crate1' }), true))`);
+  await evalJson(`import('/lib/scenegraph.js').then((m) => (m.sceneSelect('crate1'), true))`);
+  check('the inspector lists it under Behaviors', await waitFor(`[...${insp}.querySelectorAll('.sp-item-label')].some((l) => /benchbhv/.test(l.textContent))`, 12000), JSON.stringify(await evalJson(`globalThis.__editPanels?.().behaviors`)));
+  check('the Console is not open yet', await evalJson(`getComputedStyle(${con}).display === 'none'`));
+  await evalJson(`(() => { const l = [...${insp}.querySelectorAll('.sp-item-main')].find((m) => /benchbhv/.test(m.textContent)); l?.click(); return !!l; })()`);
+  check('clicking the script row opens the Console, watching it', await waitFor(`getComputedStyle(${con}).display !== 'none' && globalThis.__editPanels?.().watching === 'benchbhv'`), JSON.stringify(await evalJson(`globalThis.__editPanels?.()`)));
+  check('its world.log() line is in the log', await waitFor(`/bench says hello/.test(${con}.querySelector('.sp-log')?.textContent ?? '')`, 8000), JSON.stringify(await evalJson(`${con}.querySelector('.sp-log')?.textContent ?? null`)));
+  check('the header says it is running', await evalJson(`/benchbhv — running/.test(${con}.textContent)`), await evalJson(`${con}.querySelector('.sp-group')?.textContent ?? null`));
+  check('View ▸ lists the console', await evalJson(`(() => { const b = [...document.querySelectorAll('.edit-menu > .edit-btn')].find((x) => /^View/.test(x.textContent)); b.click(); const t = [...document.querySelectorAll('.edit-menu-item')].map((i) => i.textContent); document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return t.some((x) => /console/.test(x)); })()`));
+  await evalJson(`(() => { const r = [...${con}.querySelectorAll('.sp-item')].find((x) => /benchbhv/.test(x.textContent)); [...r.querySelectorAll('button')].find((b) => b.textContent === 'unbind').click(); return true; })()`);
+  check('unbind from the Console removes it from the roster', await waitFor(`!(globalThis.__editPanels?.().behaviors)`, 10000), JSON.stringify(await evalJson(`globalThis.__editPanels?.().behaviors`)));
+  await evalJson(`(${con}.querySelector('.fr-btn')?.click(), true)`);
+}
+
 console.log('\nleaving:');
 await evalJson(`dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape' })), true`);
 await sleep(200);
 await evalJson(`dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape' })), true`);   // deselect, then leave
 check('leaving undocks: frames are back on the body, workspace chrome hidden', await waitFor(`document.querySelector('[data-frame="hierarchy"]').parentElement === document.body && document.querySelector('[data-frame="inspector"]').parentElement === document.body && document.querySelector('.edit-top').hidden && !document.querySelector('.frame.docked')`));
-check('Esc hides the frames', await waitFor(`(() => { const F = [...document.querySelectorAll('.frame.edit')]; return F.length === 2 && F.every((f) => getComputedStyle(f).display === 'none'); })()`));
+check('Esc hides the frames', await waitFor(`(() => { const F = [...document.querySelectorAll('.frame.edit')]; return F.length === 3 && F.every((f) => getComputedStyle(f).display === 'none'); })()`));
 const errs: string[] = (await evalJson(`window.__errs`)) ?? [];
 const mine = errs.filter((e) => /editpanels|editlayout|editschema|panels\.js|inspect\.js|lights\.js|seatedit|scenegraph/.test(e));
 check('no page errors from the edit surface', mine.length === 0, mine.slice(0, 3).join(' | '));

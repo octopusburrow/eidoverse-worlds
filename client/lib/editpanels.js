@@ -466,7 +466,49 @@ function inspectorDispatch(action, payload, field, opts = {}) {
   switch (action) {
     case 'remove': removeMany([id]); break;
     case 'unbind': sendVerb('behavior', { id: payload, remove: true }); setTimeout(refreshBehaviors, 400); break;
+    case 'bhv': watchScript(payload); break;   // a script row → the Console, watching it
     default: if (action.startsWith('uncomp:')) commitEdit(id, `comp.${action.slice(7)}`, null);
+  }
+  repaintAll();
+}
+
+// ---------------------------------------------------------------- console
+// The behavior runtime made visible (the legacy World panel's 📜 scripts): every
+// script bound in this world, and one script's live world.log() ring, polled
+// while the frame is open. Agents read the same thing through world_debug.
+let watching = null;           // behavior id whose log is open
+let watchLog = null;           // { status, lines } from the last poll
+async function refreshWatch() {
+  if (!watching) { watchLog = null; return; }
+  try {
+    const d = await requestDebug({ behavior: watching, limit: 40 });
+    watchLog = { status: d?.status ?? '?', lines: (d?.events ?? []).map((e) => `${new Date(e.ts).toTimeString().slice(0, 8)}  ${e.line}`) };
+  } catch { /* a poll that fails keeps the last good tail */ }
+}
+function consoleFields() {
+  const f = [{ t: 'list', k: 'cwatch', empty: 'no scripts bound in this world — behaviors are the scripting tier (AGENTS.md)',
+    rows: behaviors.map((b) => ({ id: b.id, label: `${b.status === 'running' ? '▶' : '⏸'} ${b.id}`,
+      sub: [b.attach ? `on ${b.attach}` : 'world', b.timers ? `${b.timers}⏲` : null, b.status !== 'running' ? (b.status ?? 'paused') : null].filter(Boolean).join(' · '),
+      active: b.id === watching,
+      actions: [...(b.attach ? [{ k: 'cgoto', label: 'select' }] : []), { k: 'unbind', label: 'unbind', danger: true }] })) }];
+  if (watching) {
+    f.push({ t: 'group', k: 'clog', label: `${watching} — ${watchLog?.status ?? '…'}`, open: true });
+    f.push({ t: 'log', k: 'clines', lines: watchLog?.lines ?? [], empty: '(console empty — world.log() writes here)' });
+  }
+  f.push({ t: 'info', label: '', value: 'click a script to watch its log · /debug = flight recorder' });
+  return f;
+}
+export async function watchScript(id) {
+  watching = id; await refreshWatch();
+  const c = frames.get('console'); if (c && !c.frame.visible) c.frame.show();
+  repaintAll();
+}
+function consoleDispatch(action, payload) {
+  switch (action) {
+    case 'cwatch': watching = payload === watching ? null : payload; refreshWatch().then(repaintAll); break;
+    case 'cgoto': { const b = behaviors.find((x) => x.id === payload); if (b?.attach && entities.has(b.attach)) sceneSelect(b.attach); break; }
+    case 'unbind': sendVerb('behavior', { id: payload, remove: true }); if (watching === payload) watching = null; setTimeout(refreshBehaviors, 400); break;
+    case 'fold': break;   // the log header is not a fold
   }
   repaintAll();
 }
@@ -501,6 +543,8 @@ function removeMany(ids) {
 const PANELS = [
   { id: 'hierarchy', title: 'Hierarchy', fields: hierarchyFields, dispatch: hierarchyDispatch, frame: { x: 64, y: 60, w: 300, h: 380, minW: 220, minH: 160 } },   // x clears the dock rail (left:10 + 34px buttons + padding)
   { id: 'inspector', title: 'Inspector', fields: inspectorFields, dispatch: inspectorDispatch, frame: { x: -330, y: 60, w: 320, h: 520, minW: 250, minH: 160 } },
+  // optional: never auto-shown on entering edit mode (View ▸ console, or a script row in the inspector)
+  { id: 'console', title: 'Console', fields: consoleFields, dispatch: consoleDispatch, optional: true, frame: { x: 'center', y: -24, w: 560, h: 240, minW: 320, minH: 120 } },
 ];
 const frames = new Map();
 let queued = false;
@@ -571,9 +615,14 @@ export function initEditPanels() {
   import('./editlayout.js').then((m) => { globalThis.__editLayout = m.editLayoutDebug; });
   const show = (on) => {
     shown = !!on;
-    for (const sf of frames.values()) on ? sf.frame.show() : sf.frame.hide();
+    for (const p of PANELS) { const sf = frames.get(p.id); if (!sf) continue; if (!on) sf.frame.hide(); else if (!p.optional) sf.frame.show(); }
     clearInterval(rosterTimer); rosterTimer = 0;
-    if (on) { refreshBehaviors(); rosterTimer = setInterval(refreshBehaviors, 5000); }
+    // the roster every 5 s; a watched log every 2.5 s while the console is open (someone is reading it)
+    if (on) { refreshBehaviors(); let n = 0; rosterTimer = setInterval(async () => {
+      const open = frames.get('console')?.frame.visible;
+      if (!open && (n++ % 2)) return;
+      await refreshBehaviors(); if (open && watching) { await refreshWatch(); repaintAll(); }
+    }, 2500); }
   };
   return { show };
 }
@@ -582,4 +631,5 @@ export function initEditPanels() {
 export const editPanelsDebug = () => ({
   hierarchy: hierarchyFields().length, inspector: inspectorFields().length, selected: sceneSelected(), arming,
   groups: sceneSelected() ? schemaFor(sceneSelected()).groups.map((g) => g.group) : [], behaviors: behaviors.length, rows: visibleRows, selection: selection(),
+  watching, consoleLines: watchLog?.lines?.length ?? 0,
 });
