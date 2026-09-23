@@ -485,6 +485,22 @@ console.log('\nrevert to default (↺): shown only when a value differs; an ordi
   check('position has no ↺ (no meaningful default)', await evalJson(`!${rowOf('pos x')}?.querySelector('.sp-revert')`));
 }
 
+console.log('\nthe first seat in one step (Components ▸ + seat…):');
+{
+  await evalJson(`import('/lib/net.js').then((m) => (m.sendVerb('comp', { id: 'crate1', type: 'sockets', data: null }), true))`);
+  await evalJson(`import('/lib/scenegraph.js').then((m) => (m.sceneSelect('crate1'), true))`);
+  const btn = `[...${insp}.querySelectorAll('button')].find((b) => b.textContent.trim() === '+ seat…')`;
+  check('a model without sockets is offered "+ seat…"', await waitFor(`!!${btn}`), JSON.stringify(await evalJson(`[...${insp}.querySelectorAll('button')].map((b) => b.textContent.trim())`)));
+  await evalJson(`(${btn}.click(), true)`);
+  check('clicking it arms seat placement directly (no empty sockets comp first)', await waitFor(`import('/lib/seatedit.js').then((m) => m.seatArmed())`));
+  check('…and wrote nothing yet', await evalJson(`import('/lib/world.js').then((m) => !m.comps.get('crate1')?.sockets)`));
+  await evalJson(`(document.activeElement?.blur?.(), dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape' })), true)`);
+  check('Esc cancels the arming', await waitFor(`import('/lib/seatedit.js').then((m) => !m.seatArmed())`));
+  await evalJson(`import('/lib/net.js').then((m) => (m.sendVerb('comp', { id: 'crate1', type: 'sockets', data: { seat: { pos: [0, 0.5, 0], yaw: 0 } } }), true))`);
+  check('once it has a seat, "+ seat…" gives way to the sockets group', await waitFor(`!${btn} && [...${insp}.querySelectorAll('.sp-group')].some((g) => /Sockets/.test(g.textContent))`));
+  await evalJson(`import('/lib/net.js').then((m) => (m.sendVerb('comp', { id: 'crate1', type: 'sockets', data: null }), true))`);
+}
+
 console.log('\nright-click a field: copy value, paste value, copy path, reset to default:');
 {
   await evalJson(`import('/lib/scenegraph.js').then((m) => (m.sceneSelect('benchlamp'), true))`);

@@ -278,6 +278,7 @@ export function inspectSchema(ent, id, live = {}) {
   // a picture needs an image and a part, a sound a file. Both are uploads.
   if (!c.picture && live.parts?.length) fields.push({ t: 'btn', k: 'add:picture', label: '+ picture…', client: true, hint: 'upload an image and hang it on this thing' });
   if (!c.sound && !isLight(ent) && live.parts) fields.push({ t: 'btn', k: 'add:sound', label: '+ sound…', client: true, hint: 'upload audio and put it on this thing (starts paused)' });
+  if (!c.sockets && !isLight(ent) && live.parts) fields.push({ t: 'btn', k: 'add:seat', label: '+ seat…', client: true, hint: 'click the spot on the thing where a sitter goes' });
   fields.push({ t: 'text', k: '+', label: '+ component', value: '', placeholder: 'type (recipe, notice…) ⏎', hint: 'attach a component — any type folds, evaluators give known ones behavior' });
   groups.push({ group: 'comp', label: `Components (${rest.length})`, verb: 'comp', fields });
 

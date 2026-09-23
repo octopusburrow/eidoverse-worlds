@@ -301,6 +301,8 @@ addEventListener('mouseup', () => {
 // add: '+ seat here' arms the click-to-place, a row click selects the gizmo,
 // a live drag on a slot's channels moves the gizmo before the merged comp
 // commits (the shared path merges and pushes the undo).
+// Components ▸ + seat…: the first seat in ONE step (before, a sockets comp had to exist first)
+registerHandler('comp', (id, _obj, k, _v, opts) => { if (k !== 'add:seat' || opts?.live) return false; armSeatPlacement(id); return true; });
 registerHandler('sockets', (id, obj, k, value, opts) => {
   if (k === 'add') { armSeatPlacement(id); return true; }
   if (k === 'slots') { if (entities.get(id)) selectSeat({ id, slot: value }); return true; }
