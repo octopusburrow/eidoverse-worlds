@@ -41,7 +41,7 @@
 //                 menu?:[{k, label, danger?}] }   right-click a row → its menu (row.menu wins)
 //                 rename?: current label — double-click / menu 'rename' edits it inline → edit('rename', id, f, {value})
 //                 kids>0 draws a disclosure → edit('open', id)   → edit(k, id) / edit('lock', id) / edit(item.k, id)
-// Every field also takes { disabled?, driven?, hint?, vrOnly? } (vrOnly: painted on the VR quad, skipped
+// Every field also takes { disabled?, driven?, hint?, vrOnly?, def? } (def: the value ↺ reverts to) (vrOnly: painted on the VR quad, skipped
 // on desktop — a button standing in for a key a headset lacks). Of the rest: disabled draws it
 // read-only (a locked thing's pose); driven names what owns the value (a
 // motion comp composes onto this rest pose) and tints the row — Blender's
@@ -505,13 +505,14 @@ function fieldDOM(f, edit) {
     }
     case 'text': {
       const inp = el('input', 'sp-text');
-      inp.value = f.value ?? '';
+      let base = f.value ?? '';   // what Esc restores — the CURRENT value, refreshed by update() (the closure's f is the value at build time)
+      inp.value = base;
       inp.disabled = !!f.disabled;
       if (f.placeholder) inp.placeholder = f.placeholder;
       inp.onchange = () => { edit(f.k, inp.value); inp.blur(); };
-      inp.onkeydown = (e) => { if (e.key === 'Escape') { inp.value = f.value ?? ''; inp.blur(); e.stopPropagation(); } };
+      inp.onkeydown = (e) => { if (e.key === 'Escape') { inp.value = base; inp.blur(); e.stopPropagation(); } };
       row.append(inp);
-      row.update = (nf) => { setLabel(nf); if (document.activeElement !== inp) inp.value = nf.value ?? ''; };
+      row.update = (nf) => { setLabel(nf); base = nf.value ?? ''; if (document.activeElement !== inp) inp.value = base; };
       break;
     }
     case 'btn': {
@@ -578,6 +579,18 @@ function fieldDOM(f, edit) {
       row.append(box);
       break;
     }
+  }
+  // revert-to-default (Godot's ↺ / Blender's Backspace): a field that declares `def` grows a
+  // small ↺ while its value differs; clicking commits the default through the same edit path
+  if (f.def !== undefined && ['num', 'enum', 'color', 'range'].includes(f.t)) {
+    const same = (a, b) => (typeof a === 'number' && typeof b === 'number' ? Math.abs(a - b) <= 1e-6 * Math.max(1, Math.abs(b)) : a === b);
+    const face = f.t === 'color' ? '#' + (+f.def).toString(16).padStart(6, '0') : f.deg ? `${Math.round(f.def * R2D)}°` : String(f.def);
+    const rv = el('button', 'sp-revert', '↺'); rv.tabIndex = -1; rv.title = `revert to default (${face})`;
+    rv.onclick = (e) => { e.stopPropagation(); edit(f.k, f.def); };
+    rv.hidden = same(f.value, f.def) || !!f.disabled;
+    row.append(rv);
+    const up = row.update;
+    row.update = (nf) => { up?.(nf); rv.hidden = same(nf.value, nf.def) || !!nf.disabled; };
   }
   return row;
 }

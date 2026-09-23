@@ -12,7 +12,8 @@
 // actually casting) but never a different truth.
 //
 // inspectSchema(ent, id)          → { groups: [{ group, verb, fields }] }
-//   fields are panels.js specs: { t, k, label, value, … } with k a plain name
+//   fields are panels.js specs: { t, k, label, value, def?, … } with k a plain name (def: the
+//   value the evaluator uses when the key is absent — the inspector offers ↺ back to it)
 //   inside the group. Address a field from outside as "<group>.<k>"
 //   (pos.x · light.intensity · motion.amp · sockets.seat.yaw · comp.recipe).
 // editVerbs(ent, id, edits)       → { verbs: [{verb, args}], errors: [] }
@@ -96,7 +97,7 @@ export function inspectSchema(ent, id, live = {}) {
   ];
   if (!isLight(ent)) {
     transform.push({ t: 'num', k: 'yaw', label: 'yaw', value: round(ent.yaw ?? 0, 4), step: 5, deg: true, ...tf });
-    transform.push({ t: 'num', k: 'scale', label: 'scale', value: round(ent.scale ?? 1), step: 0.05, dp: 2, min: 0.01, softMax: 12, ...tf });
+    transform.push({ t: 'num', k: 'scale', label: 'scale', value: round(ent.scale ?? 1), def: 1, step: 0.05, dp: 2, min: 0.01, softMax: 12, ...tf });
   }
   const driven = c.motion?.type && !c.motion.part ? 'motion' : null;   // a whole-entity motion composes onto this REST pose
   if (driven) for (const f of transform) f.driven = driven;
@@ -127,9 +128,9 @@ export function inspectSchema(ent, id, live = {}) {
 
   if (isLight(ent)) {
     const fields = [
-      { t: 'color', k: 'color', label: 'color', value: ent.color ?? 0xffd9a0 },
-      { t: 'num', k: 'intensity', label: 'brightness', value: ent.intensity ?? 16, step: 1, dp: 0, min: 0, softMax: Math.max(64, ent.intensity ?? 16) },
-      { t: 'num', k: 'range', label: 'range', value: ent.range ?? 10, step: 1, dp: 0, min: 1, softMax: Math.max(40, ent.range ?? 10), unit: 'm' },
+      { t: 'color', k: 'color', label: 'color', value: ent.color ?? 0xffd9a0, def: 0xffd9a0 },
+      { t: 'num', k: 'intensity', label: 'brightness', value: ent.intensity ?? 16, def: 16, step: 1, dp: 0, min: 0, softMax: Math.max(64, ent.intensity ?? 16) },
+      { t: 'num', k: 'range', label: 'range', value: ent.range ?? 10, def: 10, step: 1, dp: 0, min: 1, softMax: Math.max(40, ent.range ?? 10), unit: 'm' },
       { t: 'check', k: 'keep', label: 'keep lit', value: ent.keep === true, hint: 'first claim on a light slot, never governor-shed' },
       { t: 'check', k: 'noon', label: 'burns at noon', value: ent.day === false, hint: 'opts out of the day cycle' },
     ];
@@ -154,28 +155,28 @@ export function inspectSchema(ent, id, live = {}) {
       switch (m.type) {
         case 'pendulum':
           fields.push({ t: 'num', k: k('amp'), label: `${P}amp`, value: m.amp ?? m.amplitude ?? 0, step: 5, deg: true, min: 0, softMax: Math.PI });
-          fields.push({ t: 'num', k: k('period'), label: `${P}period`, value: m.period ?? 3.5, step: 0.1, dp: 2, min: 0.05, unit: 's' });
+          fields.push({ t: 'num', k: k('period'), label: `${P}period`, value: m.period ?? 3.5, def: 3.5, step: 0.1, dp: 2, min: 0.05, unit: 's' });
           fields.push({ t: 'num', k: k('phase'), label: `${P}phase`, value: m.phase ?? 0, step: 5, deg: true });
-          fields.push({ t: 'num', k: k('damp'), label: `${P}damp`, value: m.damp ?? 0, step: 0.01, dp: 3, min: 0, softMax: 2, hint: '0 swings forever; friction is opt-in' });
+          fields.push({ t: 'num', k: k('damp'), label: `${P}damp`, value: m.damp ?? 0, def: 0, step: 0.01, dp: 3, min: 0, softMax: 2, hint: '0 swings forever; friction is opt-in' });
           break;
         case 'spin':
-          fields.push({ t: 'num', k: k('degPerSec'), label: `${P}rate`, value: m.degPerSec != null ? m.degPerSec : (m.rpm ?? 6) * 6, step: 5, dp: 1, unit: '°/s' });
+          fields.push({ t: 'num', k: k('degPerSec'), label: `${P}rate`, value: m.degPerSec != null ? m.degPerSec : (m.rpm ?? 6) * 6, def: 36, step: 5, dp: 1, unit: '°/s' });
           fields.push({ t: 'num', k: k('phase'), label: `${P}phase`, value: m.phase ?? 0, step: 5, deg: true });
           break;
         case 'orbit':
-          fields.push({ t: 'num', k: k('radius'), label: `${P}radius`, value: m.radius ?? 1, step: 0.1, dp: 2, min: 0, unit: 'm' });
-          fields.push({ t: 'num', k: k('degPerSec'), label: `${P}rate`, value: m.degPerSec ?? 12, step: 5, dp: 1, unit: '°/s' });
+          fields.push({ t: 'num', k: k('radius'), label: `${P}radius`, value: m.radius ?? 1, def: 1, step: 0.1, dp: 2, min: 0, unit: 'm' });
+          fields.push({ t: 'num', k: k('degPerSec'), label: `${P}rate`, value: m.degPerSec ?? 12, def: 12, step: 5, dp: 1, unit: '°/s' });
           fields.push({ t: 'check', k: k('face'), label: `${P}face along`, value: m.face !== false });
           break;
         case 'bob':
-          fields.push({ t: 'num', k: k('amp'), label: `${P}amp`, value: m.amp ?? m.amplitude ?? 0.3, step: 0.05, dp: 2, min: 0, unit: 'm' });
-          fields.push({ t: 'num', k: k('period'), label: `${P}period`, value: m.period ?? 4, step: 0.1, dp: 2, min: 0.05, unit: 's' });
+          fields.push({ t: 'num', k: k('amp'), label: `${P}amp`, value: m.amp ?? m.amplitude ?? 0.3, def: 0.3, step: 0.05, dp: 2, min: 0, unit: 'm' });
+          fields.push({ t: 'num', k: k('period'), label: `${P}period`, value: m.period ?? 4, def: 4, step: 0.1, dp: 2, min: 0.05, unit: 's' });
           fields.push({ t: 'num', k: k('phase'), label: `${P}phase`, value: m.phase ?? 0, step: 5, deg: true });
           break;
         case 'path':
           fields.push({ t: 'info', label: `${P}points`, value: `${Array.isArray(m.points) ? m.points.length : 0} points — edit as JSON (comp.${key})` });
           if (m.duration != null && m.speed == null) fields.push({ t: 'num', k: k('duration'), label: `${P}duration`, value: m.duration, step: 0.5, dp: 1, min: 0.1, unit: 's' });
-          else fields.push({ t: 'num', k: k('speed'), label: `${P}speed`, value: m.speed ?? 1, step: 0.1, dp: 2, min: 0, unit: 'm/s' });
+          else fields.push({ t: 'num', k: k('speed'), label: `${P}speed`, value: m.speed ?? 1, def: 1, step: 0.1, dp: 2, min: 0, unit: 'm/s' });
           fields.push({ t: 'enum', k: k('loop'), label: `${P}loop`, value: m.loop ?? 'loop', options: ['loop', 'pingpong', 'once'].map((v) => ({ v, label: v })) });
           fields.push({ t: 'check', k: k('face'), label: `${P}face along`, value: m.face !== false });
           break;
@@ -205,15 +206,15 @@ export function inspectSchema(ent, id, live = {}) {
     const presets = PARTICLE_PRESETS.includes(p.preset) ? PARTICLE_PRESETS : [...PARTICLE_PRESETS, p.preset ?? '?'];
     groups.push({ group: 'particles', label: 'particles', verb: 'comp', types: ['particles'], fields: [
       { t: 'enum', k: 'preset', label: 'preset', value: p.preset, options: presets.map((v) => ({ v, label: v })) },
-      { t: 'num', k: 'count', label: 'count', value: p.count ?? 150, step: 10, dp: 0, min: 1, max: 600 },
+      { t: 'num', k: 'count', label: 'count', value: p.count ?? 150, def: 150, step: 10, dp: 0, min: 1, max: 600 },
       { t: 'num', k: 'origin|0', label: 'origin x', value: o[0], step: 0.05, dp: 2, min: -8, max: 8, unit: 'm' },
       { t: 'num', k: 'origin|1', label: 'origin y', value: o[1], step: 0.05, dp: 2, min: -8, max: 8, unit: 'm' },
       { t: 'num', k: 'origin|2', label: 'origin z', value: o[2], step: 0.05, dp: 2, min: -8, max: 8, unit: 'm' },
-      { t: 'num', k: 'size', label: 'size', value: p.size ?? 1, step: 0.1, dp: 2, min: 0.05, softMax: 4 },
-      { t: 'num', k: 'opacity', label: 'opacity', value: p.opacity ?? 1, step: 0.05, dp: 2, min: 0, max: 1 },
-      { t: 'num', k: 'speed', label: 'speed', value: p.speed ?? 1, step: 0.1, dp: 2, min: 0, softMax: 4 },
-      { t: 'num', k: 'lifetime', label: 'lifetime', value: p.lifetime ?? 1, step: 0.1, dp: 2, min: 0.05, softMax: 10, unit: 's' },
-      { t: 'enum', k: 'quality', label: 'quality', value: p.quality ?? 'auto', options: ['auto', 'high', 'med', 'low'].map((v) => ({ v, label: v })) },
+      { t: 'num', k: 'size', label: 'size', value: p.size ?? 1, def: 1, step: 0.1, dp: 2, min: 0.05, softMax: 4 },
+      { t: 'num', k: 'opacity', label: 'opacity', value: p.opacity ?? 1, def: 1, step: 0.05, dp: 2, min: 0, max: 1 },
+      { t: 'num', k: 'speed', label: 'speed', value: p.speed ?? 1, def: 1, step: 0.1, dp: 2, min: 0, softMax: 4 },
+      { t: 'num', k: 'lifetime', label: 'lifetime', value: p.lifetime ?? 1, def: 1, step: 0.1, dp: 2, min: 0.05, softMax: 10, unit: 's' },
+      { t: 'enum', k: 'quality', label: 'quality', value: p.quality ?? 'auto', def: 'auto', options: ['auto', 'high', 'med', 'low'].map((v) => ({ v, label: v })) },
       { t: 'btn', k: 'out', label: 'put it out', danger: true },
     ] });
   }
@@ -248,8 +249,8 @@ export function inspectSchema(ent, id, live = {}) {
       { t: 'text', k: 'src', label: 'file', value: d.src ?? '', placeholder: 'eidoverse/assets/… or store/audio/…', hint: 'a library path — never a URL' },
       { t: 'btn', k: 'upload', label: 'upload audio…', client: true, hint: 'MP3, Ogg, WAV, WebM or M4A into the store; the path fills in' },
       { t: 'text', k: 'look', label: 'what is playing', value: d.look ?? '', placeholder: 'what text-tier residents read', hint: `≤${SOUND_LOOK_MAX} chars` },
-      { t: 'num', k: 'volume', label: 'volume', value: d.volume ?? 0.8, step: 0.05, dp: 2, min: 0, max: 1 },
-      { t: 'num', k: 'radius', label: 'radius', value: d.radius ?? 12, step: 1, dp: 0, min: 1, max: 200, unit: 'm' },
+      { t: 'num', k: 'volume', label: 'volume', value: d.volume ?? 0.8, def: 0.8, step: 0.05, dp: 2, min: 0, max: 1 },
+      { t: 'num', k: 'radius', label: 'radius', value: d.radius ?? 12, def: 12, step: 1, dp: 0, min: 1, max: 200, unit: 'm' },
       { t: 'check', k: 'loop', label: 'loop', value: d.loop !== false },
     ];
     const n = normalizeSound(d);

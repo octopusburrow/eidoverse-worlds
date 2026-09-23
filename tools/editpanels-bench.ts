@@ -461,6 +461,30 @@ console.log('\npicture + sound in the inspector (schema groups; uploads through 
   await cdp.send('Page.setInterceptFileChooserDialog', { enabled: false });
 }
 
+console.log('\nrevert to default (↺): shown only when a value differs; an ordinary, undoable edit:');
+{
+  await evalJson(`import('/lib/scenegraph.js').then((m) => (m.sceneSelect('benchlamp'), true))`);
+  await sleep(300);
+  const rowOf = (label: string) => `[...${insp}.querySelectorAll('.sp-f-num')].find((r) => r.querySelector('.sp-label')?.textContent === ${JSON.stringify(label)})`;
+  const I = () => evalJson(`import('/lib/state.js').then((m) => m.state.st.entities.benchlamp.intensity)`);
+  await evalJson(`(() => { const i = ${rowOf('brightness')}.querySelector('.sp-num'); i.value = '16'; i.dispatchEvent(new Event('change')); return true; })()`);
+  await waitFor(`import('/lib/state.js').then((m) => m.state.st.entities.benchlamp.intensity === 16)`);
+  check('at the default, no ↺', await waitFor(`${rowOf('brightness')}?.querySelector('.sp-revert')?.hidden === true`), JSON.stringify(await I()));
+  await evalJson(`(() => { const i = ${rowOf('brightness')}.querySelector('.sp-num'); i.value = '40'; i.dispatchEvent(new Event('change')); return true; })()`);
+  check('off the default, ↺ appears (titled with the default)', await waitFor(`(() => { const b = ${rowOf('brightness')}?.querySelector('.sp-revert'); return !!b && b.hidden === false && /16/.test(b.title); })()`), JSON.stringify(await I()));
+  // REBUILD the row while it's off-default (select away and back): a row updated in place keeps the
+  // field it was BUILT with, and built at 16 a mutant committing f.value instead of f.def passed (09-23)
+  await evalJson(`import('/lib/scenegraph.js').then((m) => (m.sceneSelect('crate1'), true))`); await sleep(250);
+  await evalJson(`import('/lib/scenegraph.js').then((m) => (m.sceneSelect('benchlamp'), true))`); await sleep(250);
+  await waitFor(`${rowOf('brightness')}?.querySelector('.sp-revert')?.hidden === false`);
+  await evalJson(`(${rowOf('brightness')}.querySelector('.sp-revert').click(), true)`);
+  check('↺ commits the default', await waitFor(`import('/lib/state.js').then((m) => m.state.st.entities.benchlamp.intensity === 16)`), JSON.stringify(await I()));
+  check('…and hides itself', await waitFor(`${rowOf('brightness')}?.querySelector('.sp-revert')?.hidden === true`));
+  await evalJson(`import('/lib/build.js').then((m) => (m.undo(), true))`);
+  check('one undo brings 40 back (revert is an ordinary edit)', await waitFor(`import('/lib/state.js').then((m) => m.state.st.entities.benchlamp.intensity === 40)`), JSON.stringify(await I()));
+  check('position has no ↺ (no meaningful default)', await evalJson(`!${rowOf('pos x')}?.querySelector('.sp-revert')`));
+}
+
 console.log('\ninspector filter: non-matches hide, groups holding a hit open (even folded ones):');
 {
   await evalJson(`import('/lib/scenegraph.js').then((m) => (m.sceneSelect('benchlamp'), true))`);

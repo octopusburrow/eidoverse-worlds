@@ -228,5 +228,20 @@ console.log("\nguard forgets its origin after a release outside the scroller:");
   check("a later keyboard click fires", calls.length === 1, String(calls.length));
 }
 
+console.log("\nfields updated IN PLACE revert to the CURRENT value, not the one they were built with:");
+{
+  const sf = makeSchemaFrame("t-stale", { title: "t", x: 10, y: 10, w: 300, h: 200 });
+  const calls: any[] = [];
+  const edit = (...a: any[]) => calls.push(a);
+  sf.set([{ t: "text", k: "name", label: "name", value: "one" }], edit);
+  sf.set([{ t: "text", k: "name", label: "name", value: "two" }], edit);    // same shape → update(), not a rebuild
+  const inp = sf.frame.body.querySelector(".sp-text") as HTMLInputElement;
+  check("the update reached the input", inp.value === "two", inp.value);
+  inp.focus(); inp.value = "typed";
+  inp.dispatchEvent(new (globalThis as any).KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  check("Esc restores the current value (two), not the build-time one (one)", inp.value === "two", inp.value);
+  check("…and commits nothing", calls.length === 0, JSON.stringify(calls));
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
