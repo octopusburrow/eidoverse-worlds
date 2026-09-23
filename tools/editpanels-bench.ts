@@ -12,7 +12,12 @@
 
 import { scratchBench, mkCheck, sleep } from './harness.ts';
 
-const { cdp, cws, evalJson, cleanup, die, BASE, SCRATCH } = await scratchBench('editpanels');
+// VERB_RATE: the server allows 12 verbs / 4 s per connection and DROPS the rest. This bench fires
+// bursts no person would (a motion edit, a sockets comp and a spin inside one window), so which
+// check's verb landed 13th was a timing lottery — the degree-channel flake, seen beside "slow down
+// — verb rate limit". Proven 09-23 by squeezing it (BENCH_VERB_RATE=4 fails deterministically).
+// The bench tests the editor, not the limiter; a person editing still meets the real limit.
+const { cdp, cws, evalJson, cleanup, die, BASE, SCRATCH } = await scratchBench('editpanels', { serverEnv: { VERB_RATE: process.env.BENCH_VERB_RATE ?? '1000' } });
 const { check, tally } = mkCheck();
 
 // Headless Chrome (no working swap chain) delivers rAF callbacks late — the
