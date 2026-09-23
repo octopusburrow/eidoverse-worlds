@@ -456,6 +456,31 @@ console.log('\npicture + sound in the inspector (schema groups; uploads through 
   await cdp.send('Page.setInterceptFileChooserDialog', { enabled: false });
 }
 
+console.log('\nJSON: raw comps as a multi-line editor; every typed group keeps a { } JSON hatch:');
+{
+  const V = (v: string, a: any) => evalJson(`import('/lib/net.js').then((m) => (m.sendVerb('${v}', ${JSON.stringify(a)}), true))`);
+  const comp = (t: string) => evalJson(`import('/lib/world.js').then((m) => m.comps.get('crate1')?.[${JSON.stringify(t)}] ?? null)`);
+  await V('comp', { id: 'crate1', type: 'recipe', data: { wood: 2 } });
+  await V('comp', { id: 'crate1', type: 'sockets', data: { seat: { pos: [0, 0.5, 0], yaw: 0 } } });
+  await evalJson(`import('/lib/scenegraph.js').then((m) => (m.sceneSelect('crate1'), true))`);
+  const rowTa = (label: string) => `[...${insp}.querySelectorAll('.sp-f-json')].find((r) => r.querySelector('.sp-label')?.textContent === ${JSON.stringify(label)})?.querySelector('.sp-json-ta')`;
+  check('a raw comp is a multi-line JSON editor, pretty-printed', await waitFor(`(() => { const t = ${rowTa('recipe')}; return !!t && t.value.includes('\\n') && /"wood": 2/.test(t.value); })()`), JSON.stringify(await evalJson(`${rowTa('recipe')}?.value ?? null`)));
+  const typeInto = (sel: string, text: string) => evalJson(`(() => { const t = ${sel}; t.focus(); t.value = ${JSON.stringify(text)}; t.dispatchEvent(new Event('input')); t.blur(); return t.classList.contains('bad'); })()`);
+  check('invalid JSON marks the box red…', await typeInto(rowTa('recipe'), '{ "wood": 3,'));
+  await sleep(500);
+  check('…and commits nothing', JSON.stringify(await comp('recipe')) === '{"wood":2}', JSON.stringify(await comp('recipe')));
+  await typeInto(rowTa('recipe'), '{\n  "wood": 3,\n  "nails": 12\n}');
+  check('valid JSON commits on blur (wholesale)', await waitFor(`import('/lib/world.js').then((m) => JSON.stringify(m.comps.get('crate1')?.recipe) === '{"wood":3,"nails":12}')`), JSON.stringify(await comp('recipe')));
+  const hatch = `[...${insp}.querySelectorAll('.sp-json-tog')].map((b) => b.closest('.sp-row')).find((r) => /"seat"/.test(r.querySelector('.sp-json-ta')?.value ?? ''))`;
+  check('the sockets group has a collapsed { } JSON hatch', await waitFor(`(() => { const r = ${hatch}; return !!r && r.querySelector('.sp-json-ta').hidden === true; })()`));
+  await evalJson(`(${hatch}.querySelector('.sp-json-tog').click(), true)`);
+  check('the toggle opens it', await evalJson(`${hatch}.querySelector('.sp-json-ta').hidden === false`));
+  await typeInto(`${hatch}.querySelector('.sp-json-ta')`, JSON.stringify({ seat: { pos: [0, 0.5, 0], yaw: 0, part: 'plank' } }, null, 2));
+  check('a key no field speaks for (socket part) is editable through the hatch', await waitFor(`import('/lib/world.js').then((m) => m.comps.get('crate1')?.sockets?.seat?.part === 'plank')`), JSON.stringify(await comp('sockets')));
+  await V('comp', { id: 'crate1', type: 'recipe', data: null });
+  await V('comp', { id: 'crate1', type: 'sockets', data: null });
+}
+
 console.log('\nConsole: every bound script, and one script\'s live world.log() (the legacy 📜 scripts panel, as a frame):');
 {
   const con = `document.querySelector('[data-frame="console"]')`;

@@ -363,10 +363,11 @@ function inspectorFields() {
     f.push({ t: 'group', k: `g:${key}`, label: name.charAt(0).toUpperCase() + name.slice(1), open: isOpen(id, `g:${key}`) });
     for (const nf of g.fields) {
       // numbers read the same everywhere on desktop: scrub or type, no ± (the quad keeps its steppers)
-      const row = { ...nf, k: nf.k != null ? `ed:${g.group}.${nf.k}` : undefined, ...(nf.t === 'num' ? { compact: true } : {}) };
+      // a field may name its own commit address (a typed group's JSON hatch commits comp.<type>)
+      const row = { ...nf, k: nf.commit ? `ed:${nf.commit}` : nf.k != null ? `ed:${g.group}.${nf.k}` : undefined, ...(nf.t === 'num' ? { compact: true } : {}) };
       if (nf.t === 'ref') row.arming = !!armingRef && armingRef.id === id && armingRef.key === `${g.group}.${nf.k}`;
       if (nf.t === 'list') row.rows = (nf.rows ?? []).map((r) => ({ ...r, actions: (r.actions ?? []).map((a) => ({ ...a, k: `ed:${g.group}.${a.k}` })) }));
-      if (nf.t === 'text' && g.group === 'comp' && nf.k !== '+') { f.push(row); f.push({ t: 'btn', k: `uncomp:${nf.k}`, label: `remove ${nf.k}`, danger: true }); continue; }
+      if (nf.t === 'json' && g.group === 'comp') { f.push(row); f.push({ t: 'btn', k: `uncomp:${nf.k}`, label: `remove ${nf.k}`, danger: true }); continue; }
       f.push(row);
     }
   };

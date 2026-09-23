@@ -260,11 +260,19 @@ export function inspectSchema(ent, id, live = {}) {
     groups.push({ group: 'sound', label: 'sound', verb: 'comp', types: ['sound'], fields });
   }
 
+  // every typed group keeps an escape hatch: its component(s) as JSON, collapsed. Its fields
+  // don't speak for every key (a path's points, a socket's part, a particle seed/texture), and
+  // a key nobody can reach from the panel is a key only a model can edit.
+  for (const g of groups) {
+    if (!g.types?.length || g.group === 'flags') continue;
+    for (const type of g.types) if (c[type] != null) g.fields.push({ t: 'json', k: `json|${type}`, label: g.types.length > 1 ? type : '', value: JSON.stringify(c[type], null, 2), collapsed: true, commit: `comp.${type}`, hint: `the whole ${type} component — a saved edit replaces it wholesale` });
+  }
+
   // every type no group speaks for: raw JSON, the blind fold's UI twin —
   // a type invented this morning is editable today
   const claimed = new Set(['lock', 'guard', 'hidden', 'label', 'sockets', 'particles', 'picture', 'sound', ...mk]);
   const rest = Object.keys(c).filter((t) => !claimed.has(t));
-  const fields = rest.map((type) => ({ t: 'text', k: type, label: type, value: JSON.stringify(c[type]), hint: 'raw JSON — a saved edit replaces this type\'s data wholesale; empty removes it' }));
+  const fields = rest.map((type) => ({ t: 'json', k: type, label: type, value: JSON.stringify(c[type], null, 2), hint: 'raw JSON — a saved edit replaces this type\'s data wholesale' }));
   // Add Component (Unity's pattern) for the kinds that need a gesture to begin:
   // a picture needs an image and a part, a sound a file. Both are uploads.
   if (!c.picture && live.parts?.length) fields.push({ t: 'btn', k: 'add:picture', label: '+ picture…', client: true, hint: 'upload an image and hang it on this thing' });
@@ -437,6 +445,12 @@ export function editVerbs(ent, id, edits, live = {}) {
         if (raw == null || raw === '') { comps.set(k, null); break; }
         let data = raw;
         if (typeof raw === 'string') { try { data = JSON.parse(raw); } catch (e) { errors.push(`comp.${k}: not valid JSON (${e.message})`); break; } }
+        // the JSON door is not a way around the evaluators' rules
+        if ((k === 'picture' || k === 'sound') && data != null) {
+          const n = k === 'picture' ? normalizePicture(data) : normalizeSound(data);
+          if (!n.ok) { errors.push(`${k}: ${n.why}`); break; }
+          data = k === 'picture' ? n.picture : n.sound;
+        }
         comps.set(k, data);
         break;
       }
@@ -466,13 +480,14 @@ export function describeSchema(schema, { verbsHint = true } = {}) {
     if (!g.fields.length) continue;
     L.push(`${g.label ?? g.group} (${g.group}.* → ${g.verb})`);
     for (const f of g.fields) {
-      if (f.t === 'btn' || f.t === 'list') continue;
+      if (f.t === 'btn' || f.t === 'list' || (f.t === 'json' && f.commit)) continue;
       if (f.t === 'info') { if (f.value) L.push(`  ${f.value}`); continue; }
       const val = f.t === 'num' ? (f.deg ? `${Math.round(f.value * R2D)}°` : `${+(+f.value).toFixed(f.dp ?? 2)}${f.unit ? ' ' + f.unit : ''}`)
         : f.t === 'color' ? '0x' + (f.value ?? 0).toString(16).padStart(6, '0')
         : f.t === 'enum' ? `${f.value}  [${f.options.map((o) => o.v).join('|')}]`
         : f.t === 'check' ? (f.value ? 'yes' : 'no')
-        : f.t === 'text' ? (f.value === '' ? '—' : String(f.value).slice(0, 120)) : String(f.value);
+        : f.t === 'text' ? (f.value === '' ? '—' : String(f.value).slice(0, 120))
+        : f.t === 'json' ? String(f.value).replace(/\s+/g, ' ').slice(0, 120) : String(f.value);
       const lim = f.t === 'num' && (f.min != null || f.max != null || f.softMax != null) ? `  (${f.min ?? ''}…${f.max ?? f.softMax ?? ''}${f.max == null && f.softMax != null ? ' soft' : ''})` : '';
       const ro = f.disabled ? '  [read-only: ' + (f.hint ?? '') + ']' : f.driven ? `  [rest pose — driven by ${f.driven}]` : '';
       L.push(`  ${g.group}.${f.k} = ${val}${lim}${ro}`);

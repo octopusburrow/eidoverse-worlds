@@ -25,6 +25,7 @@
 //                 target and commits edit(k, id). value shows the current target or '—'.
 //                 A ✕ on a filled ref clears it: edit(k, null).
 //   { t:'btn',    k, label, danger? }                             → edit(k)
+//   { t:'json',   k, label, value:string, collapsed? }            → edit(k, jsonText)  [desktop; the quad shows a one-line summary]
 //   { t:'log',    lines:[string], empty? }   a scrolling console tail; the VR quad shows the newest line
 //   { t:'range',  k, label, value, min=0, max=1, step=0.01, dp=2, unit? } → edit(k, number)  [a slider on BOTH renderers]
 //   { t:'list',   k?, label, empty?, rows:[{ id, label, sub?, active?,
@@ -447,6 +448,36 @@ function fieldDOM(f, edit) {
       row.append(box);
       break;   // rows are shape: a changed tree repaints
     }
+    case 'json': {
+      // a component as JSON: multi-line, checked as you type (red = won't commit), commits on
+      // blur or Ctrl/Cmd+Enter, Esc reverts. `collapsed` tucks it behind a { } toggle — the
+      // escape hatch under a typed group, for keys its fields don't speak for.
+      const wrap = el('div', 'sp-json');
+      const tog = el('button', 'sp-json-tog', '{ } JSON');
+      const ta = el('textarea', 'sp-json-ta'); ta.spellcheck = false; ta.disabled = !!f.disabled;
+      const err = el('div', 'sp-json-err');
+      let base = f.value ?? '', open = !f.collapsed;
+      const size = () => { ta.rows = Math.min(14, Math.max(3, ta.value.split('\n').length)); };
+      const valid = () => {
+        try { if (ta.value.trim()) JSON.parse(ta.value); err.textContent = ''; ta.classList.remove('bad'); return true; }
+        catch (e) { err.textContent = String(e.message).replace(/^JSON\.parse: /, ''); ta.classList.add('bad'); return false; }
+      };
+      const show = () => { ta.hidden = !open; err.hidden = !open; tog.classList.toggle('on', open); };
+      ta.value = base; size();
+      tog.onclick = () => { open = !open; show(); if (open) ta.focus(); };
+      ta.oninput = () => { size(); valid(); };
+      ta.onblur = () => { if (ta.value !== base && valid()) edit(f.k, ta.value); };
+      ta.onkeydown = (e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); ta.blur(); }
+        else if (e.key === 'Escape') { ta.value = base; valid(); size(); ta.blur(); }
+      };
+      if (f.collapsed) wrap.append(tog);
+      wrap.append(ta, err); show();
+      row.append(wrap);
+      row.update = (nf) => { setLabel(nf); base = nf.value ?? ''; ta.disabled = !!nf.disabled; if (document.activeElement !== ta) { ta.value = base; size(); valid(); } };
+      break;
+    }
     case 'text': {
       const inp = el('input', 'sp-text');
       inp.value = f.value ?? '';
@@ -660,6 +691,7 @@ export function renderCanvas(canvas, fields, { width = 512, rowH = 44, pad = 12,
       case 'info': font(15); g.fillStyle = C.text; g.fillText(String(f.value ?? '').slice(0, 30), vx, y + rowH * 0.6); break;
       case 'log': font(13); g.fillStyle = C.label; g.fillText(String((f.lines ?? []).at(-1) ?? f.empty ?? '').slice(0, 44), pad, y + rowH * 0.6); break;   // newest line only: a quad has no scrollback
       case 'text': font(15); g.fillStyle = C.label; g.fillText(String(f.value ?? '—').slice(0, 26), vx, y + rowH * 0.6); break;
+      case 'json': font(13); g.fillStyle = C.label; g.fillText(String(f.value ?? '—').replace(/\s+/g, ' ').slice(0, 34), vx, y + rowH * 0.6); break;   // display-only: no keyboard in a headset
       case 'btn': {
         const bw = Math.max(90, f.label.length * 9 + 24);
         g.fillStyle = f.danger ? C.danger : C.accent;

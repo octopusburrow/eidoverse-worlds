@@ -31,7 +31,8 @@ console.log("\nschema is a function of the record:");
   const G = s.groups.map((g) => g.group);
   check("a chair: pos · flags · sockets · comp", JSON.stringify(G) === '["pos","flags","sockets","comp"]', JSON.stringify(G));
   check("locked → transform read-only with the reason", fieldAt(s, "pos.x")!.disabled === true && /locked/.test(fieldAt(s, "pos.x")!.hint));
-  check("unknown comp 'recipe' is a raw-JSON text field; sockets/lock are NOT duplicated there", fieldAt(s, "comp.recipe")?.t === "text" && !fieldAt(s, "comp.sockets") && !fieldAt(s, "comp.lock"));
+  // 09-23: raw rows are `json` fields (multi-line, validated as you type), no longer single-line text
+  check("unknown comp 'recipe' is a raw-JSON field; sockets/lock are NOT duplicated there", fieldAt(s, "comp.recipe")?.t === "json" && !fieldAt(s, "comp.sockets") && !fieldAt(s, "comp.lock"));
   check("sockets: a list + per-slot channels", fieldAt(s, "sockets.slots")?.t === "list" && fieldAt(s, "sockets.side|yaw")?.value === 1);
   const l = inspectSchema(lamp, "L");
   check("a light: no yaw/scale, a light group from the fold's values", !fieldAt(l, "pos.yaw") && fieldAt(l, "light.intensity")?.value === 20 && fieldAt(l, "light.keep")?.value === true);
@@ -196,6 +197,23 @@ console.log("\npicture + sound: schema groups, validated before any verb:");
   check("a playing sound offers pause + restart, not play", sg.fields.some((f: any) => f.k === "pause") && sg.fields.find((f: any) => f.k === "play")?.label === "restart");
   const held = inspectSchema({ ...playing, placer: { id: "ana" }, comp: { ...playing.comp, guard: true } }, "c", { mayAuthor: false });
   check("guarded by someone else: sound fields read-only too", fieldAt(held, "sound.volume")?.disabled === true && fieldAt(held, "sound.pause")?.disabled === true);
+}
+
+console.log("\nthe JSON escape hatch: every typed group, addressed to its comp, and never a way around the rules:");
+{
+  const ent = { pos: [0, 0, 0], comp: { sockets: { seat: { pos: [0, 0.5, 0], yaw: 0, part: "plank" } }, particles: { preset: "fire", seed: 7 }, "motion:arm": { type: "spin" } } };
+  const sch = inspectSchema(ent, "x");
+  const hatch = (g: string) => sch.groups.find((x: any) => x.group === g)?.fields.find((f: any) => f.t === "json");
+  check("sockets carries a collapsed JSON hatch that commits comp.sockets", hatch("sockets")?.collapsed === true && hatch("sockets")?.commit === "comp.sockets" && /"part": "plank"/.test(hatch("sockets")?.value ?? ""));
+  check("particles too (its seed has no field)", hatch("particles")?.commit === "comp.particles" && /"seed": 7/.test(hatch("particles")?.value ?? ""));
+  check("a motion:<part> key gets its own hatch", hatch("motion")?.commit === "comp.motion:arm");
+  check("a model's description doesn't dump the hatches (comp.<type> is the address)", !/\{ \"seat\"/.test(describeSchema(sch)));
+  const part = editVerbs(ent, "x", { "comp.sockets": JSON.stringify({ seat: { pos: [0, 0.5, 0], yaw: 0, part: "seatboard" } }) });
+  check("editing through the hatch replaces the comp wholesale", part.verbs[0]?.args?.data?.seat?.part === "seatboard", JSON.stringify(part));
+  const url = editVerbs(ent, "x", { "comp.picture": JSON.stringify({ src: "https://x.example/a.png", part: "screen" }) });
+  check("comp.picture as JSON still runs normalizePicture: a URL is refused, nothing sent", !url.verbs.length && /not an allowed picture source/.test(url.errors[0] ?? ""), JSON.stringify(url));
+  const bad = editVerbs(ent, "x", { "comp.recipe": "{ nope" });
+  check("invalid JSON is an error, not a verb", !bad.verbs.length && /not valid JSON/.test(bad.errors[0] ?? ""));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
