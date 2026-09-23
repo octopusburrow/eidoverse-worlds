@@ -161,7 +161,22 @@ export const xrPixelRatio = guardPixelRatioInXR(renderer);
 globalThis.__xrPixelRatioGuarded = !!xrPixelRatio;   // boot-check asserts the guard was APPLIED, not just importable
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
+// XR-READY CONTEXT (common practice; three's own pre-r150 docs, Babylon): three's WebGL backend creates its
+// context without xrCompatible, so the FIRST entry awaits gl.makeXRCompatible() — cheap on one GPU (09-06:
+// setSession 4 ms), a context switch or loss on a multi-GPU laptop. On a machine a headset was seen on, ask
+// at creation instead. Built HERE, not at the constructor: three derives antialias from currentSamples,
+// which the tone mapping above has just made 0 (MSAA lives in the internal target) — the same attributes it
+// would have asked for, plus the one. Chrome answers xrCompatible synchronously against the XR runtime, so
+// this moves that cost to boot; __xrCtx records what it cost and whether the runtime said yes. ?xrctx=0 = off.
+let _xrGl = null;
+if (_forceWebGL && (XR_BOOT || headsetSeenRecently()) && CONFIG.params.get('xrctx') !== '0') {
+  const t = performance.now();
+  const gl = _xrGl = canvas.getContext('webgl2', { antialias: renderer.currentSamples > 0, alpha: true, depth: renderer.depth, stencil: renderer.stencil, xrCompatible: true });
+  if (gl) renderer.backend.parameters.context = gl;
+  globalThis.__xrCtx = { ms: +(performance.now() - t).toFixed(1), xrCompatible: gl?.getContextAttributes()?.xrCompatible ?? null };
+}
 await renderer.init();
+if (globalThis.__xrCtx) { const a = _xrGl?.getContextAttributes(); Object.assign(globalThis.__xrCtx, { used: !!_xrGl && renderer.backend?.gl === _xrGl, antialias: a?.antialias ?? null, threeWanted: renderer.currentSamples > 0 }); }   // harness: three drew into OUR context, with the antialias it derives itself
 // VR enter/exit: stereo renders keep their own render objects, so the switch never rebuilds either variant (xrpass.js).
 // Inert without a stereo camera, so every boot gets it — sessions can start from a non-XR boot too.
 globalThis.__xrPassSplit = separateXRPass(renderer);

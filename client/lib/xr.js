@@ -375,7 +375,7 @@ export function radialEntries() {   // exported with makeRadial for the headless
     if (out.length % 2) out.push(SPACER);
     return out;
   }
-  const panels = { svg: '<svg xmlns="http://www.w3.org/2000/svg" width="52" height="52" viewBox="0 0 26 26"><text x="13" y="19.5" font-family="system-ui, sans-serif" font-size="19" font-weight="700" text-anchor="middle" fill="#f2f7f5">∃</text></svg>', label: 'panels', on: () => xrPanelsShown(), act: () => { bus.emit('xr:panels'); tee('[xr] panels toggled (ring)'); } };
+  const panels = { svg: '<svg xmlns="http://www.w3.org/2000/svg" width="52" height="52" viewBox="0 0 26 26"><text x="13" y="19.5" font-family="system-ui, sans-serif" font-size="19" font-weight="700" text-anchor="middle" fill="#f2f7f5">∃</text></svg>', label: 'panels', on: () => xrPanelsShown(), act: ringPanelsAct };
   const leave = { svg: xrGlyph(52), label: 'leave VR', on: () => true, close: true, guard: true, act: () => leaveVR('ring') };   // guard: trigger only — a stick brush toward 6 o'clock threw the owner out (22:29)
   // emotes is its own strip on the desk, not a dock panel — a fixed slot, first on the right (1 o'clock)
   const right = [{ icon: 'hand-waving', label: 'emotes', sub: 'emotes', on: () => false, act: () => {} }];
@@ -551,6 +551,8 @@ const buttonsTrusted = () => performance.now() > inputsSettledAt;
 
 // ---- session ---------------------------------------------------------------
 let sessionNo = 0;   // per page: tee() folds byte-identical lines (repeats 2–19 are DROPPED), so every entry line carries its number
+const ringPanelsAct = () => { bus.emit('xr:panels'); tee('[xr] panels toggled (ring)'); };
+globalThis.__xrRingPanels = ringPanelsAct;   // harness: the ring's 'panels' slot, the real action (xr-quad-softswap probe)
 let entering = false;   // requestSession → setSession is a window of ~1–3 s; a second click (or a leave) inside it made two sessions fight (Basis: refuse enter/leave while in flight)
 // The busy-session retry (#197 review B1). `busyRetryFor` is the ENTRY INTENT that owns the pending
 // retry: a retry belongs to the click that scheduled it, so a later click — or a leave — makes it
@@ -660,7 +662,7 @@ async function enterVR({ retryOf = null } = {}) {
     // into a plain RT missed the pipeline key). The world appears when the compile resolves; 6 s fallback.
     setXRCurtain(true); curtainState = { armed: true, t0: performance.now() };
     if (!floor) tee('[xr] NO floor reference space granted — using local (eye-level origin); floor height is a guess');
-    const onLine = `[xr] session on ${renderer.backend?.isWebGPUBackend ? 'WebGPU' : 'WebGL'} refspace=${floor ?? 'local'} features=${JSON.stringify(session.enabledFeatures ?? [])}`;
+    const onLine = `[xr] session on ${renderer.backend?.isWebGPUBackend ? 'WebGPU' : 'WebGL'} refspace=${floor ?? 'local'} features=${JSON.stringify(session.enabledFeatures ?? [])} xrctx=${JSON.stringify(globalThis.__xrCtx ?? 'default')}`;
     console.log(onLine); tee(onLine);
     // Fixed foveation, Basis's split (BasisSettingsDefaults.cs:933 FoveatedRendering: windows 0, android 1): a
     // standalone headset renders its own eye buffers and max foveation is its single biggest GPU lever; a PC
@@ -716,7 +718,7 @@ async function enterVR({ retryOf = null } = {}) {
     // whether three's XR-camera shadow pass looks wrong, is the owner's read (fps tee + eyes), not a claim.
     xrIntent.active = true;
     selfFirstPerson(true);
-    xrPanelsEnter(rig);            // every registered frame as a physical surface
+    { const t = performance.now(); xrPanelsEnter(rig); tee(`[xr] panels enter ${(performance.now() - t).toFixed(1)} ms`); }   // every registered frame as a physical surface (soft swap: staged each time, built on first show)
     session.addEventListener('end', () => {
       // NO RESTORE HERE. installFrameClock's listener already did it, generation-checked, and it is
       // registered BEFORE setSession so it runs first. This one used to restore unconditionally from
@@ -734,7 +736,7 @@ async function enterVR({ retryOf = null } = {}) {
       selfFirstPerson(false);
       { const v = getSelf()?.vrm; if (v) { v.scene.scale.setScalar(1); v.scene.position.set(0, 0, 0); v.scene.updateMatrixWorld(true); if (v.userData) { v.userData.ankleH = null; v.userData._gait = null; } } }   // the puppet scale AND the eye-anchor offset (xrbody writes vrm.scene.position every presenting frame; left in place it sank the feet on the desktop — owner 09-08 00:38) are presenting things
       releaseGrab();      // a gripped panel goes back to the rig BEFORE the quads are disposed, or a dead mesh stays in the rig
-      xrPanelsExit(rig);
+      { const t = performance.now(); xrPanelsExit(rig); tee(`[xr] panels exit ${(performance.now() - t).toFixed(1)} ms`); }
       rig.remove(camera);
       scene.remove(rig);
       session = null;
