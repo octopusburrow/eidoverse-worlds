@@ -19,7 +19,8 @@
 
 import { installRenderListTolerance, THREE, renderer, camera, scene, XR_BOOT, PREF_HEADSET_SEEN, xrPixelRatio } from './core.js';
 import { decideEntryFailure } from './xr_entry_policy.js';
-import { stereoStandIn } from './xrpass.js';   // a warm needs TWO eyes: xr.getCamera() has none before a session   // what a failed session request MEANS (#197 B1)
+import { stereoStandIn } from './xrpass.js';   // a warm needs TWO eyes: xr.getCamera() has none before a session
+import { installDualWarm } from './xrwarm.js';   // content warms build both variants (BasisVR's warm-at-load)   // what a failed session request MEANS (#197 B1)
 import { makeEntryEffects, handleEntryFailure } from './xr_entry_effects.js';
 import { installEntryClock } from './xr_frame_clock.js';   // who owns window.rAF while presenting (#197 B2)
 import { CONFIG, report, bus, tee, wornNameOf } from './base.js';
@@ -1212,23 +1213,15 @@ function warmXRPipelines() {
   if (xrWarmed || !(XR_BOOT || headsetHere) || presenting || !getSelf()?.vrm) return;   // any boot with a headset present warms (owner, 09-19), not only ?xr=1
   xrWarmed = true;
   warm('xr pipelines', async () => {
-    // the owner's headset 09-07 19:00 settled it: three builds its WebGL-XR target at samples=0 (attributes.antialias
-    // came back false for the XR context) with colorSpace=renderer.outputColorSpace. Our warm RT was samples=4,
-    // cs=(default) → every pipeline key missed → all ~44 programs rebuilt at ENTRY, on the session rAF, starving
-    // three's parallel-compile poller (56–73 s to finish). Match three's target so the warm actually primes the cache.
-    const rt = new THREE.RenderTarget(64, 64, { samples: 0, depthBuffer: true, stencilBuffer: renderer.stencil, colorSpace: renderer.outputColorSpace });
-    const prev = renderer.getRenderTarget(); const prevSamples = renderer._samples; renderer._samples = 0;   // the cache key reads renderer.currentSamples when no RT is bound; the XR session runs at 0, so warm at 0
+    // One compile of the whole scene through a TWO-EYE stand-in, no target bound. Measured (tools/xr-dual-warm-probe.mjs):
+    // the eyes draw through the same tone-mapping target shape as the desktop, so this lands in the render context the
+    // headset uses. The old warm missed three ways — xr.getCamera() has zero eyes before a session (the mono variant under
+    // a stereo name), a hand-built 64² target keyed a different context, and the next desktop frame evicted what it built
+    // (both variants shared one slot until xrpass.js).
     const t0 = performance.now();
-    try {
-      // the compile CONTEXT (render target, camera count) is captured in compileAsync's synchronous pass; restore the
-      // desktop target BEFORE awaiting the async link, or every desktop frame renders into the 64×64 warm target for
-      // the 6–10 s the link takes (round 2 N1 — the round-1 'gate the healer' shape did exactly that, measured)
-      renderer.setRenderTarget(rt); const pr = compileEverything(stereoStandIn(THREE, camera));   // xr.getCamera() has ZERO eyes before a session: it compiled the MONO variant (tools/xr-switch-compile-probe.mjs)
-      renderer.setRenderTarget(prev); renderer._samples = prevSamples;
-      await pr; }   // compile only: a real draw here took 4.2 s on the desktop and the entry still rebuilt 17 (09-19 17:00)
+    try { await compileEverything(stereoStandIn(THREE, camera)); }
     catch (e) { report('xr pipeline warm', e); }
-    finally { renderer.setRenderTarget(prev); renderer._samples = prevSamples; rt.dispose(); }
-    tee(`[xr] pipelines pre-warmed for the eye buffers in ${(performance.now() - t0).toFixed(0)} ms — warm RT: samples=${rt.samples} fmt=${rt.texture?.format} type=${rt.texture?.type} cs=${rt.texture?.colorSpace} depth=${rt.depthBuffer} stencil=${rt.stencilBuffer} (matched to three XR target; entry should now show programs≈0)`);
+    tee(`[xr] pipelines pre-warmed for the eyes in ${(performance.now() - t0).toFixed(0)} ms (entry should now show programs≈0)`);
   }, { p: P_AMBIENT });
 }
 export async function initXR() {
@@ -1240,6 +1233,9 @@ export async function initXR() {
   // (the headset-seen pref is written when a session is actually GRANTED — see setSession — not here: isSessionSupported
   // is true on any machine with an XR runtime, headset or not, and the pref pins the next boot to WebGL)
   headsetHere = true;
+  // from here on every content warm also builds the variant the OTHER mode needs, and in-session compiles land where the
+  // frames draw (xrwarm.js). Only machines that can present pay the second compile.
+  globalThis.__xrDualWarm = installDualWarm({ THREE, renderer, camera, wantStereo: () => true, presenting: () => presenting });
 
   // the third glyph of the mic/ear trio — the same ink, the same slot
   // layout, the same pin row in the ∃ menu (owner, 09-04). Exists only here,
