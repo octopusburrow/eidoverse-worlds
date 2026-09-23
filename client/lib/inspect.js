@@ -28,6 +28,7 @@ import { state } from './state.js';
 import { sendVerb } from './net.js';
 import { renderDOM } from './panels.js';
 import { inspectSchema, editVerbs, fieldAt } from '../../shared/editschema.js';
+import { mayAuthor } from './placer.js';
 const R2D = 180 / Math.PI;
 
 const handlers = new Map();      // group → fn
@@ -46,7 +47,7 @@ export const foldRecord = (id) => state.st.entities?.[id] ?? null;
 export function schemaFor(id) {
   const rec = foldRecord(id); if (!rec) return { id, groups: [] };
   const obj = entities.get(id);
-  return inspectSchema(rec, id, { casting: obj?.userData?.isLight ? hooks.casting?.(obj) : undefined });
+  return inspectSchema(rec, id, { casting: obj?.userData?.isLight ? hooks.casting?.(obj) : undefined, mayAuthor: mayAuthor(id) });
 }
 
 let gesture = null;   // { id, rec } — the record as it stood when a drag began

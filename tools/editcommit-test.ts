@@ -22,8 +22,9 @@ plugin({
     b.onResolve({ filter: /^\.\/(world|state|net|panels)\.js$/ }, (a) => ({ path: a.path, namespace: "editcommit-stubs" }));
     b.onLoad({ filter: /.*/, namespace: "editcommit-stubs" }, (a) => {
       const m = a.path.match(/(world|state|net|panels)/)![1];
-      const src = { world: "export const entities = globalThis.__w.entities;", state: "export const state = globalThis.__f;",
-        net: "export const sendVerb = (v, a) => globalThis.__sent.push({ verb: v, args: a });", panels: "export const renderDOM = () => {};" }[m];
+      // world/net carry what placer.js reads too (inspect.js asks it who may author a guarded thing)
+      const src = { world: "export const entities = globalThis.__w.entities; export const entityMeta = new Map(); export const comps = new Map();", state: "export const state = globalThis.__f;",
+        net: "export const sendVerb = (v, a) => globalThis.__sent.push({ verb: v, args: a }); export const net = { myId: 'tester', myRights: { role: 'builder' } };", panels: "export const renderDOM = () => {};" }[m];
       return { contents: src!, loader: "js" };
     });
   },

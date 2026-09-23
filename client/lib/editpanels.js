@@ -29,6 +29,7 @@ import { schemaFor, commitEdit, planEdit, sendPlanned, setEditHooks, endGesture,
 import { channels } from '../../shared/editschema.js';
 import { commitLight, lightCasting } from './lights.js';
 import { myState } from './controller.js';
+import { placerOf } from './placer.js';
 import { reindexCollider } from './colliders.js';
 
 const _wp = new THREE.Vector3();
@@ -340,7 +341,9 @@ function inspectorFields() {
   const f = [
     { t: 'info', label: 'id', value: `${id}${label}` },
     { t: 'info', label: 'lib', value: short(meta) },
-    { t: 'info', label: 'by', value: `${meta.actor ?? '?'}${obj?.userData?.mountedTo ? ` · on ${obj.userData.mountedTo}` : ''}` },
+    // attribution names the PLACER (the server's stamp); `actor` is whoever last wrote it —
+    // an owner's re-light moves actor, so say so when they differ (AGENTS.md, build.js)
+    { t: 'info', label: 'placed by', value: `${placerOf(id)?.id ?? meta.actor ?? '?'}${meta.actor && meta.actor !== (placerOf(id)?.id ?? meta.actor) ? ` · last change by ${meta.actor}` : ''}${obj?.userData?.mountedTo ? ` · on ${obj.userData.mountedTo}` : ''}` },
     { t: 'info', label: 'world', value: `(${wp.x.toFixed(1)}, ${wp.y.toFixed(1)}, ${wp.z.toFixed(1)}) · ${wp.distanceTo(myState.pos).toFixed(0)}m away` },
   ];
 

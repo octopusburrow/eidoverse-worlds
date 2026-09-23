@@ -62,12 +62,21 @@ const motionKeys = (ent) => Object.keys(ent?.comp ?? {}).filter((k) => (k === 'm
 
 /** @param ent   the folded entity record (shared/fold.js), or null
  *  @param id    its id
- *  @param live  optional client extras: { casting?: boolean } */
+ *  @param live  optional viewer extras: { casting?: boolean, mayAuthor?: boolean }
+ *               mayAuthor — may THIS viewer author the thing (its placer, the
+ *               owner, an operator)? undefined = unknown: nothing is disabled
+ *               on its account and the server decides, as it always does. */
 export function inspectSchema(ent, id, live = {}) {
   if (!ent) return { id, groups: [] };
   const c = ent.comp ?? {};
   const mounted = !!ent.parent;
   const locked = !!c.lock;
+  // guard (AGENTS.md "Guarding"): only its placer, the world's owner or an
+  // operator may author it. The name comes from the STAMP, never the latest
+  // actor — an owner's re-light moves `actor` and leaves the placer alone.
+  const guarded = !!c.guard;
+  const placer = ent.placer?.id ?? ent.actor ?? null;
+  const held = guarded && live.mayAuthor === false;
   const groups = [];
 
   // transform — the entity's LOCAL frame, exactly what `place` takes. A
@@ -88,8 +97,13 @@ export function inspectSchema(ent, id, live = {}) {
   if (driven) for (const f of transform) f.driven = driven;
   groups.push({ group: 'pos', label: 'Transform', verb: 'place', fields: transform });
 
-  groups.push({ group: 'flags', label: 'Flags', verb: 'comp', fields: [
+  const flags = [];
+  if (held) flags.push({ t: 'info', label: '', value: `🛡 guarded by ${placer ?? 'its placer'} — only they, the world's owner or an operator may change, move or remove it (using it and sitting on it stay open)` });
+  groups.push({ group: 'flags', label: 'Flags', verb: 'comp', fields: [...flags,
     { t: 'check', k: 'lock', label: 'locked', value: locked, hint: 'nail it down: nobody\'s drags, verbs or scripts can move, replace or remove it (server-enforced); sitting on it and content edits stay open' },
+    { t: 'check', k: 'guard', label: 'guarded', value: guarded, disabled: live.mayAuthor === false,
+      hint: live.mayAuthor === false ? `only ${placer ?? 'its placer'} or the world's owner can set or clear the guard on this`
+        : 'make it yours to author: while guarded, only you, the world\'s owner or an operator can change its components, move it, remove it or bind scripts to it (server-enforced) — using it and sitting on it stay open' },
     { t: 'check', k: 'hidden', label: 'hidden', value: c.hidden === true, hint: 'not drawn, still there — a comp every client honours' },
     { t: 'text', k: 'label', label: 'label', value: typeof c.label === 'string' ? c.label : '', placeholder: 'a name people see', hint: 'a display name (comp label) — the id never changes' },
   ] });
@@ -201,13 +215,19 @@ export function inspectSchema(ent, id, live = {}) {
 
   // every type no group speaks for: raw JSON, the blind fold's UI twin —
   // a type invented this morning is editable today
-  const claimed = new Set(['lock', 'hidden', 'label', 'sockets', 'particles', ...mk]);
+  const claimed = new Set(['lock', 'guard', 'hidden', 'label', 'sockets', 'particles', ...mk]);
   const rest = Object.keys(c).filter((t) => !claimed.has(t));
   const fields = rest.map((type) => ({ t: 'text', k: type, label: type, value: JSON.stringify(c[type]), hint: 'raw JSON — a saved edit replaces this type\'s data wholesale; empty removes it' }));
   fields.push({ t: 'text', k: '+', label: '+ component', value: '', placeholder: 'type (recipe, notice…) ⏎', hint: 'attach a component — any type folds, evaluators give known ones behavior' });
   groups.push({ group: 'comp', label: `Components (${rest.length})`, verb: 'comp', fields });
 
-  return { id, groups };
+  // guarded by someone else: every authoring field reads as read-only, with the
+  // reason. The server refuses these regardless — this says so before the trip.
+  if (held) for (const g of groups) for (const f of g.fields) {
+    if (f.t === 'info' || f.disabled) continue;
+    f.disabled = true; f.hint = `guarded by ${placer ?? 'its placer'}`;
+  }
+  return { id, groups, ...(guarded ? { guard: { placer, held } } : {}) };
 }
 
 /** The channel box: every num in the schema, flat, with dotted addresses. */
@@ -271,6 +291,7 @@ export function editVerbs(ent, id, edits) {
       }
       case 'flags': {
         if (k === 'lock') flagsComp('lock', bool(raw) ? true : null);
+        else if (k === 'guard') flagsComp('guard', bool(raw) ? true : null);
         else if (k === 'hidden') flagsComp('hidden', bool(raw) ? true : null);
         else if (k === 'label') { const s = String(raw ?? '').trim(); flagsComp('label', s ? s.slice(0, 80) : null); }
         break;

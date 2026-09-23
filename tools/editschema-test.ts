@@ -129,5 +129,28 @@ console.log("\ndescribeSchema reads like an inspector:");
   check("parseEntry passes numbers and refuses garbage", parseEntry(4, 0) === 4 && parseEntry("x", 0) === null);
 }
 
+console.log("\nguard (AGENTS.md \"Guarding\"): named from the placer STAMP, read-only for others:");
+{
+  // an owner re-lit it: actor moved, the placer stamp did not
+  const lamp = { kind: "light", pos: [0, 1, 0], intensity: 8, actor: "owner", placer: { id: "ana" }, comp: { guard: true } };
+  const mine = inspectSchema(lamp, "lamp", { mayAuthor: true });
+  const theirs = inspectSchema(lamp, "lamp", { mayAuthor: false });
+  const unknown = inspectSchema(lamp, "lamp");
+  const g = (sch: any) => fieldAt(sch, "flags.guard");
+  check("a guard checkbox sits in Flags, reading the comp", g(mine)?.t === "check" && g(mine)?.value === true);
+  check("guard is not also a raw-JSON component row", !fieldAt(mine, "comp.guard"));
+  check("the placer may author: nothing disabled", !mine.groups.some((x: any) => x.fields.some((f: any) => f.disabled)));
+  check("someone else: the checkbox is disabled and names the PLACER (not the latest actor)", g(theirs)?.disabled === true && /only ana /.test(g(theirs)?.hint ?? "") && !/owner or/.test(g(theirs)?.hint?.replace("world's owner", "") ?? ""), g(theirs)?.hint);
+  check("someone else: a 🛡 line says who, in Flags", theirs.groups.find((x: any) => x.group === "flags").fields.some((f: any) => f.t === "info" && /🛡 guarded by ana/.test(f.value)));
+  check("someone else: every authoring field is read-only with the reason", fieldAt(theirs, "light.intensity")?.disabled === true && fieldAt(theirs, "pos.x")?.hint === "guarded by ana");
+  check("unknown viewer (a model, or no identity): nothing disabled — the server decides", !unknown.groups.some((x: any) => x.fields.some((f: any) => f.disabled)));
+  check("the schema reports the guard for callers", unknown.guard?.placer === "ana" && theirs.guard?.held === true);
+  const set = editVerbs({ pos: [0, 0, 0], comp: {} }, "crate", { "flags.guard": true });
+  const clr = editVerbs({ pos: [0, 0, 0], comp: { guard: true } }, "crate", { "flags.guard": false });
+  check("flags.guard → comp guard true / null", JSON.stringify(set.verbs) === JSON.stringify([{ verb: "comp", args: { id: "crate", type: "guard", data: true } }]) && clr.verbs[0]?.args?.data === null, JSON.stringify([set, clr]));
+  const legacy = inspectSchema({ pos: [0, 0, 0], actor: "bea", comp: { guard: true } }, "old", { mayAuthor: false });
+  check("an entity from before the stamp falls back to its actor", /only bea /.test(fieldAt(legacy, "flags.guard")?.hint ?? ""));
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
