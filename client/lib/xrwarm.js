@@ -45,9 +45,11 @@ export function installDualWarm({ THREE, renderer, camera, wantStereo, presentin
   // THE LEAK (three r186): after an XR frame Renderer._renderScene "restores" the bound target to
   // `_renderTarget || _outputRenderTarget`, i.e. it leaves the eye buffer bound. render() still draws through the
   // tone-mapping target, but compileAsync takes `_renderTarget === null` as its test and compiles STRAIGHT INTO the eye
-  // buffer — a different render context. So every compile during a session (content warms, the entry curtain) built
-  // objects the headset's frames never used, and the frames rebuilt them at draw time. A bound target that is just the
-  // leaked output target is treated as unbound for the compile's synchronous pass (tools/xr-dual-warm-probe.mjs).
+  // buffer — a different render context. So every compile during a session (content warms, the entry curtain) prepared
+  // render objects (node builds, bindings) the headset's frames never used, and the frames built them again at draw time.
+  // The GPU pipelines were NOT wasted (the pipeline cache is keyed on formats, so both contexts share them) — measured in a
+  // pure-three A/B on r186 and dev: 12 render objects rebuilt by the next render(), 0 pipelines. A bound target that is
+  // just the leaked output target is treated as unbound for the compile's synchronous pass (tools/xr-dual-warm-probe.mjs).
   const compileAsRendered = (obj, cam, target, onProgress) => {
     const rt = renderer.getRenderTarget(), out = renderer.getOutputRenderTarget();
     if (rt === null || rt !== out) return compile(obj, cam, target, onProgress);
