@@ -15,6 +15,7 @@ import { join, normalize } from "node:path";
 import { randomBytes } from "node:crypto";
 import { ROOT, WORLDS_DIR, LIBRARY_DIR, OPT_DIR, PATCH_DIR, LADDER, JOIN_TOKEN, STORE_MIN } from "./config.ts";
 import { isStoreOriginal, isServingArtifact, variantStatus } from "./store-variants.ts";
+import { glbPerfOfFile } from "./glbperf.ts";
 import { wantsKtx2, KTX2_KEY } from "../shared/ktx2.js";
 import { LOD_RECIPE, lodVariantPath } from "./store-variants.ts";
 import { hnSessions, hnJti, sessionFromCookie, saveSessions, SESSION_TTL_MS, HN_ISSUER_KEY, HN_ISS, HN_AUD, HN_LOGIN_URL, HN_REQUIRE_LOGIN } from "./auth.ts";
@@ -837,6 +838,8 @@ const ROUTES: Route[] = [
             // no draco "min" pass exists for library models (only store/ has store-min) — omit it rather than
             // report a pass that will never run as forever "pending"
             opt: (({ min: _none, ...rest }) => rest)(variantStatus(join(libOpt, f), libOpt)),
+            // the loupe's rank of the ORIGINAL (glbperf.ts; mtime-cached), or null when unreadable
+            perf: glbPerfOfFile(join(LIBRARY_DIR, "eidoverse/assets/models", f)),
             // strip the SEO-soup filenames into something a person can read
             name: f.replace(/\.glb$/i, "").replace(/_/g, " ").slice(0, 48),
             preview: hasPrev ? `eidoverse/assets/models/${prev}` : null,
@@ -860,6 +863,7 @@ const ROUTES: Route[] = [
             return {
               path: `store/${f}`,
               opt: variantStatus(join(storeDir, f), STORE_MIN),
+              perf: glbPerfOfFile(join(storeDir, f)),
               name: (m?.name ?? `conjured ${hash.slice(0, 8)}`).slice(0, 48),
               preview: null as string | null,
               ts: m?.ts ?? 0,
@@ -869,7 +873,7 @@ const ROUTES: Route[] = [
           .filter((s) => s.score > 0)
           .sort((a, b) => b.ts - a.ts)
           .slice(0, 30)
-          .map(({ path, name, preview, opt }) => ({ path, name, preview, opt }));
+          .map(({ path, name, preview, opt, perf }) => ({ path, name, preview, opt, perf }));
         hits.push(...store);
       }
       return new Response(JSON.stringify(hits), {

@@ -3,6 +3,7 @@
 // EDITING gestures (ghost, select, drag, undo) stay in build.js; this module
 // is how a thing gets INTO your hand, build.js is what your hand does with it.
 
+import { TIER_COLORS } from '../../shared/perfrank.js';
 import { CONFIG, report, bus } from './base.js';
 import { libLabels } from './assets.js';
 import { sendVerb } from './net.js';
@@ -65,20 +66,48 @@ async function paintBuild(body) {
   const PASS = { min: 'compressed copy', ktx2: 'GPU textures', lod: 'LOD' };
   const WORD = { built: 'built', 'not-needed': 'not needed', unsupported: 'not supported', refused: 'refused',
     stale: 'will be re-checked', deferred: 'deferred', pending: 'not processed yet' };
-  const optBadge = (card, opt) => {
+  // The corner row (R, 09-24): the loupe's overall rank as a colored pill (the same rule and colors as Debug › Perf ›
+  // Loupe — shared/perfrank.js; the server reads it from the GLB, tools/glbperf-parity-probe proves it equals the
+  // loupe's), then LOD / ⚠ chips. Inset from the image corner and spaced; hover explains each.
+  const CAT = { tris: 'triangles', draws: 'draw calls', texMB: 'texture memory', bones: 'bones', mats: 'materials', alpha: 'transparent materials' };
+  const chipRow = (card) => {
+    let row = card.querySelector('.opt-row');
+    if (!row) {
+      row = document.createElement('div');
+      row.className = 'opt-row';
+      row.style.cssText = 'position:absolute;top:6px;right:6px;display:flex;gap:4px;align-items:center;pointer-events:none';
+      card.style.position = 'relative';
+      card.appendChild(row);
+    }
+    return row;
+  };
+  const optBadge = (card, opt, perf) => {
+    const rows = [];
+    if (perf) {
+      rows.push(`perf: ${perf.rankName} — set by ${CAT[perf.worst] ?? perf.worst}`,
+        `  ${perf.tris.toLocaleString()} tris · ${perf.draws} draws · ${perf.mats} materials · ${perf.texMB} MB textures`
+        + `${perf.alpha ? ` · ${perf.alpha} transparent` : ''}${perf.bones ? ` · ${perf.bones} bones` : ''}`
+        + `${perf.unsizedImages ? ` · ${perf.unsizedImages} image(s) not sized` : ''}  (original upload)`);
+      const pill = document.createElement('b');   // not a span: the card's label rule (.card span) is full-width
+      pill.className = 'opt-rank';
+      pill.dataset.rank = String(perf.rank);
+      pill.style.cssText = `display:inline-block;width:14px;height:8px;border-radius:4px;background:${TIER_COLORS[perf.rank]};`
+        + 'box-shadow:0 0 0 1px rgba(0,0,0,.45)';
+      chipRow(card).appendChild(pill);
+    }
+    if (opt) rows.push(...Object.entries(opt).map(([k, v]) => `${PASS[k] ?? k}: ${WORD[v.state] ?? v.state}${v.reason ? ` — ${v.reason}` : ''}`));
+    if (rows.length) card.title = rows.join('\n');
     if (!opt) return;
-    const rows = Object.entries(opt).map(([k, v]) => `${PASS[k] ?? k}: ${WORD[v.state] ?? v.state}${v.reason ? ` — ${v.reason}` : ''}`);
-    card.title = rows.join('\n');
     const bad = Object.values(opt).some((v) => v.state === 'refused' || v.state === 'deferred' || v.state === 'stale');
     const lod = opt.lod?.state === 'built';
-    if (!bad && !lod) return;
-    const chip = document.createElement('b');   // not a span: the card's label rule (.card span) is full-width
-    chip.className = 'opt-chip';
-    chip.textContent = bad ? '⚠' : 'LOD';
-    chip.style.cssText = `position:absolute;top:3px;right:3px;display:inline-block;width:auto;font-weight:600;font-size:9px;line-height:1;padding:2px 4px;border-radius:4px;`
-      + `pointer-events:none;${bad ? 'background:#6b4a12;color:#ffd68a' : 'background:rgba(143,232,200,.18);color:#8fe8c8'}`;
-    card.style.position = 'relative';
-    card.appendChild(chip);
+    for (const [on, text, css] of [[lod, 'LOD', 'background:rgba(143,232,200,.18);color:#8fe8c8'], [bad, '⚠', 'background:#6b4a12;color:#ffd68a']]) {
+      if (!on) continue;
+      const chip = document.createElement('b');
+      chip.className = 'opt-chip';
+      chip.textContent = text;
+      chip.style.cssText = `display:inline-block;width:auto;font-size:9px;line-height:1;padding:2px 4px;border-radius:4px;font-weight:600;${css}`;
+      chipRow(card).appendChild(chip);
+    }
   };
 
   const paint = (items) => {
@@ -92,7 +121,7 @@ async function paintBuild(body) {
         : '<div style="width:100%;aspect-ratio:1"></div>';
       card.innerHTML = `${img}<span>${escapeHtml(it.name)}</span>`;   // server-supplied name (§24k hygiene)
       card.onclick = () => holdGhost(it.path, it.name);
-      optBadge(card, it.opt);
+      optBadge(card, it.opt, it.perf);
       grid.appendChild(card);
     }
     if (!items.length) grid.innerHTML = '<div style="color:var(--dim);font-size:11px">nothing matched</div>';
