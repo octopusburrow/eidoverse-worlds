@@ -174,3 +174,48 @@ export function storeShadowsMissing(
     lod: !exists(l) && !(exists(lFailed) && verdictStands(read(lFailed), LOD_RECIPE)),
   };
 }
+
+// ---- status, for people (R, 09-24: "nothing could silently fail getting LODs") ----------------------------------
+// storeShadowsMissing answers the SWEEP's question (is there work left?). This answers a PERSON's: what does each
+// optimization look like for this asset, and why. Every `.failed` marker already carries a typed verdict — the only
+// thing missing was a way to read it. States:
+//   built        the variant exists (serving)
+//   not-needed   the pass declined for a correct reason: too light to reduce, nothing to convert
+//   unsupported  refused by contract (bodies, animated, morphs — LOD v1, PR #142/#156)
+//   refused      the pass ran and its result failed a gate (not smaller, ineffective, preservation) — reason attached
+//   stale        a size verdict from an older recipe: the sweep will re-measure it
+//   deferred     this host could not afford the pass (upload.ts `.deferred`)
+//   pending      nothing on disk yet: the sweep has not reached it
+export type VariantState = "built" | "not-needed" | "unsupported" | "refused" | "stale" | "deferred" | "pending";
+export type VariantStatus = { state: VariantState; reason: string | null };
+
+/** Classify one variant from what is on disk beside it. `recipe` is the one its size verdicts are stamped with. */
+export function classifyVariant(path: string, exists: (p: string) => boolean, read: (p: string) => string, recipe?: string): VariantStatus {
+  if (exists(path)) return { state: "built", reason: null };
+  if (exists(`${path}.failed`)) {
+    const raw = read(`${path}.failed`);
+    // the CLI's line: "[optimize] <pass>: <verdict> (<ms>ms) — <tail>" — keep the verdict, drop the log dressing
+    const reason = raw.split("\n")[0].replace(/^\[optimize\]\s*(?:lod:\s*)?/, "").replace(/\s*\(\d+ms\).*$/, "")
+      .replace(/,\s*\d+ms\)/, ")").replace(/\s+—\s+.*$/, "").replace(/\s*recipe=\S+/, "").trim() || "refused (no reason recorded)";
+    if (recipe !== undefined && !verdictStands(raw, recipe)) return { state: "stale", reason };
+    if (/already light|no convertible|nothing to/i.test(raw)) return { state: "not-needed", reason };
+    if (/unsupported:/i.test(raw)) return { state: "unsupported", reason: reason.replace(/^unsupported:\s*/i, "") };
+    return { state: "refused", reason };
+  }
+  if (exists(`${path}.deferred`)) return { state: "deferred", reason: read(`${path}.deferred`).trim().slice(0, 200) || null };
+  return { state: "pending", reason: null };
+}
+
+/** Every optimization's status for one store/library original. */
+export function variantStatus(
+  original: string,
+  minDir: string,
+  exists: (p: string) => boolean = existsSync,
+  read: (p: string) => string = (p) => { try { return readFileSync(p, "utf8"); } catch { return ""; } },
+): { min: VariantStatus; ktx2: VariantStatus; lod: VariantStatus } {
+  return {
+    min: classifyVariant(join(minDir, basename(original)), exists, read),
+    ktx2: classifyVariant(ktx2VariantPath(original), exists, read, KTX2_RECIPE),
+    lod: classifyVariant(lodVariantPath(original), exists, read, LOD_RECIPE),
+  };
+}
