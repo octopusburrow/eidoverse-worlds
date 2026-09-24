@@ -770,6 +770,7 @@ export async function buildFloraField(rawArgs, { scene, heightFn }) {
   // the sky's scene-diff claim must never own the meadow (§17c) — a grass
   // build regularly overlaps an async sky build at boot
   group.userData.skyExempt = true;
+  group.userData.odTag = 'grass';   // overdraw.js category
   scene.add(group);
   return field;
 }

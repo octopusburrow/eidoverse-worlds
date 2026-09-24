@@ -89,7 +89,11 @@ export function setXRCurtain(on) {
 }
 export const xrCurtainOn = () => curtainOn;
 let healed = 0;
+// EW.overdraw holds the live frame while it swaps every material for a counting clone (overdraw.js)
+let worldHold = false;
+export function setWorldHold(on) { worldHold = !!on; }
 export function renderWorld() {
+  if (worldHold) return;
   mainPassCam = camera;
   // SELF-HEAL (09-07 00:30, the black desktop's second half): three captures `outputRenderTarget = _renderTarget || …`
   // at the top of every render. A frame that aborts between binding its frame-buffer target and restoring leaves
