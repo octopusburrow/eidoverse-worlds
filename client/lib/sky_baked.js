@@ -327,7 +327,13 @@ export function attachBakedDome(skyApi, opts = {}) {
   ).rgb;
 
   dome = new THREE.Mesh(new THREE.SphereGeometry(radius, 48, 24), mat);
-  dome.renderOrder = -100;             // the bg dome's slot: first, behind everything
+  // AFTER the world's opaques, not first (2026-09-24). Opaque, never writes depth, far behind everything: drawn first
+  // it shaded every pixel of a 5920x2960 eye pair (equirect atan/asin + two fetches + mix) only to be overdrawn. At 0.5
+  // it follows every world opaque (renderOrder 0) and depth-rejects each covered pixel; overlays (>= 1 — core's grid 1
+  // and axis 2, which write no depth; the ring, gizmos, landmarks, vignette) still draw after it; transparents are a
+  // later list. Same image (tools/dome-order-probe.mjs). The one thing that WOULD differ: an opaque that writes no
+  // depth at renderOrder 0 — the client has none; keep it that way (a stage line must sit at >= 1).
+  dome.renderOrder = 0.5;
   dome.frustumCulled = false;
   dome.userData.noSupportCheck = true;
   dome.userData.noCamCollide = true;
