@@ -13,7 +13,9 @@ const pick = new Set([
   ...all.filter((f) => /palm_date|bagger_288|crate_large_blue/.test(f)),
   ...[0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9].map((q) => all[Math.floor(q * (all.length - 1))]),
 ]);
-const models = [...pick].slice(0, 10);
+const OPTM = process.env.OPTM || '/home/claude/eido/staging/assets/opt/eidoverse/assets/models';
+const models = [...pick].slice(0, 10).flatMap((m) => [{ dir: LIB, name: m }, ...(process.env.KTX2 !== '0' ? [{ dir: OPTM, name: `${m}.ktx2.glb` }] : [])])
+  .filter(({ dir, name }) => { try { statSync(`${dir}/${name}`); return true; } catch { return false; } });
 
 const world = await ownedWorld({});
 const { browser, page } = await launchBrowser();
@@ -21,21 +23,24 @@ try {
   const pg = await page();
   const errs = []; pg.on('pageerror', (e) => errs.push(String(e)));
   await pg.route('**/__parity/**', (route) => {
-    const name = decodeURIComponent(route.request().url().split('/__parity/')[1]);
-    route.fulfill({ body: readFileSync(`${LIB}/${name}`), headers: { 'content-type': 'model/gltf-binary' } });
+    const key = decodeURIComponent(route.request().url().split('/__parity/')[1]);
+    const [d, name] = key.split('|');
+    route.fulfill({ body: readFileSync(`${d}/${name}`), headers: { 'content-type': 'model/gltf-binary' } });
   });
   await pg.goto(`${world.origin}/?world=staging&name=parityprobe&key=${world.key}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await pg.waitForFunction(() => globalThis.__ewEngineUp, null, { timeout: 60000 });
-  for (const m of models) {
-    const server = glbPerf(new Uint8Array(readFileSync(`${LIB}/${m}`)));
+  for (const { dir, name: m } of models) {
+    const server = glbPerf(new Uint8Array(readFileSync(`${dir}/${m}`)));
     const client = await Promise.race([pg.evaluate(async (name) => {
       const { makeLoader } = await import('./lib/assets.js');
       const { statsOf } = await import('./lib/perfscope.js');
       const gltf = await makeLoader().loadAsync(`/__parity/${encodeURIComponent(name)}`);
+      window.__ktxFormats = window.__ktxFormats || new Set();
+      gltf.scene.traverse((o) => { for (const mt of [].concat(o.material ?? [])) for (const v of Object.values(mt ?? {})) if (v?.isCompressedTexture) window.__ktxFormats.add(v.format); });
       const s = statsOf(gltf.scene, name);
       gltf.scene.traverse((o) => { o.geometry?.dispose?.(); for (const mt of [].concat(o.material ?? [])) { for (const v of Object.values(mt)) v?.isTexture && v.dispose(); mt.dispose?.(); } });
       return s;
-    }, m), new Promise((_, rej) => setTimeout(() => rej(new Error('load pinned 90 s')), 90000))]);
+    }, `${dir}|${m}`), new Promise((_, rej) => setTimeout(() => rej(new Error('load pinned 90 s')), 90000))]);
     const same = ['tris', 'draws', 'mats', 'alpha', 'bones'].filter((k) => server[k] !== client[k]);
     const texOk = Math.abs(server.texMB - client.texMB) <= Math.max(0.05, client.texMB * 0.01);
     const ok = !same.length && texOk && server.rank === client.rank && server.worst === client.worst;

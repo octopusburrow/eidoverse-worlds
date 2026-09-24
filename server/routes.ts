@@ -341,6 +341,27 @@ type Route = {
   handler(ctx: RouteCtx): Response | Promise<Response>;
 };
 
+/** Which file a KTX2-negotiating client (the norm) gets for a library/store model at full detail — the ORDER the
+ *  /library/ handler below serves in: the KTX2 variant, then (store) store-min, then the optimized mirror, then the
+ *  original. The catalog ranks this file ("perf if you load it", R 09-24); tools/library-served-probe fetches
+ *  /library/<rel>?ktx2 and checks the bytes are this file's. */
+function servedGlbPath(rel: string): { path: string; as: "KTX2 variant" | "compressed copy" | "optimized copy" | "original" } {
+  const k = join(OPT_DIR, `${rel}.ktx2.glb`);
+  if (existsSync(k)) return { path: k, as: "KTX2 variant" };
+  if (rel.startsWith("store/")) {
+    const m = join(OPT_DIR, "store-min", rel.slice("store/".length));
+    if (existsSync(m)) return { path: m, as: "compressed copy" };
+  }
+  const o = join(OPT_DIR, rel);
+  if (existsSync(o)) return { path: o, as: "optimized copy" };
+  return { path: rel.startsWith("store/") ? join(OPT_DIR, rel) : join(LIBRARY_DIR, rel), as: "original" };
+}
+const perfPair = (rel: string, original: string) => {
+  const s = servedGlbPath(rel);
+  const perf = glbPerfOfFile(s.path);
+  return { perf: perf ? { ...perf, servedAs: s.as } : null, perfOriginal: s.path === original ? null : glbPerfOfFile(original) };
+};
+
 const ROUTES: Route[] = [
   {
     match: (u) => u.pathname === "/ws",
@@ -839,7 +860,7 @@ const ROUTES: Route[] = [
             // report a pass that will never run as forever "pending"
             opt: (({ min: _none, ...rest }) => rest)(variantStatus(join(libOpt, f), libOpt)),
             // the loupe's rank of the ORIGINAL (glbperf.ts; mtime-cached), or null when unreadable
-            perf: glbPerfOfFile(join(LIBRARY_DIR, "eidoverse/assets/models", f)),
+            ...perfPair(`eidoverse/assets/models/${f}`, join(LIBRARY_DIR, "eidoverse/assets/models", f)),
             // strip the SEO-soup filenames into something a person can read
             name: f.replace(/\.glb$/i, "").replace(/_/g, " ").slice(0, 48),
             preview: hasPrev ? `eidoverse/assets/models/${prev}` : null,
@@ -863,7 +884,7 @@ const ROUTES: Route[] = [
             return {
               path: `store/${f}`,
               opt: variantStatus(join(storeDir, f), STORE_MIN),
-              perf: glbPerfOfFile(join(storeDir, f)),
+              ...perfPair(`store/${f}`, join(storeDir, f)),
               name: (m?.name ?? `conjured ${hash.slice(0, 8)}`).slice(0, 48),
               preview: null as string | null,
               ts: m?.ts ?? 0,
@@ -873,7 +894,7 @@ const ROUTES: Route[] = [
           .filter((s) => s.score > 0)
           .sort((a, b) => b.ts - a.ts)
           .slice(0, 30)
-          .map(({ path, name, preview, opt, perf }) => ({ path, name, preview, opt, perf }));
+          .map(({ path, name, preview, opt, perf, perfOriginal }) => ({ path, name, preview, opt, perf, perfOriginal }));
         hits.push(...store);
       }
       return new Response(JSON.stringify(hits), {

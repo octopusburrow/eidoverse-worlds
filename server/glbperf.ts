@@ -29,10 +29,18 @@ function webpDims(b: Uint8Array): [number, number] | null {
   if (kind === "VP8 ") return [dv.getUint16(26, true) & 0x3fff, dv.getUint16(28, true) & 0x3fff];
   return null;
 }
-function ktx2Dims(b: Uint8Array): [number, number] | null {
-  if (b.length < 28 || b[0] !== 0xab || b[1] !== 0x4b) return null;
+/** KTX2 size + the bytes/texel a DESKTOP GPU holds after transcode: BasisLZ/ETC1S → BC1 (0.5) or, with an alpha
+ *  sample, BC3 (1); UASTC → BC7 (1). A phone (ETC/ASTC) lands in the same ballpark; an uncompressed fallback would
+ *  be 4 — the card says "estimated". Samples are counted from the DFD's basic descriptor block. */
+function ktx2Info(b: Uint8Array): { dims: [number, number]; bpp: number } | null {
+  if (b.length < 80 || b[0] !== 0xab || b[1] !== 0x4b) return null;
   const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
-  return [dv.getUint32(20, true), dv.getUint32(24, true)];
+  const dims: [number, number] = [dv.getUint32(20, true), dv.getUint32(24, true)];
+  const supercompression = dv.getUint32(44, true);          // 1 = BasisLZ (ETC1S)
+  const dfd = dv.getUint32(48, true);
+  let samples = 1;
+  if (dfd + 12 <= b.length) samples = Math.max(1, Math.round((dv.getUint16(dfd + 4 + 6, true) - 24) / 16));
+  return { dims, bpp: supercompression === 1 ? (samples > 1 ? 1 : 0.5) : 1 };
 }
 
 export function glbPerf(bytes: Uint8Array): GlbPerf {
@@ -86,12 +94,13 @@ export function glbPerf(bytes: Uint8Array): GlbPerf {
     const img = json.images?.[src]; const bv = img?.bufferView != null ? json.bufferViews?.[img.bufferView] : null;
     const b = bv ? bin.subarray(bv.byteOffset ?? 0, (bv.byteOffset ?? 0) + bv.byteLength) : null;
     const mime = img?.mimeType ?? "";
-    const k2 = b && mime === "image/ktx2" ? ktx2Dims(b) : null;
-    const dims = !b ? null : k2 ?? (mime === "image/webp" ? webpDims(b) : rasterDims(b, mime));
+    const k2 = b && mime === "image/ktx2" ? ktx2Info(b) : null;
+    const dims = !b ? null : k2?.dims ?? (mime === "image/webp" ? webpDims(b) : rasterDims(b, mime));
     if (!dims) { unsizedImages++; continue; }
     const sampler = json.samplers?.[t.sampler];
     const mips = !(sampler?.minFilter === NEAREST || sampler?.minFilter === LINEAR);
-    texBytes += Math.round(dims[0] * dims[1] * (k2 ? 1 : 4) * (mips ? 4 / 3 : 1));
+    // a KTX2 image carries its own mip chain (the loader never generates one); raster images get GPU mips
+    texBytes += Math.round(dims[0] * dims[1] * (k2 ? k2.bpp : 4) * (k2 || mips ? 4 / 3 : 1));
   }
   let bones = 0;
   for (const s of json.skins ?? []) bones = Math.max(bones, s.joints?.length ?? 0);

@@ -75,19 +75,21 @@ async function paintBuild(body) {
     if (!row) {
       row = document.createElement('div');
       row.className = 'opt-row';
-      row.style.cssText = 'position:absolute;top:6px;right:6px;display:flex;gap:4px;align-items:center;pointer-events:none';
-      card.style.position = 'relative';
-      card.appendChild(row);
+      row.style.cssText = 'position:absolute;bottom:6px;right:6px;display:flex;gap:4px;align-items:center;pointer-events:none';
+      (card.querySelector('.pv') ?? card).appendChild(row);
     }
     return row;
   };
-  const optBadge = (card, opt, perf) => {
+  const perfLine = (label, p) => `${label}: ${p.rankName} — set by ${CAT[p.worst] ?? p.worst}\n`
+    + `  ${p.tris.toLocaleString()} tris · ${p.draws} draws · ${p.mats} materials · ${p.texMB} MB textures`
+    + `${p.alpha ? ` · ${p.alpha} transparent` : ''}${p.bones ? ` · ${p.bones} bones` : ''}`
+    + `${p.unsizedImages ? ` · ${p.unsizedImages} image(s) not sized` : ''}`;
+  // pill = what it costs IF YOU LOAD IT (the file a viewer is served); the hover also gives the original upload's
+  const optBadge = (card, opt, perf, perfOriginal) => {
     const rows = [];
     if (perf) {
-      rows.push(`perf: ${perf.rankName} — set by ${CAT[perf.worst] ?? perf.worst}`,
-        `  ${perf.tris.toLocaleString()} tris · ${perf.draws} draws · ${perf.mats} materials · ${perf.texMB} MB textures`
-        + `${perf.alpha ? ` · ${perf.alpha} transparent` : ''}${perf.bones ? ` · ${perf.bones} bones` : ''}`
-        + `${perf.unsizedImages ? ` · ${perf.unsizedImages} image(s) not sized` : ''}  (original upload)`);
+      rows.push(perfLine(`perf if loaded (${perf.servedAs ?? 'served'})`, perf));
+      if (perfOriginal) rows.push(perfLine('original upload', perfOriginal));
       const pill = document.createElement('b');   // not a span: the card's label rule (.card span) is full-width
       pill.className = 'opt-rank';
       pill.dataset.rank = String(perf.rank);
@@ -119,9 +121,11 @@ async function paintBuild(body) {
       const img = it.preview
         ? `<img alt="" loading="lazy" src="/library/${it.preview}" onerror="this.style.visibility='hidden'">`
         : '<div style="width:100%;aspect-ratio:1"></div>';
-      card.innerHTML = `${img}<span>${escapeHtml(it.name)}</span>`;   // server-supplied name (§24k hygiene)
+      // the picture gets its own positioned box so the status row sits ON the image (bottom-right), clear of the
+      // label strip Skye's previews carry along their top edge and of the name below (R, 09-24)
+      card.innerHTML = `<div class="pv" style="position:relative;width:100%;line-height:0">${img}</div><span>${escapeHtml(it.name)}</span>`;   // server-supplied name (§24k hygiene)
       card.onclick = () => holdGhost(it.path, it.name);
-      optBadge(card, it.opt, it.perf);
+      optBadge(card, it.opt, it.perf, it.perfOriginal);
       grid.appendChild(card);
     }
     if (!items.length) grid.innerHTML = '<div style="color:var(--dim);font-size:11px">nothing matched</div>';

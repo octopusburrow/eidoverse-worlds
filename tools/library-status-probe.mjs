@@ -18,6 +18,19 @@ try {
   check('every entry carries the opt fields its kind HAS (store: min/ktx2/lod; library: ktx2/lod, no phantom min)', r.ok && hits.length > 0 && bad.length === 0, bad.slice(0, 2));
   const refused = hits.filter((h) => ['refused', 'unsupported', 'stale', 'deferred'].includes(h.opt?.lod?.state));
   check('no refusal is silent: every non-built, non-pending LOD state has a non-empty reason', refused.every((h) => h.opt.lod.reason), refused.filter((h) => !h.opt.lod.reason).slice(0, 2));
+  // served cost is ranked on the file a KTX2-negotiating client really gets: fetch it and rank THOSE bytes
+  const { glbPerf } = await import('../server/glbperf.ts');
+  const ver = await (await fetch(`${world.origin}/version`)).json().catch(() => ({}));
+  const key = ver.ktx2Key;
+  const sample = hits.filter((h) => h.perf).filter((_, i) => i % 6 === 0).slice(0, 10);
+  const bad2 = [];
+  for (const h of sample) {
+    const b = new Uint8Array(await (await fetch(`${world.origin}/library/${h.path}${key ? `?ktx2=${key}` : ''}`)).arrayBuffer());
+    const p = glbPerf(b);
+    if (p.tris !== h.perf.tris || Math.abs(p.texMB - h.perf.texMB) > 0.01 || p.rank !== h.perf.rank) bad2.push(`${h.name}: served bytes ${p.tris}/${p.texMB} vs catalog ${h.perf.tris}/${h.perf.texMB} (${h.perf.servedAs})`);
+  }
+  console.log(`  served check on ${sample.length} entries (ktx2 key ${key ?? 'none'}); servedAs: ${JSON.stringify(Object.fromEntries(Object.entries(hits.reduce((a, h) => ((a[h.perf?.servedAs] = (a[h.perf?.servedAs] ?? 0) + 1), a), {}))))}`);
+  check('the catalog\'s perf is the perf of the bytes /library actually serves (KTX2-negotiated)', key && sample.length >= 5 && bad2.length === 0, bad2.slice(0, 3));
 } catch (e) { check('probe ran', false, String(e).slice(0, 300)); }
 finally { await world.close(); }
 done();
