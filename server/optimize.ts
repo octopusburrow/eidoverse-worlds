@@ -264,8 +264,16 @@ async function ktx2CompressTextures(doc: Document, encoder: string): Promise<Ktx
       // its OWN sharp, and two libvips copies in one process can corrupt
       // each other's GLib state (observed on win32: "colourspace: parameter
       // space not set"). A sharp failure skips the TEXTURE, never the file.
+      //
+      // The house texel budget: the shadow's 1024², never more (store-variants.ts). toktx resizes itself (--resize);
+      // `ktx create` has no such flag, so on that encoder sharp (already the converter here) does it first. Until
+      // 2026-09-24 the ktx-create arm logged "encoding at source size" and shipped 2048² under a recipe named
+      // texel1024: every KTX2 built on a ktx-create host kept its full-size textures.
+      const resize = capTexels(size as [number, number] | null);
+      const sharpResize = !!resize && !isToktx && !!sharp;
+      if (resize && !isToktx && !sharp) console.error(`[optimize] ktx2: ${label} is ${size![0]}x${size![1]} — no sharp to resize it and ktx create has no --resize, encoding at source size`);
       let inPath: string;
-      if (aligned && (mime === "image/png" || (mime === "image/jpeg" && isToktx))) {
+      if (!sharpResize && aligned && (mime === "image/png" || (mime === "image/jpeg" && isToktx))) {
         inPath = join(tmp, mime === "image/png" ? `${i}.png` : `${i}.jpg`);
         await Bun.write(inPath, image);
       } else if (sharp) {
@@ -273,7 +281,8 @@ async function ktx2CompressTextures(doc: Document, encoder: string): Promise<Ktx
           let s = sharp(Buffer.from(image));
           const meta = await s.metadata();
           const w = meta.width ?? 0, h = meta.height ?? 0;
-          if (w && h && (w % 4 || h % 4))
+          if (sharpResize) s = s.resize(resize![0], resize![1], { fit: "fill" });   // capTexels keeps aspect, 4-aligned
+          else if (w && h && (w % 4 || h % 4))
             s = s.resize(Math.ceil(w / 4) * 4, Math.ceil(h / 4) * 4, { fit: "fill" });
           inPath = join(tmp, `${i}.png`);
           await Bun.write(inPath, await s.png().toBuffer());
@@ -286,9 +295,6 @@ async function ktx2CompressTextures(doc: Document, encoder: string): Promise<Ktx
         failed.push(label); continue;
       }
       const outPath = join(tmp, `${i}.ktx2`);
-      // the house texel budget: the shadow's 1024², never more (store-variants.ts)
-      const resize = capTexels(size as [number, number] | null);
-      if (resize && !isToktx) console.error(`[optimize] ktx2: ${label} is ${size![0]}x${size![1]} — ktx create has no --resize here, encoding at source size`);
       const args = ktx2EncodeArgs(encoder, isToktx, srgb, uastc, inPath, outPath, isToktx ? resize : null);
       const proc = Bun.spawn(args, { stdout: "ignore", stderr: "pipe" });
       const code = await proc.exited;
