@@ -197,6 +197,21 @@ function vrprobeLine() {
     vrprobeLast = now;
   } catch (e) { tee(`[vrprobe] failed: ${e?.message ?? e}`); }
 }
+// the DESKTOP half (R 09-23 23:32: an ?xr=1 WebGL boot 'animated perfectly for a few seconds and it's frozen again', CPU 15%).
+// Heartbeat every 10 s; a frame counter stuck 3 s = a STALL line with the loop's state. If the thread itself is blocked,
+// setInterval can't fire either: the heartbeat going SILENT is that answer (pair with ?bc=1 for the system it stuck in).
+if (VRPROBE) {
+  let f0 = -1, still = 0, hb = 0, stalled = false;
+  setInterval(() => {
+    const f = perf.frameNo ?? -1;
+    if (f === f0) { still++; if (still === 3 && !stalled) { stalled = true;
+      tee(`[vrprobe] desktop loop STALLED at frame ${f}: vis=${document.visibilityState} focus=${document.hasFocus()} presenting=${renderer.xr.isPresenting} ` +
+          `xrSession=${!!renderer.xr.getSession?.()} rafNative=${/native code/.test(String(window.requestAnimationFrame))} heap=${performance.memory ? (performance.memory.usedJSHeapSize / 1048576).toFixed(0) + 'MB' : 'n/a'}`); } }
+    else { if (stalled) tee(`[vrprobe] desktop loop RESUMED at frame ${f} after ${still} s`); still = 0; stalled = false; }
+    f0 = f;
+    if (++hb % 10 === 0 && !presenting) tee(`[vrprobe] desktop hb frame ${f} fps ${perf.fps} worst ${(perf.worst ?? 0).toFixed(0)}ms spikes ${perf.spikes}`);
+  }, 1000);
+}
 function vrprobe(on) {
   if (!VRPROBE) return;
   clearInterval(vrprobeTimer); vrprobeTimer = null;
