@@ -14,6 +14,7 @@ import { RENDER_SCALES, getRenderScale, setRenderScale,
 import { shadowsOn, setShadows, shadowRes, setShadowRes, SHADOW_RES } from './lightrig.js';
 import { backendName, PREF_MSAA, PREF_BACKEND, PREF_HEADSET_SEEN, WEBGPU_XR, WEBGPU_POSSIBLE, headsetSeenRecently } from './core.js';
 import { CONFIG, bus } from './base.js';
+import { FOLIAGE_MODES, getFoliageMode, setFoliageMode } from './foliage.js';
 import { registerXRPanel } from './xrpanels.js';
 
 // same markup contract as the audio section (label right of centre, control
@@ -74,6 +75,7 @@ function videoFields() {
     { t: 'check', k: 'shadows', label: 'shadows', value: shadowsOn() },
     ...(shadowsOn() ? [pick('shadowres', SHADOW_RES, shadowRes(), 'shadow resolution')] : []),
     pick('particles', PARTICLE_TIERS, getParticleTier(), 'particles'),
+    pick('foliage', FOLIAGE_MODES, getFoliageMode(), 'foliage'),
     pick('detail', Object.keys(AVATAR_DETAILS), getAvatarDetail(), 'avatar detail'),
     { t: 'check', k: 'msaa', label: 'antialiasing (on reload)', value: msaaOn },
   ];
@@ -83,6 +85,7 @@ function videoDispatch(k, v) {
   else if (k === 'shadows') setShadows(!!v);
   else if (k === 'shadowres') setShadowRes(+v);
   else if (k === 'particles') setParticleTier(v);
+  else if (k === 'foliage') setFoliageMode(v);
   else if (k === 'detail') setAvatarDetail(v);
   else if (k === 'msaa') lsSet(PREF_MSAA, v ? '1' : '0');
   else return;
@@ -151,6 +154,11 @@ export function initVideoPanel() {
       'How many sprites particle effects draw. auto lets the engine thin them under load and restore them after.',
       PARTICLE_TIERS.map((v) => [v, v]), getParticleTier(),
       (v) => { setParticleTier(v); flashHint(`particles: ${v} (yours only)`); }));
+
+    body.appendChild(selectRow('foliage',
+      'How see-through leaves are drawn. soft: one blended pass, the smoothest edges. fast: the solid middle of each leaf is drawn opaque first, so the layers hidden behind it are skipped — about half the cost on a dense palm, with a few crisper pixels where many leaves stack. auto: fast in a headset, soft on the desktop.',
+      FOLIAGE_MODES.map((v) => [v, v]), getFoliageMode(),
+      (v) => { setFoliageMode(v); flashHint(`foliage: ${v} (yours only)`); }));
 
     body.appendChild(selectRow('avatar detail',
       'How often other people’s bodies update as they get farther away. Lower spends less on a crowded world.',

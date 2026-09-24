@@ -41,6 +41,7 @@
 
 import { THREE, TSL, sun, ground, renderer } from './core.js';
 import { report, CONFIG } from './base.js';
+import { registerFoliage } from './foliage.js';
 import { state } from './state.js';
 import { effectiveSky } from '../../shared/forecast.js';
 
@@ -495,6 +496,8 @@ export function prepareObject(root, { kind = 'model' } = {}) {
       prepareMaterial(m, o);
     }
   });
+  // blended textured leaves get the two-pass twin in 'fast' foliage mode (foliage.js; Video › foliage)
+  if (kind === 'model') registerFoliage(root);
   return root;
 }
 
