@@ -141,12 +141,12 @@ export function initVideoPanel() {
       (v) => { setRenderScale(v); flashHint(`render scale: ${pct(v)} (yours only)`); }));
 
     const resRow = selectRow('shadow resolution',
-      'Size of the sun’s shadow map. 2048 is the default; 4096 sharpens edges at four times the memory and fill; 1024 is the cheap tier the engine also drops to under load. Changes live.',
+      'Detail of every cast shadow — the sun’s map (the size shown) and the lamp shadow, which scales with it. 2048 is the default; 4096 sharpens edges at four times the memory and fill; 1024 is the cheap tier the engine also drops to under load. Changes live.',
       SHADOW_RES.map((v) => [v, `${v}²`]), shadowRes(),
       (v) => { setShadowRes(+v); flashHint(`shadow resolution: ${v}² (yours only)`); });
     resRow.hidden = !shadowsOn();
     body.appendChild(checkRow('shadows',
-      'The sun’s cast shadows. Off is the cheapest single change on a weak GPU; flipping it may recompile materials once.',
+      'All cast shadows — the sun’s and the lamp shadow. Off is the cheapest single change on a weak GPU; flipping it may recompile materials once.',
       shadowsOn(), (on) => { setShadows(on); resRow.hidden = !on; flashHint(`shadows ${on ? 'on' : 'off'} (yours only)`); }));
     body.appendChild(resRow);
 
