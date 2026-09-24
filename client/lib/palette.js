@@ -58,6 +58,29 @@ async function paintBuild(body) {
   grid.className = 'grid';
   body.appendChild(grid);
 
+  // Every optimization's status, from the server's own verdicts (/library-models `opt`, store-variants.ts
+  // variantStatus — R, 09-24: nothing may fail silently). A pass that was refused / deferred / is stale shows an
+  // amber chip; a built LOD a quiet one; the hover lists every pass and why. Text goes through textContent/title
+  // only — reasons are server-written but derived from uploaded content.
+  const PASS = { min: 'compressed copy', ktx2: 'GPU textures', lod: 'LOD' };
+  const WORD = { built: 'built', 'not-needed': 'not needed', unsupported: 'not supported', refused: 'refused',
+    stale: 'will be re-checked', deferred: 'deferred', pending: 'not processed yet' };
+  const optBadge = (card, opt) => {
+    if (!opt) return;
+    const rows = Object.entries(opt).map(([k, v]) => `${PASS[k] ?? k}: ${WORD[v.state] ?? v.state}${v.reason ? ` — ${v.reason}` : ''}`);
+    card.title = rows.join('\n');
+    const bad = Object.values(opt).some((v) => v.state === 'refused' || v.state === 'deferred' || v.state === 'stale');
+    const lod = opt.lod?.state === 'built';
+    if (!bad && !lod) return;
+    const chip = document.createElement('b');   // not a span: the card's label rule (.card span) is full-width
+    chip.className = 'opt-chip';
+    chip.textContent = bad ? '⚠' : 'LOD';
+    chip.style.cssText = `position:absolute;top:3px;right:3px;display:inline-block;width:auto;font-weight:600;font-size:9px;line-height:1;padding:2px 4px;border-radius:4px;`
+      + `pointer-events:none;${bad ? 'background:#6b4a12;color:#ffd68a' : 'background:rgba(143,232,200,.18);color:#8fe8c8'}`;
+    card.style.position = 'relative';
+    card.appendChild(chip);
+  };
+
   const paint = (items) => {
     grid.innerHTML = '';
     for (const it of items) {
@@ -69,6 +92,7 @@ async function paintBuild(body) {
         : '<div style="width:100%;aspect-ratio:1"></div>';
       card.innerHTML = `${img}<span>${escapeHtml(it.name)}</span>`;   // server-supplied name (§24k hygiene)
       card.onclick = () => holdGhost(it.path, it.name);
+      optBadge(card, it.opt);
       grid.appendChild(card);
     }
     if (!items.length) grid.innerHTML = '<div style="color:var(--dim);font-size:11px">nothing matched</div>';
