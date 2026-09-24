@@ -38,7 +38,7 @@ import { markXrAbsent, registerXrGlyph, micGlyph, earGlyph, xrGlyph, micLive, ea
 import { markActive } from './presence.js';
 import { dockPins } from './ui.js';
 import { perf } from './perf.js';
-import { renderCensusTake, renderCensusTick, renderCensusPeek, setXRCurtain } from './render.js';
+import { renderCensusTake, renderCensusTick, renderCensusPeek, setXRCurtain, drawStats } from './render.js';
 import { warm, P_AMBIENT } from './warmqueue.js';
 
 // ---- self-body in first person ---------------------------------------------
@@ -174,6 +174,35 @@ function sampleFingerCurl() {
 }
 rig.name = 'xr-rig';
 let presenting = false;
+// ?vrprobe=1 — the STEADY-STATE bill while presenting, one tee line per 5 s (the entry/exit lines cover the seams; nothing
+// covered the minutes in between). CPU-bound vs GPU-bound: cpu = the frame systems' summed rolling ms; if it sits near the
+// frame interval (1000/fps) the CPU is the wall, if fps is low while cpu is small the GPU/compositor is. Plus the asset
+// churn (geometry/texture counts) so load/unload shows up as it happens, and the JS heap for leaks across entries.
+const VRPROBE = CONFIG.params.has('vrprobe');
+let vrprobeTimer = null, vrprobeLast = null, vrprobeT0 = 0;
+function vrprobeLine() {
+  try {
+    const sys = frameDebug().filter((x) => x.enabled).map((x) => [x.name, x.ms / (x.every || 1)]);
+    const cpu = sys.reduce((a, [, m]) => a + m, 0);
+    const top = sys.sort((a, b) => b[1] - a[1]).slice(0, 5).map(([n, m]) => `${n}:${m.toFixed(2)}`).join(' ');
+    const r = drawStats().render ?? {}; const mem = renderer.info.memory ?? {};
+    const heap = performance.memory ? (performance.memory.usedJSHeapSize / 1048576).toFixed(0) : 'n/a';
+    const cam = renderer.xr.getCamera(); const eyes = (cam.cameras ?? []).map((c) => `x${c.viewport?.x ?? '?'}:${c.viewport?.z ?? '?'}x${c.viewport?.w ?? '?'}`).join('|');   // read BETWEEN frames (emulated: 'x0:1280x720|x?:0x720') — split vision would show a real eye with a wrong x or width
+    tee(`[vrprobe] t+${((performance.now() - vrprobeT0) / 1000).toFixed(0)}s fps ${perf.fps} worst ${(perf.worst ?? 0).toFixed(1)}ms doubled ${perf.doubled} spikes ${perf.spikes} ` +
+        `cpu ${cpu.toFixed(2)}ms of ${(1000 / Math.max(1, perf.fps)).toFixed(1)} | ${top} | draws ${r.drawCalls ?? '?'} passes ${r.passes ?? '?'} tris ${r.triangles ?? '?'} ` +
+        `| geo ${mem.geometries ?? '?'} tex ${mem.textures ?? '?'} heap ${heap}MB eyes ${eyes}`);
+    const now = { geo: mem.geometries ?? 0, tex: mem.textures ?? 0 };
+    if (vrprobeLast && (Math.abs(now.geo - vrprobeLast.geo) >= 5 || Math.abs(now.tex - vrprobeLast.tex) >= 3))
+      tee(`[vrprobe] assets geo ${vrprobeLast.geo}→${now.geo} tex ${vrprobeLast.tex}→${now.tex}`);
+    vrprobeLast = now;
+  } catch (e) { tee(`[vrprobe] failed: ${e?.message ?? e}`); }
+}
+function vrprobe(on) {
+  if (!VRPROBE) return;
+  clearInterval(vrprobeTimer); vrprobeTimer = null;
+  if (on) { vrprobeT0 = performance.now(); vrprobeLast = null; vrprobeTimer = setInterval(vrprobeLine, 5000); tee('[vrprobe] armed (5 s)'); }
+  else { vrprobeLine(); tee('[vrprobe] disarmed (session ended)'); }
+}
 let nativeRAF = null, nativeCAF = null;   // window.rAF/cAF saved while the in-session shim is installed
 let sessionEnded = false;
 let frameClock = null;   // the owned clock takeover for the live session
@@ -678,7 +707,7 @@ async function enterVR({ retryOf = null } = {}) {
     rig.add(camera);
     slots[0] ??= makeHand(0); slots[1] ??= makeHand(1);
     hands.left ??= slots[0]; hands.right ??= slots[1];   // guess until 'connected' files them by handedness
-    presenting = true; bus.emit('xr:state', true); xrVeilShow(false);
+    presenting = true; bus.emit('xr:state', true); xrVeilShow(false); vrprobe(true);
     try { localStorage.setItem(PREF_HEADSET_SEEN, String(Date.now())); } catch { /* private mode */ }   // a headset was truly here: the next boot picks WebGL up front and the visor enters in place, no reload   // the session is live — the 2D page is behind the headset now
     // HEADSET OFF (owner, 09-08 01:12: she switched the headset off after load; the session was still GRANTED — SteamVR
     // presents to nothing — and the visor lit as if she were in). The tell is that no viewer pose ever arrives
@@ -728,7 +757,7 @@ async function enterVR({ retryOf = null } = {}) {
       exitVeilShow(true);   // desktop feedback while the session tears down and the first desktop frames come back
       tee('[xr] session end — teardown begins');   // 09-06 23:43: a leave with no after-exit lines at all → was this handler even reached?
       try {
-      presenting = false; bus.emit('xr:state', false); eyeBase = null; setXRCurtain(false); curtainState = null;
+      presenting = false; vrprobe(false); bus.emit('xr:state', false); eyeBase = null; setXRCurtain(false); curtainState = null;
       renderer.xr.cameraAutoUpdate = true;
       xrIntent.active = false;
       if (radialOpen) closeRadial(false);   // a session the browser ended leaves the ring open and the stick owned by it
