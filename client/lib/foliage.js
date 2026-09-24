@@ -1,4 +1,5 @@
-// foliage — alpha-blended, textured leaves drawn as TWO passes in 'fast' mode (Video › foliage).
+// foliage — alpha-blended, TEXTURED see-through surfaces drawn as two passes in 'fast' mode (Video › textured
+// transparency). Named for the case that motivated it; it applies to every qualifying surface, not only leaves.
 //
 // A blended leaf writes no depth, so every layer of a canopy is shaded in full: EW.overdraw measured the Commons'
 // two date palms at 41% of the frame facing them, 2.95 layers per covered pixel, 17+ at the crown (2026-09-24).

@@ -75,7 +75,7 @@ function videoFields() {
     { t: 'check', k: 'shadows', label: 'shadows', value: shadowsOn() },
     ...(shadowsOn() ? [pick('shadowres', SHADOW_RES, shadowRes(), 'shadow resolution')] : []),
     pick('particles', PARTICLE_TIERS, getParticleTier(), 'particles'),
-    pick('foliage', FOLIAGE_MODES, getFoliageMode(), 'foliage'),
+    pick('foliage', FOLIAGE_MODES, getFoliageMode(), 'textured transparency'),
     pick('detail', Object.keys(AVATAR_DETAILS), getAvatarDetail(), 'avatar detail'),
     { t: 'check', k: 'msaa', label: 'antialiasing (on reload)', value: msaaOn },
   ];
@@ -155,10 +155,10 @@ export function initVideoPanel() {
       PARTICLE_TIERS.map((v) => [v, v]), getParticleTier(),
       (v) => { setParticleTier(v); flashHint(`particles: ${v} (yours only)`); }));
 
-    body.appendChild(selectRow('foliage',
-      'How see-through leaves are drawn. soft: one blended pass, the smoothest edges. fast: the solid middle of each leaf is drawn opaque first, so the layers hidden behind it are skipped — about half the cost on a dense palm, with a few crisper pixels where many leaves stack. auto: fast in a headset, soft on the desktop.',
+    body.appendChild(selectRow('textured transparency',
+      'How surfaces that are see-through because of their TEXTURE are drawn — leaves, fronds, fences, lace, decals; anything blended whose texture carries the holes. (Glass and tinted panels, see-through by a single opacity, are not affected.) soft: one blended pass, the smoothest edges. fast: the solid part of each surface is drawn opaque first, so layers hidden behind it are skipped — about half the cost on a dense palm, with a few crisper pixels where many layers stack. auto: fast in a headset, soft on the desktop.',
       FOLIAGE_MODES.map((v) => [v, v]), getFoliageMode(),
-      (v) => { setFoliageMode(v); flashHint(`foliage: ${v} (yours only)`); }));
+      (v) => { setFoliageMode(v); flashHint(`textured transparency: ${v} (yours only)`); }));
 
     body.appendChild(selectRow('avatar detail',
       'How often other people’s bodies update as they get farther away. Lower spends less on a crowded world.',
