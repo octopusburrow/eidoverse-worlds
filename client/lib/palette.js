@@ -75,6 +75,9 @@ async function paintBuild(body) {
     if (!row) {
       row = document.createElement('div');
       row.className = 'opt-row';
+      // the chips are hoverable (tooltips) and sit INSIDE the card's <button>: a click on any of them is the chip's,
+      // never the card's (the card's click holds a placement ghost — R, 09-24: a chip click placed the model)
+      row.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); });
       row.style.cssText = 'position:absolute;bottom:6px;right:6px;display:flex;gap:4px;align-items:center;pointer-events:none';
       (card.querySelector('.pv') ?? card).appendChild(row);
     }

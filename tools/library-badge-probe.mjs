@@ -104,10 +104,24 @@ try {
   console.log('   tooltip handoff:', JSON.stringify({ onChip, after }));
   check('hovering the ↻ chip shows ONLY its tip (the card holds no native title meanwhile)', onChip.cardTitle === null && /^rebuild GPU textures/.test(onChip.tip ?? ''), onChip);
   check('…and both titles come back on leave', !!after.cardTitle && /^rebuild/.test(after.chipTitle ?? ''), after);
-  const q = rebuilds[0] ? new URL(rebuilds[0].url).searchParams : null;
+  const firstClickPosts = rebuilds.slice();   // the ↻ check below is about the FIRST click (the section below clicks ↻ again)
+  // a REAL mouse click on each chip of a card must not start a placement (the card's own click holds a ghost)
+  const chipClicks = {};
+  for (const sel of ['.opt-rank', '.opt-chip', '.opt-rebuild']) {
+    const card = await pg.evaluateHandle((s) => [...document.querySelectorAll('#sec-build .grid .card')].find((c) => c.querySelector(s)), sel);
+    const el = await card.asElement()?.$(sel);
+    if (!el) { chipClicks[sel] = 'absent'; continue; }
+    await el.click(); await pg.waitForTimeout(400);
+    chipClicks[sel] = await pg.evaluate(async () => { const b = await import('./lib/build.js'); const g = b.hasGhost(); b.cancelGhost(); return g; });
+  }
+  const bodyClick = await pg.evaluate(async () => { const c = document.querySelector('#sec-build .grid .card'); c.querySelector('span').click(); await new Promise((r) => setTimeout(r, 1500)); const b = await import('./lib/build.js'); const g = b.hasGhost(); b.cancelGhost(); return g; });
+  console.log('   chip clicks → ghost?', JSON.stringify(chipClicks), '| card body → ghost?', bodyClick);
+  check('a real click on the pill, a LOD/⚠ chip, or ↻ never starts a placement', Object.values(chipClicks).every((v) => v === false), chipClicks);
+  check('…while a click on the card itself still does (the control)', bodyClick === true, bodyClick);
+  const q = firstClickPosts[0] ? new URL(firstClickPosts[0].url).searchParams : null;
   console.log('   rebuild:', JSON.stringify({ ...r.reb, requests: rebuilds.length }));
   check('↻ on every card; full strength on a card with a warning, dim otherwise', r.reb.everyCard && r.reb.staleOpacity === '1' && r.reb.plainOpacity === '0.55', r.reb);
-  check('↻ click: ONE POST /rebuild with the card\'s path and the page\'s token', rebuilds.length === 1 && rebuilds[0].method === 'POST'
+  check('↻ click: ONE POST /rebuild with the card\'s path and the page\'s token', firstClickPosts.length === 1 && firstClickPosts[0].method === 'POST'
     && q.get('path') === 'store/syn-stale.glb' && (q.get('token') ?? '') === r.reb.token, rebuilds);
   check('↻ says what it does on hover (its own title, not the card\'s status list)', /^rebuild GPU textures \+ LOD/.test(r.reb.tip ?? ''), r.reb.tip);
   check('↻ click never reaches the card (no placement ghost)', r.reb.cardClicked === 0, r.reb.cardClicked);
