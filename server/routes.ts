@@ -23,7 +23,7 @@ import { verifyToken } from "./aid1.ts";
 import { resolveLibFile } from "./lint.ts";
 import { summarizeGlb } from "./geometry.ts";
 import { worlds, getWorld, type World } from "./world.ts";
-import { handleUpload, optStatus } from "./upload.ts";
+import { handleUpload, optStatus, rebuildAsset } from "./upload.ts";
 import { defsPayload, avatarDefs, animationDefs } from "./defs.ts";
 import { tickStats } from "./tick.ts";
 import { entryBusStats } from "./events.ts";
@@ -746,6 +746,19 @@ const ROUTES: Route[] = [
         }
       } catch { /* malformed beacon: drop */ }
       return new Response("ok");
+    },
+  },
+  {
+    // A Build card's rebuild button: re-run one object's KTX2 + LOD passes (a refusal asked again, a built variant
+    // rebuilt in place). Token-gated exactly like POST /thumb; the queue dedups, so repeated presses cost nothing.
+    match: (u, req) => u.pathname === "/rebuild" && req.method === "POST",
+    handler: ({ url }) => {
+      if (JOIN_TOKEN && url.searchParams.get("token") !== JOIN_TOKEN)
+        return new Response("token required", { status: 401 });
+      const r = rebuildAsset(url.searchParams.get("path") ?? "");
+      if (!r) return new Response("not a rebuildable object", { status: 400 });
+      console.log(`[rebuild] ${url.searchParams.get("path")}: ${r.queued.join(" + ") || "nothing (no encoder)"}`);
+      return new Response(JSON.stringify({ ok: true, ...r }), { headers: { "content-type": "application/json" } });
     },
   },
   {

@@ -20,6 +20,12 @@ try {
     const res = await route.fetch(); const j = await res.json();
     await route.fulfill({ response: res, body: JSON.stringify([...j, ...SYN]), headers: { ...res.headers(), 'content-type': 'application/json' } });
   });
+  // the ↻ chip's POST is intercepted — the probe must never rebuild anything real — and recorded
+  const rebuilds = [];
+  await pg.route('**/rebuild?**', async (route) => {
+    rebuilds.push({ method: route.request().method(), url: route.request().url() });
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, queued: ['ktx2', 'lod'] }) });
+  });
   await pg.goto(`${world.origin}/?world=staging&name=badgeprobe&key=${world.key}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await pg.waitForFunction(() => globalThis.__ewEngineUp && document.querySelector('#sec-build .head'), null, { timeout: 60000 });
   const r = await pg.evaluate(async () => {
@@ -36,7 +42,22 @@ try {
       box: (() => { const im = c.querySelector('.pv img, .pv > div')?.getBoundingClientRect(), row = c.querySelector('.opt-row')?.getBoundingClientRect();
         return row && im ? { bottom: +(im.bottom - row.bottom).toFixed(1), right: +(im.right - row.right).toFixed(1), topHalf: row.top < im.top + im.height / 2, below: row.bottom > im.bottom } : null; })(),
       gaps: (() => { const els = [...c.querySelectorAll('.opt-row > *')].map((e) => e.getBoundingClientRect()); return els.slice(1).map((e, i) => +(e.left - els[i].right).toFixed(1)); })() }));
-    return { json, cards };
+    // ↻ on the stale synthetic card: its own click must never reach the card (the card's click holds a placement ghost)
+    const stale = [...document.querySelectorAll('#sec-build .grid .card')].find((c) => c.querySelector('span')?.textContent === 'zz synthetic stale');
+    const plain = [...document.querySelectorAll('#sec-build .grid .card')].find((c) => !c.querySelector('.opt-chip') && c.querySelector('.opt-rebuild'));
+    let cardClicked = 0; if (stale) stale.onclick = () => { cardClicked++; };
+    const chip = stale?.querySelector('.opt-rebuild');
+    const toasts = [];
+    const mo = new MutationObserver(() => { for (const t of document.querySelectorAll('.toast, #toast, [class*=toast]')) toasts.push(t.textContent); });
+    mo.observe(document.body, { childList: true, subtree: true, characterData: true });
+    chip?.click();
+    for (let i = 0; i < 30 && chip?.textContent !== '↻'; i++) await new Promise((res) => setTimeout(res, 100));
+    await new Promise((res) => setTimeout(res, 300)); mo.disconnect();
+    const { CONFIG } = await import('./lib/base.js');
+    const reb = { present: !!chip, cardClicked, staleOpacity: chip?.style.opacity, plainOpacity: plain?.querySelector('.opt-rebuild')?.style.opacity,
+      everyCard: [...document.querySelectorAll('#sec-build .grid .card')].every((c) => c.querySelector('.opt-rebuild')),
+      token: CONFIG.token ?? '', tip: chip?.title ?? null, toast: toasts.find((t) => /rebuild/.test(t)) ?? null, after: chip?.textContent };
+    return { json, cards, reb };
   });
   // by INDEX, not name: display names truncate at 48 chars and two library files share one (paint keeps order)
   let mism = [];
@@ -63,6 +84,14 @@ try {
   check('the real catalog exercises both chips', counts.warn > 0 && counts.lod > 0, counts);
   const syn = (n) => r.cards.find((c) => c.name === n);
   check('synthetic: stale → ⚠, deferred → ⚠, all-pending → no chip (nothing to warn about yet)', syn('zz synthetic stale')?.chip === '⚠' && syn('zz synthetic deferred')?.chip === '⚠' && syn('zz synthetic pending')?.chip === null, ['stale', 'deferred', 'pending'].map((k) => syn(`zz synthetic ${k}`)?.chip));
+  const q = rebuilds[0] ? new URL(rebuilds[0].url).searchParams : null;
+  console.log('   rebuild:', JSON.stringify({ ...r.reb, requests: rebuilds.length }));
+  check('↻ on every card; full strength on a card with a warning, dim otherwise', r.reb.everyCard && r.reb.staleOpacity === '1' && r.reb.plainOpacity === '0.55', r.reb);
+  check('↻ click: ONE POST /rebuild with the card\'s path and the page\'s token', rebuilds.length === 1 && rebuilds[0].method === 'POST'
+    && q.get('path') === 'store/syn-stale.glb' && (q.get('token') ?? '') === r.reb.token, rebuilds);
+  check('↻ says what it does on hover (its own title, not the card\'s status list)', /^rebuild GPU textures \+ LOD/.test(r.reb.tip ?? ''), r.reb.tip);
+  check('↻ click never reaches the card (no placement ghost)', r.reb.cardClicked === 0, r.reb.cardClicked);
+  check('↻ click tells the person what is rebuilding, and the chip comes back', /GPU textures \+ LOD/.test(r.reb.toast ?? '') && r.reb.after === '↻', [r.reb.toast, r.reb.after]);
   check('no page errors', errs.length === 0, errs.slice(0, 2).join(' | ') || 'none');
 } catch (e) { check('probe ran', false, String(e).slice(0, 300)); }
 finally { await browser.close(); await world.close(); }

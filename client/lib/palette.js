@@ -85,7 +85,35 @@ async function paintBuild(body) {
     + `${p.alpha ? ` · ${p.alpha} transparent` : ''}${p.bones ? ` · ${p.bones} bones` : ''}`
     + `${p.unsizedImages ? ` · ${p.unsizedImages} image(s) not sized` : ''}`;
   // pill = what it costs IF YOU LOAD IT (the file a viewer is served); the hover also gives the original upload's
-  const optBadge = (card, opt, perf, perfOriginal) => {
+  // ↻ — re-run this object's GPU-texture + LOD passes (POST /rebuild, token-gated like /thumb): a refusal asked again,
+  // a built variant rebuilt in place. Inside the card's <button>, so a click must never reach the card (placement).
+  const rebuildChip = (card, path, bad) => {
+    const chip = document.createElement('b');
+    chip.className = 'opt-rebuild';
+    chip.textContent = '↻';
+    chip.setAttribute('role', 'button');
+    chip.title = 'rebuild GPU textures + LOD (re-asks a refused pass)';
+    chip.style.cssText = 'display:inline-block;width:auto;font-size:10px;line-height:1;padding:1px 4px;border-radius:4px;'
+      + `pointer-events:auto;cursor:pointer;background:rgba(0,0,0,.55);color:#e8e8e8;opacity:${bad ? 1 : 0.55}`;
+    chip.onpointerenter = () => { chip.style.opacity = '1'; };
+    chip.onpointerleave = () => { chip.style.opacity = bad ? '1' : '0.55'; };
+    chip.onclick = async (e) => {
+      e.stopPropagation(); e.preventDefault();
+      if (chip.dataset.busy) return;
+      chip.dataset.busy = '1'; chip.textContent = '…';
+      try {
+        const q = new URLSearchParams({ path });
+        if (CONFIG.token) q.set('token', CONFIG.token);
+        const r = await fetch(`/rebuild?${q}`, { method: 'POST' });
+        const j = r.ok ? await r.json() : null;
+        toast(j ? (j.queued.length ? `rebuilding ${j.queued.map((k) => PASS[k] ?? k).join(' + ')} — the card updates on the next search`
+          : 'nothing to rebuild on this server (no texture encoder)') : `rebuild refused (${r.status})`);
+      } catch { toast('rebuild failed — server unreachable'); }
+      chip.textContent = '↻'; delete chip.dataset.busy;
+    };
+    chipRow(card).appendChild(chip);
+  };
+  const optBadge = (card, opt, perf, perfOriginal, path) => {
     const rows = [];
     if (perf) {
       rows.push(perfLine(`perf if loaded (${perf.servedAs ?? 'served'})`, perf));
@@ -110,6 +138,7 @@ async function paintBuild(body) {
       chip.style.cssText = `display:inline-block;width:auto;font-size:9px;line-height:1;padding:2px 4px;border-radius:4px;font-weight:600;${css}`;
       chipRow(card).appendChild(chip);
     }
+    if (path) rebuildChip(card, path, bad);
   };
 
   const paint = (items) => {
@@ -125,7 +154,7 @@ async function paintBuild(body) {
       // label strip Skye's previews carry along their top edge and of the name below (R, 09-24)
       card.innerHTML = `<div class="pv" style="position:relative;width:100%;line-height:0">${img}</div><span>${escapeHtml(it.name)}</span>`;   // server-supplied name (§24k hygiene)
       card.onclick = () => holdGhost(it.path, it.name);
-      optBadge(card, it.opt, it.perf, it.perfOriginal);
+      optBadge(card, it.opt, it.perf, it.perfOriginal, it.path);
       grid.appendChild(card);
     }
     if (!items.length) grid.innerHTML = '<div style="color:var(--dim);font-size:11px">nothing matched</div>';

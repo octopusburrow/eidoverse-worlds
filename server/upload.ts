@@ -30,7 +30,7 @@ let tripoImportBusy = false;   // one Tripo import at a time — they cost CPU-s
 // ?ktx2=<key> answer, shared/ktx2.js; the §20a diet), both built by a SUBPROCESS — draco encoding is CPU-seconds of
 // synchronous wasm, and inside this process it would freeze pose relay for
 // every world. One file at a time; the sequencer never waits on it.
-type OptItem = { src: string; dest: string; mode?: "--ktx2" | "--ktx2-vrm" | "--ktx2-img" | "--lod" };
+type OptItem = { src: string; dest: string; mode?: "--ktx2" | "--ktx2-vrm" | "--ktx2-img" | "--lod"; force?: boolean };
 const optQueue: OptItem[] = [];
 let optRunning = false;
 let ktx2Skip = false; // set when a --ktx2 run exits 3 (no encoder) — stop queuing variants this boot
@@ -82,6 +82,32 @@ export function queueOptimize(absPath: string) {
   }
   if (pushed) pumpOptimize();
 }
+/** Rebuild one placeable object's KTX2 + LOD variants on request (a Build card's rebuild button, POST /rebuild).
+ *  `rel` is the catalog path: `eidoverse/assets/models/<f>.glb` (source in the library, variants in the OPT mirror —
+ *  the boot sweep's layout) or `store/<hash>.glb`. Its verdict markers (.failed, .deferred) are cleared so a refusal
+ *  is asked again, and the passes are FORCED: a built variant keeps serving until the new one lands over it
+ *  (optimize.ts writes atomically). null = not a rebuildable object. */
+export function rebuildAsset(rel: string): { queued: string[] } | null {
+  if (!/^(eidoverse\/assets\/models\/[^/]+|store\/[^/]+)\.glb$/.test(rel) || rel.includes("..")) return null;
+  const store = rel.startsWith("store/");
+  const src = store ? join(OPT_DIR, rel) : join(LIBRARY_DIR, rel);
+  if (!isStoreOriginal(basename(rel))) return null;   // a variant (…ktx2.glb, …lod.*.glb) is never a source
+  if (!existsSync(src)) return null;
+  const dests = store
+    ? { "--ktx2": ktx2VariantPath(src), "--lod": lodVariantPath(src) }
+    : { "--ktx2": join(OPT_DIR, ktx2VariantPath(rel)), "--lod": join(OPT_DIR, lodVariantPath(rel)) };
+  const queued: string[] = [];
+  for (const [mode, dest] of Object.entries(dests) as [NonNullable<OptItem["mode"]>, string][]) {
+    if (mode === "--ktx2" && ktx2Skip) continue;   // no encoder this boot — the pass would only exit 3
+    for (const m of [`${dest}.failed`, `${dest}.deferred`]) if (existsSync(m)) try { rmSync(m); } catch { /* best effort */ }
+    optDeferred.delete(dest);
+    const waiting = optQueue.find((q) => q.src === src && q.mode === mode);
+    if (waiting) waiting.force = true; else optQueue.push({ src, dest, mode, force: true });
+    queued.push(mode.slice(2));
+  }
+  if (queued.length) pumpOptimize();
+  return { queued };
+}
 let optPump: Promise<void> = Promise.resolve();
 /** Resolves when the pump has drained (a harness awaits this; the server never does). */
 export const optIdle = () => optPump;
@@ -91,7 +117,7 @@ async function pumpOptimize() {
   let done!: () => void; optPump = new Promise<void>((r) => { done = r; });
   try {
     while (optQueue.length) {
-      const { src, dest, mode } = optQueue.shift()!;
+      const { src, dest, mode, force } = optQueue.shift()!;
       const base = basename(src);                      // <hash>.glb / <model>.glb
       const failed = `${dest}.failed`;
       // a size verdict from an older recipe does not stand (store-variants.ts)
@@ -102,7 +128,7 @@ async function pumpOptimize() {
       // KTX2 variants shadow MUTABLE library files, so a variant older than
       // its source rebuilds (the sweep filters too, but a file can change
       // while its item waits behind slow encodes).
-      if (existsSync(dest) && (!mode || statSync(dest).mtimeMs > statSync(src).mtimeMs)) { undefer(dest); continue; }   // done elsewhere: a stale .deferred must not outlive the variant
+      if (!force && existsSync(dest) && (!mode || statSync(dest).mtimeMs > statSync(src).mtimeMs)) { undefer(dest); continue; }   // done elsewhere: a stale .deferred must not outlive the variant
       // Budget gate: an item this host cannot afford is deferred, not failed,
       // and the rest of the queue keeps going (config.ts OPT_MEM_BUDGET_MB).
       const estMB = Math.ceil(Bun.file(src).size * OPT_COST_FACTOR / 1_000_000);
