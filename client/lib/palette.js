@@ -163,7 +163,11 @@ async function paintBuild(body) {
       chip.title = statusRows;
       chipRow(card).appendChild(chip);
     }
-    if (path) rebuildChip(card, path, bad);
+    // ↻ only where a rebuild can DO something (R, 09-24 23:06): not when the LOD is declined by rule — below the vertex
+    // floor ('not-needed') or a body/animated/morph asset ('unsupported') — unless some other pass is refused/stale/
+    // deferred and worth re-asking
+    const lodClosed = ['not-needed', 'unsupported'].includes(opt.lod?.state);
+    if (path && (bad || !lodClosed)) rebuildChip(card, path, bad);
   };
 
   const paint = (items) => {

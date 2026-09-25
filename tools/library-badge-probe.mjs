@@ -63,7 +63,12 @@ try {
     await new Promise((res) => setTimeout(res, 300)); mo.disconnect();
     const { CONFIG } = await import('./lib/base.js');
     const reb = { present: !!chip, cardClicked, staleOpacity: chip?.style.opacity, plainOpacity: plain?.querySelector('.opt-rebuild')?.style.opacity,
-      everyCard: [...document.querySelectorAll('#sec-build .grid .card')].every((c) => c.querySelector('.opt-rebuild')),
+      everyCard: true,
+      rebuildRule: (() => { const bad = []; for (const c of document.querySelectorAll('#sec-build .grid .card')) {
+        const t = c.querySelector('.opt-rank')?.title ?? ''; const warn = !!c.querySelector('.opt-chip')?.textContent?.includes('⚠');
+        const lodClosed = /LOD: (not needed|not supported)/.test(t); const has = !!c.querySelector('.opt-rebuild');
+        if (t && has !== (warn || !lodClosed)) bad.push(c.querySelector('span')?.textContent); } return bad; })(),
+      closedCount: [...document.querySelectorAll('#sec-build .grid .card')].filter((c) => /LOD: (not needed|not supported)/.test(c.querySelector('.opt-rank')?.title ?? '') && !c.querySelector('.opt-chip')?.textContent?.includes('⚠')).length,
       token: CONFIG.token ?? '', tip: chip?.title ?? null, outcome: toasts.find((t) => /LOD: |GPU textures: /.test(t)) ?? null, toast: toasts.find((t) => /rebuild/.test(t)) ?? null, after: chip?.textContent };
     return { json, cards, reb, opening: globalThis.__opening };
   });
@@ -120,7 +125,8 @@ try {
   check('…while a click on the card itself still does (the control)', bodyClick === true, bodyClick);
   const q = firstClickPosts[0] ? new URL(firstClickPosts[0].url).searchParams : null;
   console.log('   rebuild:', JSON.stringify({ ...r.reb, requests: rebuilds.length }));
-  check('↻ on every card; full strength on a card with a warning, dim otherwise', r.reb.everyCard && r.reb.staleOpacity === '1' && r.reb.plainOpacity === '0.55', r.reb);
+  check('↻ only where a rebuild can act: absent when the LOD is closed by rule (and nothing else is refused)', r.reb.rebuildRule.length === 0 && r.reb.closedCount > 0, [r.reb.rebuildRule.slice(0, 3), r.reb.closedCount]);
+  check('↻ full strength on a card with a warning, dim otherwise', r.reb.everyCard && r.reb.staleOpacity === '1' && r.reb.plainOpacity === '0.55', r.reb);
   check('↻ click: ONE POST /rebuild with the card\'s path and the page\'s token', firstClickPosts.length === 1 && firstClickPosts[0].method === 'POST'
     && q.get('path') === 'store/syn-stale.glb' && (q.get('token') ?? '') === r.reb.token, rebuilds);
   check('↻ then says how it ENDED — each pass named with its state (after the server queue drains)', /GPU textures: .+ · LOD: /.test(r.reb.outcome ?? ''), r.reb.outcome);
