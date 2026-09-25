@@ -104,6 +104,7 @@ async function paintBuild(body) {
       e.stopPropagation(); e.preventDefault();
       if (chip.dataset.busy) return;
       chip.dataset.busy = '1'; chip.textContent = '…';
+      const idleTitle = chip.title; chip.title = 'rebuilding LODs…';   // R: the busy chip says what it is doing
       try {
         const q = new URLSearchParams({ path });
         if (CONFIG.token) q.set('token', CONFIG.token);
@@ -129,7 +130,7 @@ async function paintBuild(body) {
           : 'rebuild finished');
         rerun?.();
       } catch { toast('rebuild failed — server unreachable'); }
-      finally { chip.textContent = '↻'; delete chip.dataset.busy; }
+      finally { chip.textContent = '↻'; chip.title = idleTitle; delete chip.dataset.busy; }
     };
     chipRow(card).appendChild(chip);
   };
