@@ -151,11 +151,43 @@ function endPhases() {
   tee(`[sky] rebuild (${L.why}): ${parts.join(' | ')} — main thread blocked ${all.toFixed(0)}ms total${L.obs ? '' : ' (no longtask API)'}`);
 }
 
-export async function setCloudQuality(level) {
-  if (!CLOUD_QUALITY.includes(level) || level === cloudQuality) return;
+// VR CAP (R, 09-24 22:46): in a headset on the WEBGL backend, clouds never run 'high'. High is the live volumetric
+// march, per pixel PER EYE at the headset's full size (5920x2960 on the owner's) — 12-13 fps — and each eye marches
+// from its own origin with its own noise, so the two eyes see different skies (sky double-vision, the world fine).
+// 'medium' is the baked panorama both eyes look AT: stereo-correct and cheap. The person's saved choice is untouched
+// and comes back on exit. ⚑ WEBGPU: deliberately NOT capped — the question is open again there (R) — revisit when VR
+// rides WebGPU-XR (measure fps and eye agreement before extending this rule).
+let xrPresenting = false;
+let xrCappedFrom = null;          // the level the cap replaced, restored on exit
+const vrCapApplies = () => xrPresenting && !!renderer.backend?.isWebGLBackend;
+bus.on('xr:state', (on) => {
+  xrPresenting = !!on;
+  if (on && vrCapApplies() && cloudQuality === 'high') {
+    xrCappedFrom = 'high';
+    tee('[sky] VR on WebGL: clouds capped high → medium for the session (the saved choice stays high)');
+    setCloudQuality('medium', { persist: false });
+  } else if (!on && xrCappedFrom) {
+    const back = xrCappedFrom; xrCappedFrom = null;
+    tee(`[sky] VR exit: clouds back to ${back}`);
+    setCloudQuality(back, { persist: false });
+  }
+});
+
+export async function setCloudQuality(level, { persist = true } = {}) {
+  if (!CLOUD_QUALITY.includes(level)) return;
+  // asking for 'high' INSIDE a WebGL headset session: remember it for the exit, run medium now
+  if (level === 'high' && vrCapApplies()) {
+    xrCappedFrom = 'high';
+    if (persist) localStorage.setItem('ew-cloud-quality', level);
+    tee('[sky] VR on WebGL: high clouds held at medium until exit');
+    level = 'medium';
+    persist = false;
+  }
+  else if (persist && xrPresenting) xrCappedFrom = null;   // a deliberate non-high choice in the headset replaces the cap's memory
+  if (persist) localStorage.setItem('ew-cloud-quality', level);   // before the no-op return: choosing the level already running is still a choice
+  if (level === cloudQuality) return;
   beginPhases(`clouds ${cloudQuality}→${level}`);
   cloudQuality = level;
-  localStorage.setItem('ew-cloud-quality', level);
   currentWorld = null;          // force a rebuild at the new budget
   skyBuilds = 0;
   try { if (clock) await render(); } finally { endPhases(); }
