@@ -590,9 +590,12 @@ async function ensureSkyBake() {
       if (sc !== skyInner?._envBake?.scene) { if (seen++ < 2) tee(`[sky] boot bake: a renderAsync passed through (not the bake scene: ${sc?.type ?? typeof sc}, envBake ${skyInner?._envBake ? 'set' : 'unset'})`); return origRA.call(this, sc, cam); }
       renderer.renderAsync = origRA;
       if (precompile) {
+        // the bake target is bound on entry (bakeEnv) — capture it: during the await, frames run and render.js's
+        // self-heal UNBINDS any target left bound at frame start, so the draw must re-bind it or it lands on the canvas
+        const target = renderer.getRenderTarget();
         const t0 = performance.now();
         return renderer.compileAsync(sc, cam).catch(() => {})
-          .then(() => { tee(`[sky] one-shot bake precompiled in ${(performance.now() - t0).toFixed(0)} ms`); return origRA.call(renderer, sc, cam); });
+          .then(() => { tee(`[sky] one-shot bake precompiled in ${(performance.now() - t0).toFixed(0)} ms`); renderer.setRenderTarget(target); return origRA.call(renderer, sc, cam); });
       }
       const target = renderer.getRenderTarget();
       renderer.setRenderTarget(outer ?? null);   // bakeEnv left the bake target bound; the frames between bands are the world's
