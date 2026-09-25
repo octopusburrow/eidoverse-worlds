@@ -59,12 +59,12 @@ try {
     const mo = new MutationObserver(() => { for (const t of document.querySelectorAll('.toast, #toast, [class*=toast]')) toasts.push(t.textContent); });
     mo.observe(document.body, { childList: true, subtree: true, characterData: true });
     chip?.click();
-    for (let i = 0; i < 30 && chip?.textContent !== '↻'; i++) await new Promise((res) => setTimeout(res, 100));
+    for (let i = 0; i < 150 && chip?.textContent !== '↻'; i++) await new Promise((res) => setTimeout(res, 100));
     await new Promise((res) => setTimeout(res, 300)); mo.disconnect();
     const { CONFIG } = await import('./lib/base.js');
     const reb = { present: !!chip, cardClicked, staleOpacity: chip?.style.opacity, plainOpacity: plain?.querySelector('.opt-rebuild')?.style.opacity,
       everyCard: [...document.querySelectorAll('#sec-build .grid .card')].every((c) => c.querySelector('.opt-rebuild')),
-      token: CONFIG.token ?? '', tip: chip?.title ?? null, toast: toasts.find((t) => /rebuild/.test(t)) ?? null, after: chip?.textContent };
+      token: CONFIG.token ?? '', tip: chip?.title ?? null, outcome: toasts.find((t) => /LOD: |GPU textures: /.test(t)) ?? null, toast: toasts.find((t) => /rebuild/.test(t)) ?? null, after: chip?.textContent };
     return { json, cards, reb, opening: globalThis.__opening };
   });
   // by INDEX, not name: display names truncate at 48 chars and two library files share one (paint keeps order)
@@ -123,6 +123,7 @@ try {
   check('↻ on every card; full strength on a card with a warning, dim otherwise', r.reb.everyCard && r.reb.staleOpacity === '1' && r.reb.plainOpacity === '0.55', r.reb);
   check('↻ click: ONE POST /rebuild with the card\'s path and the page\'s token', firstClickPosts.length === 1 && firstClickPosts[0].method === 'POST'
     && q.get('path') === 'store/syn-stale.glb' && (q.get('token') ?? '') === r.reb.token, rebuilds);
+  check('↻ then says how it ENDED — each pass named with its state (after the server queue drains)', /GPU textures: .+ · LOD: /.test(r.reb.outcome ?? ''), r.reb.outcome);
   check('↻ says what it does on hover (its own title, not the card\'s status list)', /^rebuild GPU textures \+ LOD/.test(r.reb.tip ?? ''), r.reb.tip);
   check('↻ click never reaches the card (no placement ghost)', r.reb.cardClicked === 0, r.reb.cardClicked);
   check('↻ click tells the person what is rebuilding, and the chip comes back', /GPU textures \+ LOD/.test(r.reb.toast ?? '') && r.reb.after === '↻', [r.reb.toast, r.reb.after]);

@@ -109,15 +109,33 @@ async function paintBuild(body) {
         if (CONFIG.token) q.set('token', CONFIG.token);
         const r = await fetch(`/rebuild?${q}`, { method: 'POST' });
         const j = r.ok ? await r.json() : null;
-        toast(j ? (j.queued.length ? `rebuilding ${j.queued.map((k) => PASS[k] ?? k).join(' + ')} — the card updates on the next search`
-          : 'nothing to rebuild on this server (no texture encoder)') : `rebuild refused (${r.status})`);
+        if (!j) { toast(`rebuild refused (${r.status})`); return; }
+        if (!j.queued.length) { toast('nothing to rebuild on this server (no texture encoder)'); return; }
+        toast(`rebuilding ${j.queued.map((k) => PASS[k] ?? k).join(' + ')}…`);
+        // say how it ENDED (R, 09-24: on the deco desk it 'doesn't seem to do anything' — it had rebuilt the textures and
+        // declined the LOD, silently): wait for the server's optimize queue to drain (/version opt), then read this
+        // model's status and name each pass's outcome; the panel repaints with the new chips
+        const t0 = performance.now();
+        for (;;) {
+          await new Promise((res) => setTimeout(res, 1500));
+          const v = await (await fetch('/version', { cache: 'no-store' })).json().catch(() => null);
+          if (!v?.opt || (v.opt.queued === 0 && !v.opt.running)) break;
+          if (performance.now() - t0 > 300_000) { toast('rebuild still running on the server — check the card later'); return; }
+        }
+        const f = path.split('/').pop();
+        const hits = await (await fetch(`/library-models?q=${encodeURIComponent(f.replace(/\.glb$/i, ''))}`)).json();
+        const h = hits.find((x) => x.path === path);
+        toast(h?.opt ? Object.entries(h.opt).filter(([k]) => k !== 'min').map(([k, v]) => `${PASS[k] ?? k}: ${WORD[v.state] ?? v.state}${v.reason ? ` (${v.reason})` : ''}`).join(' · ')
+          : 'rebuild finished');
+        rerun?.();
       } catch { toast('rebuild failed — server unreachable'); }
-      chip.textContent = '↻'; delete chip.dataset.busy;
+      finally { chip.textContent = '↻'; delete chip.dataset.busy; }
     };
     chipRow(card).appendChild(chip);
   };
   // tooltips live ON the thing they explain (R, 09-24): the pill carries the perf numbers, the LOD/⚠ chips each pass's
   // status and reason; the card itself just names the model (its full name — the label under it truncates at 48)
+  let rerun = null;   // repaint the grid for the current search (set once `run` exists)
   const optBadge = (card, opt, perf, perfOriginal, path, fullName) => {
     if (fullName) card.title = fullName;
     if (perf) {
@@ -174,6 +192,7 @@ async function paintBuild(body) {
     ({ name, path, preview: path.replace(/\.glb$/, '_preview.jpg') }));
 
   let timer = null;
+  rerun = () => run(search.value.trim());
   const run = async (q) => {
     // An empty box shows the curated starters, not an alphabetical dump of the
     // whole library — otherwise opening the panel greets you with four

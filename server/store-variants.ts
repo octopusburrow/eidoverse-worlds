@@ -93,7 +93,10 @@ export const recipeStamp = (recipe = KTX2_RECIPE) => `recipe=${recipe}`;
 // unchanged after the reduce — a failed assert is a typed verdict too, not
 // a half-valid object.
 export const LOD_RECIPE = "lod1-r25e01-texel1024";   // ratio 0.25, error 0.01, ktx2 texel budget
-export const LOD_MIN_VERTS = 12_000;                 // under this, there is nothing worth reducing
+// under this, there is nothing worth reducing. Was 12,000; R, 09-24: "we can totally build LODs even for simple
+// objects … I WANT to have worlds with thousands of objects" — a 7k-vert desk × 1,000 is 7M verts. Below ~1k a LOD
+// saves less than its own fetch; the "ineffective" gate still refuses what cannot reduce.
+export const LOD_MIN_VERTS = 1_000;
 
 /** A geometry-LOD serving artifact — ANY recipe generation's, not only the
  *  current one (old generations must stay unlisted and uncatalogued too). */
@@ -118,6 +121,10 @@ export function verdictStands(content: string, recipe = KTX2_RECIPE): boolean {
   // an "ineffective" LOD verdict from before the Permissive fallback (optimize.ts reduce) is a question again; one
   // that already tried Permissive ("permissive too") stands
   if (recipe === LOD_RECIPE && /reduction ineffective/i.test(content)) return /permissive too/i.test(content);
+  // "already light (N verts < FLOOR)" is a verdict ABOUT the floor: it stands only while N is still under the current
+  // one — lowering LOD_MIN_VERTS makes every object between the floors a question again
+  const light = recipe === LOD_RECIPE ? /already light \((\d+) verts </i.exec(content) : null;
+  if (light) return Number(light[1]) < LOD_MIN_VERTS;
   if (!/not smaller/i.test(content)) return true;
   // LODs no longer have a byte gate (optimize.ts: judged by verts + GPU texture memory, R 09-24) — a LOD size
   // verdict can't be produced any more, so every existing one is a question again (re-measured by the sweep)
