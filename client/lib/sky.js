@@ -121,13 +121,44 @@ export const getCloudQuality = () => cloudQuality;
 
 /** Change the local cloud budget. Rebuilds the sky, since passes are baked in
  *  at construction. */
+// Where a sky rebuild's main-thread time goes (R, 09-24 night: 4-5 s hitch on every cloud-quality flip). One line per
+// rebuild: each phase's wall time + the long tasks (>50 ms, Chrome's longtask entries) that landed inside it — the
+// hitch IS the long tasks. Teed so the owner's flips report to the server with no console.
+let phaseLog = null;
+function phase(name) {
+  if (!phaseLog) return;
+  const now = performance.now();
+  phaseLog.marks.push([name, now]);
+}
+function beginPhases(why) {
+  const obs = typeof PerformanceObserver !== 'undefined' && PerformanceObserver.supportedEntryTypes?.includes('longtask')
+    ? new PerformanceObserver((l) => { for (const e of l.getEntries()) phaseLog?.long.push([e.startTime, e.duration]); }) : null;
+  try { obs?.observe({ type: 'longtask', buffered: false }); } catch { /* unsupported */ }
+  phaseLog = { why, t0: performance.now(), marks: [], long: [], obs };
+}
+function endPhases() {
+  const L = phaseLog; if (!L) return; phaseLog = null;
+  L.obs?.disconnect();
+  const pts = [['start', L.t0], ...L.marks, ['end', performance.now()]];
+  const parts = [];
+  for (let i = 1; i < pts.length; i++) {
+    const [name, t] = pts[i], t0 = pts[i - 1][1];
+    const lt = L.long.filter(([s0]) => s0 >= t0 && s0 < t);
+    const blk = lt.reduce((a, [, d]) => a + d, 0), mx = lt.reduce((a, [, d]) => Math.max(a, d), 0);
+    parts.push(`${name} ${(t - t0).toFixed(0)}ms${lt.length ? ` (long ${lt.length}×, ${blk.toFixed(0)}ms, max ${mx.toFixed(0)})` : ''}`);
+  }
+  const all = L.long.reduce((a, [, d]) => a + d, 0);
+  tee(`[sky] rebuild (${L.why}): ${parts.join(' | ')} — main thread blocked ${all.toFixed(0)}ms total${L.obs ? '' : ' (no longtask API)'}`);
+}
+
 export async function setCloudQuality(level) {
   if (!CLOUD_QUALITY.includes(level) || level === cloudQuality) return;
+  beginPhases(`clouds ${cloudQuality}→${level}`);
   cloudQuality = level;
   localStorage.setItem('ew-cloud-quality', level);
   currentWorld = null;          // force a rebuild at the new budget
   skyBuilds = 0;
-  if (clock) await render();
+  try { if (clock) await render(); } finally { endPhases(); }
 }
 
 // sky_system.js ASSIGNS globalThis.makeSkySystem when sky_worlds evals it, and
@@ -419,7 +450,9 @@ async function renderEidoverse(a) {
   }
   applyLive(a);
   const bake = beginWork('sky bake');    // names the env-bake + reflections gaps
+  phase('apply');
   try { await ensureSkyBake(); } finally { bake.end(); }
+  phase('bake');
   // §19a: on baked tiers the curtain waits for the first bake's band
   // pipeline too — the one big cloud-graph compile lands behind the splash
   // (tel0s's call), not in the first visible minute. Non-baked tiers and
@@ -468,8 +501,11 @@ async function buildSky(a, world, wantAudio) {
     // boot waits for the sky is a splash that never lifts. The gating order
     // itself provides what the wait was for — the sky is no longer
     // competing with boot-critical work, it IS boot work.)
+    phase('teardown');
     await primeFor(world, wantAudio);
+    phase('prime');
     await loadEidoModule('sky_worlds.js');
+    phase('module');
     if (typeof globalThis.makeSky !== 'function') throw new Error('sky_worlds.js exposed no makeSky');
     if (skyMesh) { scene.remove(skyMesh); skyMesh = null; }
     // A fresh build asserts state rather than easing into it — reset the
@@ -491,6 +527,7 @@ async function buildSky(a, world, wantAudio) {
       sun, hemi,
       audio: wantAudio,
     });
+    phase('makeSky');
     claimSkyAdditions(ownership);
     // ---- the clear↔cloudy fence (§18b, pre-paid §19a) ----------------------
     // The baked tier's graph cache keys on preset !== 'clear' (sky_system
@@ -539,6 +576,7 @@ async function buildSky(a, world, wantAudio) {
     }
     // resolveSkyWarm moved to renderEidoverse (§19a): the gate now waits
     // for the first BAKE too, not just the dome warms
+    phase('dome-warm');
     currentWorld = world;
     impl = 'eidoverse';
     scene.background = null;
