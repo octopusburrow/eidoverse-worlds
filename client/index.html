@@ -1714,6 +1714,20 @@ html.lite, html.lite body { height: 100%; overflow: hidden; }
   border: 1px solid var(--edge); border-radius: 10px; cursor: pointer;
 }
 #lite-dock button:active { background: var(--act); }
+/* why this is the light version, and the way to the full one (lite.js liteWhyBanner) */
+#lite-why {
+  position: fixed; left: 50%; transform: translateX(-50%); z-index: 31;
+  top: calc(70px + env(safe-area-inset-top, 0px)); width: min(520px, calc(100% - 32px));
+  background: var(--panel); color: var(--fg); border: 1px solid var(--edge); border-radius: 10px;
+  box-shadow: var(--rim); padding: 12px 14px; font-size: var(--fs-sm, 13px);
+}
+#lite-why p { margin: 0 0 10px; line-height: 1.4; }
+#lite-why div { display: flex; gap: 8px; flex-wrap: wrap; }
+#lite-why button {
+  min-height: 44px; padding: 0 14px; border-radius: 8px; cursor: pointer;
+  background: var(--chip); color: var(--fg); border: 1px solid var(--edge); font-size: var(--fs-sm, 13px);
+}
+#lite-why button[data-act=full] { border-color: var(--accent); color: var(--accent); }
 
 /* The key door. A first-time key-gated visitor has no other way in, and the full
    client is not an option for the device this exists for. */

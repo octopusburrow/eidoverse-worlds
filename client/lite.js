@@ -68,6 +68,33 @@ export function tryFullWorld() {
   location.assign(u);
 }
 
+/** When the light version was CHOSEN FOR the person (a recorded crash, a low-memory report), say so where they will
+ *  see it — the one chat line scrolled away under the room's history, and the only way out was an unlabelled 🌍 in
+ *  a corner (the owner, on a desktop, 09-24: "why no load-the-world button?"). Two plain buttons: the full world
+ *  (tryFullWorld — ?lite=0, this load only) and staying (stayLite — saved). Not for 'no-gpu' (the full world cannot
+ *  run there) nor for a light version someone asked for (url/saved). */
+function liteWhyBanner() {
+  if (WHY !== 'crash' && WHY !== 'ram') return null;
+  const box = document.createElement('div');
+  box.id = 'lite-why';
+  box.setAttribute('role', 'status');
+  const p = document.createElement('p');
+  p.textContent = WHY === 'crash'
+    ? "This is the light version: last time the full world was opened here, the page didn't finish loading (a crash, or a tab closed mid-load)."
+    : 'This is the light version: this device reports too little memory for the full world.';
+  const full = document.createElement('button');
+  full.type = 'button'; full.dataset.act = 'full'; full.textContent = 'Load the full world';
+  full.addEventListener('click', tryFullWorld);
+  const stay = document.createElement('button');
+  stay.type = 'button'; stay.dataset.act = 'stay'; stay.textContent = 'Stay light';
+  stay.addEventListener('click', () => { stayLite(); box.remove(); });
+  const row = document.createElement('div');
+  row.append(full, stay);
+  box.append(p, row);
+  document.body.appendChild(box);
+  return box;
+}
+
 /** Stay here and stop asking. Saved, because this one IS a preference — and a proven
  *  crash still overrides it, which is what keeps a saved 'full' from being a trap. */
 export function stayLite() {
@@ -262,6 +289,7 @@ async function main() {
   globalThis.__ewTryFullWorld = tryFullWorld;   // also reachable from the console
 
   logChat('', WHY_TEXT[WHY] ?? WHY_TEXT.default, 'sys');
+  liteWhyBanner();
 
   // No door screen: openDoor lives in ui.js, and the door's job (pick a body, see who is
   // here before you commit) is mostly about a world this client does not render, so a
