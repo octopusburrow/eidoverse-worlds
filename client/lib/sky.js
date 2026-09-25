@@ -17,7 +17,7 @@ import { THREE, scene, sun, hemi, renderer, camera } from './core.js';
 // ?shadowdebug=1 — R 09-07 19:17: 'crank it way up to see if it's there at all'. Sun shadows measured ~10 % darker than lit
 // ground (fill light drowns the sun's share); this dims the fill to a fifth so the shadow map's coverage is legible.
 const SHADOW_DEBUG_FILL = new URLSearchParams(globalThis.location?.search ?? '').has('shadowdebug') ? 0.2 : 1;
-import { report, bus, CONFIG } from './base.js';
+import { report, bus, CONFIG, tee } from './base.js';
 import { loadEidoModule, primeFiles, listLibrary, fetchBytes } from './assets.js';
 import { markPhase } from './boot.js';
 import { bandCuts, bandedBakeRender } from './sky_baked.js';
@@ -584,7 +584,7 @@ async function ensureSkyBake() {
       renderer.setRenderTarget(outer ?? null);   // bakeEnv left the bake target bound; the frames between bands are the world's
       const t0 = performance.now();
       return bandedBakeRender(renderer, sc, cam, target, { cloudPasses: opts.cloudPasses ?? 8, passTexelBudget: BAND_BUDGET })
-        .then((n) => { console.log(`[sky] boot bake banded: ${n} bands over ${(performance.now() - t0).toFixed(0)} ms`); renderer.setRenderTarget(target); });
+        .then((n) => { const l = `[sky] boot bake banded: ${n} bands over ${(performance.now() - t0).toFixed(0)} ms`; console.log(l); tee(l); renderer.setRenderTarget(target); });
     };
     try { await skyApi.bakeEnv?.(opts); } finally { renderer.renderAsync = origRA; }
     lastBakeHours = nowHours();
