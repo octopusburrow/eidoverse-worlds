@@ -29,6 +29,7 @@ import { dedup, prune, resample, textureCompress, draco, listTextureSlots, weld,
 import { MeshoptSimplifier } from "meshoptimizer";
 import draco3d from "draco3dgltf";
 import { capTexels, recipeStamp, LOD_RECIPE, LOD_MIN_VERTS } from "./store-variants.ts";
+import { glbPerf } from "./glbperf.ts";
 import { parseGlb, rasterDims, GLB_MAGIC, CHUNK_JSON, CHUNK_BIN, KTX2_ID, align4, type GlbParts } from "./glbparse.ts";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -1020,7 +1021,19 @@ if (import.meta.main) {
     // decode/upload wins (no createImageBitmap, GPU-native mips, 4-8× less
     // VRAM), not just wire bytes — accept anything not grossly bigger than
     // the ORIGINAL source (>1.25×).
-    if (out.length >= src.length * (ktx2Mode ? 1.25 : 0.95)) {
+    // A LOD is judged by what it is FOR (R, 09-24: "judge LODs by verts/GPU memory instead of file size"): the
+    // vertex cut is already asserted (≤0.6×, optimizeGlbLod) and here its textures must not cost MORE GPU memory
+    // than the original's. Its KTX2 textures are routinely 2–5× LARGER ON DISK than a JPEG original while far
+    // smaller in VRAM — the byte gate below refused 7 of 8 real candidates for exactly that. The download ratio is
+    // logged on success, because a far placement fetches the LOD first (lod_policy.js) and it is a real trade.
+    if (mode === "--lod") {
+      const a = glbPerf(src), b = glbPerf(out);
+      if (b.texMB > a.texMB) {
+        console.error(`[optimize] lod: not lighter on the GPU (textures ${a.texMB} -> ${b.texMB} MB, ${ms}ms) — original stays the only representation`);
+        process.exit(2);
+      }
+      console.log(`[optimize] lod: GPU textures ${a.texMB} -> ${b.texMB} MB, tris ${a.tris} -> ${b.tris}; download ${(out.length / src.length).toFixed(2)}x the original`);
+    } else if (out.length >= src.length * (ktx2Mode ? 1.25 : 0.95)) {
       // the KTX2 verdict carries its recipe: a later recipe re-measures it
       // (store-variants.ts verdictStands) instead of inheriting the refusal
       console.error(`[optimize] not smaller (${src.length} -> ${out.length}, ${ms}ms)${ktx2Mode ? ` ${recipeStamp(mode === "--lod" ? LOD_RECIPE : undefined)}` : ""} — keeping original`);

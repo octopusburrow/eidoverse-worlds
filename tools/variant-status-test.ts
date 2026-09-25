@@ -12,12 +12,19 @@ const cases: [string, Record<string, string>, string, string | null][] = [
   ["too light → not-needed", { [`${L}.failed`]: "[optimize] lod: already light (9273 verts < 12000) (12ms) — original stays the only representation" }, "not-needed", "already light (9273 verts < 12000)"],
   ["skins → unsupported, reason without the prefix", { [`${L}.failed`]: "[optimize] lod: unsupported: skinned/avatar asset (skins) (3ms) — original stays the only representation" }, "unsupported", "skinned/avatar asset (skins)"],
   ["ineffective → refused with its numbers", { [`${L}.failed`]: "[optimize] lod: reduction ineffective (20280 -> 13728 verts) (287ms) — original stays the only representation" }, "refused", "reduction ineffective (20280 -> 13728 verts)"],
-  ["size gate, current recipe → refused, no log dressing", { [`${L}.failed`]: `[optimize] not smaller (392760 -> 1634752, 17465ms) recipe=${LOD_RECIPE} — keeping original` }, "refused", "not smaller (392760 -> 1634752)"],
+  // LODs lost their byte gate (optimize.ts, R 09-24): an old LOD size verdict is ALWAYS a question again
+  ["LOD size verdict, even current recipe → stale (the byte gate is retired for LODs)", { [`${L}.failed`]: `[optimize] not smaller (392760 -> 1634752, 17465ms) recipe=${LOD_RECIPE} — keeping original` }, "stale", "not smaller (392760 -> 1634752)"],
   ["size gate, OLD recipe → stale (the sweep re-measures)", { [`${L}.failed`]: "[optimize] not smaller (1 -> 2, 5ms) recipe=lod0-old — keeping original" }, "stale", "not smaller (1 -> 2)"],
   ["host could not afford → deferred with why", { [`${L}.deferred`]: "no ktx encoder on this host\n" }, "deferred", "no ktx encoder on this host"],
   ["nothing on disk → pending", {}, "pending", null],
   ["empty marker → refused, never a blank reason", { [`${L}.failed`]: "" }, "refused", "refused (no reason recorded)"],
 ];
+// KTX2 keeps its byte gate: a current-recipe size verdict still stands as refused
+{
+  const { exists, read } = fs({ [`${K}.failed`]: `[optimize] not smaller (100 -> 200, 3ms) recipe=${KTX2_RECIPE} — keeping original` });
+  const r = classifyVariant(K, exists, read, KTX2_RECIPE);
+  check("KTX2 size verdict, current recipe → refused, no log dressing", r.state === "refused" && r.reason === "not smaller (100 -> 200)", r);
+}
 for (const [name, files, state, reason] of cases) {
   const { exists, read } = fs(files);
   const r = classifyVariant(L, exists, read, LOD_RECIPE);

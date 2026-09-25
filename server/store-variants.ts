@@ -116,6 +116,9 @@ export function lodVariantPath(original: string, recipe = LOD_RECIPE): string {
  *  anything else stands regardless. */
 export function verdictStands(content: string, recipe = KTX2_RECIPE): boolean {
   if (!/not smaller/i.test(content)) return true;
+  // LODs no longer have a byte gate (optimize.ts: judged by verts + GPU texture memory, R 09-24) — a LOD size
+  // verdict can't be produced any more, so every existing one is a question again (re-measured by the sweep)
+  if (recipe === LOD_RECIPE) return false;
   return content.includes(recipeStamp(recipe));
 }
 
