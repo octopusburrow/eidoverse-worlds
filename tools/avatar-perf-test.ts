@@ -32,7 +32,7 @@ const r1 = await post({ height: "1.62" });
 check("a height-only POST still works as before (no picture → 415, height stored)", r1.status === 415 && meta().bee?.h === 1.62, [r1.status, meta()]);
 const r2 = await post({ perf: JSON.stringify(good), v: vNow() });
 const j2 = r2.status === 200 ? await r2.json() : null;
-check("a perf-only POST (no picture, no portrait yet) → 200 meta", j2?.ok === true && j2.meta === true, [r2.status, j2]);
+check("a perf-only POST (no picture, no portrait yet) → 200 meta, confirming the stamp", j2?.ok === true && j2.meta === true && j2.perf === true, [r2.status, j2]);
 check("…merged: the height survived the perf stamp", meta().bee?.h === 1.62 && meta().bee?.perf?.tris === 70_000, meta());
 await post({ height: "1.70" });
 check("…and the perf survived a later height stamp", meta().bee?.h === 1.7 && meta().bee?.perf?.tris === 70_000, meta());

@@ -2133,7 +2133,10 @@ async function stampAvatarPerf(name, vrm, token, path) {
   const q = new URLSearchParams({ name, v, perf: JSON.stringify({ tris: s.tris, draws: s.draws, mats: s.mats, alpha: s.alpha, bones: s.bones, texMB: s.texMB }) });
   if (token) q.set('token', token);
   const r = await fetch(`/thumb?${q}`, { method: 'POST' });
-  if (r.ok) localStorage.setItem(key, '1');
+  // only a server that SAYS it stored the stamp burns the once-per-version flag: an older server answers 200
+  // {existed} for a body with a portrait and drops `perf` on the floor — the next wear must try again
+  const j = r.ok ? await r.json().catch(() => null) : null;
+  if (j?.perf === true) localStorage.setItem(key, '1');
 }
 
 export async function contributeThumbnail(name, vrm, token = '', { force = false, path = null } = {}) {

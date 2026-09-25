@@ -15,7 +15,8 @@ try {
   await pg.route('**/thumb?**', async (route) => {
     if (route.request().method() !== 'POST') return route.continue();
     posts.push(route.request().url());
-    await route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true,"meta":true}' });
+    // the current server's answer; OLD_SERVER=1 answers like a pre-stamp server (a portrait exists, perf ignored)
+    await route.fulfill({ status: 200, contentType: 'application/json', body: process.env.OLD_SERVER ? '{"ok":true,"existed":true}' : '{"ok":true,"meta":true,"perf":true}' });
   });
   let synthName = null;
   await pg.route('**/avatars', async (route) => {
@@ -70,7 +71,9 @@ try {
   const stamps = (n) => posts.filter((u) => u.includes('perf=') && new URL(u).searchParams.get('name') === n).length;
   console.log('   switched to', other.other, 'and back to', other.now, '| stamps:', live.name, stamps(live.name), other.other, stamps(other.other));
   check('wearing another body stamps THAT body once', stamps(other.other) === 1, stamps(other.other));
-  check('switching back to the first body (same version) sends no second stamp for it', other.now === live.name && stamps(live.name) === 1, [other.now, stamps(live.name)]);
+  if (!process.env.OLD_SERVER) check('switching back to the first body (same version) sends no second stamp for it', other.now === live.name && stamps(live.name) === 1, [other.now, stamps(live.name)]);
+  // a pre-stamp server answers {existed} and never stores perf: the flag must NOT burn, so the switch-back tries again
+  else check('OLD server (perf not confirmed): the switch-back stamps again — nothing was lost to a false "done"', other.now === live.name && stamps(live.name) === 2, [other.now, stamps(live.name)]);
   // (3) the avatar cards
   const cards = await pg.evaluate(async () => {
     document.querySelector('#sec-avatar .head')?.click();
