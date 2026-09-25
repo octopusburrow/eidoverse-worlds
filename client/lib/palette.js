@@ -215,7 +215,12 @@ export function switchAvatar(path, name) { return onSwitchAvatar?.(path, name); 
 let myAvatarPath = '';
 export function setMyAvatarPath(p) { myAvatarPath = p; }
 
+// a confirmed perf stamp (avatar.js) repaints an open avatar section — the pill appears without a reload (R, 09-24:
+// wore tigerbee + aporia, the panel painted before the stamps landed and only claude showed a pill)
+let avatarBody = null;
+bus.on('avatar-perf', () => { if (avatarBody?.isConnected) paintAvatars(avatarBody); });
 async function paintAvatars(body) {
+  avatarBody = body;
   const list = await fetch('/avatars').then((r) => r.json()).catch(() => []);
   body.innerHTML = '';
   // the door's proven recipe (09-05): dense grid, every card a 3:4 portrait
@@ -243,10 +248,12 @@ async function paintAvatars(body) {
       pill.dataset.rank = String(perf.rank);
       pill.style.cssText = `position:absolute;right:6px;bottom:6px;z-index:1;display:inline-block;width:14px;height:8px;border-radius:4px;`
         + `background:${TIER_COLORS[perf.rank]};box-shadow:0 0 0 1px rgba(0,0,0,.45)`;
+      pill.style.cursor = 'help';
       card.querySelector('.av-shot').appendChild(pill);
-      card.title = `perf: ${perf.rankName} — set by ${AV_CAT[perf.worst] ?? perf.worst}\n  ${perf.tris.toLocaleString()} tris · ${perf.draws} draws · `
+      // the tooltip lives ON the pill (R: the whole portrait saying perf on hover was noise)
+      pill.title = `perf: ${perf.rankName} — set by ${AV_CAT[perf.worst] ?? perf.worst}\n  ${perf.tris.toLocaleString()} tris · ${perf.draws} draws · `
         + `${perf.mats} materials · ${perf.texMB} MB textures${perf.bones ? ` · ${perf.bones} bones` : ''}${perf.alpha ? ` · ${perf.alpha} transparent` : ''}`;
-    } else card.title = 'perf: not measured yet (it is measured the first time someone wears this body)';
+    }
     card.onclick = () => onSwitchAvatar?.(path, name);
     grid.appendChild(card);
   }
