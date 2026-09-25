@@ -579,11 +579,21 @@ async function ensureSkyBake() {
       && bandCuts(opts.width, opts.height, opts.cloudPasses ?? 8, BAND_BUDGET).length > 3;
     // the decision, teed: on the owner's GPU (09-24 night) the banded line never appeared — say WHICH gate refused
     const strips = opts.width ? bandCuts(opts.width, opts.height, opts.cloudPasses ?? 8, BAND_BUDGET).length - 1 : 0;
-    tee(`[sky] boot bake: ${band ? 'banding' : 'ONE-SHOT'} (skyband=${CONFIG.params.get('skyband') ?? 'default'}, ${opts.width}x${opts.height}, passes ${opts.cloudPasses ?? 8}, ${strips} strips, inner ${skyInner ? 'yes' : 'NO'})`);
+    tee(`[sky] boot bake: ${band ? 'banding' : CONFIG.params.get('skyband') !== '0' ? 'one-shot, precompiled' : 'ONE-SHOT'} (skyband=${CONFIG.params.get('skyband') ?? 'default'}, ${opts.width}x${opts.height}, passes ${opts.cloudPasses ?? 8}, ${strips} strips, inner ${skyInner ? 'yes' : 'NO'})`);
     let seen = 0;
-    if (band) renderer.renderAsync = function (sc, cam) {
+    // ONE-SHOT bakes (a tier with no baked dome — 'high' bakes only the env, at bakeEnv's default size — or a bake too
+    // small to band) still compile their pipeline OFF the render path first: the owner's GPU, 09-24, switch → high:
+    // "render-path build 1295 ms (BLOCKING) NodeMaterial fs 925288 chars". Same bytes, same single draw — only the
+    // compile moves earlier (compileAsync, as the banded path already does). ?skyband=0 keeps the old path untouched.
+    const precompile = !band && CONFIG.params.get('skyband') !== '0';
+    if (band || precompile) renderer.renderAsync = function (sc, cam) {
       if (sc !== skyInner?._envBake?.scene) { if (seen++ < 2) tee(`[sky] boot bake: a renderAsync passed through (not the bake scene: ${sc?.type ?? typeof sc}, envBake ${skyInner?._envBake ? 'set' : 'unset'})`); return origRA.call(this, sc, cam); }
       renderer.renderAsync = origRA;
+      if (precompile) {
+        const t0 = performance.now();
+        return renderer.compileAsync(sc, cam).catch(() => {})
+          .then(() => { tee(`[sky] one-shot bake precompiled in ${(performance.now() - t0).toFixed(0)} ms`); return origRA.call(renderer, sc, cam); });
+      }
       const target = renderer.getRenderTarget();
       renderer.setRenderTarget(outer ?? null);   // bakeEnv left the bake target bound; the frames between bands are the world's
       const t0 = performance.now();
