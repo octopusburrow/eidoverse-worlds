@@ -92,6 +92,18 @@ try {
   check('the real catalog exercises both chips', counts.warn > 0 && counts.lod > 0, counts);
   const syn = (n) => r.cards.find((c) => c.name === n);
   check('synthetic: stale → ⚠, deferred → ⚠, all-pending → no chip (nothing to warn about yet)', syn('zz synthetic stale')?.chip === '⚠' && syn('zz synthetic deferred')?.chip === '⚠' && syn('zz synthetic pending')?.chip === null, ['stale', 'deferred', 'pending'].map((k) => syn(`zz synthetic ${k}`)?.chip));
+  // ONE tooltip at a time: card → its ↻ chip with the real mouse. While the chip's house tip shows, the card must hold no
+  // native title (else Chrome paints it beside ours — R, 09-24 22:29); after leaving, both titles are back.
+  const cardSel = '#sec-build .grid .card:nth-child(1)';
+  await pg.hover(cardSel, { position: { x: 20, y: 20 } }); await pg.waitForTimeout(600);
+  await pg.hover(`${cardSel} .opt-rebuild`); await pg.waitForTimeout(700);
+  const onChip = await pg.evaluate((sel) => ({ cardTitle: document.querySelector(sel).getAttribute('title'),
+    tip: document.querySelector('#tipchip.show')?.textContent ?? null }), cardSel);
+  await pg.mouse.move(5, 5); await pg.waitForTimeout(300);
+  const after = await pg.evaluate((sel) => ({ cardTitle: document.querySelector(sel).getAttribute('title'), chipTitle: document.querySelector(`${sel} .opt-rebuild`).getAttribute('title') }), cardSel);
+  console.log('   tooltip handoff:', JSON.stringify({ onChip, after }));
+  check('hovering the ↻ chip shows ONLY its tip (the card holds no native title meanwhile)', onChip.cardTitle === null && /^rebuild GPU textures/.test(onChip.tip ?? ''), onChip);
+  check('…and both titles come back on leave', !!after.cardTitle && /^rebuild/.test(after.chipTitle ?? ''), after);
   const q = rebuilds[0] ? new URL(rebuilds[0].url).searchParams : null;
   console.log('   rebuild:', JSON.stringify({ ...r.reb, requests: rebuilds.length }));
   check('↻ on every card; full strength on a card with a warning, dim otherwise', r.reb.everyCard && r.reb.staleOpacity === '1' && r.reb.plainOpacity === '0.55', r.reb);
