@@ -357,7 +357,7 @@ export function attachBakedDome(skyApi, opts = {}) {
   pendingForce = false;
   nextAt = performance.now() + cfg.intervalMs;
   console.log(`[sky] baked dome crossfade loop — ${A.width}x${A.height}, `
-    + `${bands} bands/cycle, ${(cfg.intervalMs / 1000).toFixed(1)}s cadence`);
+    + `${bandMeshes.length} bands/cycle, ${(cfg.intervalMs / 1000).toFixed(1)}s cadence`);   // was `bands`: 8a46808 moved it into bandCuts() and this line threw → sky fell back
   return true;
 }
 

@@ -577,8 +577,12 @@ async function ensureSkyBake() {
     const origRA = renderer.renderAsync;
     const band = CONFIG.params.get('skyband') !== '0' && opts.width
       && bandCuts(opts.width, opts.height, opts.cloudPasses ?? 8, BAND_BUDGET).length > 3;
+    // the decision, teed: on the owner's GPU (09-24 night) the banded line never appeared — say WHICH gate refused
+    const strips = opts.width ? bandCuts(opts.width, opts.height, opts.cloudPasses ?? 8, BAND_BUDGET).length - 1 : 0;
+    tee(`[sky] boot bake: ${band ? 'banding' : 'ONE-SHOT'} (skyband=${CONFIG.params.get('skyband') ?? 'default'}, ${opts.width}x${opts.height}, passes ${opts.cloudPasses ?? 8}, ${strips} strips, inner ${skyInner ? 'yes' : 'NO'})`);
+    let seen = 0;
     if (band) renderer.renderAsync = function (sc, cam) {
-      if (sc !== skyInner?._envBake?.scene) return origRA.call(this, sc, cam);
+      if (sc !== skyInner?._envBake?.scene) { if (seen++ < 2) tee(`[sky] boot bake: a renderAsync passed through (not the bake scene: ${sc?.type ?? typeof sc}, envBake ${skyInner?._envBake ? 'set' : 'unset'})`); return origRA.call(this, sc, cam); }
       renderer.renderAsync = origRA;
       const target = renderer.getRenderTarget();
       renderer.setRenderTarget(outer ?? null);   // bakeEnv left the bake target bound; the frames between bands are the world's
