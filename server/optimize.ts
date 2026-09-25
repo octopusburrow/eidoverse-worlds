@@ -391,7 +391,14 @@ const sceneBounds = (doc: Document): [number[], number[]] => {
   return [min, max];
 };
 
-export type LodResult = { out: Uint8Array | null; verdict: string | null; before: number; after: number };
+export type LodResult = { out: Uint8Array | null; verdict: string | null; before: number; after: number; permissive?: boolean };
+
+/** MeshoptSimplifier with 'Permissive' added to every simplify() call — gltf-transform's simplify() only ever passes
+ *  LockBorder, and wrapping the simplifier keeps its weld/dequantize/compaction handling intact. */
+const PERMISSIVE_SIMPLIFIER = Object.assign(Object.create(MeshoptSimplifier), {
+  simplify: (i: Uint32Array, p: Float32Array, stride: number, target: number, err: number, flags: string[] = []) =>
+    MeshoptSimplifier.simplify(i, p, stride, target, err, [...flags, "Permissive"] as any),
+});
 
 /** The node contract, as a signature: names, transforms, mesh-bearing, and
  *  hierarchy (child order), per scene. Exported so its DETECTION power is a
@@ -424,25 +431,41 @@ export async function optimizeGlbLod(bytes: Uint8Array, encoder: string | null, 
   // retries this every boot; it must cost a JSON parse, not a simplify)
   if (!encoder && (rawJson?.images?.length ?? 0) > 0) return { out: null, verdict: "__no_encoder__", before: 0, after: 0, ...none };
   const io = await getIO();
-  const doc = await io.readBinary(bytes);
-  // The node contract is captured BEFORE any destructive transform (re-review
-  // of #156, blocker 1: a plain prune() deleted an empty named socket helper
-  // before the old post-head signature existed — the loss was invisible).
-  // prune() runs with keepLeaves so named empty helpers — socket frames,
-  // attachment points — survive the head at all; the whole-diet signature
-  // then PROVES nothing was lost, or the variant is refused.
-  const preNodes = lodNodesSig(doc);
-  await doc.transform(dedup(), prune({ keepLeaves: true, keepAttributes: true }), resample());   // keepAttributes: see optimizeGlb
-  const before = totalVerts(doc);
+  // ONE reduce, run as the proven pass and — only if that pass cannot reach the bar — again PERMISSIVE: meshopt's
+  // mode that may collapse edges ACROSS UV/normal seams. Measured 09-24: seams lock the regular pass (a server rack
+  // 96% → 25%, a yucca 83% → 25%, all 8 "ineffective" library/store models into 25–60%). Permissive can drag UVs a
+  // little across a seam; a LOD is only seen at distance (lod_policy.js), and R approved it there ("fine with
+  // permissive at a distance"). Every preservation assert below applies to both passes unchanged.
+  const reduce = async (permissive: boolean) => {
+    const doc = await io.readBinary(bytes);
+    // The node contract is captured BEFORE any destructive transform (re-review
+    // of #156, blocker 1: a plain prune() deleted an empty named socket helper
+    // before the old post-head signature existed — the loss was invisible).
+    // prune() runs with keepLeaves so named empty helpers — socket frames,
+    // attachment points — survive the head at all; the whole-diet signature
+    // then PROVES nothing was lost, or the variant is refused.
+    const preNodes = lodNodesSig(doc);
+    await doc.transform(dedup(), prune({ keepLeaves: true, keepAttributes: true }), resample());   // keepAttributes: see optimizeGlb
+    const before = totalVerts(doc);
+    // material assignments are captured after the head — dedup may merge
+    // byte-identical materials, which is the ktx2 variant's existing behavior;
+    // what may not change from HERE on is which material each primitive wears
+    const preMats = lodMatsSig(doc);
+    const bounds = sceneBounds(doc);
+    if (before >= LOD_MIN_VERTS) {
+      await doc.transform(weld(), simplify({ simplifier: permissive ? PERMISSIVE_SIMPLIFIER : MeshoptSimplifier, ratio: 0.25, error: 0.01 }));
+      mutate?.(doc);   // the mutation-control seam (tests only) — see the param doc
+    }
+    return { doc, preNodes, preMats, bounds, before, after: totalVerts(doc) };
+  };
+  let r = await reduce(false);
+  const before = r.before;
   if (before < LOD_MIN_VERTS) return { out: null, verdict: `already light (${before} verts < ${LOD_MIN_VERTS})`, before, after: before, ...none };
-  // material assignments are captured after the head — dedup may merge
-  // byte-identical materials, which is the ktx2 variant's existing behavior;
-  // what may not change from HERE on is which material each primitive wears
-  const preMats = lodMatsSig(doc);
-  const [preMin, preMax] = sceneBounds(doc);
-  await doc.transform(weld(), simplify({ simplifier: MeshoptSimplifier, ratio: 0.25, error: 0.01 }));
-  mutate?.(doc);   // the mutation-control seam (tests only) — see the param doc
-  const after = totalVerts(doc);
+  let permissive = false;
+  if (r.after > before * 0.6) { r = await reduce(true); permissive = true; }
+  const { doc, preNodes, preMats } = r;
+  const [preMin, preMax] = r.bounds;
+  const after = r.after;
   if (lodNodesSig(doc) !== preNodes) return { out: null, verdict: "preservation failed: node hierarchy/transforms changed", before, after, ...none };
   if (lodMatsSig(doc) !== preMats) return { out: null, verdict: "preservation failed: material assignments changed", before, after, ...none };
   const [postMin, postMax] = sceneBounds(doc);
@@ -451,7 +474,7 @@ export async function optimizeGlbLod(bytes: Uint8Array, encoder: string | null, 
     if (Math.abs(postMin[i] - preMin[i]) > tol || Math.abs(postMax[i] - preMax[i]) > tol)
       return { out: null, verdict: `preservation failed: bounds moved on axis ${i}`, before, after, ...none };
   }
-  if (after > before * 0.6) return { out: null, verdict: `reduction ineffective (${before} -> ${after} verts)`, before, after, ...none };
+  if (after > before * 0.6) return { out: null, verdict: `reduction ineffective (${before} -> ${after} verts${permissive ? ", permissive too" : ""})`, before, after, ...none };
   // textures: the ktx2 arm's rules verbatim — all eligible convert or nothing ships
   let tally: Ktx2Tally = none;
   if (encoder) {
@@ -467,10 +490,10 @@ export async function optimizeGlbLod(bytes: Uint8Array, encoder: string | null, 
   // the SOURCE's extras survive; ours ride alongside (never clobber a
   // producer's own annotations — review of #156, point 6)
   const asset = doc.getRoot().getAsset();
-  asset.extras = { ...(asset.extras ?? {}), lodOf: srcHash, recipe: LOD_RECIPE,
+  asset.extras = { ...(asset.extras ?? {}), lodOf: srcHash, recipe: LOD_RECIPE, ...(permissive ? { simplify: "permissive" } : {}),
     tools: { meshoptimizer: meshoptVer, encoder: encoder ? basename(encoder) : "none" } };
   await doc.transform(draco());
-  return { out: await io.writeBinary(doc), verdict: null, before, after, ...tally };
+  return { out: await io.writeBinary(doc), verdict: null, before, after, permissive, ...tally };
 }
 
 // ---- KTX2 for VRMs (§20c): the surgical container rewrite -------------------
@@ -997,7 +1020,7 @@ if (import.meta.main) {
         console.error(`[optimize] lod: ${r.converted}/${r.eligible} texture(s) converted — REFUSING a partial variant (${r.failed.join(", ")}); retry when the encoder is sane`);
         process.exit(5);
       }
-      console.log(`[optimize] lod: ${r.before} -> ${r.after} verts, ${r.converted}/${r.eligible} texture(s) at the texel budget`);
+      console.log(`[optimize] lod: ${r.before} -> ${r.after} verts${r.permissive ? " (permissive: collapsed across UV seams)" : ""}, ${r.converted}/${r.eligible} texture(s) at the texel budget`);
       out = r.out;
     } else if (mode === "--ktx2") {
       const r = await optimizeGlbKtx2(src, encoder!);

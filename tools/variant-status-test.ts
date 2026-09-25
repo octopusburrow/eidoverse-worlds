@@ -11,7 +11,9 @@ const cases: [string, Record<string, string>, string, string | null][] = [
   ["variant on disk → built", { [L]: "" }, "built", null],
   ["too light → not-needed", { [`${L}.failed`]: "[optimize] lod: already light (9273 verts < 12000) (12ms) — original stays the only representation" }, "not-needed", "already light (9273 verts < 12000)"],
   ["skins → unsupported, reason without the prefix", { [`${L}.failed`]: "[optimize] lod: unsupported: skinned/avatar asset (skins) (3ms) — original stays the only representation" }, "unsupported", "skinned/avatar asset (skins)"],
-  ["ineffective → refused with its numbers", { [`${L}.failed`]: "[optimize] lod: reduction ineffective (20280 -> 13728 verts) (287ms) — original stays the only representation" }, "refused", "reduction ineffective (20280 -> 13728 verts)"],
+  // before the Permissive fallback existed → a question again; after trying it too → it stands
+  ["ineffective (pre-fallback) → stale", { [`${L}.failed`]: "[optimize] lod: reduction ineffective (20280 -> 13728 verts) (287ms) — original stays the only representation" }, "stale", "reduction ineffective (20280 -> 13728 verts)"],
+  ["ineffective even permissive → refused with its numbers", { [`${L}.failed`]: "[optimize] lod: reduction ineffective (20280 -> 13728 verts, permissive too) (287ms) — original stays the only representation" }, "refused", "reduction ineffective (20280 -> 13728 verts, permissive too)"],
   // LODs lost their byte gate (optimize.ts, R 09-24): an old LOD size verdict is ALWAYS a question again
   ["LOD size verdict, even current recipe → stale (the byte gate is retired for LODs)", { [`${L}.failed`]: `[optimize] not smaller (392760 -> 1634752, 17465ms) recipe=${LOD_RECIPE} — keeping original` }, "stale", "not smaller (392760 -> 1634752)"],
   ["size gate, OLD recipe → stale (the sweep re-measures)", { [`${L}.failed`]: "[optimize] not smaller (1 -> 2, 5ms) recipe=lod0-old — keeping original" }, "stale", "not smaller (1 -> 2)"],

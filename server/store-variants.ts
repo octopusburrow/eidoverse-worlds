@@ -115,6 +115,9 @@ export function lodVariantPath(original: string, recipe = LOD_RECIPE): string {
  *  verdict ("not smaller") stands only if it carries the current stamp;
  *  anything else stands regardless. */
 export function verdictStands(content: string, recipe = KTX2_RECIPE): boolean {
+  // an "ineffective" LOD verdict from before the Permissive fallback (optimize.ts reduce) is a question again; one
+  // that already tried Permissive ("permissive too") stands
+  if (recipe === LOD_RECIPE && /reduction ineffective/i.test(content)) return /permissive too/i.test(content);
   if (!/not smaller/i.test(content)) return true;
   // LODs no longer have a byte gate (optimize.ts: judged by verts + GPU texture memory, R 09-24) — a LOD size
   // verdict can't be produced any more, so every existing one is a question again (re-measured by the sweep)
