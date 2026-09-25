@@ -171,7 +171,7 @@ async function paintBuild(body) {
     // An empty box shows the curated starters, not an alphabetical dump of the
     // whole library — otherwise opening the panel greets you with four
     // varieties of apocalyptic rubble.
-    if (!q) { paint(starter()); return; }
+    if (!q) { paint(starter()); enrichStarter(); return; }
     try {
       const r = await fetch(`/library-models?q=${encodeURIComponent(q)}`);
       paint(await r.json());
@@ -179,7 +179,24 @@ async function paintBuild(body) {
   };
   search.oninput = () => { clearTimeout(timer); timer = setTimeout(() => run(search.value.trim()), 160); };
 
+  // The starters are painted from a hard-coded list, instantly — and so carried no status (R, 09-24: "not seeing perf
+  // or LOD info" on the panel's opening cards). Ask the catalog for each starter by its filename, then repaint with
+  // the server's own entries (opt, perf, perfOriginal) — only if the box is still empty by then.
+  let enrichGen = 0;
+  async function enrichStarter() {
+    const gen = ++enrichGen;
+    try {
+      const got = await Promise.all(starter().map(async (it) => {
+        const f = it.path.split('/').pop();
+        const hits = await (await fetch(`/library-models?q=${encodeURIComponent(f.replace(/\.glb$/, ''))}`)).json();
+        const h = hits.find((x) => x.path === it.path);
+        return h ? { ...h, name: it.name } : it;
+      }));
+      if (gen === enrichGen && !search.value.trim()) paint(got);
+    } catch (e) { report('catalog (starters)', e); }
+  }
   paint(starter());
+  enrichStarter();
 }
 
 // Assets uploaded into the world join the palette live, for everyone.

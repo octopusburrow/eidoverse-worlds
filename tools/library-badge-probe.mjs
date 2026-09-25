@@ -29,6 +29,12 @@ try {
   await pg.goto(`${world.origin}/?world=staging&name=badgeprobe&key=${world.key}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await pg.waitForFunction(() => globalThis.__ewEngineUp && document.querySelector('#sec-build .head'), null, { timeout: 60000 });
   const r = await pg.evaluate(async () => {
+    // the panel's OPENING cards (the starters, before any search) carry status too
+    document.querySelector('#sec-build .head').click();
+    for (let i = 0; i < 60 && !document.querySelector('#sec-build .grid .card .opt-rank'); i++) await new Promise((res) => setTimeout(res, 100));
+    const opening = [...document.querySelectorAll('#sec-build .grid .card')].map((c) => ({ name: c.querySelector('span')?.textContent, rank: c.querySelector('.opt-rank')?.dataset.rank ?? null }));
+    document.querySelector('#sec-build .head').click();
+    globalThis.__opening = opening;
     const Q = 'glb';   // every filename-scored entry matches; store entries match on their manifest names or not at all
     document.querySelector('#sec-build .head').click();
     for (let i = 0; i < 40 && !document.querySelector('#sec-build input[type=search]'); i++) await new Promise((res) => setTimeout(res, 100));
@@ -57,7 +63,7 @@ try {
     const reb = { present: !!chip, cardClicked, staleOpacity: chip?.style.opacity, plainOpacity: plain?.querySelector('.opt-rebuild')?.style.opacity,
       everyCard: [...document.querySelectorAll('#sec-build .grid .card')].every((c) => c.querySelector('.opt-rebuild')),
       token: CONFIG.token ?? '', tip: chip?.title ?? null, toast: toasts.find((t) => /rebuild/.test(t)) ?? null, after: chip?.textContent };
-    return { json, cards, reb };
+    return { json, cards, reb, opening: globalThis.__opening };
   });
   // by INDEX, not name: display names truncate at 48 chars and two library files share one (paint keeps order)
   let mism = [];
@@ -92,6 +98,8 @@ try {
   check('↻ says what it does on hover (its own title, not the card\'s status list)', /^rebuild GPU textures \+ LOD/.test(r.reb.tip ?? ''), r.reb.tip);
   check('↻ click never reaches the card (no placement ghost)', r.reb.cardClicked === 0, r.reb.cardClicked);
   check('↻ click tells the person what is rebuilding, and the chip comes back', /GPU textures \+ LOD/.test(r.reb.toast ?? '') && r.reb.after === '↻', [r.reb.toast, r.reb.after]);
+  console.log('   opening cards:', JSON.stringify(r.opening));
+  check('the OPENING (starter) cards carry the rank pill too', r.opening.length >= 6 && r.opening.every((c) => c.rank != null), r.opening);
   check('no page errors', errs.length === 0, errs.slice(0, 2).join(' | ') || 'none');
 } catch (e) { check('probe ran', false, String(e).slice(0, 300)); }
 finally { await browser.close(); await world.close(); }
