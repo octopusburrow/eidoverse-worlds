@@ -86,9 +86,9 @@ try {
   const syn = cards.find((c) => c.name === synthName), others = cards.filter((c) => c.name !== synthName);
   console.log(`   ${cards.length} avatar cards; synthetic: ${JSON.stringify(syn?.pill)}`);
   check('avatar card with a perf record: rank pill in its tier color, inset on the portrait\'s bottom-right', syn?.pill?.rank === '3' && syn.pill.bg === 'rgb(255, 122, 47)' && syn.pill.inShot, syn);
-  check('the tooltip is ON the pill, not the whole card', !syn?.cardTitle && others.every((c) => !c.cardTitle), [syn?.cardTitle, others.map((c) => c.cardTitle)]);
+  check('the perf tooltip is ON the pill; the card tooltip is just the name', syn?.cardTitle === syn?.name && !/perf/.test(syn?.cardTitle ?? ''), [syn?.cardTitle, syn?.name]);
   check('…the pill hover names the rank, the category and the numbers', /^perf: poor — set by triangles\n\s+123,456 tris · 55 draws/.test(syn?.title ?? ''), syn?.title);
-  check('cards without a record: no pill, no tooltip', others.length > 0 && others.every((c) => !c.pill && !c.title), others.slice(0, 2));
+  check('cards without a record: no pill; the card tooltip is just the name', others.length > 0 && others.every((c) => !c.pill && !c.title && c.cardTitle === c.name), others.slice(0, 2));
   // (4) with the avatar section OPEN, wearing a not-yet-stamped body repaints it once the stamp is confirmed
   const before = rosterFetches;
   const third = await pg.evaluate(async (skip) => {

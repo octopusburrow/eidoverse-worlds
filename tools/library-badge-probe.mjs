@@ -42,7 +42,9 @@ try {
     input.value = Q; input.dispatchEvent(new Event('input'));
     const json = await (await fetch(`/library-models?q=${Q}`)).json();
     for (let i = 0; i < 60 && document.querySelectorAll('#sec-build .grid .card').length < json.length; i++) await new Promise((res) => setTimeout(res, 100));
-    const cards = [...document.querySelectorAll('#sec-build .grid .card')].map((c) => ({ name: c.querySelector('span')?.textContent, title: c.title, chip: [...c.querySelectorAll('.opt-chip')].map((x) => x.textContent).join('') || null,
+    const cards = [...document.querySelectorAll('#sec-build .grid .card')].map((c) => ({ name: c.querySelector('span')?.textContent, cardTitle: c.title,
+      // tooltips live on the pill (perf + status) and the chips (status) — the hover text is theirs, not the card's
+      title: [c.querySelector('.opt-rank')?.title, ...[...c.querySelectorAll('.opt-chip')].map((x) => x.title)].filter(Boolean).join('\n'), chip: [...c.querySelectorAll('.opt-chip')].map((x) => x.textContent).join('') || null,
       rank: c.querySelector('.opt-rank')?.dataset.rank ?? null,
       // measured against the PICTURE: the row sits on the image's bottom-right, clear of its top label strip and the name
       box: (() => { const im = c.querySelector('.pv img, .pv > div')?.getBoundingClientRect(), row = c.querySelector('.opt-row')?.getBoundingClientRect();
@@ -100,6 +102,7 @@ try {
   check('↻ click tells the person what is rebuilding, and the chip comes back', /GPU textures \+ LOD/.test(r.reb.toast ?? '') && r.reb.after === '↻', [r.reb.toast, r.reb.after]);
   console.log('   opening cards:', JSON.stringify(r.opening));
   check('the OPENING (starter) cards carry the rank pill too', r.opening.length >= 6 && r.opening.every((c) => c.rank != null), r.opening);
+  check('card tooltip = just the model name; the numbers are on the pill', r.cards.every((c) => c.cardTitle && !/perf|tris|GPU textures/.test(c.cardTitle)), r.cards.slice(0, 2).map((c) => c.cardTitle));
   check('no page errors', errs.length === 0, errs.slice(0, 2).join(' | ') || 'none');
 } catch (e) { check('probe ran', false, String(e).slice(0, 300)); }
 finally { await browser.close(); await world.close(); }

@@ -113,21 +113,24 @@ async function paintBuild(body) {
     };
     chipRow(card).appendChild(chip);
   };
-  const optBadge = (card, opt, perf, perfOriginal, path) => {
-    const rows = [];
+  // tooltips live ON the thing they explain (R, 09-24): the pill carries the perf numbers, the LOD/⚠ chips each pass's
+  // status and reason; the card itself just names the model (its full name — the label under it truncates at 48)
+  const optBadge = (card, opt, perf, perfOriginal, path, fullName) => {
+    if (fullName) card.title = fullName;
     if (perf) {
-      rows.push(perfLine(`perf if loaded (${perf.servedAs ?? 'served'})`, perf));
-      if (perfOriginal) rows.push(perfLine('original upload', perfOriginal));
+      const perfRows = [perfLine(`perf if loaded (${perf.servedAs ?? 'served'})`, perf)];
+      if (perfOriginal) perfRows.push(perfLine('original upload', perfOriginal));
       const pill = document.createElement('b');   // not a span: the card's label rule (.card span) is full-width
       pill.className = 'opt-rank';
       pill.dataset.rank = String(perf.rank);
       pill.style.cssText = `display:inline-block;width:14px;height:8px;border-radius:4px;background:${TIER_COLORS[perf.rank]};`
-        + 'box-shadow:0 0 0 1px rgba(0,0,0,.45)';
+        + 'box-shadow:0 0 0 1px rgba(0,0,0,.45);pointer-events:auto;cursor:help';
+      // + every pass's status: a card with no LOD/⚠ chip would otherwise show its status nowhere
+      pill.title = [...perfRows, ...(opt ? [Object.entries(opt).map(([k, v]) => `${PASS[k] ?? k}: ${WORD[v.state] ?? v.state}${v.reason ? ` — ${v.reason}` : ''}`).join('\n')] : [])].join('\n');
       chipRow(card).appendChild(pill);
     }
-    if (opt) rows.push(...Object.entries(opt).map(([k, v]) => `${PASS[k] ?? k}: ${WORD[v.state] ?? v.state}${v.reason ? ` — ${v.reason}` : ''}`));
-    if (rows.length) card.title = rows.join('\n');
-    if (!opt) return;
+    if (!opt) { if (path) rebuildChip(card, path, false); return; }
+    const statusRows = Object.entries(opt).map(([k, v]) => `${PASS[k] ?? k}: ${WORD[v.state] ?? v.state}${v.reason ? ` — ${v.reason}` : ''}`).join('\n');
     const bad = Object.values(opt).some((v) => v.state === 'refused' || v.state === 'deferred' || v.state === 'stale');
     const lod = opt.lod?.state === 'built';
     for (const [on, text, css] of [[lod, 'LOD', 'background:rgba(143,232,200,.18);color:#8fe8c8'], [bad, '⚠', 'background:#6b4a12;color:#ffd68a']]) {
@@ -135,7 +138,8 @@ async function paintBuild(body) {
       const chip = document.createElement('b');
       chip.className = 'opt-chip';
       chip.textContent = text;
-      chip.style.cssText = `display:inline-block;width:auto;font-size:9px;line-height:1;padding:2px 4px;border-radius:4px;font-weight:600;${css}`;
+      chip.style.cssText = `display:inline-block;width:auto;font-size:9px;line-height:1;padding:2px 4px;border-radius:4px;font-weight:600;pointer-events:auto;cursor:help;${css}`;
+      chip.title = statusRows;
       chipRow(card).appendChild(chip);
     }
     if (path) rebuildChip(card, path, bad);
@@ -154,7 +158,7 @@ async function paintBuild(body) {
       // label strip Skye's previews carry along their top edge and of the name below (R, 09-24)
       card.innerHTML = `<div class="pv" style="position:relative;width:100%;line-height:0">${img}</div><span>${escapeHtml(it.name)}</span>`;   // server-supplied name (§24k hygiene)
       card.onclick = () => holdGhost(it.path, it.name);
-      optBadge(card, it.opt, it.perf, it.perfOriginal, it.path);
+      optBadge(card, it.opt, it.perf, it.perfOriginal, it.path, (it.path?.split('/').pop() ?? it.name).replace(/\.glb$/i, '').replace(/_/g, ' '));
       grid.appendChild(card);
     }
     if (!items.length) grid.innerHTML = '<div style="color:var(--dim);font-size:11px">nothing matched</div>';
@@ -240,6 +244,7 @@ async function paintAvatars(body) {
        <span>${escapeHtml(name)}</span>`;
     const img = card.querySelector('img');
     img.addEventListener('error', () => { img.remove(); });
+    card.title = name;   // the portrait names itself; the perf numbers live on the pill
     // the loupe's rank of this body AS LOADED (stamped by a wearer's client — routes.ts avatarRoster; absent until
     // someone has worn this version): the same pill as the library cards, on the portrait's bottom-right
     if (perf) {
