@@ -209,7 +209,7 @@ const COLOR_SLOT = /baseColor|emissive/i;
  *  can't be generated at runtime. `resize` (the GLB arm's texel budget,
  *  store-variants.ts capTexels) rides toktx's own --resize — the encoder
  *  scales before it generates mips, and libvips is nowhere in the loop. */
-function ktx2EncodeArgs(encoder: string, isToktx: boolean, srgb: boolean, uastc: boolean, inPath: string, outPath: string,
+export function ktx2EncodeArgs(encoder: string, isToktx: boolean, srgb: boolean, uastc: boolean, inPath: string, outPath: string,
   resize: [number, number] | null = null): string[] {
   return isToktx
     ? [encoder, "--t2", "--genmipmap", "--assign_oetf", srgb ? "srgb" : "linear",
@@ -217,7 +217,11 @@ function ktx2EncodeArgs(encoder: string, isToktx: boolean, srgb: boolean, uastc:
        ...(uastc ? ["--encode", "uastc", "--uastc_quality", "2", "--uastc_rdo_l", "1.0", "--zcmp", "18"]
                  : ["--encode", "etc1s", "--qlevel", "128"]),
        outPath, inPath]
-    : [encoder, "create", "--format", srgb ? "R8G8B8A8_SRGB" : "R8G8B8A8_UNORM",
+    // --assign-tf, never a conversion: ktx create reads an 8-bit PNG with no colour chunk as sRGB and, given a UNORM
+    // format, CONVERTS it — every normal/metallic-roughness/occlusion map got the sRGB→linear curve baked in (a flat
+    // normal 127 came out 54; measured 09-24 on the rubble pile: normals bent, surfaces darker, highlights gone).
+    // toktx's --assign_oetf above has always meant assign.
+    : [encoder, "create", "--format", srgb ? "R8G8B8A8_SRGB" : "R8G8B8A8_UNORM", "--assign-tf", srgb ? "srgb" : "linear",
        "--generate-mipmap",
        ...(uastc ? ["--encode", "uastc", "--uastc-quality", "2", "--uastc-rdo", "--uastc-rdo-l", "1.0", "--zstd", "18"]
                  : ["--encode", "basis-lz", "--qlevel", "128"]),
@@ -231,6 +235,10 @@ function ktx2EncodeArgs(encoder: string, isToktx: boolean, srgb: boolean, uastc:
  *  partial result is a file at all (the GLB arm refuses one — a .ktx2.glb
  *  with png inside is #122's class of lie, served immutable). Every encoder
  *  output is checked for the KTX2 container magic before it is accepted. */
+/** Stamped on every image this encoder writes since the transfer fix (ktx2EncodeArgs --assign-tf). A ktx-create
+ *  KTX2 image without it, written LINEAR, had the sRGB→linear curve baked in — tools/ktx2-tf-purge.ts finds those.
+ *  The image's own KTX metadata can't tell them apart (same writer, same params). */
+export const KTX2_TF_MARK = "ktx2Tf";
 export type Ktx2Tally = { eligible: number; converted: number; failed: string[] };
 const KTX2_MAGIC = [0xab, 0x4b, 0x54, 0x58, 0x20, 0x32, 0x30, 0xbb, 0x0d, 0x0a, 0x1a, 0x0a];
 export const isKtx2Container = (b: Uint8Array) => b.length >= 12 && KTX2_MAGIC.every((v, i) => b[i] === v);
@@ -312,7 +320,7 @@ async function ktx2CompressTextures(doc: Document, encoder: string): Promise<Ktx
         console.error(`[optimize] ktx2: ${label} — encoder wrote ${encoded.length} bytes that are not a KTX2 container — texture kept as-is`);
         failed.push(label); continue;
       }
-      tex.setImage(encoded).setMimeType("image/ktx2");
+      tex.setImage(encoded).setMimeType("image/ktx2").setExtras({ ...tex.getExtras(), [KTX2_TF_MARK]: "assigned" });
       const uri = tex.getURI();
       if (uri) tex.setURI(uri.replace(/\.[a-zA-Z0-9]+$/, "") + ".ktx2");
       converted++;
@@ -800,7 +808,7 @@ export async function transcodeVrmKtx2(bytes: Uint8Array, encoder: string):
   if (json.buffers?.[0]) json.buffers[0].byteLength = newBin.length; // unpadded, matching the input convention
 
   // ---- JSON patch, minimal ----
-  for (const [i] of newImageBytes) json.images[i].mimeType = "image/ktx2";
+  for (const [i] of newImageBytes) { json.images[i].mimeType = "image/ktx2"; json.images[i].extras = { ...(json.images[i].extras ?? {}), [KTX2_TF_MARK]: "assigned" }; }
   for (const t of json.textures ?? []) {
     if (typeof t.source === "number" && newImageBytes.has(t.source)) {
       // No raster fallback exists any more, so the spec's top-level `source`
