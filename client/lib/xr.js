@@ -187,7 +187,7 @@ function vrprobeLine() {
     const top = sys.sort((a, b) => b[1] - a[1]).slice(0, 5).map(([n, m]) => `${n}:${m.toFixed(2)}`).join(' ');
     const r = drawStats().render ?? {}; const mem = renderer.info.memory ?? {};
     const heap = performance.memory ? (performance.memory.usedJSHeapSize / 1048576).toFixed(0) : 'n/a';
-    const cam = renderer.xr.getCamera(); const eyes = (cam.cameras ?? []).map((c) => `x${c.viewport?.x ?? '?'}:${c.viewport?.z ?? '?'}x${c.viewport?.w ?? '?'}`).join('|');   // read BETWEEN frames (emulated: 'x0:1280x720|x?:0x720') — split vision would show a real eye with a wrong x or width
+    const cam = renderer.xr.getCamera(); const eyes = (cam.cameras ?? []).map((c) => `x${c.viewport?.x ?? '?'}:${c.viewport?.z ?? '?'}x${c.viewport?.w ?? '?'}`).join('|');   // read BETWEEN frames (under the emulator: 'x0:1280x720|x?:0x720') — split vision would show a real eye with a wrong x or width
     tee(`[vrprobe] t+${((performance.now() - vrprobeT0) / 1000).toFixed(0)}s fps ${perf.fps} worst ${(perf.worst ?? 0).toFixed(1)}ms doubled ${perf.doubled} spikes ${perf.spikes} ` +
         `cpu ${cpu.toFixed(2)}ms of ${(1000 / Math.max(1, perf.fps)).toFixed(1)} | ${top} | draws ${r.drawCalls ?? '?'} passes ${r.passes ?? '?'} tris ${r.triangles ?? '?'} ` +
         `| geo ${mem.geometries ?? '?'} tex ${mem.textures ?? '?'} heap ${heap}MB eyes ${eyes}`);
