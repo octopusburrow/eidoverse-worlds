@@ -24,4 +24,6 @@ out = ag.look();
 ok(out.includes("apricot: 5.0m"), "later finite pose restores ordinary spatial perception");
 ok(out.includes("at (3.0, -4.0)"), "finite coordinates render normally");
 
+// close() is the agent's lifecycle (its activity pulse ticks from birth); without it the suite never exits
+ag.close();
 console.log(`\n${passed} passed, 0 failed`);
