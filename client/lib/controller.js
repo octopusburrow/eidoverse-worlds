@@ -750,10 +750,10 @@ export function updateFollowCamera(dt, me) {
     ).normalize();
     camera.lookAt(
       camera.position.x + _dir.x, camera.position.y + _dir.y, camera.position.z + _dir.z);
-    if (me) me.vrm.scene.visible = false;         // don't render the inside of your own head
-    return;
+    if (me) { me.vrm.scene.visible = false; me.hideLabel = true; }   // not the inside of your own head, nor your own name (it
+    return;                                                           // hangs on the root, above the hidden scene; xr.js does the same)
   }
-  if (me) me.vrm.scene.visible = true;
+  if (me) { me.vrm.scene.visible = true; me.hideLabel = false; }   // never while presenting: xr.js owns hideLabel then (the early return above)
 
   // desired eye, with a shoulder offset so the body doesn't sit dead-centre
   // over whatever you're aiming at
