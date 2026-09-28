@@ -22,7 +22,7 @@ plugin({ name: 'core-stub', setup(build) {
 } });
 
 // the flags implemented so far (grows one commit at a time)
-const GATED: string[] = ['lighttop', 'erosion'];
+const GATED: string[] = ['lighttop', 'erosion', 'loops'];
 const ORIG = '/* the library original */';
 const FAST = '/* the skyfast copy */';
 const calls: string[] = [];
@@ -166,6 +166,30 @@ if (GATED.includes('erosion')) {
   check('the skipped branch leaves den2 = 0, and density still multiplies by largeWeather',
     fast.includes('const den2v = float(0).toVar();') && fast.includes('density: largeWeather.mul(u.finalMul).mul(min(den2v.mul(5), 1))'));
   check('largeWeather is clamped at 0 (so == 0 wherever coverage < largeT)', /const largeWeather = clamp\(wSampleL\([^\n]*\), 0, 2\);/.test(fast));
+}
+
+if (GATED.includes('loops')) {
+  console.log('SKYFAST — (vii) loops: the generated GLSL (1 pass; builder only, no GPU)');
+  const { mkdtempSync, readdirSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const dir = mkdtempSync(`${tmpdir()}/skyfast-glsl-`);
+  const r = Bun.spawnSync(['bun', here('./skyfast-shader-size.mjs'), '--flags=;loops', '--passes=1', `--dump=${dir}`],
+    { env: { ...process.env, BUN_RUNTIME_TRANSPILER_CACHE_PATH: '0' }, stdout: 'pipe', stderr: 'pipe' });
+  const out = r.stdout.toString();
+  check('the builder ran clean (no TSL error, no blank-material fallback)', r.exitCode === 0, `${r.exitCode} ${r.stderr.toString().slice(0, 300)}`);
+  check('all flags off reproduces the original fragment shader', /passes 1 {2}glsl .*fast\(none .*(IDENTICAL|SAME LINES)/.test(out), out.split('\n').find((l) => l.includes('glsl') && l.includes('none')) ?? out);
+  const files = readdirSync(dir);
+  const glsl = (name: string) => (files.includes(name) ? readFileSync(`${dir}/${name}`, 'utf8') : '');
+  const orig = glsl('original-p1.glsl'), rolled = glsl('fast-loops-p1.glsl');
+  check('loops: the fragment shader is < 1/4 of the original', rolled.length > 0 && rolled.length * 4 < orig.length, `${rolled.length} vs ${orig.length}`);
+  for (const n of ['skfPassK', 'skfLightJ', 'skfStormPass', 'skfShaftI', 'skfShaftJ'])
+    check(`loops: a rolled loop indexed ${n}`, rolled.includes(`for ( int ${n} = 0;`));
+  // an unnamed TSL Loop is always `i`: only the original's two already-rolled loops (60-step march, 12-step storm)
+  // may use it, or a nested unnamed loop could shadow an outer index
+  const unnamed = (rolled.match(/for \( int i = 0;/g) ?? []).length;
+  check('loops: exactly the two pre-existing loops use the default index name', unnamed === 2, `${unnamed}`);
+  const { rmSync } = await import('node:fs');
+  rmSync(dir, { recursive: true, force: true });
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

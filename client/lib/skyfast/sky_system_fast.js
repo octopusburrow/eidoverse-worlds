@@ -31,6 +31,17 @@
 //   - erosion (plan #3): cloudsAt skips its two erosion fbms where the macro
 //     coverage largeWeather is exactly 0 (density is 0 there regardless).
 //     Only the view march's cloudsAt; the light-march densities are untouched.
+//   - loops (plan #2): JS-unrolled loops become TSL Loop()s with NAMED indices
+//     (skfPassK, skfLightJ, skfStormPass, skfShaftI, skfShaftJ): the M_PASS
+//     strata, both 20-tap light marches (with lighttop they Break at the top),
+//     the 2 storm strata, the 20x6 shaft/rain march; and the 8-step ring-wisp
+//     bisection is not emitted on earth (it only feeds RING_R). Same math up
+//     to float rounding of the per-index jitter constants (k/M, k*0.618...,
+//     (j+0.5)/6, 2.1e-4*(1-i/40)) now computed in fp32 on the GPU instead of
+//     fp64 in JS. NOT rolled: the light-cache fill (off in the client) and
+//     the cloud-shadow taps embedded in world materials (N_CLOUD_SHADOW).
+//     Under this flag stepL / j0 (per light march) and stepS / baseJit (per
+//     ray) are pinned to vars so the rolled loops don't recompute them.
 // ============================================================================
 // sky_system.js — WORLD-SPACE volumetric sky for eidoverse.
 //
@@ -61,6 +72,11 @@
     const SKYFAST_RAW = globalThis.Deno?.env?.get?.('SKYFAST');
     const SKYFAST = new Set(String(SKYFAST_RAW ?? 'lighttop,erosion,loops,powder').split(',').map((s) => s.trim()).filter(Boolean));
     const SKYFAST_ON = (name) => SKYFAST.has(name);
+    // SKYFAST loops: JS `for` loops in a TSL builder are UNROLLED into the
+    // shader text; a TSL Loop() is emitted once. Loop index variables are
+    // NAMED: an unnamed Loop is always `i` in the generated code, so a nested
+    // unnamed Loop would silently shadow an outer index read inside it.
+    const SKYFAST_LOOPS = SKYFAST_ON('loops');
     const T3 = globalThis.THREE;
     const {
         uniform, Fn, vec2, vec3, vec4, float, Loop, Break, If,
@@ -603,9 +619,13 @@
         const DIRECT_LIGHT_MASS_SCALE = 0.25;
         let sampleLightCache = null;
         const lightRay = (p, phaseF, dC, mu, ch, jitL) => {
-            const stepL = clamp(u.cloudHeight.mul(2.2), 380, 700).div(N_LIGHT);
+            // SKYFAST loops: pinned to vars so the rolled light loop reads them
+            // instead of recomputing them per tap (the unrolled original got
+            // that CSE for free)
+            const stepL0 = clamp(u.cloudHeight.mul(2.2), 380, 700).div(N_LIGHT);
+            const stepL = SKYFAST_LOOPS ? stepL0.toVar() : stepL0;
             const den = float(0).toVar();
-            const j0 = jitL ?? float(0.5);
+            const j0 = SKYFAST_LOOPS ? (jitL ?? float(0.5)).toVar() : (jitL ?? float(0.5));
             // SKYFAST lighttop: end the light march at the cloud layer's TOP.
             // Above the top both light-march densities are ~1e-11 by
             // construction (cheapDensity multiplies weather by
@@ -630,6 +650,17 @@
                     const d = densFn(p.add(u.cloudLightDir.mul(stepL).mul(j0.add(jj))));
                     return scale === null ? d : d.mul(scale);
                 };
+                if (SKYFAST_LOOPS) {
+                    // SKYFAST loops: one rolled light loop; with lighttop it
+                    // BREAKS at the first tap past the layer top (taps are
+                    // monotonic in t, so every later one is past it too).
+                    Loop({ start: 0, end: N_LIGHT, type: 'int', name: 'skfLightJ' }, ({ skfLightJ }) => {
+                        const jf = float(skfLightJ);
+                        if (lightTLim) If(stepL.mul(j0.add(jf)).greaterThan(lightTLim), () => Break());
+                        target.addAssign(tap(jf));
+                    });
+                    return;
+                }
                 for (let j = 0; j < N_LIGHT; j++) {
                     if (lightTLim) If(stepL.mul(j0.add(j)).lessThanEqual(lightTLim), () => { target.addAssign(tap(j)); });
                     else target.addAssign(tap(j));
@@ -1196,7 +1227,8 @@
                 // anyway — clamping concentrates the samples where edges resolve
                 t1 = CLOUD_DBG ? u.fadeDist : min(shellFar(org, dir, sTop), u.fadeDist.mul(1.1));
             }
-            const stepS = max(t1.sub(t0), 0).div(N_MARCH);
+            const stepS0 = max(t1.sub(t0), 0).div(N_MARCH);
+            const stepS = SKYFAST_LOOPS ? stepS0.toVar() : stepS0;   // SKYFAST loops: per-ray, not per rolled pass
             const mu = dot(u.cloudLightDir, dir);
             const phaseF = phaseMie(mu);
             // The current-frame optimized pass has no temporal history, so its
@@ -1216,13 +1248,14 @@
             // every current frame. Full-resolution/direct lookdev can still
             // opt into the blue-noise or bounded-hash phase for spatial A/Bs.
             const stablePhase = opts.stableCloudPhase ?? opts.worldRayDir;
-            const baseJit = jitterOverride ?? (stablePhase
+            const baseJit0 = jitterOverride ?? (stablePhase
                 ? float(0.5 / M_PASS)
                 : (opts.blueNoise
                     ? fract(T3.texture(opts.blueNoise, screenCoordinate.xy.div(64)).level(0).r.add(u.frameJit))
                     : (opts.dirJitter
                         ? hash11(dot(dir, vec3(12.256, 2.646, 6.356)))
                         : hashScreen(screenCoordinate.xy))));
+            const baseJit = SKYFAST_LOOPS ? baseJit0.toVar() : baseJit0;   // SKYFAST loops: per-ray, not per rolled pass
             const colSum = vec3(0).toVar();
             const trSum = float(0).toVar();
             const marchVisible = CLOUD_DBG
@@ -1232,16 +1265,21 @@
             // so its two FBMs and the complete volumetric march do no work;
             // weather transitions can turn the branch back on dynamically.
             If(marchVisible.and(u.finalMul.greaterThan(0.0001)), () => {
-                for (let k = 0; k < M_PASS; k++) {
+                // SKYFAST loops: the M_PASS strata as one TSL Loop. k is a JS
+                // number in the original (unrolled) path and the loop's float
+                // index here; the two jitter formulas below take either.
+                const passBody = (k) => {
+                    const kDivM = typeof k === 'number' ? k / M_PASS : k.div(M_PASS);
+                    const kPhi = typeof k === 'number' ? k * 0.6180339887 : k.mul(0.6180339887);
                     const Trk = float(1).toVar();
                     const colk = vec3(0).toVar();
-                    const jitK = fract(baseJit.add(k / M_PASS));
+                    const jitK = fract(baseJit.add(kDivM));
                     const p = org.add(dir.mul(t0)).add(dir.mul(stepS).mul(jitK)).toVar();
                     Loop({ start: 0, end: N_MARCH, type: 'int' }, () => {
                         If(Trk.lessThanEqual(0.008), () => Break());
                         const s = cloudsAt(p);
                         If(s.density.greaterThan(0.0), () => {
-                            const intensity = lightRay(p, phaseF, s.density, mu, s.ch, fract(fract(baseJit.mul(73.1063)).add(k * 0.6180339887)));
+                            const intensity = lightRay(p, phaseF, s.density, mu, s.ch, fract(fract(baseJit.mul(73.1063)).add(kPhi)));
                             const amb = u.cloudAmbSky.mul(float(0.5).add(s.ch.mul(0.6)))
                                 .add(u.cloudAmbGround.mul(max(float(1).sub(s.ch.mul(2)), 0)));
                             // A sealed cumulonimbus canopy removes direct sun
@@ -1278,6 +1316,11 @@
                     });
                     colSum.addAssign(colk);
                     trSum.addAssign(Trk);
+                };
+                if (SKYFAST_LOOPS) {
+                    Loop({ start: 0, end: M_PASS, type: 'int', name: 'skfPassK' }, ({ skfPassK }) => passBody(float(skfPassK)));
+                } else {
+                    for (let k = 0; k < M_PASS; k++) passBody(k);
                 }
             }).Else(() => {
                 trSum.assign(M_PASS);
@@ -1306,7 +1349,9 @@
             // the authored surface or fabricate a shelf hit.
             const ringWispTLo = ringWispFlatY.sub(org.y).div(ringWispDy).toVar();
             const ringWispTHi = ringWispFlatY.add(RING_RISE).sub(org.y).div(ringWispDy).toVar();
-            for (let solveStep = 0; solveStep < 8; solveStep++) {
+            // SKYFAST loops: the bisection only feeds ringWispT, which is read
+            // only when RING_R; on earth its 8 unrolled If blocks were dead code.
+            if (RING_R || !SKYFAST_LOOPS) for (let solveStep = 0; solveStep < 8; solveStep++) {
                 const ringWispTMid = ringWispTLo.add(ringWispTHi).mul(0.5);
                 const ringWispPMid = org.add(dir.mul(ringWispTMid));
                 If(org.y.add(ringWispDy.mul(ringWispTMid)).lessThan(ringWispYAt(ringWispPMid.z)), () => {
@@ -1511,7 +1556,7 @@
                 const stormVolumeSum = vec3(0).toVar();
                 const boundedStormFlash = clamp(u.lightningStrike.w, 0, 1.15)
                     .mul(transientLightScale);
-                for (let stormPass = 0; stormPass < N_STORM_PASSES; stormPass++) {
+                const stormPassBody = (stormPass) => {
                     const stormTr = float(1).toVar();
                     const stormVolumeRgb = vec3(0).toVar();
                     // Centered strata phase, shared by every ray. A direction-
@@ -1519,7 +1564,8 @@
                     // it swapped stripes for static per-pixel speckle whenever
                     // the camera stopped. Banding is attacked with a finer
                     // step count instead; the phase stays deterministic.
-                    const stormJitter = fract(baseJit.add(stormPass / N_STORM_PASSES));
+                    const stormJitter = fract(baseJit.add(typeof stormPass === 'number'
+                        ? stormPass / N_STORM_PASSES : stormPass.div(N_STORM_PASSES)));
                     const stormP = org.add(dir.mul(
                         stormNearT.add(stormStep.mul(stormJitter)),
                     )).toVar();
@@ -1592,6 +1638,12 @@
                     });
                     stormTrSum.addAssign(stormTr);
                     stormVolumeSum.addAssign(stormVolumeRgb);
+                };
+                // SKYFAST loops: the storm strata rolled
+                if (SKYFAST_LOOPS) {
+                    Loop({ start: 0, end: N_STORM_PASSES, type: 'int', name: 'skfStormPass' }, ({ skfStormPass }) => stormPassBody(float(skfStormPass)));
+                } else {
+                    for (let stormPass = 0; stormPass < N_STORM_PASSES; stormPass++) stormPassBody(stormPass);
                 }
                 const stormTr = stormTrSum.div(N_STORM_PASSES);
                 const stormBoundary = u.stormCanopy.mul(
@@ -1664,7 +1716,8 @@
                 const sy = max(u.cloudLightDir.y, 0.08);
                 const segL = u.cloudHeight.div(sy);
                 const hp = org.add(dir.mul(stepH).mul(baseJit.mul(0.5).add(0.3))).toVar();
-                for (let i = 0; i < 20; i++) {
+                const shaftStep = (i) => {
+                    const fi = typeof i === 'number' ? null : i;   // SKYFAST loops: i is a float node when rolled
                     // ring mode: atmoHeight is a remapped PROFILE coordinate,
                     // not meters — the shaft/altitude math needs physical y
                     // (this is what silently killed the god rays)
@@ -1672,8 +1725,14 @@
                         ? max(float(RING_SLAB_LO + 20).sub(hp.y), 0).div(sy)
                         : max(u.cloudStart.sub(atmoHeight(hp)), 0).div(sy);
                     const od = float(0).toVar();
-                    for (let j = 0; j < 6; j++) {
-                        od.addAssign(smoothDensity(hp.add(u.cloudLightDir.mul(hEnter.add(segL.mul((j + 0.5) / 6))))));
+                    if (SKYFAST_LOOPS) {
+                        Loop({ start: 0, end: 6, type: 'int', name: 'skfShaftJ' }, ({ skfShaftJ }) => {
+                            od.addAssign(smoothDensity(hp.add(u.cloudLightDir.mul(hEnter.add(segL.mul(float(skfShaftJ).add(0.5).div(6)))))));
+                        });
+                    } else {
+                        for (let j = 0; j < 6; j++) {
+                            od.addAssign(smoothDensity(hp.add(u.cloudLightDir.mul(hEnter.add(segL.mul((j + 0.5) / 6))))));
+                        }
                     }
                     const vis = exp(od.mul(segL.div(6)).negate());
                     // rain curtains: dense macro cells rain; fine xz column
@@ -1683,7 +1742,7 @@
                     const cellCov = clamp(wSampleL(vec2(cp1z, cp1x).mul(float(-0.00005).mul(u.wScale))).sub(u.largeT).mul(u.largeA), 0, 2);
                     // column texture coarsened + faded to smooth murk with
                     // distance — fine detail must stay below the step size
-                    const tCur = stepH.mul(i + 0.5);
+                    const tCur = stepH.mul(fi ? fi.add(0.5) : i + 0.5);
                     const colTex = wSampleS(vec2(cp1z, cp1x).mul(0.0008).add(vec2(0.61, 0.23)));
                     const colMod = mix(colTex.mul(1.1).add(0.25), float(0.8), smoothstep(900, 2600, tCur));
                     const belowBase = RING_R
@@ -1706,7 +1765,8 @@
                         stormPrecipGate,
                         clamp(u.stormCanopy, 0, 1),
                     );
-                    const precip = u.precipK.mul(precipGate).mul(colMod).mul(2.1e-4 * (1 - (i / 20) * 0.5))
+                    const precip = u.precipK.mul(precipGate).mul(colMod).mul(fi
+                        ? float(2.1e-4).mul(float(1).sub(fi.div(20).mul(0.5))) : 2.1e-4 * (1 - (i / 20) * 0.5))
                         .mul(belowBase.mul(0.5).add(0.5));
                     const altPhys = RING_R ? hp.y : atmoHeight(hp);
                     // ring mode: curtains OFF pending their own tune — they were
@@ -1717,6 +1777,11 @@
                     shaft.addAssign(trH.mul(vis.mul(0.75).add(0.25)).mul(rho).mul(stepH));
                     trH.assign(trH.mul(exp(rho.mul(stepH).negate())));
                     hp.assign(hp.add(dir.mul(stepH)));
+                };
+                if (SKYFAST_LOOPS) {
+                    Loop({ start: 0, end: 20, type: 'int', name: 'skfShaftI' }, ({ skfShaftI }) => shaftStep(float(skfShaftI)));
+                } else {
+                    for (let i = 0; i < 20; i++) shaftStep(i);
                 }
             });
             // curtains scatter AMBIENT skylight too — sun-only lighting rendered
