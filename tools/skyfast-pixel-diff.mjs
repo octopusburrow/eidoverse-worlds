@@ -4,7 +4,12 @@
 // from disk through page.route (no server). ALWAYS run it guarded, one browser at a time:
 //
 //   flock /tmp/claude-1000/probe.lock bash /mnt/c/Users/Claude/code/scripts/perf-guard.sh -t 300 -m 1500 -- \
-//     bun tools/skyfast-pixel-diff.mjs [--hours=12,17.6] [--sets=CSV;CSV;...] [--w=64 --h=32 --passes=1]
+//     bun tools/skyfast-pixel-diff.mjs [--hours=12,17.6] [--sets=CSV;CSV;...] [--ref=original|fast:CSV] [--w=64 --h=32 --passes=1]
+//
+// MEASURED 2026-09-28: rendering the ORIGINAL (590 kB GLSL at 1 pass) took headless Chromium past perf-guard's
+// 1500 MB floor (killed, rc 125), before the first render returned. So on this machine only the rolled (`loops`,
+// ~71 kB) programs can be rendered: use --ref=fast:loops and sets that all include loops. That verifies lighttop /
+// erosion / powder against a rolled reference; loops-vs-original equality can't be checked here.
 //
 // Per sun time, it renders the original TWICE (a repeatability floor: any difference there is harness noise) and
 // the fast copy once per flag set, and prints max |d| and mean |d| over RGBA against the first original render,
@@ -15,6 +20,7 @@ import { readFileSync } from 'node:fs';
 const arg = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) ?? `=${d}`).split('=').slice(1).join('=');
 const HOURS = arg('hours', '12,17.6').split(',').map(Number);
 const SETS = arg('sets', ';lighttop;erosion;loops;powder;lighttop,erosion,loops').split(';');
+const REF = arg('ref', 'original');
 const W = Number(arg('w', 64)), H = Number(arg('h', 32)), PASSES = Number(arg('passes', 1));
 const HERE = import.meta.dir;
 const LIB = process.env.EIDOVERSE_DIR ?? `${HERE}/../../eidoverse-video`;
@@ -97,16 +103,17 @@ try {
   };
   for (const hours of HOURS) {
     const t0 = Date.now();
-    const ref = await pg.evaluate(([h]) => globalThis.renderOnce('original', '', h), [hours]);
-    const again = await pg.evaluate(([h]) => globalThis.renderOnce('original', '', h), [hours]);
+    const [rw, rf] = REF === 'original' ? ['original', ''] : ['fast', REF.replace(/^fast:/, '')];
+    const ref = await pg.evaluate(([h, w, f]) => globalThis.renderOnce(w, f, h), [hours, rw, rf]);
+    const again = await pg.evaluate(([h, w, f]) => globalThis.renderOnce(w, f, h), [hours, rw, rf]);
     const s0 = stats(ref, again);
-    console.log(`hours ${hours}: original render ${Date.now() - t0} ms x2; cloud px (alpha>0.01) ${s0.cloud}/${W * H}; value scale ${s0.scale.toExponential(3)}`);
-    console.log(`  original vs original (floor)        max ${s0.max.toExponential(3)}  mean ${s0.mean.toExponential(3)}`);
+    console.log(`hours ${hours}: reference ${REF} render ${Date.now() - t0} ms x2; cloud px (alpha>0.01) ${s0.cloud}/${W * H}; value scale ${s0.scale.toExponential(3)}`);
+    console.log(`  reference vs itself (floor)         max ${s0.max.toExponential(3)}  mean ${s0.mean.toExponential(3)}`);
     for (const set of SETS) {
       const t1 = Date.now();
       const f = await pg.evaluate(([h, s]) => globalThis.renderOnce('fast', s, h), [hours, set]);
       const s1 = stats(ref, f);
-      console.log(`  fast(${(set || 'none').padEnd(28)}) vs original  max ${s1.max.toExponential(3)}  mean ${s1.mean.toExponential(3)}  rel-max ${(s1.max / (s0.scale || 1)).toExponential(2)}  (${Date.now() - t1} ms)`);
+      console.log(`  fast(${(set || 'none').padEnd(28)}) vs ref  max ${s1.max.toExponential(3)}  mean ${s1.mean.toExponential(3)}  rel-max ${(s1.max / (s0.scale || 1)).toExponential(2)}  (${Date.now() - t1} ms)`);
     }
     if (errs.length) { bad++; console.log(`  PAGE ERRORS: ${errs.splice(0).join(' | ').slice(0, 1200)}`); }
   }
