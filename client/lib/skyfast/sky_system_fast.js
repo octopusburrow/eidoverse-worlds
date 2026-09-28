@@ -42,6 +42,10 @@
 //     the cloud-shadow taps embedded in world materials (N_CLOUD_SHADOW).
 //     Under this flag stepL / j0 (per light march) and stepS / baseJit (per
 //     ray) are pinned to vars so the rolled loops don't recompute them.
+//   - powder (plan section 5, the "dark cloud edges"): the powder darkening in
+//     lightRay fades with view angle, full looking away from the sun, none
+//     looking into it (Schneider 2015/2017; see the comment there). The ONLY
+//     deliberate look change here; OFF-able alone with skyfast=-powder.
 // ============================================================================
 // sky_system.js — WORLD-SPACE volumetric sky for eidoverse.
 //
@@ -727,7 +731,22 @@
                 .add(exp(stepL.mul(den).negate().mul(0.1)).mul(scatter).mul(0.5))
                 .add(exp(stepL.mul(den).negate().mul(0.02)).mul(scatter).mul(0.4));
             const powdered = float(0.05).add(pow(min(dC.mul(8.5), 1).max(1e-6), float(0.3).add(ch.mul(5.5))).mul(1.5));
-            const lit = mix(powdered, float(1), clamp(den.mul(0.4), 0, 1));
+            const lit0 = mix(powdered, float(1), clamp(den.mul(0.4), 0, 1));
+            // SKYFAST powder: the powder term is VIEW-DEPENDENT. Schneider &
+            // Vos, "The Real-time Volumetric Cloudscapes of Horizon: Zero
+            // Dawn" (SIGGRAPH 2015 Advances): the powder darkening is only seen
+            // looking AWAY from the sun and must fade out as the view turns
+            // toward it (where thin edges should carry the silver lining);
+            // Schneider's Nubis talk (SIGGRAPH 2017) keeps that gradient. The
+            // talk gives it in words, not a formula; the remap here is the
+            // common linear one, t = saturate(0.5 - 0.5*cos(view, light)):
+            // full powder at mu = -1 (sun behind you), half side-on, none at
+            // mu = +1 (looking into the sun). mu is dot(lightDir, viewDir), as
+            // passed in by the march. This is a LOOK change (the only one in
+            // this file): the dense-core boost fades toward the sun with it.
+            const lit = SKYFAST_ON('powder')
+                ? mix(float(1), lit0, clamp(float(0.5).sub(mu.mul(0.5)), 0, 1))
+                : lit0;
             return beers.mul(phaseF).mul(mix(float(1), lit, u.lightK));
         };
         // SCREEN-RAY direction: from camera matrices + screen UV, NOT from

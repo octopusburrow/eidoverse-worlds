@@ -22,7 +22,7 @@ plugin({ name: 'core-stub', setup(build) {
 } });
 
 // the flags implemented so far (grows one commit at a time)
-const GATED: string[] = ['lighttop', 'erosion', 'loops'];
+const GATED: string[] = ['lighttop', 'erosion', 'loops', 'powder'];
 const ORIG = '/* the library original */';
 const FAST = '/* the skyfast copy */';
 const calls: string[] = [];
@@ -190,6 +190,17 @@ if (GATED.includes('loops')) {
   check('loops: exactly the two pre-existing loops use the default index name', unnamed === 2, `${unnamed}`);
   const { rmSync } = await import('node:fs');
   rmSync(dir, { recursive: true, force: true });
+}
+
+if (GATED.includes('powder')) {
+  console.log('SKYFAST — (viii) powder: full looking away from the sun, none looking into it');
+  const fast = readFileSync(here('../client/lib/skyfast/sky_system_fast.js'), 'utf8');
+  // lit = mix(1, lit0, w): w = 1 keeps the original powder, w = 0 removes it. mu = dot(lightDir, viewDir).
+  const m = fast.match(/\? mix\(float\(1\), lit0, clamp\(float\(0\.5\)\.sub\(mu\.mul\(0\.5\)\), 0, 1\)\)/);
+  check('the view weight is mix(1, lit0, saturate(0.5 - 0.5*mu))', !!m);
+  const w = (mu: number) => Math.min(1, Math.max(0, 0.5 - 0.5 * mu));
+  check('mirror: full powder with the sun behind (mu = -1), half side-on, none into the sun (mu = +1)', w(-1) === 1 && w(0) === 0.5 && w(1) === 0);
+  check('mu is the march\'s dot(cloudLightDir, viewDir)', fast.includes('const mu = dot(u.cloudLightDir, dir);') && fast.includes('lightRay(p, phaseF, s.density, mu, s.ch,'));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
