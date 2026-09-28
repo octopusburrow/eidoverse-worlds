@@ -22,7 +22,7 @@ plugin({ name: 'core-stub', setup(build) {
 } });
 
 // the flags implemented so far (grows one commit at a time)
-const GATED: string[] = ['lighttop'];
+const GATED: string[] = ['lighttop', 'erosion'];
 const ORIG = '/* the library original */';
 const FAST = '/* the skyfast copy */';
 const calls: string[] = [];
@@ -155,6 +155,17 @@ console.log('SKYFAST — (v) lighttop: the skip bound, mirrored in JS (fp64), ne
   check('the TSL bound is the mirrored expression', fast.includes('u.cloudStart.add(u.cloudHeight).sub(atmoHeight(p)).div(max(LyTop, 0.02))')
     && fast.includes('T3.select(LyTop.greaterThan(0.02), tTop.add(stepL), float(1e30))')
     && fast.includes('dot(u.cloudLightDir, normalize(p.sub(earthC)))'));
+}
+
+if (GATED.includes('erosion')) {
+  console.log('SKYFAST — (vi) erosion: the skip is keyed on the factor that zeroes density');
+  const fast = readFileSync(here('../client/lib/skyfast/sky_system_fast.js'), 'utf8');
+  // density = largeWeather * finalMul * min(den2*5, 1) * strip: skipping den2 is exact only where largeWeather == 0,
+  // so the branch must test exactly that factor, and the density must still multiply by it
+  check('the erosion fbms run only where largeWeather > 0', fast.includes('If(largeWeather.greaterThan(0), () => { den2v.assign(erosionBody(chv)); });'));
+  check('the skipped branch leaves den2 = 0, and density still multiplies by largeWeather',
+    fast.includes('const den2v = float(0).toVar();') && fast.includes('density: largeWeather.mul(u.finalMul).mul(min(den2v.mul(5), 1))'));
+  check('largeWeather is clamped at 0 (so == 0 wherever coverage < largeT)', /const largeWeather = clamp\(wSampleL\([^\n]*\), 0, 2\);/.test(fast));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -28,6 +28,9 @@
 //   - lighttop (plan #1): lightRay ends each light march at the cloud layer's
 //     top (one tap of margin); skipped taps are ~1e-11 each. Earth mode only.
 //     The froxel light-cache fill (off in the client) is NOT changed.
+//   - erosion (plan #3): cloudsAt skips its two erosion fbms where the macro
+//     coverage largeWeather is exactly 0 (density is 0 there regardless).
+//     Only the view march's cloudsAt; the light-march densities are untouched.
 // ============================================================================
 // sky_system.js — WORLD-SPACE volumetric sky for eidoverse.
 //
@@ -506,15 +509,33 @@
             const largeWeather = clamp(wSampleL(vec2(p1.z.add(zW), p1.x).mul(float(-0.00005).mul(u.wScale))).sub(u.largeT).mul(u.largeA), 0, 2);
             const p2 = p1.add(vec3(u.skyWind.z.mul(u.time).mul(0.4), 0, u.skyWind.x.mul(u.time).mul(-0.4)));
             const weather2 = max(wSampleS(vec2(p2.z.add(zW), p2.x).mul(float(0.00005).mul(u.wScale)).add(vec2(0.37, 0.11))).sub(u.weatherT), 0).div(0.72);
+            const erosionBody = (chE) => {
             const weather = largeWeather.mul(weather2)
-                .mul(smoothstep(0.0, 0.5, ch))
-                .mul(float(1).sub(smoothstep(0.5, 1.0, ch)));
-            const shapeExp = float(0.3).add(float(1.5).mul(smoothstep(0.2, 0.5, ch)));
+                .mul(smoothstep(0.0, 0.5, chE))
+                .mul(float(1).sub(smoothstep(0.5, 1.0, chE)));
+            const shapeExp = float(0.3).add(float(1.5).mul(smoothstep(0.2, 0.5, chE)));
             const cloudShape = pow(weather.max(1e-6), shapeExp);
             const p3 = p2.add(vec3(u.time.mul(12.3), 0, 0));
             const den1 = max(cloudShape.sub(fbmE(p3.mul(float(0.01).mul(u.dScale))).mul(0.7)), 0);
             const p4 = p3.add(vec3(0, u.time.mul(15.2), 0));
             const den2 = max(den1.sub(fbmE(p4.mul(float(0.05).mul(u.dScale))).mul(0.2)), 0);
+            return den2;
+            };
+            // SKYFAST erosion: density is largeWeather * ... * min(den2*5, 1),
+            // so wherever the macro coverage clamps to exactly 0 the two
+            // erosion fbms (6 of this function's 8 texture fetches) cannot
+            // change the result. Skip them there. Exact: the skipped branch
+            // leaves den2 = 0 and 0 * min(0, 1) = 0, the same as 0 * anything
+            // finite. The coverage field is 20 km scale, so the branch is
+            // spatially coherent. ch is pinned to a var because it is also
+            // returned (read outside the branch).
+            if (SKYFAST_ON('erosion')) {
+                const den2v = float(0).toVar();
+                const chv = ch.toVar();
+                If(largeWeather.greaterThan(0), () => { den2v.assign(erosionBody(chv)); });
+                return { density: largeWeather.mul(u.finalMul).mul(min(den2v.mul(5), 1)).mul(ringStrip(pIn)), ch: chv };
+            }
+            const den2 = erosionBody(ch);
             return { density: largeWeather.mul(u.finalMul).mul(min(den2.mul(5), 1)).mul(ringStrip(pIn)), ch };
         };
         // light-march density = reference "fast" path: full weather + first
