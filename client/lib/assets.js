@@ -901,9 +901,27 @@ export async function listLibrary(dir) {
 
 const normDeno = (p) => String(p).replace(/^\.?\//, '');
 
+// Path aliases for the virtual FS: a read of `from` answers with `to`'s bytes.
+// Only the sky A/B uses it (skyfast/variant.js: under ?sky=fast,
+// 'eidoverse/sky_system.js' reads the client's sky_system_fast.js copy). Empty
+// by default, so every read resolves exactly as before.
+const denoAlias = new Map();
+/** Alias one virtual-FS path to another primed key; `to` null clears it. */
+export function aliasDenoFile(from, to) {
+  if (to == null) denoAlias.delete(normDeno(from));
+  else denoAlias.set(normDeno(from), normDeno(to));
+}
+/** Prime one virtual-FS key from an arbitrary URL (client code rather than the
+ *  library). Throws on failure: the caller asked for these exact bytes. */
+export async function primeBytes(key, url) {
+  if (denoFiles.has(key)) return;
+  denoFiles.set(key, new Uint8Array(await fetchBytes(url)));
+}
+
 globalThis.Deno = {
   readFileSync(p) {
-    const f = denoFiles.get(normDeno(p));
+    const n = normDeno(p);
+    const f = denoFiles.get(denoAlias.get(n) ?? n);
     if (!f) throw new Error(`[host] not primed: ${p}`);
     return f;
   },

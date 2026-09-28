@@ -17,8 +17,9 @@ import { THREE, scene, sun, hemi, renderer, camera } from './core.js';
 // ?shadowdebug=1 — R 09-07 19:17: 'crank it way up to see if it's there at all'. Sun shadows measured ~10 % darker than lit
 // ground (fill light drowns the sun's share); this dims the fill to a fifth so the shadow map's coverage is legible.
 const SHADOW_DEBUG_FILL = new URLSearchParams(globalThis.location?.search ?? '').has('shadowdebug') ? 0.2 : 1;
-import { report, bus } from './base.js';
-import { loadEidoModule, primeFiles, listLibrary, fetchBytes } from './assets.js';
+import { report, bus, tee } from './base.js';
+import { loadEidoModule, primeFiles, listLibrary, fetchBytes, aliasDenoFile, primeBytes } from './assets.js';
+import { prepareSkySystem } from './skyfast/variant.js';
 import { markPhase } from './boot.js';
 import { attachBakedDome, detachBakedDome, updateBakedDome, bakedActive, requestBake,
   envTexture, adoptEnvironment, whenBakeReady } from './sky_baked.js';
@@ -466,6 +467,13 @@ async function buildSky(a, world, wantAudio) {
     // boot waits for the sky is a splash that never lifts. The gating order
     // itself provides what the wait was for — the sky is no longer
     // competing with boot-critical work, it IS boot work.)
+    // ?sky=fast: the A/B copy of sky_system.js (client/lib/skyfast/). Aliases
+    // the virtual-FS path sky_worlds evals; without the param it clears the
+    // alias and fetches nothing. Every build says which one ran.
+    const skySystemLine = await prepareSkySystem(globalThis.location?.search ?? '',
+      { primeBytes, aliasDenoFile, env: envKnobs });
+    console.log(skySystemLine);
+    tee(skySystemLine);
     await primeFor(world, wantAudio);
     await loadEidoModule('sky_worlds.js');
     if (typeof globalThis.makeSky !== 'function') throw new Error('sky_worlds.js exposed no makeSky');
