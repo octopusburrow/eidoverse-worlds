@@ -22,7 +22,7 @@ plugin({ name: 'core-stub', setup(build) {
 } });
 
 // the flags implemented so far (grows one commit at a time)
-const GATED: string[] = [];
+const GATED: string[] = ['lighttop'];
 const ORIG = '/* the library original */';
 const FAST = '/* the skyfast copy */';
 const calls: string[] = [];
@@ -97,6 +97,64 @@ console.log('SKYFAST — (iv) static tripwires');
   const sky = readFileSync(here('../client/lib/sky.js'), 'utf8');
   const iPrep = sky.indexOf('await prepareSkySystem('), iLoad = sky.indexOf("await loadEidoModule('sky_worlds.js')");
   check('sky.js prepares the sky_system before loading sky_worlds', iPrep > 0 && iLoad > iPrep, `${iPrep} / ${iLoad}`);
+}
+
+console.log('SKYFAST — (v) lighttop: the skip bound, mirrored in JS (fp64), never skips a tap below the layer top');
+{
+  // Mirrors sky_system_fast.js lightRay's lighttop bound and atmoHeight (earth mode). This checks the MATH of the
+  // bound, not the TSL; the static tripwire below pins the TSL to the same expression.
+  const R = 6371000;
+  const atmoHeight = (x: number, y: number, z: number) =>
+    (y * (y + 2 * R) + x * x + z * z) / (Math.hypot(x, y + R, z) + R);
+  let seed = 12345; const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+  const N_LIGHT = 20;
+  const table: string[] = [];
+  let violations = 0, worst = Infinity;
+  for (const [name, start, height] of [['cumulus', 700, 520], ['stratus', 520, 170], ['darkstorm', 500, 650]] as const) {
+    const top = start + height;
+    const stepL = Math.min(700, Math.max(380, height * 2.2)) / N_LIGHT;
+    const row: string[] = [];
+    for (const elDeg of [0.5, 3, 10, 20, 30, 45, 60, 75, 89]) {
+      let kept = 0, total = 0;
+      for (let n = 0; n < 4000; n++) {
+        // a sample anywhere in the layer, up to 30 km out (the march's fadeDist range), any azimuth of sun
+        const r = 30000 * Math.sqrt(rnd()), th = rnd() * 2 * Math.PI;
+        const x = r * Math.cos(th), z = r * Math.sin(th);
+        const hTarget = start + rnd() * height;
+        // invert atmoHeight for y at this x,z (Newton; atmoHeight ~ y for small offsets)
+        let y = hTarget; for (let it = 0; it < 6; it++) y -= atmoHeight(x, y, z) - hTarget;
+        const az = rnd() * 2 * Math.PI, el = elDeg * Math.PI / 180;
+        const L = [Math.cos(el) * Math.cos(az), Math.sin(el), Math.cos(el) * Math.sin(az)];
+        const up = [x, y + R, z]; const ul = Math.hypot(...up);
+        const Ly = (L[0] * up[0] + L[1] * up[1] + L[2] * up[2]) / ul;
+        const h0 = atmoHeight(x, y, z);
+        const tLim = Ly > 0.02 ? (top - h0) / Math.max(Ly, 0.02) + stepL : 1e30;
+        const j0 = rnd();
+        for (let j = 0; j < N_LIGHT; j++) {
+          const t = stepL * (j0 + j);
+          total++;
+          if (t <= tLim) { kept++; continue; }
+          const ht = atmoHeight(x + L[0] * t, y + L[1] * t, z + L[2] * t);
+          worst = Math.min(worst, ht - top);
+          if (ht < top) violations++;
+        }
+      }
+      row.push(`${elDeg}°:${(kept / total).toFixed(2)}`);
+    }
+    table.push(`      ${name.padEnd(9)} taps kept ${row.join(' ')}`);
+  }
+  console.log(table.join('\n'));
+  check('no skipped tap is below the layer top (4000 samples x 9 sun elevations x 3 layers)', violations === 0, `${violations} violations`);
+  check('skipped taps clear the top by a margin (the one-tap slack)', worst > 0, `closest ${worst.toFixed(3)} m`);
+  // above the top, the light-march density is bounded by the preset constants: weather x (1 - smoothstep(0.5,1,1)) = 0,
+  // so shape = pow(1e-6, 0.3 + 1.5) and density <= largeWeather(<=2) * finalMul * min(5*shape, 1)
+  const shapeTop = Math.pow(1e-6, 1.8);
+  const maxTau = 20 * 35 * 2 * 0.3 * Math.min(5 * shapeTop, 1);   // 20 taps x stepL<=35 m x lw<=2 x finalMul<=0.3
+  check('the optical depth all skipped taps could have carried is < 1e-7', maxTau < 1e-7, maxTau.toExponential(2));
+  const fast = readFileSync(here('../client/lib/skyfast/sky_system_fast.js'), 'utf8');
+  check('the TSL bound is the mirrored expression', fast.includes('u.cloudStart.add(u.cloudHeight).sub(atmoHeight(p)).div(max(LyTop, 0.02))')
+    && fast.includes('T3.select(LyTop.greaterThan(0.02), tTop.add(stepL), float(1e30))')
+    && fast.includes('dot(u.cloudLightDir, normalize(p.sub(earthC)))'));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

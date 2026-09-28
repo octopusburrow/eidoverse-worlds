@@ -25,6 +25,9 @@
 //
 // DEVIATIONS (search for "SKYFAST" to find each one):
 //   - the SKYFAST flag reader at the top of the IIFE (6 lines, no behaviour).
+//   - lighttop (plan #1): lightRay ends each light march at the cloud layer's
+//     top (one tap of margin); skipped taps are ~1e-11 each. Earth mode only.
+//     The froxel light-cache fill (off in the client) is NOT changed.
 // ============================================================================
 // sky_system.js — WORLD-SPACE volumetric sky for eidoverse.
 //
@@ -582,16 +585,37 @@
             const stepL = clamp(u.cloudHeight.mul(2.2), 380, 700).div(N_LIGHT);
             const den = float(0).toVar();
             const j0 = jitL ?? float(0.5);
-            const addDetailedLight = (target) => {
-                for (let j = 0; j < N_LIGHT; j++) target.addAssign(
-                    cheapDensity(p.add(u.cloudLightDir.mul(stepL).mul(j0.add(j)))),
-                );
+            // SKYFAST lighttop: end the light march at the cloud layer's TOP.
+            // Above the top both light-march densities are ~1e-11 by
+            // construction (cheapDensity multiplies weather by
+            // 1 - smoothstep(0.5, 1, ch) = 0 at ch = 1, leaving
+            // pow(1e-6, 1.8) = 1.6e-11 of shape; smoothDensity's top is the
+            // same or LOWER, since wallLower lowers the whole layer), so the
+            // taps skipped here contribute ~0 and the result is exact in
+            // effect. The bound: with Ly = dot(L, local up) > 0 the tap's
+            // altitude along the straight light ray is h(t) >= h0 + Ly*t
+            // (|q + L t| >= |q| + Ly t for Ly >= 0), so every tap with
+            // t > (top - h0)/Ly is above the top. One tap of margin is kept;
+            // grazing light (Ly <= 0.02) and Ringworld (whose atmoHeight is a
+            // profile, not an altitude) keep every tap.
+            let lightTLim = null;
+            if (SKYFAST_ON('lighttop') && !RING_R) {
+                const LyTop = dot(u.cloudLightDir, normalize(p.sub(earthC)));
+                const tTop = u.cloudStart.add(u.cloudHeight).sub(atmoHeight(p)).div(max(LyTop, 0.02));
+                lightTLim = T3.select(LyTop.greaterThan(0.02), tTop.add(stepL), float(1e30)).toVar();
+            }
+            const lightTaps = (target, densFn, scale) => {
+                const tap = (jj) => {
+                    const d = densFn(p.add(u.cloudLightDir.mul(stepL).mul(j0.add(jj))));
+                    return scale === null ? d : d.mul(scale);
+                };
+                for (let j = 0; j < N_LIGHT; j++) {
+                    if (lightTLim) If(stepL.mul(j0.add(j)).lessThanEqual(lightTLim), () => { target.addAssign(tap(j)); });
+                    else target.addAssign(tap(j));
+                }
             };
-            const addMassLight = (target) => {
-                for (let j = 0; j < N_LIGHT; j++) target.addAssign(
-                    smoothDensity(p.add(u.cloudLightDir.mul(stepL).mul(j0.add(j)))).mul(DIRECT_LIGHT_MASS_SCALE),
-                );
-            };
+            const addDetailedLight = (target) => lightTaps(target, cheapDensity, null);
+            const addMassLight = (target) => lightTaps(target, smoothDensity, DIRECT_LIGHT_MASS_SCALE);
             // A stable base phase plus golden-ratio per-pass steps provides
             // quasi-uniform staircase-phase coverage without introducing a
             // camera-moving random sequence into the nested light march.
