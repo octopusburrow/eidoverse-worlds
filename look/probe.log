@@ -1,0 +1,28 @@
+  scifi_single_pallet.served.glb: R 87.1 m | auto @29.4 m: 733 px, mean Δ 3.44, 7.8% visibly different | eco @14.7 m: 5.0%
+  ✓ scifi_single_pallet.served.glb: rendered at both LOD distances (object on screen)
+  scifi_stack_of_pallets.served.glb: R 88.1 m | auto @29.7 m: 2682 px, mean Δ 2.39, 5.6% visibly different | eco @14.9 m: 4.5%
+  ✓ scifi_stack_of_pallets.served.glb: rendered at both LOD distances (object on screen)
+  scifi_barrels_group_of_four.served.glb: R 87.9 m | auto @29.7 m: 2530 px, mean Δ 8.94, 20.8% visibly different | eco @14.8 m: 24.4%
+  ✓ scifi_barrels_group_of_four.served.glb: rendered at both LOD distances (object on screen)
+  scifihovercar_lambo_red.served.glb: R 98.6 m | auto @33.3 m: 4797 px, mean Δ 2.33, 5.5% visibly different | eco @16.6 m: 6.4%
+  ✓ scifihovercar_lambo_red.served.glb: rendered at both LOD distances (object on screen)
+  modern_sedan_car_red_vehicle_generic.ser: R 98.6 m | auto @33.3 m: 4775 px, mean Δ 2.34, 8.1% visibly different | eco @16.6 m: 10.2%
+  ✓ modern_sedan_car_red_vehicle_generic.ser: rendered at both LOD distances (object on screen)
+  stylized_yucca_joshua_tree_desert_cactus: R 105.4 m | auto @35.6 m: 4594 px, mean Δ 8.49, 33.1% visibly different | eco @17.8 m: 35.4%
+  ✓ stylized_yucca_joshua_tree_desert_cactus: rendered at both LOD distances (object on screen)
+  scifi_quad_small_drone_red.served.glb: R 84 m | auto @28.4 m: 206 px, mean Δ 14.18, 42.7% visibly different | eco @14.2 m: 37.0%
+  ✓ scifi_quad_small_drone_red.served.glb: rendered at both LOD distances (object on screen)
+  store__d1da879aa85bdee0.served.glb: R 90.6 m | auto @30.6 m: 2373 px, mean Δ 2.56, 3.1% visibly different | eco @15.3 m: 3.8%
+  ✓ store__d1da879aa85bdee0.served.glb: rendered at both LOD distances (object on screen)
+  store__6d9de1245d632ca6.served.glb: R 86 m | auto @29 m: 1060 px, mean Δ 5.77, 18.7% visibly different | eco @14.5 m: 17.0%
+  ✓ store__6d9de1245d632ca6.served.glb: rendered at both LOD distances (object on screen)
+  store__0fd46699d7717b6c.served.glb: R 86 m | auto @29 m: 493 px, mean Δ 5.47, 21.9% visibly different | eco @14.5 m: 21.7%
+  ✓ store__0fd46699d7717b6c.served.glb: rendered at both LOD distances (object on screen)
+  store__51e89248637cef21.served.glb: R 85.8 m | auto @29 m: 1363 px, mean Δ 1.97, 3.6% visibly different | eco @14.5 m: 5.9%
+  ✓ store__51e89248637cef21.served.glb: rendered at both LOD distances (object on screen)
+  store__95d9aa3d18b77612.served.glb: R 85.9 m | auto @29 m: 648 px, mean Δ 11.31, 45.2% visibly different | eco @14.5 m: 51.6%
+  ✓ store__95d9aa3d18b77612.served.glb: rendered at both LOD distances (object on screen)
+  contact sheet: look/sheet.png (per pair: auto row, eco row; columns original | LOD | ×8 difference)
+  ✓ no page errors
+
+13 passed, 0 failed
