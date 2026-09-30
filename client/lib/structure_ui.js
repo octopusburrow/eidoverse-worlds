@@ -18,18 +18,19 @@ import { sendVerb } from './net.js';
 import { state } from './state.js';
 import { planStructure, localizePoint, GRID_DEFAULTS } from '../../shared/structure.js';
 import { setCutaway } from './realize/structure.js';
+import { svg as iconSvg } from './icons.js';
 import {
   emptyStructure, pickEdge, pickCell, addWall, removeWall, setAperture,
   drawRoom, eraseRoom, setTile, pickWalledEdge,
 } from '../../shared/structure_edit.js';
 
-const TOOLS = [
-  ['room', '▭ room', 'drag a rectangle: floor and walls right round it'],
-  ['wall', '│ wall', 'click an edge — or the middle of a cell for a diagonal'],
-  ['door', '🚪 door', 'click a wall'],
-  ['window', '🪟 window', 'click a wall'],
-  ['floor', '▦ floor', 'click a cell'],
-  ['erase', '⌫ erase', 'drag to clear floor; shared walls survive'],
+const TOOLS = [   // [key, label, hint, icon] — icons.js glyphs (no emoji: the old 🚪 🪟 were the only colour in the bar)
+  ['room', 'room', 'drag a rectangle: floor and walls right round it', 'square'],
+  ['wall', 'wall', 'click an edge — or the middle of a cell for a diagonal', 'brickWall'],
+  ['door', 'door', 'click a wall', 'doorOpen'],
+  ['window', 'window', 'click a wall', 'appWindow'],
+  ['floor', 'floor', 'click a cell', 'grid3x3'],
+  ['erase', 'erase', 'drag to clear floor; shared walls survive', 'eraser'],
 ];
 
 let tool = null;
@@ -269,26 +270,20 @@ export function initStructureUI() {
   bar = document.createElement('div');
   bar.id = 'structbar';
   bar.style.cssText = 'position:fixed;left:12px;bottom:64px;z-index:40;display:flex;'
-    + 'gap:4px;flex-wrap:wrap;max-width:320px;font:12px ui-monospace,monospace';
-  const mk = (label, title, fn) => {
+    + 'gap:4px;flex-wrap:wrap;max-width:360px';   // the look is index.html #structbar .sb-btn (edit mode's greys)
+  const mk = (label, title, fn, icon) => {
     const btn = document.createElement('button');
-    btn.textContent = label; btn.title = title;
-    btn.style.cssText = 'padding:4px 8px;border-radius:6px;border:1px solid #2c3a44;'
-      + 'background:var(--well);color:var(--fg);cursor:pointer';
+    btn.className = 'sb-btn'; btn.title = title;
+    btn.innerHTML = `${iconSvg(icon, 15)}<span>${label}</span>`;
     btn.onclick = (e) => { e.stopPropagation(); fn(e, btn); paint(); };
     bar.appendChild(btn);
     return btn;
   };
-  const btns = TOOLS.map(([k, label, title]) =>
-    [k, mk(label, title, () => setTool(tool === k ? null : k))]);
-  mk('+ new', 'start a new building under the pointer', (e) => newBuilding(e));
-  mk('↶ undo', 'undo the last edit', () => undo());
-  const paint = () => {
-    for (const [k, btn] of btns) {
-      btn.style.background = tool === k ? 'var(--act)' : 'var(--well)';
-      btn.style.borderColor = tool === k ? '#4fb3d9' : '#2c3a44';
-    }
-  };
+  const btns = TOOLS.map(([k, label, title, icon]) =>
+    [k, mk(label, title, () => setTool(tool === k ? null : k), icon)]);
+  mk('new', 'start a new building under the pointer', (e) => newBuilding(e), 'plus');
+  mk('undo', 'undo the last edit', () => undo(), 'undo2');
+  const paint = () => { for (const [k, btn] of btns) btn.classList.toggle('on', tool === k); };
   bar.style.display = 'none';         // build mode turns it on
   document.body.appendChild(bar);
   paint();

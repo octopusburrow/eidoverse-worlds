@@ -19,6 +19,7 @@ import { getFrame, allFrames } from './frames.js';
 import { setTool, getTool, undo, deselectAll, setEditMode, removeKeyTargets } from './build.js';
 import { panelFrame } from './ui.js';
 import { THREE, scene } from './core.js';
+import { svg as iconSvg } from './icons.js';
 
 const LS = 'ew-edit-layout';
 const DEF = { leftW: 300, rightW: 320, leftSplit: 0.55 };
@@ -28,11 +29,11 @@ const save = () => { try { localStorage.setItem(LS, JSON.stringify(L)); } catch 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
 const TOOLS = [   // every letter off the walking set: WASD walks here (Maya's W and Blender's S both collide)
-  { id: 'select', glyph: '↖', key: 'Q', title: 'select (Q) — click picks, a drag never moves' },
-  { id: 'move', glyph: '✥', key: 'G', title: 'move (G) — drag moves; Shift+drag raises' },
-  { id: 'rotate', glyph: '↻', key: 'E', title: 'rotate (E) — drag turns about up' },
-  { id: 'scale', glyph: '⤢', key: 'R', title: 'scale (R) — drag sizes, uniform' },
-  { id: 'pivot', glyph: '⊙', key: '', title: 'pivot — later, with rot/scale[] in the protocol', disabled: true },
+  { id: 'select', icon: 'mousePointer2', key: 'Q', title: 'select (Q) — click picks, a drag never moves' },
+  { id: 'move', icon: 'move', key: 'G', title: 'move (G) — drag moves; Shift+drag raises' },
+  { id: 'rotate', icon: 'rotateCw', key: 'E', title: 'rotate (E) — drag turns about up' },
+  { id: 'scale', icon: 'scale3d', key: 'R', title: 'scale (R) — drag sizes, uniform' },
+  { id: 'pivot', icon: 'locateFixed', key: '', title: 'pivot — later, with rot/scale[] in the protocol', disabled: true },
 ];
 
 let els = null;          // { top, tools, left, right, split, lsplit, rsplit }
@@ -56,7 +57,8 @@ function build() {
 
   // ---- tools column
   for (const t of TOOLS) {
-    const b = el('button', 'edit-tool', t.glyph);
+    const b = el('button', 'edit-tool');
+    b.innerHTML = iconSvg(t.icon, 16);   // one glyph set (icons.js) — the rail's old ↖ ✥ ↻ ⤢ ⊙ were four fonts' worth of shapes
     if (t.key) b.append(el('kbd', 'edit-tool-key', t.key));   // the letter, so hands learn it
     b.dataset.tool = t.id; b.title = t.title; b.disabled = !!t.disabled;
     b.onclick = () => setTool(t.id);
@@ -85,12 +87,12 @@ function build() {
       label: `${f.visible ? '● ' : '○ '}${f.id}`, run: () => f.toggle(),
     }))),
   );
-  const undoBtn = el('button', 'edit-btn', '↶ undo'); undoBtn.title = 'Ctrl+Z'; undoBtn.onclick = undo;
+  const undoBtn = el('button', 'edit-btn'); undoBtn.innerHTML = `${iconSvg('undo2', 14)}<span>undo</span>`; undoBtn.title = 'Ctrl+Z'; undoBtn.onclick = undo;
   // viewport buttons: what the render does, not what the world is
   const view = el('div', 'edit-viewbtns');
-  const wire = el('button', 'edit-vbtn', '▦'); wire.title = 'wireframe'; wire.dataset.view = 'wire';
+  const wire = el('button', 'edit-vbtn'); wire.innerHTML = iconSvg('box', 16); wire.title = 'wireframe'; wire.dataset.view = 'wire';
   wire.onclick = () => { setWireframe(!wireOn); wire.classList.toggle('on', wireOn); };
-  const full = el('button', 'edit-vbtn', '⛶'); full.title = 'full screen (F11 also works)'; full.dataset.view = 'full';
+  const full = el('button', 'edit-vbtn'); full.innerHTML = iconSvg('maximize', 16); full.title = 'full screen (F11 also works)'; full.dataset.view = 'full';
   full.onclick = () => { if (document.fullscreenElement) document.exitFullscreen?.(); else document.documentElement.requestFullscreen?.(); };
   document.addEventListener('fullscreenchange', () => full.classList.toggle('on', !!document.fullscreenElement));
   view.append(wire, full);
