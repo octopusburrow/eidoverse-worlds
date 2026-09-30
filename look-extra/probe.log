@@ -1,0 +1,10 @@
+  palm_date_tree_tropical_deseert_oasis_pl: R 117.4 m | auto @39.6 m: 10096 px, mean Δ 4, 10.7% visibly different | eco @19.8 m: 15.1%
+  ✓ palm_date_tree_tropical_deseert_oasis_pl: rendered at both LOD distances (object on screen)
+  crate_large_blue.served.glb: R 94.1 m | auto @31.8 m: 7844 px, mean Δ 2.37, 1.5% visibly different | eco @15.9 m: 1.5%
+  ✓ crate_large_blue.served.glb: rendered at both LOD distances (object on screen)
+  scifi_perimeter_wall_gate.served.glb: R 181.3 m | auto @61.2 m: 36303 px, mean Δ 0.16, 0.0% visibly different | eco @30.6 m: 0.0%
+  ✓ scifi_perimeter_wall_gate.served.glb: rendered at both LOD distances (object on screen)
+  contact sheet: look-extra/sheet.png (per pair: auto row, eco row; columns original | LOD | ×8 difference)
+  ✓ no page errors
+
+4 passed, 0 failed
