@@ -64,6 +64,7 @@
 
 import { makeFrame } from './frames.js';
 import { parseEntry } from '../../shared/editschema.js';
+import { paintEdit } from './editpaint.js';
 import { pictoRuns, hasPicto } from './edittheme.js';
 import { svg as iconSvg } from './icons.js';
 export { parseEntry };
@@ -667,7 +668,8 @@ function tokens() {
 }
 let C = tokens();
 
-export function renderCanvas(canvas, fields, { width = 512, rowH = 44, pad = 12, title = '' } = {}) {
+export function renderCanvas(canvas, fields, { width = 512, rowH = 44, pad = 12, title = '', theme = null } = {}) {
+  if (theme === 'edit') return paintEdit(canvas, fields, { width, title });   // edit mode's frames: their own look, under the VR floor (editpaint.js)
   const rows = [];
   let folded = false;
   for (const f of fields) {

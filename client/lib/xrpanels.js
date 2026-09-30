@@ -36,6 +36,7 @@ function makePanel(def, i, n) {
   const canvas = document.createElement('canvas');
   const tex = new THREE.CanvasTexture(canvas);
   tex.anisotropy = 4;
+  tex.colorSpace = THREE.SRGBColorSpace;   // canvas pixels ARE sRGB; unmarked, they read as linear and the output encode lifted them
   const mesh = new THREE.Mesh(
     new THREE.PlaneGeometry(1, 1),
     new THREE.MeshBasicMaterial({ map: tex, transparent: false }));
@@ -50,7 +51,7 @@ function makePanel(def, i, n) {
 }
 
 function repaint(p) {
-  p.regions = renderCanvas(p.canvas, p.def.fields(), { width: Math.round(W * PX_PER_M), title: p.def.title ?? p.def.id });
+  p.regions = renderCanvas(p.canvas, p.def.fields(), { width: Math.round(W * PX_PER_M), title: p.def.title ?? p.def.id, theme: p.def.theme ?? null });
   // quad keeps the canvas's aspect so buttons are where they look like they are
   p.mesh.scale.set(W, W * (p.canvas.height / p.canvas.width), 1);
   p.tex.needsUpdate = true;
