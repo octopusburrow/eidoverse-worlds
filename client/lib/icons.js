@@ -56,6 +56,34 @@ const P = {
   bug: ['M12 20v-9', 'M14 7a4 4 0 0 1 4 4v3a6 6 0 0 1-12 0v-3a4 4 0 0 1 4-4z',
         'M14.12 3.88 16 2', 'M21 21a4 4 0 0 0-3.81-4', 'M21 5a4 4 0 0 1-3.55 3.97',
         'M22 13h-4', 'M3 21a4 4 0 0 1 3.81-4', 'M3 5a4 4 0 0 0 3.55 3.97', 'M6 13H2'],
+  // ---- edit mode's glyph set (2026-09-30 look pass): tool rail, build bar, tree toggles, the
+  // pictographs edit chrome used to carry. Verbatim Lucide (ISC); rect/circle/line elements written
+  // as the equivalent path data so the one Path2D renderer draws them.
+  mousePointer2: ['M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z'],
+  move: ['M12 2v20', 'm15 19-3 3-3-3', 'm19 9 3 3-3 3', 'M2 12h20', 'm5 9-3 3 3 3', 'm9 5 3-3 3 3'],
+  rotateCw: ['M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8', 'M21 3v5h-5'],
+  scale3d: ['M5 7v11a1 1 0 0 0 1 1h11', 'M5.293 18.707 11 13', 'M17 19a2 2 0 1 0 4 0a2 2 0 1 0 -4 0', 'M3 5a2 2 0 1 0 4 0a2 2 0 1 0 -4 0'],
+  locateFixed: ['M2 12L5 12', 'M19 12L22 12', 'M12 2L12 5', 'M12 19L12 22', 'M5 12a7 7 0 1 0 14 0a7 7 0 1 0 -14 0', 'M9 12a3 3 0 1 0 6 0a3 3 0 1 0 -6 0'],
+  undo2: ['M9 14 4 9l5-5', 'M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11'],
+  box: ['M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z', 'm3.3 7 8.7 5 8.7-5', 'M12 22V12'],
+  maximize: ['M8 3H5a2 2 0 0 0-2 2v3', 'M21 8V5a2 2 0 0 0-2-2h-3', 'M3 16v3a2 2 0 0 0 2 2h3', 'M16 21h3a2 2 0 0 0 2-2v-3'],
+  lock: ['M5 11h14a2 2 0 0 1 2 2v7a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-7a2 2 0 0 1 2 -2z', 'M7 11V7a5 5 0 0 1 10 0v4'],
+  lockOpen: ['M5 11h14a2 2 0 0 1 2 2v7a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-7a2 2 0 0 1 2 -2z', 'M7 11V7a5 5 0 0 1 9.9-1'],
+  shield: ['M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z'],
+  scrollText: ['M15 12h-5', 'M15 8h-5', 'M19 17V5a2 2 0 0 0-2-2H4', 'M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3'],
+  doorOpen: ['M10 21H2', 'M10 3H7a2 2 0 00-2 2v16', 'M14 12h.01', 'M19 21V5a2 2 0 00-1.675-1.974l-6.163-1.013A1 1 0 0010 3v18a1 1 0 001.124.992z', 'M22 21h-3'],
+  appWindow: ['M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-16a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2z', 'M10 4v4', 'M2 8h20', 'M6 4v4'],
+  chevronDown: ['m6 9 6 6 6-6'],
+  chevronRight: ['m9 18 6-6-6-6'],
+  check: ['M20 6 9 17l-5-5'],
+  x: ['M18 6 6 18', 'm6 6 12 12'],
+  rotateCcw: ['M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8', 'M3 3v5h5'],
+  plus: ['M5 12h14', 'M12 5v14'],
+  minus: ['M5 12h14'],
+  square: ['M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2z'],
+  brickWall: ['M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2z', 'M12 9v6', 'M16 15v6', 'M16 3v6', 'M3 15h18', 'M3 9h18', 'M8 15v6', 'M8 3v6'],
+  eraser: ['M21 21H8a2 2 0 0 1-1.42-.587l-3.994-3.999a2 2 0 0 1 0-2.828l10-10a2 2 0 0 1 2.829 0l5.999 6a2 2 0 0 1 0 2.828L12.834 21', 'm5.082 11.09 8.828 8.828'],
+  grid3x3: ['M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2z', 'M3 9h18', 'M3 15h18', 'M9 3v18', 'M15 3v18'],
 };
 
 // rounded-rect ops that some icons need beyond their paths: [x,y,w,h,rx]
@@ -75,13 +103,13 @@ function paths(name) {
 export const has = (name) => !!P[name];
 
 /** Stroke a Lucide icon centred on the current origin, sized to `size` px. */
-export function stroke(ctx, name, size = 26) {
+export function stroke(ctx, name, size = 26, lw = 2) {   // lw: the stroke in CANVAS px (2 = the old fixed width)
   if (!P[name]) return false;
   const k = size / 24;
   ctx.save();
   ctx.scale(k, k);
   ctx.translate(-12, -12);
-  ctx.lineWidth = 2 / k;
+  ctx.lineWidth = lw / k;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   for (const path of paths(name)) ctx.stroke(path);
