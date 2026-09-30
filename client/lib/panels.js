@@ -64,6 +64,8 @@
 
 import { makeFrame } from './frames.js';
 import { parseEntry } from '../../shared/editschema.js';
+import { pictoRuns, hasPicto } from './edittheme.js';
+import { svg as iconSvg } from './icons.js';
 export { parseEntry };
 
 // ---------------------------------------------------------------- DOM renderer
@@ -71,6 +73,7 @@ export { parseEntry };
 export function makeSchemaFrame(key, opts) {
   const frame = makeFrame(key, opts);
   frame.body.classList.add('schema-panel');
+  const ro = { icons: /\bedit\b/.test(opts?.className ?? '') };   // edit chrome draws pictographs as icons.js glyphs (edittheme.PICTO_ICON)
   // inner scroller — see .schema-scroll in index.html: a scrollbar on the body
   // itself steals the edge-resize band's pixels
   const scroll = document.createElement('div');
@@ -98,7 +101,7 @@ export function makeSchemaFrame(key, opts) {
     // Rebuilding under a focused input eats the caret mid-edit; hold the
     // refresh until focus leaves the panel, then paint the queued state.
     if (holdUntilBlur()) return;
-    live = { key, ...renderDOM(scroll, fields, edit) };
+    live = { key, ...renderDOM(scroll, fields, edit, ro) };
   }
   function holdUntilBlur() {
     const a = document.activeElement;
@@ -111,7 +114,7 @@ export function makeSchemaFrame(key, opts) {
       // a rebuild can no longer eat its caret.
       a.addEventListener('blur', () => {
         pendingWhileFocused = false;
-        if (lastFields) live = { key: shapeKey(lastFields.fields), ...renderDOM(scroll, lastFields.fields, lastFields.edit) };
+        if (lastFields) live = { key: shapeKey(lastFields.fields), ...renderDOM(scroll, lastFields.fields, lastFields.edit, ro) };
       }, { once: true });
     }
     return true;
@@ -154,7 +157,7 @@ let fieldClip = null;   // { value } — a copied field value, pasted by type (t
 export const _fieldClip = () => fieldClip;   // probes
 let treeDrag = null;   // the tree row being dragged (id), across the dragstart → drop pair
 
-export function renderDOM(body, fields, edit) {
+export function renderDOM(body, fields, edit, ro = {}) {
   body.innerHTML = '';
   const box = { edit };
   const via = (...a) => box.edit(...a);
@@ -162,8 +165,8 @@ export function renderDOM(body, fields, edit) {
   let folded = false;
   for (const f of fields) {
     let row = null;
-    if (f.t === 'group') { folded = f.open === false; row = fieldDOM(f, via); }
-    else if (!folded && !f.vrOnly) row = fieldDOM(f, via);   // vrOnly: the quad's stand-in for a key the desktop has
+    if (f.t === 'group') { folded = f.open === false; row = fieldDOM(f, via, ro); }
+    else if (!folded && !f.vrOnly) row = fieldDOM(f, via, ro);   // vrOnly: the quad's stand-in for a key the desktop has
     rows.push(row);
     if (row) body.append(row);
   }
@@ -203,6 +206,19 @@ function el(tag, cls, text) {
 }
 
 const R2D = 180 / Math.PI;
+
+/** Set an element's text; in edit chrome (ro.icons) a mapped pictograph becomes its icons.js glyph —
+ *  the same glyph the VR painter draws, so the two surfaces agree and no emoji font is relied on. */
+function put(e, s, icons) {
+  s = String(s ?? '');
+  if (!icons || !hasPicto(s)) { e.textContent = s; return e; }
+  e.textContent = '';
+  for (const r of pictoRuns(s)) {
+    if (typeof r === 'string') e.append(r);
+    else { const i = document.createElement('span'); i.className = 'sp-ico'; i.innerHTML = iconSvg(r.icon, 13); e.append(i); }
+  }
+  return e;
+}
 
 function stepper(value, f, commit) {
   const cur = { step: 0.1, dp: 2, ...f };   // options are LIVE: update() refreshes them (a typed value past softMax raises the next drag's cap)
@@ -310,14 +326,17 @@ function stepper(value, f, commit) {
   return wrap;
 }
 
-function fieldDOM(f, edit) {
+function fieldDOM(f, edit, ro = {}) {
   const row = el('div', `sp-row sp-f-${f.t}`);   // sp-f- prefix: never collide with element classes
+  const ax = /(?:^|:)(?:pos|rot|scale)\.([xyz])$/.exec(f.k ?? '');
+  if (ax) row.dataset.axis = ax[1];   // the channel's axis: edit chrome colours its label x/y/z
   if (f.disabled) row.classList.add('disabled');
   if (f.driven) { row.classList.add('driven'); row.title = `driven by ${f.driven}`; }
   else if (f.hint) row.title = f.hint;
   let label = null;
   if (f.label != null && f.t !== 'btn' && f.t !== 'group') { label = el('label', 'sp-label', f.label); row.append(label); }
-  const setLabel = (nf) => { if (label && nf.label != null) label.textContent = nf.label; };
+  if (label && ro.icons) put(label, f.label, true);
+  const setLabel = (nf) => { if (label && nf.label != null) put(label, nf.label, ro.icons); };
   switch (f.t) {
     case 'log': {
       // a scrolling monospace tail (a script console): follows the bottom unless you scrolled up to read
@@ -334,9 +353,9 @@ function fieldDOM(f, edit) {
       break;
     }
     case 'info': {
-      const s = el('span', 'sp-info', String(f.value ?? ''));
+      const s = put(el('span', 'sp-info'), f.value, ro.icons);
       row.append(s);
-      row.update = (nf) => { setLabel(nf); s.textContent = String(nf.value ?? ''); };
+      row.update = (nf) => { setLabel(nf); put(s, nf.value, ro.icons); };
       break;
     }
     case 'num': {
@@ -400,10 +419,10 @@ function fieldDOM(f, edit) {
     }
     case 'group': {
       row.classList.add(f.open === false ? 'closed' : 'open');
-      const h = el('button', 'sp-group', `${f.open === false ? '▸' : '▾'} ${f.label}`);
+      const h = put(el('button', 'sp-group'), `${f.open === false ? '▸' : '▾'} ${f.label}`, ro.icons);
       h.onclick = () => edit('fold', f.k);
       row.innerHTML = ''; row.append(h);
-      row.update = (nf) => { h.textContent = `${nf.open === false ? '▸' : '▾'} ${nf.label}`; };
+      row.update = (nf) => { put(h, `${nf.open === false ? '▸' : '▾'} ${nf.label}`, ro.icons); };
       break;
     }
     case 'tree': {
@@ -427,6 +446,7 @@ function fieldDOM(f, edit) {
           line.ondrop = dropOn(r.id);
         }
         line.style.paddingLeft = `${4 + (r.depth ?? 0) * 14}px`;
+        line.style.setProperty('--d', String(r.depth ?? 0));   // edit chrome draws one indent guide per level
         if (r.dim) line.classList.add('dim');
         // disclosure: a row with children folds them (edit('open', id))
         const disc = el('button', `sp-disc${r.kids ? '' : ' none'}`, r.kids ? (r.open === false ? '▸' : '▾') : '');
@@ -434,8 +454,8 @@ function fieldDOM(f, edit) {
         if (r.kids) disc.onclick = (e) => { e.stopPropagation(); edit('open', r.id); };
         line.append(disc);
         const main = el('span', 'sp-item-main');
-        main.append(el('span', 'sp-item-label', r.label));
-        if (r.sub || r.badges?.length) main.append(el('span', 'sp-item-sub', [r.sub, ...(r.badges ?? [])].filter(Boolean).join(' · ')));
+        main.append(put(el('span', 'sp-item-label'), r.label, ro.icons));
+        if (r.sub || r.badges?.length) main.append(put(el('span', 'sp-item-sub'), [r.sub, ...(r.badges ?? [])].filter(Boolean).join(' · '), ro.icons));
         main.onclick = (e) => edit(f.k, r.id, f, { extend: e.shiftKey || e.ctrlKey || e.metaKey });   // Shift/Ctrl-click extends a selection
         // inline rename (Godot F2 / Blender double-click): a row that carries `rename` (its
         // current label) swaps the label for an input; Enter or blur commits
@@ -465,7 +485,8 @@ function fieldDOM(f, edit) {
         if (items?.length) line.oncontextmenu = (e) => { e.preventDefault(); contextMenu(e.clientX, e.clientY, items, (k) => (k === 'rename' && beginRename ? beginRename() : edit(k, r.id))); };
         line.append(main);
         if (r.locked != null) {
-          const lock = el('button', `sp-mini${r.locked ? ' on' : ''}`, r.locked ? '🔒' : '🔓');
+          const lock = el('button', `sp-mini sp-lock${r.locked ? ' on' : ''}`);
+          lock.innerHTML = iconSvg(r.locked ? 'lock' : 'lockOpen', 14);   // a glyph, not an emoji (the canvas trap; one icon set)
           lock.title = r.locked ? 'locked — click to unlock' : 'click to lock in place';
           lock.onclick = (e) => { e.stopPropagation(); edit('lock', r.id); };
           line.append(lock);
