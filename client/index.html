@@ -1489,6 +1489,7 @@ body.edit-workspace, .frame.edit {
   --e-hover: #2c2c31; --e-press: #36363c; --e-text: #d8d8dc; --e-dim: #8e8e96; --e-faint: #5e5e66;
   --e-accent: #4d8ae0; --e-accent-bg: rgba(77,138,224,.18);
   --e-x: #e06a62; --e-y: #82c45e; --e-z: #5f95e8; --e-danger: #e07a72; --e-driven: #c9a24a;
+  --e-driven-edge: rgba(201,162,74,.45);
 }
 /* the house tokens, re-pointed INSIDE edit frames, so the shared renderers (panels.js) and the
    frame chrome are reused untouched */
@@ -1522,8 +1523,14 @@ body.edit-workspace, .frame.edit {
 .frame.edit .sp-row[data-axis="x"] .sp-label { color: var(--e-x); }
 .frame.edit .sp-row[data-axis="y"] .sp-label { color: var(--e-y); }
 .frame.edit .sp-row[data-axis="z"] .sp-label { color: var(--e-z); }
-.frame.edit .sp-row.driven .sp-label { color: var(--e-driven); }   /* driven wins over the axis: provenance first */
-.frame.edit .sp-row.driven .sp-num, .frame.edit .sp-row.driven .sp-step:not(.compact) { border-color: rgb(201 162 74 / .5); }
+/* driven (a motion comp composes onto this rest pose) is the FIELD's job: an amber edge and a ~ inside its left
+   end, so the label keeps its axis colour — axis and provenance read at once (R, 09-30). Title: panels.js. */
+.frame.edit .sp-row.driven .sp-label { color: var(--e-dim); }
+.frame.edit .sp-row.driven[data-axis="x"] .sp-label { color: var(--e-x); }
+.frame.edit .sp-row.driven[data-axis="y"] .sp-label { color: var(--e-y); }
+.frame.edit .sp-row.driven[data-axis="z"] .sp-label { color: var(--e-z); }
+.frame.edit .sp-row.driven .sp-num, .frame.edit .sp-row.driven .sp-step:not(.compact) { border-color: var(--e-driven-edge); }
+.frame.edit .sp-drv { position: absolute; left: 7px; top: 50%; transform: translateY(-50%); color: var(--e-driven); font: 700 13px/1 var(--font-code); pointer-events: none; z-index: 1; }
 /* ---- one family of widgets ---- */
 /* field: a sunken well, 1px line, radius 3; focus = accent edge + a faint accent glow */
 .frame.edit .sp-num, .frame.edit .sp-text, .frame.edit .sp-enum, .frame.edit .sp-rename, .frame.edit .sp-json-ta,

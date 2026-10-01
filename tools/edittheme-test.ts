@@ -31,7 +31,7 @@ GlobalRegistrator.register();
 
 // a 2D context that records what the painter asked of it, tracking the transform so a stroke's
 // width is measured in CANVAS px (icons.js strokes inside a scale)
-type Rec = { texts: { s: string; px: number }[]; strokes: number[]; hairlines: number[][] };
+type Rec = { texts: { s: string; px: number; color?: string }[]; strokes: number[]; hairlines: number[][]; strokeColors?: string[] };
 function recorder(rec: Rec) {
   let sc = 1; const stack: number[] = [];
   const ctx: any = {
@@ -40,9 +40,9 @@ function recorder(rec: Rec) {
     scale(k: number) { sc *= k; }, translate() {}, setTransform() { sc = 1; },
     fillRect(_x: number, _y: number, w: number, h: number) { if (Math.min(Math.abs(w), Math.abs(h)) > 0 && Math.min(Math.abs(w), Math.abs(h)) < 2) rec.hairlines.push([_x, _y, w, h]); },
     strokeRect() { rec.strokes.push(ctx.lineWidth * sc); },
-    stroke() { rec.strokes.push(ctx.lineWidth * sc); },
+    stroke() { rec.strokes.push(ctx.lineWidth * sc); (rec.strokeColors ??= []).push(String(ctx.strokeStyle)); },
     fill() {}, beginPath() {}, closePath() {}, moveTo() {}, lineTo() {}, arcTo() {}, arc() {}, roundRect() {},
-    fillText(s: string) { rec.texts.push({ s: String(s), px: parseFloat(/(\d+(?:\.\d+)?)px/.exec(ctx.font)?.[1] ?? "0") * sc }); },
+    fillText(s: string) { rec.texts.push({ s: String(s), px: parseFloat(/(\d+(?:\.\d+)?)px/.exec(ctx.font)?.[1] ?? "0") * sc, color: String(ctx.fillStyle) }); },
     measureText(t: string) { const px = parseFloat(/(\d+(?:\.\d+)?)px/.exec(ctx.font)?.[1] ?? "17"); return { width: String(t).length * px * 0.55 }; },
   };
   return ctx;
@@ -82,6 +82,7 @@ const FIELDS = [
   { t: "num", k: "ch:pos.x", label: "pos x", value: 1, step: 0.1, unit: "m", compact: true },
   { t: "num", k: "ch:pos.yaw", label: "sockets · seat yaw", value: 0.5, step: 5, deg: true, compact: true, driven: "motion" },
   { t: "num", k: "ch:locked", label: "locked num", value: 2, disabled: true },
+  { t: "num", k: "ch:pos.z", label: "pos z", value: 1, step: 0.1, unit: "m", compact: true, driven: "motion" },   // axis AND driven at once
   { t: "vec3", k: "v", label: "pos", value: [1, 2, 3] },
   { t: "group", k: "flags", label: "Flags", open: true },
   { t: "check", k: "flags.lock", label: "locked", value: false },
@@ -124,6 +125,11 @@ const E = paint("edit");
   check("the canvas is the quad's width, rows at the VR row height", E.c.width === 522 && E.c.height > 20 * EDIT_VR.rowH);
 }
 
+  // axis + driven at once (R, 09-30): the label keeps its axis colour; the FIELD carries driven (edge + ~)
+  const lab = (s: string) => E.rec.texts.find((t) => t.s === s)?.color?.toLowerCase();
+  check("a driven pos z label is painted in the z axis colour (not the driven amber)", lab("pos z") === EDIT.z.toLowerCase(), String(lab("pos z")));
+  check("…an undriven pos x in x's", lab("pos x") === EDIT.x.toLowerCase(), String(lab("pos x")));
+  check("…and the driven field paints its ~ and an amber edge", E.rec.texts.some((t) => t.s === "~" && t.color?.toLowerCase() === EDIT.driven.toLowerCase()) && (E.rec.strokeColors ?? []).some((c) => c.toLowerCase() === EDIT.drivenEdge.toLowerCase()));
 console.log("\nC. the same dispatch as the legacy painter:");
 {
   const L = paint(null);

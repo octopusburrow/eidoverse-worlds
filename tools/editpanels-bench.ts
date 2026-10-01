@@ -167,7 +167,15 @@ console.log('\nEsc mid-scrub, in a real browser (the key lands on the document, 
 console.log('\nmotion: a bob on the light — group, driven channels, an edit that keeps t0:');
 await evalJson(`import('/lib/net.js').then((m) => m.sendVerb('motion', { id: 'benchlamp', type: 'bob', amp: 0.3, period: 2 })), true`);
 check('motion group renders from motion.js', await waitFor(`[...${insp}.querySelectorAll('.sp-group')].some((g) => /motion/i.test(g.textContent)) && [...${insp}.querySelectorAll('select.sp-enum')].some((s) => s.value === 'bob')`));
-check('pos channels are DRIVEN (rest pose, tinted)', await evalJson(`${insp}.querySelectorAll('.sp-f-num.driven').length >= 3`));
+check('pos channels are DRIVEN (rest pose, marked)', await evalJson(`${insp}.querySelectorAll('.sp-f-num.driven').length >= 3`));
+{
+  // axis AND driven at once (R, 09-30): the label keeps x/y/z; the FIELD wears the amber edge and a ~
+  const look = await evalJson(`(() => { const o = {}; const rows = [...${insp}.querySelectorAll('.sp-f-num.driven')]; for (const ax of ['x', 'y', 'z']) { const r = rows.find((q) => q.dataset.axis === ax); if (!r) { o[ax] = null; continue; } o[ax] = { label: getComputedStyle(r.querySelector('.sp-label')).color, edge: getComputedStyle(r.querySelector('.sp-num')).borderTopColor, mark: r.querySelector('.sp-drv')?.textContent ?? null, title: r.title }; } return o; })()`);
+  const L = look as any;
+  check('driven pos x / y / z labels keep their AXIS colours', L.x?.label === 'rgb(224, 106, 98)' && L.y?.label === 'rgb(130, 196, 94)' && L.z?.label === 'rgb(95, 149, 232)', JSON.stringify(L));
+  check('…the field carries driven: amber edge + a ~ marker', ['x', 'y', 'z'].every((a) => L[a]?.edge === 'rgba(201, 162, 74, 0.45)' && L[a]?.mark === '~'), JSON.stringify(L));
+  check('…titled "driven by motion — editing moves its rest pose"', ['x', 'y', 'z'].every((a) => L[a]?.title === 'driven by motion — editing moves its rest pose'), JSON.stringify(L.x?.title));
+}
 check('amp / period reach the channel box', await evalJson(`(() => { const L = [...${insp}.querySelectorAll('.sp-f-num .sp-label')].map((l) => l.textContent); return L.includes('motion · amp') && L.includes('motion · period'); })()`));
 const t0 = await evalJson(`import('/lib/world.js').then((m) => m.comps.get('benchlamp')?.motion?.t0)`);
 check('the fold stamped a t0', typeof t0 === 'number' && t0 > 0, String(t0));

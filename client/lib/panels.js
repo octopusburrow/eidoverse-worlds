@@ -44,8 +44,9 @@
 // Every field also takes { disabled?, driven?, hint?, vrOnly?, def? } (def: the value ↺ reverts to) (vrOnly: painted on the VR quad, skipped
 // on desktop — a button standing in for a key a headset lacks). Of the rest: disabled draws it
 // read-only (a locked thing's pose); driven names what owns the value (a
-// motion comp composes onto this rest pose) and tints the row — Blender's
-// purple-driver / Maya's channel colour, as ambient provenance.
+// motion comp composes onto this rest pose) and marks the FIELD — edit chrome
+// draws an amber edge and a `~` on the value, so an axis label keeps its x/y/z
+// colour (provenance and axis both readable at once).
 //
 // The dispatcher is edit(k, value, field?, opts?). `field` is Godot's third
 // signal arg (an axis index for vec3) so multi-select can assign one component
@@ -332,7 +333,7 @@ function fieldDOM(f, edit, ro = {}) {
   const ax = /(?:^|:)(?:pos|rot|scale)\.([xyz])$/.exec(f.k ?? '');
   if (ax) row.dataset.axis = ax[1];   // the channel's axis: edit chrome colours its label x/y/z
   if (f.disabled) row.classList.add('disabled');
-  if (f.driven) { row.classList.add('driven'); row.title = `driven by ${f.driven}`; }
+  if (f.driven) { row.classList.add('driven'); row.title = `driven by ${f.driven} — editing moves its rest pose`; }
   else if (f.hint) row.title = f.hint;
   let label = null;
   if (f.label != null && f.t !== 'btn' && f.t !== 'group') { label = el('label', 'sp-label', f.label); row.append(label); }
@@ -366,6 +367,8 @@ function fieldDOM(f, edit, ro = {}) {
       break;
     }
     case 'range': {
+      // driven: the FIELD carries it (edit chrome) — a `~` inside its left end; the label keeps its axis colour
+      if (f.driven && ro.icons) st.prepend(el('span', 'sp-drv', '~'));
       // the house's own <input type=range> (index.html styles it globally;
       // --p drives the progress fill) — the same control the desk's dials use
       const lo = f.min ?? 0, hi = f.max ?? 1, st = f.step ?? 0.01, dp = f.dp ?? 2;

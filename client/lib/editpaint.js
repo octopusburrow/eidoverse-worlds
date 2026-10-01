@@ -20,6 +20,7 @@ const FONT = 'system-ui, sans-serif';
 const IN = (V.rowH - V.minHit) / 2;            // a target's inset inside its row → exactly minHit tall
 const PAL = [0xffffff, 0xffd9a0, 0xff8a5c, 0xe05a5a, 0x7cc47c, 0x5fa8ff, 0xb48cff, 0x202020];   // the keyboard-free colour picks (same as legacy)
 const ACTION_ICON = { '✕': 'x' };             // row-action labels that are glyphs → the icon set
+const AXIS_RE = /(?:^|:)(?:pos|rot|scale)\.([xyz])$/;   // a channel's axis — the label wears x/y/z (the desktop's data-axis)
 
 export function paintEdit(canvas, fields, { width = 522, title = '' } = {}) {
   const g = canvas.getContext('2d');
@@ -115,7 +116,8 @@ export function paintEdit(canvas, fields, { width = 522, title = '' } = {}) {
     }
     const mark = regions.length;               // a disabled field paints but takes no hits
     const mid = y + rowH / 2;
-    const lab = f.driven ? T.driven : T.dim;
+    // the label is the AXIS's (x/y/z) or dim; driven is the FIELD's job (amber edge + ~), never the label's
+    const lab = T[AXIS_RE.exec(f.k ?? '')?.[1]] ?? T.dim;
     const hasLabel = f.label != null && f.label !== '' && f.t !== 'btn' && f.t !== 'log';
     if (hasLabel && f.t !== 'vec3') { font(); text(g, f.label, pad + labelW, mid, lab, labelW, 'right'); }
     const X = hasLabel || ['num', 'check', 'enum', 'color', 'range', 'ref', 'vec3'].includes(f.t) ? vx : pad;
@@ -135,7 +137,7 @@ export function paintEdit(canvas, fields, { width = 522, title = '' } = {}) {
         const AX = ['x', 'y', 'z'];
         (f.value ?? [0, 0, 0]).forEach((c, i) => {
           const yy = y + i * rowH;
-          font(); text(g, `${f.label ?? ''} ${AX[i]}`.trim(), pad + labelW, yy + rowH / 2, f.driven ? T.driven : T[AX[i]], labelW, 'right');
+          font(); text(g, `${f.label ?? ''} ${AX[i]}`.trim(), pad + labelW, yy + rowH / 2, T[AX[i]], labelW, 'right');
           stepper(f, +c, X, yy, Math.min(W, 240), f.k, f.link ? null : i);
         });
         break;
@@ -210,7 +212,8 @@ export function paintEdit(canvas, fields, { width = 522, title = '' } = {}) {
   // a number: ONE sunken field, − and + inside its ends (the CSS stepper's shape), unit dim before the +
   function stepper(f, val, x, y, w, k, axis) {
     const bump = V.minHit, top = y + IN;
-    field(x, top, w, V.minHit, f.driven ? T.driven : null);
+    field(x, top, w, V.minHit, f.driven ? T.drivenEdge : null);
+    if (f.driven) { font(V.minText, 700); text(g, '~', x + bump + 8, top + V.minHit / 2, T.driven, 20); }   // driven: the field's own mark (the label keeps its axis colour)
     icon(g, 'minus', x + bump / 2, top + V.minHit / 2, 16, f.disabled ? T.faint : T.dim);
     icon(g, 'plus', x + w - bump / 2, top + V.minHit / 2, 16, f.disabled ? T.faint : T.dim);
     fill(g, T.line, x + bump, top + 6, V.minLine, V.minHit - 12);

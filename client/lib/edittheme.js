@@ -25,7 +25,8 @@ export const EDIT = Object.freeze({
   accentBg: 'rgba(77,138,224,.18)',   // a selected row
   x: '#e06a62', y: '#82c45e', z: '#5f95e8',   // axis labels; the gizmo agrees
   danger: '#e07a72',     // destructive actions (quiet style)
-  driven: '#c9a24a',     // a value a motion comp drives (the rest pose is shown)
+  driven: '#c9a24a',     // a value a motion comp drives (the rest pose is shown): the ~ marker
+  drivenEdge: 'rgba(201,162,74,.45)',   // …and the driven FIELD's edge — toned, so three driven axes don't out-shout their x/y/z labels
 });
 
 /** The CSS custom property a token is written to: accentBg → --e-accent-bg. */
