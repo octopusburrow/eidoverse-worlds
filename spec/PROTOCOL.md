@@ -48,8 +48,8 @@ Folding produces, at minimum:
   "mounts": { "<body-id>": { "to", "slot"?, "offset"?, "yaw"? } }?,   // §5
   "roles":  { "<id>": { "role": "owner|builder|visitor", "gen"?: true,
                          "sub"?: "durable id" } },                    // §7
-  "behaviors": { "<id>": { "src", "attach"?, "caps"?, "knobs"?,
-                            "author", "ts", "state"? } }?             // §8
+  "behaviors": { "<id>": { "src", "runtime"?: "client", "attach"?, "caps"?,
+                            "knobs"?, "author", "ts", "state"? } }?   // §8
 }
 ```
 
@@ -74,7 +74,7 @@ measured on the fields above (see `fixtures/README.md`).
 | `punt` | `{id, power?, dir?}` | **nothing** — a physical cause on an entity; a LIVE client volunteers to simulate the flight via an animation lease (§5), and the landing arrives as an ordinary `place` *(dialect v2)* |
 | `say` | `{text}` | chat (implementation-defined window; not conformance-scored) |
 | `grant` | `{id, role?, gen?, sub?}` | update `roles[id]`; missing role/gen inherit current; `sub`, when present, binds the grant to that durable identity (§7) |
-| `behavior` | `{id, src, attach?, caps?, knobs?}` or `{id, remove: true}` | bind/unbind a runtime script (§8); author = entry actor |
+| `behavior` | `{id, src, runtime?, attach?, caps?, knobs?}` or `{id, remove: true}` | bind/unbind a runtime script (§8); author = entry actor. `runtime` folds only as `"client"` (a client mod offer, §8); absent = the server sandbox |
 | `bstate` | `{id, data}` | `behaviors[id].state = data` (script kv persistence) |
 | `terrain` / `grass` / `sky` / `weather` | opaque bags | world-scope singletons (grass `{clear: true}` deletes; weather merges into sky). Grass bags speak eidoverse-video's `createFlora` (species/height/density/color/rows); legacy makeGrass bags in old logs are mapped client-side, never rewritten |
 | `asset` | `{name, path}` | append to the world's asset palette (dedup by path) |
@@ -167,7 +167,8 @@ Everything else in a bag is somebody's annotation. Preserve it.
 
 Rights ladder per world: `visitor` (say, use, mount **yourself**) <
 `builder` (+ spawn/place/remove/light/comp/motion/behavior/cargo-mount) <
-`owner` (+ terrain/grass/sky/weather/grant). `gen` is an orthogonal spend
+`owner` (+ terrain/grass/sky/weather/grant, and a `behavior` carrying
+`runtime: "client"`, §8). `gen` is an orthogonal spend
 capability (introducing new assets). A world with no owner is open
 (everyone builds); the first embodied joiner of a brand-new world becomes
 its owner. Grants are log entries like everything else. A grant carrying a
@@ -177,11 +178,26 @@ not a deed.
 ## 8. Runtime scripts
 
 `behavior` binds a content-addressed script (`store/scripts/<sha256-16>.js`)
-into the world. Scripts run server-side, sandboxed, budgeted; they affect
-the world ONLY by emitting ordinary logged verbs, gated by their author's
-live rights. **Replay never re-executes scripts** — it folds what they
-emitted. Script kv persists via `bstate` entries. (Sandbox limits are
-implementation policy; the log semantics above are the protocol.)
+into the world, in one of two runtimes.
+
+- **Server (no `runtime`).** The script runs server-side, sandboxed,
+  budgeted; it affects the world ONLY by emitting ordinary logged verbs,
+  gated by its author's live rights. Script kv persists via `bstate`
+  entries.
+- **Client (`runtime: "client"`).** The binding is an OFFER to visitors'
+  clients, not a resident of the server: a sequencer MUST NOT execute it.
+  Each visitor's client runs it only on that visitor's consent (per script,
+  keyed to its content-addressed `src`, or per world), in that visitor's
+  own context; whatever it does reaches the world as the ordinary verbs and
+  presence that visitor's client sends. Offering one is an owner act (§7).
+  The reference client hosts these as in-page modules with the visitor's
+  full authority (docs/leases.md, "Self-animation"; client/lib/mods.js);
+  `attach`, `caps` and `knobs` have no meaning in this runtime there.
+
+**Replay never re-executes scripts** in either runtime — it folds what they
+emitted (or, for client mods, what the consenting clients sent). (Sandbox
+limits, consent UI and in-page hosting are implementation policy; the log
+semantics above are the protocol.)
 
 ## 9. Conventions
 
