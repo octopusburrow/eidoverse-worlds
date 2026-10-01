@@ -74,7 +74,7 @@ export function reactToUse(w: ReactionWorld, cause: LogEntry): void {
  *  swing's feel, in one logged entry. Damping is applied to amplitude between
  *  pushes and ignored in the instantaneous velocity term (small for the damp
  *  values that look right).
- *  ⚠ MIRRORED in client/lib/motion.js (evalPendulum) — keep the math in sync,
+ *  ⚠ MIRRORED in client/lib/motioneval.js (pendulumTheta) — keep the math in sync,
  *  or joiners see a swing that disagrees with the one being pushed. */
 export function pendulumImpulse(m: Record<string, unknown>, impulse: number, ts: number) {
   const period = Number(m.period ?? 3.5);
