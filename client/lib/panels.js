@@ -24,7 +24,11 @@
 //                 the next thing clicked (a tree row or the thing in the world) names the
 //                 target and commits edit(k, id). value shows the current target or '—'.
 //                 A ✕ on a filled ref clears it: edit(k, null).
-//   { t:'btn',    k, label, danger? }                             → edit(k)
+//   { t:'btn',    k, label, danger?, icon? }                      → edit(k)   (icon: an icons.js glyph before the label)
+//   { t:'tiles',  k, value, options:[{v, label, icon?, img?, hint?}], empty? }
+//                 a grid of tiles — an icon or a picture over a short label; the tile whose v is
+//                 `value` reads as armed. Clicking dispatches edit(k, v) (the owner decides
+//                 whether clicking the armed one disarms it)        → edit(k, v)
 //   { t:'json',   k, label, value:string, collapsed? }            → edit(k, jsonText)  [desktop; the quad shows a one-line summary]
 //   { t:'log',    lines:[string], empty? }   a scrolling console tail; the VR quad shows the newest line
 //   { t:'range',  k, label, value, min=0, max=1, step=0.01, dp=2, unit? } → edit(k, number)  [a slider on BOTH renderers]
@@ -131,6 +135,7 @@ export function shapeKey(fields) {
   return fields.map((f) => [f.t, f.k ?? '', f.disabled ? 1 : 0, f.driven ?? '',
     f.t === 'group' ? (f.open !== false ? 'o' : 'c') : '',
     f.t === 'enum' ? JSON.stringify(f.options ?? []) : '',
+    f.t === 'tiles' ? JSON.stringify((f.options ?? []).map((o) => [o.v, o.label, o.img ?? '', o.icon ?? ''])) : '',
     (f.t === 'tree' || f.t === 'list') ? JSON.stringify(f.rows ?? []) : '',
     f.t === 'vec3' ? (f.link ? 'L' : '') : '',
     f.t === 'ref' ? ((f.value == null ? '0' : '1') + (f.arming ? 'A' : '')) : '',
@@ -362,13 +367,13 @@ function fieldDOM(f, edit, ro = {}) {
     }
     case 'num': {
       const st = stepper(f.value ?? 0, f, (v, o) => edit(f.k, v, null, o));
+      // driven: the FIELD carries it (edit chrome) — a `~` inside its left end; the label keeps its axis colour
+      if (f.driven && ro.icons) st.prepend(el('span', 'sp-drv', '~'));
       row.append(st);
       row.update = (nf) => { setLabel(nf); st.update(nf); };
       break;
     }
     case 'range': {
-      // driven: the FIELD carries it (edit chrome) — a `~` inside its left end; the label keeps its axis colour
-      if (f.driven && ro.icons) st.prepend(el('span', 'sp-drv', '~'));
       // the house's own <input type=range> (index.html styles it globally;
       // --p drives the progress fill) — the same control the desk's dials use
       const lo = f.min ?? 0, hi = f.max ?? 1, st = f.step ?? 0.01, dp = f.dp ?? 2;
@@ -543,11 +548,36 @@ function fieldDOM(f, edit, ro = {}) {
       break;
     }
     case 'btn': {
-      const b = el('button', `sp-btn${f.danger ? ' danger' : ''}`, f.label);
+      const b = el('button', `sp-btn${f.danger ? ' danger' : ''}${f.icon ? ' sp-btn-ico' : ''}`);
+      const txt = el('span', '', f.label);
+      if (f.icon) b.innerHTML = iconSvg(f.icon, 14);
+      b.append(txt);
       b.disabled = !!f.disabled;
       b.onclick = () => edit(f.k);
       row.append(b);
-      row.update = (nf) => { b.textContent = nf.label; };
+      row.update = (nf) => { txt.textContent = nf.label; };
+      break;
+    }
+    case 'tiles': {
+      const box = el('div', `sp-tiles${(f.options ?? []).some((o) => o.img) ? ' sp-tiles-img' : ''}`);
+      if (!f.options?.length) box.append(el('div', 'sp-empty', f.empty ?? 'nothing here'));
+      for (const o of f.options ?? []) {
+        const b = el('button', `sp-tile${o.v === f.value ? ' on' : ''}`);
+        b.dataset.v = String(o.v);
+        b.title = o.hint ? `${o.label} — ${o.hint}` : o.label;
+        b.disabled = !!f.disabled;
+        if (o.img) {
+          const pic = el('span', 'sp-tile-pic');
+          const img = el('img'); img.alt = ''; img.loading = 'lazy'; img.src = o.img;
+          img.onerror = () => { img.style.visibility = 'hidden'; };
+          pic.append(img); b.append(pic);
+        } else if (o.icon) b.insertAdjacentHTML('beforeend', iconSvg(o.icon, 18));
+        b.append(el('span', 'sp-tile-label', o.label));
+        b.onclick = () => edit(f.k, o.v);
+        box.append(b);
+      }
+      row.append(box);
+      row.update = (nf) => { for (const b of box.querySelectorAll('.sp-tile')) b.classList.toggle('on', b.dataset.v === String(nf.value)); };
       break;
     }
     case 'ref': {
@@ -775,6 +805,21 @@ export function renderCanvas(canvas, fields, { width = 512, rowH = 44, pad = 12,
           g.fillRect(bx, y + 9, s - 4, s - 4);
           regions.push({ x: bx, y: y + 9, w: s - 4, h: s - 4, action: f.k, payload: c });
           bx += s;
+        }
+        break;
+      }
+      case 'tiles': {   // legacy quads: the tiles as one line of pills (edit chrome paints a grid)
+        let bx = pad;
+        for (const o of f.options ?? []) {
+          const lab = String(o.label ?? o.v); const bw = Math.max(40, lab.length * 8 + 16);
+          if (bx + bw > width - pad) break;
+          const on = o.v === f.value;
+          g.fillStyle = on ? C.accent : '#2a3342';
+          g.fillRect(bx, y + 7, bw, rowH - 14);
+          font(13, on ? 600 : 400); g.fillStyle = on ? '#14100c' : C.text;
+          g.fillText(lab, bx + 8, y + rowH * 0.62);
+          regions.push({ x: bx, y: y + 7, w: bw, h: rowH - 14, action: f.k, payload: o.v });
+          bx += bw + 4;
         }
         break;
       }

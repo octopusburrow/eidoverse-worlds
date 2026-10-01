@@ -433,6 +433,7 @@ export function initDock(entries) {
   addEventListener('resize', () => applyDockEdge(loadDockEdge()));
   paintDock();
   bus.on('frames', () => paintDock());
+  bus.on('edit-mode', () => paintDock());   // the wrench's title follows the mode at once, not on the 2 s poll
   // AUTO-PIN ON THE GRANT, and only on the transition. R asked for the wrench
   // to "activate and pin to the dock automatically when you do get it", with a
   // manual unpin still winning — so this fires on closed->open, never on every
@@ -561,7 +562,8 @@ function paintDock() {
       const open = entry.gate ? !!entry.gate() : true;
       b.classList.toggle('dead', !open);
       b.disabled = !open;
-      b.title = open ? id : `${id} — needs build rights in this world`;
+      // an entry may title itself by state (the wrench: "leave edit mode (B)" while it is the way out)
+      b.title = open ? (entry.title?.(!!entry.active?.()) ?? id) : `${id} — needs build rights in this world`;
       b.hidden = !entry.active?.() && !pins.has(id);
       // never `on` AND `dead`: .on's brand ink and edge-bar come later in the
       // sheet at equal specificity, so the pair rendered as "active but

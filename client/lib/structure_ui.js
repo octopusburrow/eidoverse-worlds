@@ -18,7 +18,6 @@ import { sendVerb } from './net.js';
 import { state } from './state.js';
 import { planStructure, localizePoint, GRID_DEFAULTS } from '../../shared/structure.js';
 import { setCutaway } from './realize/structure.js';
-import { svg as iconSvg } from './icons.js';
 import {
   emptyStructure, pickEdge, pickCell, addWall, removeWall, setAperture,
   drawRoom, eraseRoom, setTile, pickWalledEdge,
@@ -137,20 +136,36 @@ function clearGhost() {
   ghost = null;
 }
 
+/** Undo the last BUILDING edit — its own stack, separate from Ctrl+Z (which is build.js's). */
 export function undo() {
   const b = target();
   const prev = undoStack.pop();
   if (!b || !prev) return false;
   sendVerb('comp', { id: b.id, type: 'structure', data: prev });
+  bus.emit('structure-tool', { tool });   // the stack's depth changed: the Create panel repaints its undo
   return true;
 }
+export const undoDepth = () => undoStack.length;
 
-/** Start a new building where the pointer is. */
-function newBuilding(ev) {
+/** The point a new building starts under: the event's, when it is ON the world (a click in the
+ *  viewport), else the lower middle of the visible viewport — a button in a docked panel is not a place
+ *  in the world (the edit workspace's columns publish the viewport's edges as CSS vars). */
+function aimPoint(ev) {
+  if (ev && typeof document !== 'undefined' && document.elementFromPoint?.(ev.clientX, ev.clientY) === canvas) return ev;
+  const cs = getComputedStyle(document.body);
+  const left = parseFloat(cs.getPropertyValue('--edit-left-edge')) || 0;
+  const right = document.body.classList.contains('edit-workspace') ? (parseFloat(cs.getPropertyValue('--edit-right-w')) || 0) : 0;
+  // lower middle: the ground is below the horizon (the old floating bar sat low in the view too)
+  return { clientX: left + (innerWidth - left - right) / 2, clientY: 40 + (innerHeight - 40) * 0.7 };
+}
+
+/** Start a new building where the pointer is (or, from a panel, on the ground in view). */
+export function newBuilding(ev) {
+  const at = aimPoint(ev);
   const r = canvas.getBoundingClientRect();
   const ndc = new THREE.Vector2(
-    ((ev.clientX - r.left) / r.width) * 2 - 1,
-    -((ev.clientY - r.top) / r.height) * 2 + 1);
+    ((at.clientX - r.left) / r.width) * 2 - 1,
+    -((at.clientY - r.top) / r.height) * 2 + 1);
   const ray = new THREE.Raycaster();
   camera.updateMatrixWorld();
   ray.setFromCamera(ndc, camera);
@@ -199,6 +214,8 @@ function onUp(ev) {
 
 /** Which tool is live, for tests and for anything that wants to drive it. */
 export const currentTool = () => tool;
+/** The tools as data — the Create panel's tiles and the viewport strip read these (no second list). */
+export const structureTools = () => TOOLS.map(([k, label, hint, icon]) => ({ k, label, hint, icon }));
 export function setTool(t) {
   tool = TOOLS.some(([k]) => k === t) ? t : null;
   if (!tool) { dragFrom = null; clearGhost(); }
@@ -242,14 +259,13 @@ function refreshGrid() {
 }
 
 let active = false;
-let bar = null;
 
 /** Build mode owns the structure tools: they arrive with it and leave with it,
- *  rather than floating over a world nobody is editing. */
+ *  rather than floating over a world nobody is editing. Their buttons live in
+ *  the edit workspace's Create panel (the viewport stays clean). */
 export function setStructureMode(on) {
   if (active === on) return active;
   active = !!on;
-  if (bar) bar.style.display = active ? 'flex' : 'none';
   if (!active) { setTool(null); clearGhost(); }
   setCutaway(active);
   refreshGrid();
@@ -267,26 +283,8 @@ export function initStructureUI() {
   // a building appearing or changing under us moves the lattice with it
   bus.on('entity', (ev) => { if (active && ev?.kind !== 'collider') refreshGrid(); });
 
-  bar = document.createElement('div');
-  bar.id = 'structbar';
-  bar.style.cssText = 'position:fixed;left:12px;bottom:64px;z-index:40;display:flex;'
-    + 'gap:4px;flex-wrap:wrap;max-width:360px';   // the look is index.html #structbar .sb-btn (edit mode's greys)
-  const mk = (label, title, fn, icon) => {
-    const btn = document.createElement('button');
-    btn.className = 'sb-btn'; btn.title = title;
-    btn.innerHTML = `${iconSvg(icon, 15)}<span>${label}</span>`;
-    btn.onclick = (e) => { e.stopPropagation(); fn(e, btn); paint(); };
-    bar.appendChild(btn);
-    return btn;
-  };
-  const btns = TOOLS.map(([k, label, title, icon]) =>
-    [k, mk(label, title, () => setTool(tool === k ? null : k), icon)]);
-  mk('new', 'start a new building under the pointer', (e) => newBuilding(e), 'plus');
-  mk('undo', 'undo the last edit', () => undo(), 'undo2');
-  const paint = () => { for (const [k, btn] of btns) btn.classList.toggle('on', tool === k); };
-  bar.style.display = 'none';         // build mode turns it on
-  document.body.appendChild(bar);
-  paint();
+  // The tools' DOM is the Create panel (editpanels.js, docked beside the Hierarchy) and the viewport's
+  // armed-tool strip (editlayout.js): both read structureTools(), arm with setTool, undo with undo().
   return true;
 }
 
@@ -295,5 +293,4 @@ export function disposeStructureUI() {
   window.removeEventListener('mousemove', onMove);
   window.removeEventListener('mouseup', onUp);
   clearGhost();
-  bar?.remove(); bar = null;
 }

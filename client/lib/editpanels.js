@@ -24,7 +24,11 @@ import { flashHint } from './ui.js';
 import { makeSchemaFrame, resolveDelta } from './panels.js';
 import { registerXRPanel } from './xrpanels.js';
 import { treeData, sceneSelected, sceneSelect, sceneAttach, sceneDetach } from './scenegraph.js';
-import { pushUndo, refreshOutline, setRemoveHook } from './build.js';
+import { pushUndo, refreshOutline, setRemoveHook, holdGhost } from './build.js';
+import { structureTools, currentTool as structureTool, setTool as setStructureTool, undo as structureUndo, undoDepth, newBuilding } from './structure_ui.js';
+import { starterModels } from './palette.js';
+import { spawnAhead } from './worldquad.js';
+import { libLabels } from './assets.js';
 import { schemaFor, commitEdit, planEdit, sendPlanned, setEditHooks, endGesture, foldRecord } from './inspect.js';
 import { channels } from '../../shared/editschema.js';
 import { commitLight, lightCasting } from './lights.js';
@@ -576,9 +580,81 @@ function removeMany(ids) {
   return true;
 }
 
+// ---------------------------------------------------------------- create
+// Things INTO the world, in the left column beside the Hierarchy (Hierarchy | Create), so the
+// viewport carries nothing but the world. Two sections:
+//   Structure  the griddled-building tools (structure_ui.js — its TOOLS, its setTool, its OWN undo
+//              stack, which is not Ctrl+Z's and is labelled so), plus "new building".
+//   Library    what the World panel's build section offers (palette.js): add a light, search the
+//              library, click a model to carry it as a ghost (build.js holdGhost). The World panel
+//              keeps its copy for the HUD outside edit mode; both send the same verbs.
+// The VR body says what it cannot do: the building tools pick cells with a mouse ray on the canvas,
+// which a headset does not have yet — so the quad names that and offers the Library, placing a
+// model 1.5 m ahead (worldquad.js spawnAhead, the world quad's own hand-free place).
+const createFolds = {};
+let libQ = '';            // the Library search box
+let libHits = null;       // search results; null = the curated starters (an empty box shows those, as palette.js does)
+let libSeq = 0;
+async function searchLibrary(q) {
+  libQ = q; const n = ++libSeq;
+  if (!q) { libHits = null; repaintAll(); return; }
+  try {
+    const hits = await (await fetch(`/library-models?q=${encodeURIComponent(q)}`)).json();
+    if (n === libSeq) { libHits = Array.isArray(hits) ? hits : []; repaintAll(); }
+  } catch { /* keep the last list; the box still shows what was asked */ }
+}
+const libModels = () => libHits ?? starterModels().map((m) => ({ ...m, preview: m.path.replace(/\.glb$/, '_preview.jpg') }));
+const libTiles = (pics) => ({ t: 'tiles', k: 'place', value: null, empty: libQ ? `nothing matches "${libQ}"` : 'the library is empty',
+  options: libModels().map((m) => ({ v: m.path, label: m.name, ...(pics && m.preview ? { img: `/library/${m.preview}` } : {}),
+    hint: pics ? 'click, then click the world to place it' : 'places it 1.5 m ahead of you' })) });
+
+function createFields() {
+  return [
+    { t: 'group', k: 'structure', label: 'Structure', open: !createFolds.structure },
+    { t: 'tiles', k: 'stool', value: structureTool(), options: structureTools().map((x) => ({ v: x.k, label: x.label, icon: x.icon, hint: x.hint })) },
+    { t: 'btn', k: 'snew', label: 'new building', icon: 'plus', hint: 'start a new building on the ground in view' },
+    { t: 'btn', k: 'sundo', label: 'undo building edit', icon: 'undo2', disabled: !undoDepth(), hint: 'undo the last building edit — its own stack, separate from Ctrl+Z' },
+    { t: 'group', k: 'library', label: 'Library', open: !createFolds.library },
+    { t: 'btn', k: 'light', label: 'add light', icon: 'lightbulb', hint: 'carry a light source; click the world to place it' },
+    { t: 'text', k: 'libq', label: '', value: libQ, placeholder: 'search the library ⏎', hint: 'an empty box shows the starters' },
+    libTiles(true),
+  ];
+}
+function createDispatch(action, payload) {
+  switch (action) {
+    case 'fold': createFolds[payload] = !createFolds[payload]; break;
+    case 'stool': setStructureTool(structureTool() === payload ? null : payload); break;   // the armed tile again = drop it
+    case 'snew': newBuilding(null); break;
+    case 'sundo': structureUndo(); break;
+    case 'light': holdGhost('@light', 'light'); break;
+    case 'libq': searchLibrary(String(payload ?? '').trim()); return;
+    case 'place': {
+      const m = libModels().find((x) => x.path === payload);
+      if (m) { libLabels.set(m.path, m.name); holdGhost(m.path, m.name); }
+      break;
+    }
+  }
+  repaintAll();
+}
+function createVRFields() {
+  return [
+    { t: 'group', k: 'structure', label: 'Structure', open: !createFolds.structure },
+    { t: 'info', label: '', value: 'building tools: desktop only for now' },
+    { t: 'group', k: 'library', label: 'Library', open: !createFolds.library },
+    libTiles(false),
+  ];
+}
+function createVRDispatch(action, payload) {
+  if (action === 'fold') createFolds[payload] = !createFolds[payload];
+  else if (action === 'place' && payload) spawnAhead(payload);
+  repaintAll();
+}
+
 // ---------------------------------------------------------------- mounting
 const PANELS = [
   { id: 'hierarchy', title: 'Hierarchy', theme: 'edit', fields: hierarchyFields, dispatch: hierarchyDispatch, frame: { x: 64, y: 60, w: 300, h: 380, minW: 220, minH: 160 } },   // x clears the dock rail (left:10 + 34px buttons + padding)
+  // docked as a tab beside the Hierarchy by editlayout.js (Hierarchy | Create); its VR body is its own field list
+  { id: 'create', title: 'Create', theme: 'edit', fields: createFields, dispatch: createDispatch, vr: { fields: createVRFields, dispatch: createVRDispatch }, frame: { x: 64, y: 60, w: 300, h: 380, minW: 220, minH: 160 } },
   { id: 'inspector', title: 'Inspector', theme: 'edit', fields: inspectorFields, dispatch: inspectorDispatch, frame: { x: -330, y: 60, w: 320, h: 520, minW: 250, minH: 160 } },
   // optional: never auto-shown on entering edit mode (View ▸ console, or a script row in the inspector)
   { id: 'console', title: 'Console', theme: 'edit', fields: consoleFields, dispatch: consoleDispatch, optional: true, frame: { x: 'center', y: -24, w: 560, h: 240, minW: 320, minH: 120 } },
@@ -599,11 +675,11 @@ function repaintAll() {
 
 export function initEditPanels() {
   for (const p of PANELS) {
-    registerXRPanel(p);                                   // the VR body
+    registerXRPanel({ ...p, ...(p.vr ?? {}) });            // the VR body (a panel may declare its own)
     const sf = makeSchemaFrame(p.id, { title: p.title, ...p.frame, hidden: true, className: 'edit' });   // the desktop body
     frames.set(p.id, sf);
   }
-  for (const ev of ['entity', 'comp', 'mount', 'edit-mode', 'sg:selected']) bus.on(ev, repaintAll);
+  for (const ev of ['entity', 'comp', 'mount', 'edit-mode', 'sg:selected', 'structure-tool']) bus.on(ev, repaintAll);
   bus.on('sg:selected', () => { gesture = null; endGesture(); if (!extending) clearExtras(); });   // a plain select collapses the set; a drag's `before` never outlives its selection
   bus.on('edit-extend', (id) => extendSelection(id));   // Ctrl-click in the viewport (build.js)
   // an armed attach completes on a VIEWPORT pick too: build.js select → sceneSelect
@@ -672,7 +748,7 @@ export function initEditPanels() {
 
 /** harness window */
 export const editPanelsDebug = () => ({
-  hierarchy: hierarchyFields().length, inspector: inspectorFields().length, selected: sceneSelected(), arming,
+  hierarchy: hierarchyFields().length, inspector: inspectorFields().length, create: createFields().length, createVR: createVRFields().length, selected: sceneSelected(), arming,
   groups: sceneSelected() ? schemaFor(sceneSelected()).groups.map((g) => g.group) : [], behaviors: behaviors.length, rows: visibleRows, selection: selection(),
   watching, consoleLines: watchLog?.lines?.length ?? 0,
 });

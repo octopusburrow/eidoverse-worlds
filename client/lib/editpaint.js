@@ -20,6 +20,7 @@ const FONT = 'system-ui, sans-serif';
 const IN = (V.rowH - V.minHit) / 2;            // a target's inset inside its row → exactly minHit tall
 const PAL = [0xffffff, 0xffd9a0, 0xff8a5c, 0xe05a5a, 0x7cc47c, 0x5fa8ff, 0xb48cff, 0x202020];   // the keyboard-free colour picks (same as legacy)
 const ACTION_ICON = { '✕': 'x' };             // row-action labels that are glyphs → the icon set
+const TILE_COLS = 3;                           // a tiles field: three across (≈ 160 px each on a 522 quad)
 const AXIS_RE = /(?:^|:)(?:pos|rot|scale)\.([xyz])$/;   // a channel's axis — the label wears x/y/z (the desktop's data-axis)
 
 export function paintEdit(canvas, fields, { width = 522, title = '' } = {}) {
@@ -38,6 +39,7 @@ export function paintEdit(canvas, fields, { width = 522, title = '' } = {}) {
     if (folded) continue;
     if (f.t === 'vec3') { items.push({ f, h: rowH * 3 }); continue; }                     // one line per axis, labelled x/y/z
     if (f.t === 'enum') { font(); items.push({ f, h: rowH * enumLines(g, f, vw).length }); continue; }
+    if (f.t === 'tiles') { items.push({ f, h: rowH * Math.max(1, Math.ceil((f.options ?? []).length / TILE_COLS)) }); continue; }
     if (f.t === 'list' || f.t === 'tree') {
       if (f.label) items.push({ f, h: rowH });   // a bare list/tree has no header row of its own
       if (!(f.rows ?? []).length && f.empty) items.push({ f: { t: 'info', label: '', value: f.empty }, h: rowH });
@@ -175,10 +177,34 @@ export function paintEdit(canvas, fields, { width = 522, title = '' } = {}) {
       }
       case 'btn': {
         font(V.minText, 500);
-        const bw = Math.max(110, g.measureText(f.label).width + 32);
+        const iw = f.icon ? 26 : 0;
+        const bw = Math.min(width - pad * 2, Math.max(110, g.measureText(f.label).width + 32 + iw));
         if (f.danger) quietButton(pad, y + IN, bw, V.minHit, f.label, true);
-        else { box(g, pad, y + IN, bw, V.minHit, T.press, null); font(V.minText, 500); text(g, f.label, pad + bw / 2, mid, T.text, bw - 12, 'center'); }
+        else {
+          box(g, pad, y + IN, bw, V.minHit, T.press, null); font(V.minText, 500);
+          const tw = Math.min(g.measureText(f.label).width, bw - 12 - iw);
+          if (f.icon) icon(g, f.icon, pad + bw / 2 - (tw + iw) / 2 + 9, mid, 18, f.disabled ? T.faint : T.dim);
+          text(g, f.label, pad + bw / 2 + iw / 2, mid, f.disabled ? T.dim : T.text, bw - 12 - iw, 'center');
+        }
         regions.push({ x: pad, y: y + IN, w: bw, h: V.minHit, action: f.k });
+        break;
+      }
+      case 'tiles': {   // the grid the desktop draws, three across; armed = press fill + an accent glyph (the tool rail's look)
+        const opts = f.options ?? [];
+        if (!opts.length) { font(); text(g, f.empty ?? 'nothing here', pad, mid, T.dim, width - pad * 2); break; }
+        const gap = 6, tw = Math.floor((width - pad * 2 - gap * (TILE_COLS - 1)) / TILE_COLS);
+        opts.forEach((o, i) => {
+          const tx = pad + (i % TILE_COLS) * (tw + gap), ty = y + Math.floor(i / TILE_COLS) * rowH + IN;
+          const on = o.v === f.value;
+          box(g, tx, ty, tw, V.minHit, on ? T.press : T.well, on ? null : T.line);
+          const iw = o.icon ? 26 : 0;
+          font(V.minText, on ? 600 : 400);
+          const lw = Math.min(g.measureText(String(o.label ?? o.v)).width, tw - 16 - iw);
+          const x0 = tx + tw / 2 - (lw + iw) / 2;
+          if (o.icon) icon(g, o.icon, x0 + 9, ty + V.minHit / 2, 18, on ? T.accent : T.dim);
+          text(g, String(o.label ?? o.v), x0 + iw, ty + V.minHit / 2, T.text, tw - 16 - iw);
+          regions.push({ x: tx, y: ty, w: tw, h: V.minHit, action: f.k, payload: o.v });
+        });
         break;
       }
       case 'ref': {

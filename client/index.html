@@ -1642,6 +1642,9 @@ body.edit-workspace [data-frame="console"] { z-index: 30 !important; }   /* over
 .sp-f-text .sp-label { align-self: center; }
 /* ---- the edit WORKSPACE: strips and columns the frames dock into ---- */
 .edit-strip, .edit-col, .edit-split { position: fixed; z-index: 26; }
+/* leaving edit mode sets [hidden] on these; their own display rules (flex) outrank the UA's [hidden],
+   so without this the bar, rail and columns stayed PAINTED after the mode ended (found 09-30) */
+:is(.edit-strip, .edit-col, .edit-split)[hidden] { display: none !important; }
 .edit-strip { z-index: 27; background: #1c1c1e; border: 1px solid rgb(255 255 255 / .08); box-sizing: border-box; }
 .edit-top { display: flex; align-items: center; gap: 6px; padding: 0 8px; border-top: none; border-right: none; }
 .edit-tools { display: flex; flex-direction: column; gap: 2px; padding: 4px; border-left: none; border-radius: 0 6px 6px 0; }
@@ -1679,19 +1682,24 @@ body.edit-workspace [data-frame="console"] { z-index: 30 !important; }   /* over
 body.edit-workspace .frame.docked { --panel-a: 1; }
 /* the rail slims to what edit mode needs: ∃, the wrench (mic / ear / goggles are their own elements) */
 body.edit-workspace #dock button[data-toggles]:not([data-toggles="edit"]) { display: none !important; }
-body.edit-workspace #dock { top: 46px !important; left: 3px !important; }   /* under the bar: ∃ then the wrench; mic/ear/goggles moved up into the bar */
-/* mic · ear · goggles live in the top bar while editing. They are fixed
-   elements positioned inline by their own modules (mictoggle.placeMic,
-   xr.js seat); author !important outranks inline, so the bar wins without
-   touching either module. Scaled to the bar's glyph size. */
-body.edit-workspace #micbtn { top: 7px !important; left: auto !important; right: 132px !important; transform: scale(.85); transform-origin: center; }
-body.edit-workspace #earbtn { top: 7px !important; left: auto !important; right: 100px !important; transform: scale(.85); transform-origin: center; }
+/* the corner (R, 09-30): the ∃ in the bar's top-left cell, centred in it (40 px bar × 48 px rail), the
+   wrench under it at the head of the rail. Above the bar (27) so the ∃ is never under it. The mic /
+   ear / goggles are NOT moved here: mictoggle.placeMic folds them to the ∃'s right exactly as it does
+   on the HUD, and editlayout's spacer (fitSeat) starts the menus after them. */
+body.edit-workspace #dock { top: -1px !important; left: 3px !important; gap: 8px; z-index: 28;
+  background: none; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }   /* no HUD-tinted card behind the ∃ and the wrench: the bar and the rail ARE its ground */
+/* …grey-on-grey: the glyphs read their inks off themselves (mictoggle tok), so re-pointing the house
+   tokens on these three elements alone re-inks them for the bar and nowhere else */
+body.edit-workspace :is(#micbtn, #earbtn, #xrbtn) { --dim: var(--e-dim); --brand: var(--e-text); --attn: var(--e-text); --edge-hi: var(--e-faint);
+  border-radius: 3px; }
+body.edit-workspace :is(#micbtn, #earbtn, #xrbtn):hover { background: var(--e-hover); box-shadow: 0 0 0 3px var(--e-hover); }
+body.edit-workspace #micbtn svg rect[fill^="rgba"] { fill: rgb(216 216 220 / .22); }   /* the "voice registering" fill, in the bar's grey */
 .edit-viewbtns { display: flex; gap: 2px; margin-left: 10px; padding-left: 10px; border-left: 1px solid rgb(255 255 255 / .1); }
 .edit-vbtn { width: 30px; height: 28px; padding: 0; font-size: 15px; line-height: 1; background: none; border: none; color: #b8b8bd; border-radius: 5px; cursor: pointer; }
 .edit-vbtn:hover { background: rgb(255 255 255 / .08); color: #fff; }
 .edit-vbtn.on { background: #3a3a3f; color: #fff; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .18); }
-.edit-seat { width: 190px; flex: none; }   /* the bar keeps this much clear for the three seated glyphs */
-body.edit-workspace .edit-tools { z-index: 26; border-radius: 0; border-right: 1px solid rgb(255 255 255 / .08); background: #1a1a1c; }   /* under the dock (27): the band is behind the ∃, never over it */
+.edit-seat { width: 40px; flex: none; align-self: center; height: 22px; box-sizing: border-box; border-right: 1px solid var(--e-line, #2f2f35); margin-right: 4px; }   /* the corner: ∃ + glyphs; width = fitSeat (editlayout.js) */
+body.edit-workspace .edit-tools { z-index: 26; border-radius: 0; border-right: 1px solid rgb(255 255 255 / .08); background: #1a1a1c; }   /* under the dock (28): the rail is behind the wrench, never over it */
 /* the wrench carries the mode: an amber box, instead of a rim around the world */
 body.edit-workspace #dock button[data-toggles="edit"].on {
   color: var(--attn); background: color-mix(in srgb, var(--attn) 16%, transparent);
@@ -1715,7 +1723,6 @@ body.edit-workspace #dock button[data-toggles="edit"].on::before { display: none
 .frame.edit .sp-f-text .sp-label:empty { display: none; }
 .frame.edit .sp-f-text .sp-text { font-size: 12px; }
 /* fixed chrome from before the columns keeps to the VIEWPORT between them */
-body.edit-workspace #structbar { left: calc(var(--edit-left-edge, 0px) + 12px) !important; z-index: 29 !important; }   /* under an opened Console (30); structure_ui sets 40 inline */
 body.edit-workspace #trayzone { right: calc(var(--edit-right-w, 0px) + 10px); }
 body.edit-workspace #hintbar { left: calc(var(--edit-left-edge, 0px) + (100vw - var(--edit-left-edge, 0px) - var(--edit-right-w, 0px)) / 2); }
 /* ---- edit mode: the look, for the workspace's own chrome (DESIGN-SPEC 2026-09-30; tokens: the --e-* block above) */
@@ -1743,12 +1750,45 @@ body.edit-workspace .edit-tools { background: var(--e-bg0); border-right: 1px so
 .edit-menu-item:hover, body.edit-workspace .sp-ctx-item:hover { background: var(--e-accent-bg); }
 .edit-menu-item kbd { color: var(--e-faint); }
 body.edit-workspace .sp-ctx-item.danger { color: var(--e-danger); }
-/* the build bar (structure_ui.js): quiet glyph buttons in a bg0 strip; the live tool = press + accent glyph */
-body.edit-workspace #structbar { background: var(--e-bg0); border: 1px solid var(--e-line); border-radius: 4px; padding: 3px; gap: 2px; font: 400 12px var(--font) !important; }
-#structbar .sb-btn { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 8px; border: none; border-radius: 3px; background: none; color: var(--e-dim, #8e8e96); cursor: pointer; font: inherit; }
-#structbar .sb-btn:hover { background: var(--e-hover); color: var(--e-text); }
-#structbar .sb-btn.on { background: var(--e-press); color: var(--e-text); }
-#structbar .sb-btn.on svg { color: var(--e-accent); }
+/* Hierarchy | Create: the left column's top pane is one panel with two pages. The tab strip stands in
+   for the two frames' title bars (28 px, bg0, like every editor frame head); the picked page shows. */
+.edit-tabs { display: flex; flex: 0 0 28px; height: 28px; box-sizing: border-box; background: var(--e-bg0); border-bottom: 1px solid var(--e-line); padding: 0 4px; gap: 0; }
+.edit-tab { background: none; border: none; border-radius: 0; height: 28px; padding: 0 12px; margin: 0; font: 600 12px var(--font); color: var(--e-dim); cursor: pointer;
+  box-shadow: none; text-align: center; }
+.edit-tab:hover { color: var(--e-text); background: var(--e-hover); }
+.edit-tab.on { color: var(--e-text); background: var(--e-bg1); box-shadow: inset 0 -1px 0 var(--e-bg1); }
+.edit-tab:active { transform: none; }
+.edit-left > :is([data-frame="hierarchy"], [data-frame="create"]) > .fr-head { display: none !important; }
+.edit-left[data-tab="hierarchy"] > [data-frame="create"], .edit-left[data-tab="create"] > [data-frame="hierarchy"] { display: none !important; }
+/* tiles (panels.js 'tiles'): a grid; an icon or a picture over a short label. Quiet at rest, hover fill,
+   armed = press fill + an accent glyph — the tool rail's look */
+.frame.edit .sp-f-tiles.sp-row { display: block; margin: 2px 0 4px; }
+.frame.edit .sp-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+.frame.edit .sp-tile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-width: 0; height: 52px; padding: 4px;
+  background: none; border: 1px solid var(--e-line); border-radius: 3px; color: var(--e-dim); font: 400 11.5px var(--font); cursor: pointer; box-shadow: none; text-align: center; }
+.frame.edit .sp-tile svg { stroke-width: 2.25; display: block; flex: none; }
+.frame.edit .sp-tile:hover { background: var(--e-hover); color: var(--e-text); border-color: var(--e-hover); }
+.frame.edit .sp-tile.on { background: var(--e-press); border-color: var(--e-press); color: var(--e-text); }
+.frame.edit .sp-tile.on svg { color: var(--e-accent); }
+.frame.edit .sp-tile:active { transform: none; }
+.frame.edit .sp-tile-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.frame.edit .sp-tiles-img .sp-tile { height: auto; padding: 4px 4px 5px; justify-content: flex-start; }
+.frame.edit .sp-tile-pic { display: block; width: 100%; aspect-ratio: 1; background: var(--e-well); border-radius: 2px; overflow: hidden; }
+.frame.edit .sp-tile-pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.frame.edit .sp-tiles .sp-empty { grid-column: 1 / -1; }
+/* a button that carries a glyph (Create's "new building", "undo building edit", "add light") */
+.frame.edit .sp-btn-ico { display: inline-flex; align-items: center; gap: 6px; }
+.frame.edit .sp-btn-ico svg { stroke-width: 2.25; color: var(--e-dim); flex: none; }
+.frame.edit .sp-btn:disabled { opacity: .45; cursor: not-allowed; filter: none; }
+/* the armed building tool, named across the top of the viewport (editlayout paintStrip); gone when none is */
+.edit-toolstrip { position: fixed; z-index: 29; height: 28px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; gap: 12px;
+  padding: 0 12px; background: rgb(22 22 24 / .92); border-bottom: 1px solid var(--e-line); color: var(--e-dim); font: 400 12px var(--font); white-space: nowrap; overflow: hidden; pointer-events: none; }
+.edit-toolstrip[hidden] { display: none; }
+.edit-toolstrip-name { display: inline-flex; align-items: center; gap: 6px; color: var(--e-text); font-weight: 600; }
+.edit-toolstrip-name svg { color: var(--e-accent); stroke-width: 2.25; }
+.edit-toolstrip-hint { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.edit-toolstrip-esc { color: var(--e-faint); }
+.edit-toolstrip-esc kbd { color: var(--e-dim); font: 11px var(--font-code); border: 1px solid var(--e-line); border-radius: 3px; padding: 0 4px; background: var(--e-well); }
 /* the chat, while it docks in the workspace, wears the editor greys (never outside edit mode) */
 body.edit-workspace [data-frame="chat"] { --brand: var(--e-text); --accent: var(--e-accent); }
 body.edit-workspace [data-frame="chat"] .fr-body * { font-style: normal; }

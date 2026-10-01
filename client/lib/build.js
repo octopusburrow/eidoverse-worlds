@@ -28,6 +28,7 @@ import { myState, mouse, setPointerClaim, setEditingProbe } from './controller.j
 import { flashHint, collapseAll, panelFrame } from './ui.js';
 import { sceneSelect, sceneSelected, sceneDeselect } from './scenegraph.js';
 import { claimEscape } from './frames.js';
+import { currentTool as structureTool, setTool as setStructureTool } from './structure_ui.js';   // an armed building tool is Esc's first rung
 import { mayAuthor, placerOf, placerName } from './placer.js';   // one rule for who may author (and one name for them), shared with the scene panel
 import { refreshSeatGizmos, resetSeats, armSeatPlacement, seatArmed, seatSelected,
   cancelSeatArm, deselectSeat, seatMouseDown, seatKeyDown, updateSeatDrag } from './seatedit.js';
@@ -570,7 +571,8 @@ canvas.addEventListener('click', (e) => {
 
 bus.on('key', (e) => {
   if (e.code === 'Escape') {
-    if (cancelSeatArm()) { /* an armed placement is the most transient state */ }
+    if (structureTool()) setStructureTool(null);   // an armed building tool drops first (the viewport strip says "Esc to drop")
+    else if (cancelSeatArm()) { /* an armed placement is the most transient state */ }
     else if (ghost) cancelGhost();
     else if (seatSelected()) deselectSeat();
     else if (selected || sceneSelected()) deselectAll();

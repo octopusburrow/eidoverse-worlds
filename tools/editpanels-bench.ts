@@ -54,16 +54,18 @@ await cdp.send('Page.navigate', { url: `${BASE}/?name=editbot&world=editbench` }
 }
 
 console.log('\nedit mode shows the two frames:');
-// three edit frames since the Console joined (09-23): Hierarchy + Inspector show on entry, the Console is opt-in
-check('frames exist before edit mode, hidden', await evalJson(`[...document.querySelectorAll('.frame.edit')].length === 3 && [...document.querySelectorAll('.frame.edit')].every((f) => getComputedStyle(f).display === 'none')`));
+// four edit frames since Create joined (09-30): Hierarchy + Inspector show on entry (Create is the
+// Hierarchy's other tab, so it waits behind it), the Console is opt-in
+check('frames exist before edit mode, hidden', await evalJson(`[...document.querySelectorAll('.frame.edit')].length === 4 && [...document.querySelectorAll('.frame.edit')].every((f) => getComputedStyle(f).display === 'none')`));
 await evalJson(`dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyB' })), true`);
 check('B shows both, and NOT the console', await waitFor(`(() => { const F = [...document.querySelectorAll('.frame.edit')]; const vis = F.filter((f) => getComputedStyle(f).display !== 'none').map((f) => f.dataset.frame).sort().join(); return vis === 'hierarchy,inspector'; })()`), JSON.stringify(await evalJson(`[...document.querySelectorAll('.frame.edit')].map((f) => [f.dataset.frame, getComputedStyle(f).display])`)));
-check('titles are Console / Hierarchy / Inspector', await evalJson(`[...document.querySelectorAll('.frame.edit .fr-title')].map((t) => t.textContent).sort().join('|') === 'Console|Hierarchy|Inspector'`));
+check('titles are Console / Create / Hierarchy / Inspector', await evalJson(`[...document.querySelectorAll('.frame.edit .fr-title')].map((t) => t.textContent).sort().join('|') === 'Console|Create|Hierarchy|Inspector'`));
 check('empty world: hierarchy says so', await evalJson(`!!document.querySelector('#frame-hierarchy .sp-empty, .frame.edit .sp-empty')`));
 check('nothing selected: inspector says so', await evalJson(`/nothing selected/.test(document.querySelector('[data-frame="inspector"] .sp-info')?.textContent ?? '')`));
 
 console.log('\nthe workspace: docked columns, strips, a slim rail:');
-check('hierarchy is docked in the left column, above chat', await evalJson(`(() => { const L = document.querySelector('.edit-left'); const ids = [...L.children].map((c) => c.dataset?.frame ?? c.className); return JSON.stringify(ids) === JSON.stringify(['hierarchy', 'edit-split edit-split-h', 'chat']); })()`), await evalJson(`JSON.stringify([...document.querySelector('.edit-left').children].map((c) => c.dataset?.frame ?? c.className))`));
+// moved 09-30: the column's top pane is Hierarchy | Create under a tab strip (was ['hierarchy', split, 'chat'])
+check('hierarchy is docked in the left column, above chat — tabbed with Create', await evalJson(`(() => { const L = document.querySelector('.edit-left'); const ids = [...L.children].map((c) => c.dataset?.frame ?? c.className); return JSON.stringify(ids) === JSON.stringify(['edit-tabs', 'hierarchy', 'create', 'edit-split edit-split-h', 'chat']); })()`), await evalJson(`JSON.stringify([...document.querySelector('.edit-left').children].map((c) => c.dataset?.frame ?? c.className))`));
 check('inspector is docked in the right column', await evalJson(`document.querySelector('.edit-right [data-frame="inspector"]') !== null`));
 check('top strip + tools column are up', await evalJson(`!document.querySelector('.edit-top').hidden && document.querySelectorAll('.edit-tools .edit-tool').length === 5`));
 check('mic / ear / goggles sit IN the top bar (inside its box, hit-testable)', await evalJson(`(() => { const bar = document.querySelector('.edit-top').getBoundingClientRect(); const ok = (sel) => { const e = document.querySelector(sel); if (!e) return sel === '.xr-chip'; const r = e.getBoundingClientRect(); const inside = r.top >= bar.top && r.bottom <= bar.bottom + 1 && r.right <= bar.right; const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return inside && (hit === e || e.contains(hit)); }; return ok('#micbtn') && ok('#earbtn') && ok('.xr-chip'); })()`), await evalJson(`JSON.stringify(['#micbtn','#earbtn','.xr-chip'].map((s) => { const e = document.querySelector(s); const r = e?.getBoundingClientRect(); return r ? [s, r.left|0, r.top|0, r.width|0, r.height|0] : [s, null]; }))`));
@@ -144,6 +146,9 @@ check('menu → remove takes lamp2 out of the world', await waitFor(`import('/li
 check('…and the menu is gone', await evalJson(`document.querySelector('.sp-ctx') === null`));
 check('∃ and the wrench are VISIBLE on the band (elementFromPoint, not a class)', await evalJson(`(() => { const hit = (el) => { const r = el.getBoundingClientRect(); const e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return e === el || el.contains(e); }; return hit(document.querySelector('#hud')) && hit(document.querySelector('#dock button[data-toggles="edit"]')); })()`));
 check('rim is gone; the wrench wears the amber box', await evalJson(`(() => { const w = document.querySelector('#dock button[data-toggles="edit"]'); return w && w.classList.contains('on') && getComputedStyle(w).boxShadow !== 'none' && getComputedStyle(document.body, '::after').content !== '""'; })()`));
+
+// the corner, the wrench's way out, and the Create panel have their own browser: tools/editworkspace-bench.ts
+// (this bench is long enough already — headless leaks heap with time, so a longer run here OOMs the renderer)
 await evalJson(`import('/lib/scenegraph.js').then((m) => m.sceneSelect('benchlamp')), true`);
 await waitFor(`${insp}.querySelector('.sp-info')?.textContent === 'benchlamp'`);
 
@@ -630,7 +635,10 @@ await evalJson(`dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape' })),
 await sleep(200);
 await evalJson(`dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape' })), true`);   // deselect, then leave
 check('leaving undocks: frames are back on the body, workspace chrome hidden', await waitFor(`document.querySelector('[data-frame="hierarchy"]').parentElement === document.body && document.querySelector('[data-frame="inspector"]').parentElement === document.body && document.querySelector('.edit-top').hidden && !document.querySelector('.frame.docked')`));
-check('Esc hides the frames', await waitFor(`(() => { const F = [...document.querySelectorAll('.frame.edit')]; return F.length === 3 && F.every((f) => getComputedStyle(f).display === 'none'); })()`));
+check('Esc hides the frames (Create among them)', await waitFor(`(() => { const F = [...document.querySelectorAll('.frame.edit')]; return F.length === 4 && F.every((f) => getComputedStyle(f).display === 'none'); })()`));
+// `hidden` is an attribute; the strips' own display:flex outranks the UA's [hidden] — so ask what is PAINTED
+check('…and the workspace chrome is not painted any more (bar, rail, columns, tool strip)', await waitFor(`[...document.querySelectorAll('.edit-strip, .edit-col, .edit-split-v, .edit-toolstrip')].every((e) => getComputedStyle(e).display === 'none')`), JSON.stringify(await evalJson(`[...document.querySelectorAll('.edit-strip, .edit-col, .edit-split-v, .edit-toolstrip')].map((e) => e.className + ':' + getComputedStyle(e).display)`)));
+check('…and the ∃ is back on the HUD, its glyphs beside it', await evalJson(`(() => { const h = document.querySelector('#hud').getBoundingClientRect(), m = document.querySelector('#micbtn').getBoundingClientRect(); const hit = document.elementFromPoint(h.left + h.width / 2, h.top + h.height / 2); return (hit === document.querySelector('#hud') || document.querySelector('#hud').contains(hit)) && m.left >= h.right && Math.abs((m.top + m.bottom) / 2 - (h.top + h.bottom) / 2) <= 2; })()`));
 const errs: string[] = (await evalJson(`window.__errs`)) ?? [];
 const mine = errs.filter((e) => /editpanels|editlayout|editschema|panels\.js|inspect\.js|lights\.js|seatedit|scenegraph/.test(e));
 check('no page errors from the edit surface', mine.length === 0, mine.slice(0, 3).join(' | '));

@@ -3,16 +3,19 @@
 // columns while the mode is on and float again exactly where they were
 // when it ends. The shape is the one every shipping editor converged on:
 //
-//   ∃ ─┬─ top strip: menus, undo, the tool's name ────────────────────
-//   🔧 │ Hierarchy   │                              │ Inspector
-//   🎧 │ ───split─── │          viewport            │
-//   🎤 │ Chat        │                              │
-//   ↖✥↻⤢ tools     └──────────────────────────────┘
+//   ∃ mic ear vr │ World Edit View Panels  undo  ▢ ⤢ ─────────── tool name
+//   ───────┬─────────────────────────────────────────────────────────────
+//   🔧     │ Hierarchy|Create │  [armed tool strip]        │ Inspector
+//   ↖✥↻⤢   │ ───split───      │       viewport             │
+//   tools  │ Chat             │                            │
 //
+// The corner matches the HUD: the ∃ in the top-left, the mic / ear / goggles
+// folded to its right exactly as mictoggle.placeMic lays them out beside the
+// ∃ everywhere else (grey-on-grey here), then the menus. The rail below holds
+// the wrench (the way out — amber, the one amber control on it) and the tools.
 // Chat stays: every edit is a logged sentence, so the chat pane is the edit
-// history with the people (and agents) in it. The rail slims to ∃ / wrench /
-// mic / ear / goggles by CSS (index.html body.edit-mode #dock); every other
-// window is one Panels ▾ click away, never gone.
+// history with the people (and agents) in it. Every other window is one
+// Panels ▾ click away, never gone.
 
 import { bus } from './base.js';
 import { getFrame, allFrames } from './frames.js';
@@ -20,9 +23,11 @@ import { setTool, getTool, undo, deselectAll, setEditMode, removeKeyTargets } fr
 import { panelFrame } from './ui.js';
 import { THREE, scene } from './core.js';
 import { svg as iconSvg } from './icons.js';
+import { structureTools, currentTool as structureTool } from './structure_ui.js';
 
 const LS = 'ew-edit-layout';
-const DEF = { leftW: 300, rightW: 320, leftSplit: 0.55 };
+const DEF = { leftW: 300, rightW: 320, leftSplit: 0.55, leftTab: 'hierarchy' };
+const TABS = [['hierarchy', 'Hierarchy'], ['create', 'Create']];   // the left column's top pane: one frame at a time
 let L = { ...DEF };
 try { L = { ...DEF, ...JSON.parse(localStorage.getItem(LS) || '{}') }; } catch { /* defaults */ }
 const save = () => { try { localStorage.setItem(LS, JSON.stringify(L)); } catch { /* fine */ } };
@@ -36,7 +41,7 @@ const TOOLS = [   // every letter off the walking set: WASD walks here (Maya's W
   { id: 'pivot', icon: 'locateFixed', key: '', title: 'pivot — later, with rot/scale[] in the protocol', disabled: true },
 ];
 
-let els = null;          // { top, tools, left, right, split, lsplit, rsplit }
+let els = null;          // { top, tools, left, right, split, lsplit, rsplit, tabs, strip }
 let prevChat = null;     // chat's visibility before docking, restored on exit
 let prevWorld = null;    // the World panel's, likewise
 let on = false;
@@ -53,7 +58,19 @@ function build() {
   const rsplit = el('div', 'edit-split edit-split-v');    // right column's left edge
   const split = el('div', 'edit-split edit-split-h');     // between hierarchy and chat
   left.append(split);
-  for (const e of [top, tools, left, right, lsplit, rsplit]) { e.hidden = true; document.body.append(e); }
+  // Hierarchy | Create: two docked frames sharing the column's top pane, picked by tab (the
+  // tab strip stands in for their title bars, so the pane reads as ONE panel with two pages)
+  const tabs = el('div', 'edit-tabs');
+  for (const [id, label] of TABS) {
+    const b = el('button', 'edit-tab', label);
+    b.dataset.tab = id;
+    b.onclick = () => { L.leftTab = id; save(); apply(); };
+    tabs.append(b);
+  }
+  // the armed building tool, named across the top of the viewport (it disappears with the tool)
+  const strip = el('div', 'edit-toolstrip');
+  for (const e of [top, tools, left, right, lsplit, rsplit, strip]) { e.hidden = true; document.body.append(e); }
+  bus.on('structure-tool', paintStrip);
 
   // ---- tools column
   for (const t of TOOLS) {
@@ -97,8 +114,11 @@ function build() {
   document.addEventListener('fullscreenchange', () => full.classList.toggle('on', !!document.fullscreenElement));
   view.append(wire, full);
   const mode = el('span', 'edit-mode-label');
-  const seat = el('span', 'edit-seat');   // mic / ear / goggles are re-seated here by CSS (they are fixed elements owned by their modules)
-  top.append(menus, undoBtn, view, mode, seat);
+  // the corner: ∃ + mic / ear / goggles. They are fixed elements their own modules place (ui.js's
+  // dock, mictoggle.placeMic — which folds them to the ∃'s right, the HUD's own layout); this
+  // spacer keeps the bar's menus clear of them, sized to where they actually landed (fitSeat)
+  const seat = el('span', 'edit-seat');
+  top.append(seat, menus, undoBtn, view, mode);
   bus.on('tool', () => { mode.textContent = getTool(); });
   mode.textContent = getTool();
 
@@ -108,9 +128,43 @@ function build() {
   dragSplit(split, (_dx, dy) => { L.leftSplit = clamp(L.leftSplit + dy / left.clientHeight, 0.15, 0.85); });
   addEventListener('resize', () => { if (on) apply(); });
 
-  els = { top, tools, left, right, split, lsplit, rsplit };
+  els = { top, tools, left, right, split, lsplit, rsplit, tabs, strip };
   paintTools();
   return els;
+}
+
+/** The corner spacer: as wide as the ∃ and whichever voice / VR glyphs are pinned, wherever
+ *  placeMic put them. Re-measured on every layout pass and on a slow tick (a glyph pinned or a
+ *  headset found later moves them; neither module tells us). */
+function fitSeat() {
+  if (!els || !on) return;
+  const seat = els.top.firstElementChild;
+  const bar = els.top.getBoundingClientRect();
+  let right = bar.left;
+  for (const sel of ['#hud', '#micbtn', '#earbtn', '#xrbtn']) {
+    const e = document.querySelector(sel);
+    if (!e || getComputedStyle(e).display === 'none') continue;
+    const r = e.getBoundingClientRect();
+    if (r.width && r.bottom <= bar.bottom + 1 && r.top >= bar.top - 1) right = Math.max(right, r.right);
+  }
+  const padL = parseFloat(getComputedStyle(els.top).paddingLeft) || 0;
+  const w = `${Math.max(0, Math.round(right - bar.left - padL + 6))}px`;
+  if (seat.style.width !== w) seat.style.width = w;
+}
+
+/** The viewport strip: which building tool is armed, its hint (structure_ui's TOOLS), and the way out. */
+function paintStrip() {
+  if (!els) return;
+  const t = structureTool();
+  const info = t ? structureTools().find((x) => x.k === t) : null;
+  els.strip.hidden = !(on && info);
+  if (!info) return;
+  els.strip.innerHTML = '';
+  const name = el('span', 'edit-toolstrip-name');
+  name.innerHTML = iconSvg(info.icon, 14);
+  name.append(el('span', '', info.label));
+  els.strip.append(name, el('span', 'edit-toolstrip-hint', info.hint), el('span', 'edit-toolstrip-esc'));
+  els.strip.lastChild.append(el('kbd', '', 'Esc'), document.createTextNode(' to drop'));
 }
 
 // wireframe = one override material on the scene; the renderer draws every
@@ -170,13 +224,14 @@ function paintTools() {
 /** Lay the columns out from L; called on enter, on every splitter move, on resize. */
 function apply() {
   if (!els || !on) return;
-  const { top, tools, left, right, split, lsplit, rsplit } = els;
+  const { top, tools, left, right, split, lsplit, rsplit, tabs, strip } = els;
   const TOP = 40, RAIL = 48;
-  // the rail is a full-height neutral BAND: mic/ear stack above the ∃ inside
-  // it (the dock is pushed down so placeMic finds room), the wrench below,
-  // then the tools. The strip starts at the band's edge — no gaps (R, 09-13).
-  top.style.cssText = `left:${RAIL}px; right:0; top:0; height:${TOP}px`;
-  tools.style.cssText = `left:0; top:0; bottom:0; width:${RAIL}px; padding-top:${TOP + 52}px`;
+  // the bar runs the full width: the ∃ sits in its left end (the corner) with the mic / ear /
+  // goggles beside it, as on the HUD (R, 09-30). The rail starts under it: the wrench, then the
+  // tools — no gaps between bar, rail and columns (R, 09-13).
+  top.style.cssText = `left:0; right:0; top:0; height:${TOP}px`;
+  tools.style.cssText = `left:0; top:${TOP}px; bottom:0; width:${RAIL}px; padding-top:46px`;
+  strip.style.cssText = `left:${RAIL + Math.round(L.leftW)}px; right:${Math.round(L.rightW)}px; top:${TOP}px`;
   const leftW = Math.round(L.leftW), rightW = Math.round(L.rightW);
   left.style.cssText = `left:${RAIL}px; top:${TOP}px; bottom:0; width:${leftW}px`;
   right.style.cssText = `right:0; top:${TOP}px; bottom:0; width:${rightW}px`;
@@ -188,21 +243,28 @@ function apply() {
   document.body.style.setProperty('--edit-right-w', `${rightW}px`);
   const chat = getFrame('chat');
   const chatOn = !!chat?.visible;
-  const h = getFrame('hierarchy');
-  // hierarchy takes leftSplit of the column when chat shows, all of it otherwise
-  const hh = chatOn ? Math.round(left.clientHeight * L.leftSplit) : left.clientHeight;
-  if (h) h.el.style.flex = `0 0 ${hh}px`;
+  // the top pane (tabs + the picked frame) takes leftSplit of the column when chat shows, all of it otherwise
+  const tab = TABS.some(([id]) => id === L.leftTab) && getFrame(L.leftTab) ? L.leftTab : 'hierarchy';
+  left.dataset.tab = tab;
+  for (const b of tabs.children) b.classList.toggle('on', b.dataset.tab === tab);
+  const hh = (chatOn ? Math.round(left.clientHeight * L.leftSplit) : left.clientHeight) - tabs.offsetHeight;
+  for (const [id] of TABS) { const f = getFrame(id); if (f) f.el.style.flex = id === tab ? `0 0 ${Math.max(0, hh)}px` : ''; }
   split.hidden = !chatOn;
   if (chat) chat.el.style.flex = '1 1 0';
+  fitSeat();
+  paintStrip();
 }
 
+let seatTimer = 0;
 function enter() {
-  const { top, tools, left, right, lsplit, rsplit } = build();
+  const { top, tools, left, right, lsplit, rsplit, tabs } = build();
   on = true;
   for (const e of [top, tools, left, right, lsplit, rsplit]) e.hidden = false;
   document.body.classList.add('edit-workspace');
-  const h = getFrame('hierarchy'), i = getFrame('inspector'), c = getFrame('chat');
-  h?.dock(left); left.prepend(h.el);            // hierarchy above the splitter
+  dispatchEvent(new CustomEvent('dockmoved'));   // the ∃ just moved into the corner: re-seat its glyphs now (mictoggle.placeMic listens)
+  const h = getFrame('hierarchy'), cr = getFrame('create'), i = getFrame('inspector'), c = getFrame('chat');
+  h?.dock(left); cr?.dock(left);
+  left.prepend(tabs, ...[h?.el, cr?.el].filter(Boolean));   // tabs, then both pages, above the splitter
   i?.dock(right);
   if (c) { prevChat = c.visible; c.dock(left); if (!c.visible) c.show(); }
   // floating frames render UNDER the columns; the World panel build.js opens
@@ -212,17 +274,22 @@ function enter() {
   prevWorld = !!w?.visible;
   if (w?.visible) w.hide();
   apply();
+  // the glyphs re-seat on the next frame (mictoggle hears edit-mode too); measure once they have
+  requestAnimationFrame(() => requestAnimationFrame(fitSeat));
+  clearInterval(seatTimer); seatTimer = setInterval(fitSeat, 1000);
 }
 function exit() {
   if (!els || !on) return;
   on = false;
-  const { top, tools, left, right, lsplit, rsplit } = els;
-  for (const e of [top, tools, left, right, lsplit, rsplit]) e.hidden = true;
+  clearInterval(seatTimer); seatTimer = 0;
+  const { top, tools, left, right, lsplit, rsplit, strip } = els;
+  for (const e of [top, tools, left, right, lsplit, rsplit, strip]) e.hidden = true;
   document.body.classList.remove('edit-workspace');
+  dispatchEvent(new CustomEvent('dockmoved'));   // …and back beside the HUD's ∃
   setWireframe(false);
   if (els.top.querySelector('.edit-vbtn[data-view="wire"]')) els.top.querySelector('.edit-vbtn[data-view="wire"]').classList.remove('on');
   const c = getFrame('chat');
-  for (const f of [getFrame('hierarchy'), getFrame('inspector'), c]) { if (f) { f.el.style.flex = ''; f.undock(); } }
+  for (const f of [getFrame('hierarchy'), getFrame('create'), getFrame('inspector'), c]) { if (f) { f.el.style.flex = ''; f.undock(); } }
   if (c && prevChat != null) c[prevChat ? 'show' : 'hide']();   // exactly as it was before the workspace
   if (prevWorld) getFrame('world')?.show();
   prevChat = prevWorld = null;
@@ -236,5 +303,5 @@ export function initEditLayout() {
 }
 
 /** harness window */
-export const editLayoutDebug = () => ({ on, layout: { ...L }, tool: getTool(),
+export const editLayoutDebug = () => ({ on, layout: { ...L }, tool: getTool(), tab: els?.left.dataset.tab ?? null,
   docked: allFrames().filter((f) => f.docked).map((f) => f.id) });

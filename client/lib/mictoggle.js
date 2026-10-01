@@ -27,7 +27,10 @@ import { bus } from './base.js';
 // matches perceived weight rather than nominal colour.
 // glyph inks come from the token sheet (no hex outside it) —
 // read fresh each paint (1Hz + events): live token edits restyle us too.
-const tok = (n, fb) => (getComputedStyle(document.documentElement).getPropertyValue(n) || fb).trim();
+// Read off the BUTTON (it inherits the sheet's tokens): edit mode re-points them on the glyphs alone
+// (index.html body.edit-workspace #micbtn…) so they sit grey-on-grey in the editor bar while the HUD
+// outside edit mode reads exactly what it always read.
+const tok = (n, fb) => (getComputedStyle((micBtn?.isConnected && micBtn) || document.documentElement).getPropertyValue(n) || fb).trim();
 const INK = {
   get off()   { return tok('--dim', '#7d8f8a'); },
   get absent() { return tok('--edge-hi', 'rgb(255 255 255 / 0.32)'); },   // lighter than off: 'here, but nothing to talk to'
@@ -347,7 +350,9 @@ bus.on('audio:receive', paint);
 // its own 125ms poll, which read mesh state — so under SFU it never moved.
 bus.on('audio:mic', paint);
 bus.on('style', paint);
-bus.on('xr:state', paint);   // session start/end (live 09-05 22:04)       // the badge is baked from tokens (INK) — a Style change repaints it (live, 09-05)
+bus.on('xr:state', paint);
+// edit mode moves the ∃ into the workspace's corner and re-inks the glyphs: re-seat and repaint once its CSS is on
+bus.on('edit-mode', () => requestAnimationFrame(() => { paint(); placeMic(); }));   // session start/end (live 09-05 22:04)       // the badge is baked from tokens (INK) — a Style change repaints it (live, 09-05)
 setInterval(ensure, 1000);
 ensure();
 

@@ -92,6 +92,8 @@ const FIELDS = [
   { t: "range", k: "r", label: "mix", value: 0.3 },
   { t: "ref", k: "look.at", label: "look at", value: "lamp2" },
   { t: "btn", k: "rest", label: "come to rest" },
+  { t: "btn", k: "snew", label: "new building", icon: "plus" },
+  { t: "tiles", k: "stool", value: "wall", options: [{ v: "room", label: "room", icon: "square" }, { v: "wall", label: "wall", icon: "brickWall" }, { v: "door", label: "door", icon: "doorOpen" }] },
   { t: "btn", k: "remove", label: "remove", danger: true, vrOnly: true },
   { t: "list", k: "ed:sockets.slots", label: "sockets", rows: [{ id: "seat", label: "seat", actions: [{ k: "ed:sockets.del", label: "✕", danger: true }] }] },
   { t: "tree", k: "sel", rows: [
@@ -123,13 +125,15 @@ const E = paint("edit");
   check("no pictograph handed to fillText (the canvas emoji trap)", picto.length === 0, JSON.stringify(picto.slice(0, 4)));
   check("…yet the words around them still paint (guard line, badges, rider)", ["guarded by ana", "watch", "ana"].every((w) => E.rec.texts.some((t) => t.s.includes(w))), JSON.stringify(E.rec.texts.map((t) => t.s).filter((s) => /ana|watch/.test(s))));
   check("the canvas is the quad's width, rows at the VR row height", E.c.width === 522 && E.c.height > 20 * EDIT_VR.rowH);
-}
-
   // axis + driven at once (R, 09-30): the label keeps its axis colour; the FIELD carries driven (edge + ~)
   const lab = (s: string) => E.rec.texts.find((t) => t.s === s)?.color?.toLowerCase();
   check("a driven pos z label is painted in the z axis colour (not the driven amber)", lab("pos z") === EDIT.z.toLowerCase(), String(lab("pos z")));
   check("…an undriven pos x in x's", lab("pos x") === EDIT.x.toLowerCase(), String(lab("pos x")));
   check("…and the driven field paints its ~ and an amber edge", E.rec.texts.some((t) => t.s === "~" && t.color?.toLowerCase() === EDIT.driven.toLowerCase()) && (E.rec.strokeColors ?? []).some((c) => c.toLowerCase() === EDIT.drivenEdge.toLowerCase()));
+  const tiles = E.regions.filter((r: any) => r.action === "stool");
+  check("tiles: one full-height target per option, side by side", tiles.length === 3 && tiles.every((r: any) => r.h >= EDIT_VR.minHit) && new Set(tiles.map((r: any) => r.y)).size === 1, JSON.stringify(tiles));
+}
+
 console.log("\nC. the same dispatch as the legacy painter:");
 {
   const L = paint(null);
@@ -187,6 +191,7 @@ console.log("\nE2. every glyph edit chrome names exists (a missing icon paints N
   for (const m of src("editlayout.js").matchAll(/icon: '([A-Za-z0-9]+)'|iconSvg\('([A-Za-z0-9]+)'/g)) names.add(m[1] ?? m[2]);
   for (const m of src("structure_ui.js").matchAll(/'([A-Za-z0-9]+)'\],|, '([A-Za-z0-9]+)'\);/g)) names.add(m[1] ?? m[2]);
   for (const m of src("panels.js").matchAll(/iconSvg\(r\.locked \? '([A-Za-z]+)' : '([A-Za-z]+)'/g)) { names.add(m[1]); names.add(m[2]); }
+  for (const m of src("editpanels.js").matchAll(/icon: '([A-Za-z0-9]+)'/g)) names.add(m[1]);   // the Create panel's buttons
   const missing = [...names].filter((n) => !icons.has(n));
   check(`all ${names.size} named glyphs are in icons.js`, names.size >= 20 && missing.length === 0, "missing: " + missing.join(", ") + " · seen: " + [...names].join(","));
 }
