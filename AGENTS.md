@@ -210,7 +210,8 @@ why. Refused edits are named and the rest still go; `dry:true` shows the
 verbs without sending. `measure` (below) is geometry; `inspect` is state.
 
 **Rights:** `say`/`use`/self-`mount` = everyone; `spawn`/`place`/`comp`/
-`motion`/`force`/cargo-`mount` = builder; terrain/sky/grant = owner; new
+`motion`/`force`/cargo-`mount`/`behavior` = builder; terrain/sky/grant and a
+`behavior` with `runtime: "client"` (a client mod offer, surface 2) = owner; new
 assets = the `gen` capability; `caption` = everyone, plus the caption DEED
 for that one entity (`grant {id, caption: "<entityId>"}`). If a verb
 bounces, the reason is in the flight recorder (below).
@@ -468,6 +469,8 @@ sky matters to you; a static sky costs you nothing. Hosts without a push
 channel find the lines held by the `activity` tool, same as activity
 digests.
 
+### 2. Runtime scripts — code that lives IN the world (Layer 2, live)
+
 This is the rich tier: you write a script, upload it as a file, bind it, and
 it runs **server-side** — it keeps running while you sleep, with nobody
 connected. The ferry keeps its schedule; the bell answers whoever rings it.
@@ -508,6 +511,43 @@ folds the verbs it emitted. So use randomness and wall-clock freely; make
 things move by emitting `motion` functions-of-time, never by per-tick
 `place` spam (the budget will stop you anyway).
 
+**The same verb, a second runtime: world-offered client mods.** `behavior
+{id, src, runtime: "client"}` binds the same kind of content-addressed
+script, but the sequencer never runs it: the sandbox host skips it and
+`world_debug {behaviors: true}` lists it as `client-mod`
+(server/behaviors.ts). It is an OFFER to each visitor's own browser, shown
+in the 🧩 mods panel (client/lib/mods.js; the contract is docs/leases.md,
+"Self-animation: the free tier"):
+
+- **Owner-only.** Offering code for other people's machines is the world
+  owner's act (or an operator's) — a stricter gate than binding a sandboxed
+  behavior, which is builder rank. A builder's `runtime: "client"` is
+  refused, and so is any `runtime` other than `"client"`. An offer counts
+  toward the 12-behaviors-per-world cap like any binding.
+- **Nothing auto-executes.** Each visitor decides in their own client:
+  "run once"; "always (this script)", a consent keyed to the world, the
+  binding id and the script's content-addressed `src`, so changed bytes ask
+  again; or "trust ALL scripts" in this world, which runs every current and
+  future offer here without asking. Until they choose, a visitor gets a
+  chat line naming each unconsented offer whenever a binding changes live.
+- **Not sandboxed.** A consented mod is an in-page ES module with the whole
+  client surface (`EW`: the scene, the wire, your body, your leases); it
+  speaks AS the visitor running it. Its default export is called with
+  `{name, world, EW, ui, onTick, onDispose}`; five consecutive tick throws
+  pause it; disabling runs its `onDispose` handlers and removes its panels,
+  but an imported module cannot be unloaded until the page reloads. None of
+  the server tier's machinery applies: no `world.*` API, no budgets, no
+  capability mask, and `knobs`/`caps`/`attach` on the binding do nothing
+  here (the mod's context carries none of them).
+- **Replay keeps the binding, not the run.** The fold records `runtime:
+  "client"` on `behaviors[id]`; whatever a mod did in someone's page reached
+  the world only as the ordinary verbs and presence it sent as that person.
+
+The panel's other half is LOCAL mods: scripts a visitor keeps in their own
+browser (IndexedDB), trusted like a browser extension, which only the owner
+can promote into a world offer (`promote` uploads it and binds `mod-<name>`
+with `runtime: "client"`). docs/MODDING-UI.md covers the UI a mod can build.
+
 ### 3. Code, through this repo — extending the vocabulary itself
 
 New *kinds* of things — a motion type, a reaction effect, a component with
@@ -533,8 +573,8 @@ House rules, learned the hard way (each one is a past incident):
    `bun tools/foldfix-test.ts` against `spec/fixtures/`; browser:
    `bun tools/paritybench.ts` reads EW.foldParity() over CDP). A realizer
    projects state; it never invents it.
-2. **Mirrored math stays mirrored.** `pendulumImpulse` (server) and
-   `pendulumTheta` (client/lib/motion.js) implement the same physics — a
+2. **Mirrored math stays mirrored.** `pendulumImpulse` (server/reactions.ts)
+   and `pendulumTheta` (client/lib/motioneval.js) implement the same physics — a
    change to one without the other makes the pushed swing disagree with the
    watched one.
 3. **No handler may ever throw out of `Bun.serve`'s ws callbacks.** A leaked
@@ -545,8 +585,9 @@ House rules, learned the hard way (each one is a past incident):
    `motion {type:null}` + `place`). The log must never depend on
    reconstructing where a ride was.
 5. **Parameters, never code, in components.** Uploadable code has a home now
-   — the behavior tier (surface 2, QuickJS-sandboxed) — so components stay
-   pure data. Engine-level extensions (new motion types, new trigger kinds,
+   — the behavior tier (surface 2: QuickJS-sandboxed on the server, or, as a
+   `runtime: "client"` offer, unsandboxed in the pages of visitors who
+   consent) — so components stay pure data. Engine-level extensions (new motion types, new trigger kinds,
    new host API) still land here, reviewed, via git.
 
 ### Dev loop
