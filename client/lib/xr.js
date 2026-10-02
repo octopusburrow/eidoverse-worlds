@@ -38,7 +38,7 @@ import { markXrAbsent, registerXrGlyph, micGlyph, earGlyph, xrGlyph, micLive, ea
 import { markActive } from './presence.js';
 import { dockPins } from './ui.js';
 import { perf } from './perf.js';
-import { renderCensusTake, renderCensusTick, renderCensusPeek, setXRCurtain, drawStats } from './render.js';
+import { renderCensusTake, renderCensusTick, renderCensusPeek, renderCensusReset, setXRCurtain, drawStats } from './render.js';
 import { warm, P_AMBIENT } from './warmqueue.js';
 
 // ---- self-body in first person ---------------------------------------------
@@ -705,6 +705,9 @@ async function enterVR({ retryOf = null } = {}) {
     });   // what `emulated` MEANS lives in the module, where a test can prove a real runtime gets a shim
     nativeRAF = frameClock.native.raf; nativeCAF = frameClock.native.caf;
     await renderer.xr.setSession(session);
+    // this session's first [xr:rec] line counts this session's frames only. Runs before the first XR frame (a microtask
+    // after setSession resolves); a 'sessionstart' listener that RENDERED would run before it and be erased here.
+    renderCensusReset();
     tee(`[xr] enter #${sessionNo}: setSession resolved in ${(performance.now() - tReq).toFixed(0)} ms`);
     { const t = renderer.xr._xrRenderTarget; const fb = renderer._frameBufferTargets;
       tee(`[xr] enter #${sessionNo}: xrTarget ${t ? `${t.width}x${t.height} samples=${t.samples} type=${t.texture?.type} fmt=${t.texture?.format} cs=${t.texture?.colorSpace} multiview=${!!t.multiview}` : 'none'} renderer.samples=${renderer.samples}/${renderer._samples} fbts=${fb?.constructor?.name}:${fb?.size ?? '?'} layers=${renderer.xr._layers?.length ?? '?'} usesLayers=${renderer.xr._sessionUsesLayers}`); }
@@ -788,6 +791,9 @@ async function enterVR({ retryOf = null } = {}) {
       // around the guard. Reproduced against the real module before removing (round-two agent review).
       exitVeilShow(true);   // desktop feedback while the session tears down and the first desktop frames come back
       tee('[xr] session end — teardown begins');   // 09-06 23:43: a leave with no after-exit lines at all → was this handler even reached?
+      // the census since the last [xr:rec] line covers the exit itself; report it here rather than let the next session's
+      // reset drop it (or, before that reset, let it land misattributed on the next session's first line)
+      { const tail = renderCensusTake(); if (tail.max || tail.foreign) tee(`[xr] census tail: max ${tail.max}${tail.foreign ? ` foreign ${JSON.stringify(tail.foreign)}` : ''}`); }
       try {
       presenting = false; vrprobe(false); bus.emit('xr:state', false); eyeBase = null; setXRCurtain(false); curtainState = null;
       renderer.xr.cameraAutoUpdate = true;

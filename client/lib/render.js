@@ -45,7 +45,9 @@ export const renderCensus = { perFrame: 0, maxPerFrame: 0, foreign: null, frames
 let mainPassCam = null;
 if (typeof renderer.render === 'function') { const orig = renderer.render.bind(renderer);   // node-side suites mock core.js with a renderer that has no render (wing-owner-wire-test)
   renderer.render = (sc, cam) => {
-    renderCensus.perFrame++;
+    // counted only while presenting: renderCensusTick (xr.js updateXR) runs only then, so desktop renders piled up
+    // between sessions and the first VR tick reported them all as one frame (max=12928 on every session's first line)
+    if (renderer.xr?.isPresenting) renderCensus.perFrame++;
     if (renderer.xr?.isPresenting && cam !== mainPassCam) {
       const rt = renderer.getRenderTarget();
       renderCensus.foreign = { cam: cam?.type, name: cam?.name || null, fov: cam?.fov ?? null, parent: !!cam?.parent, target: rt ? (rt.isXRRenderTarget ? 'xr' : 'rt') : 'canvas', xrEnabled: renderer.xr.enabled, t: +performance.now().toFixed(0) };
@@ -54,6 +56,8 @@ if (typeof renderer.render === 'function') { const orig = renderer.render.bind(r
   }; }
 export function renderCensusTick() { renderCensus.frames++; if (renderCensus.perFrame > renderCensus.maxPerFrame) renderCensus.maxPerFrame = renderCensus.perFrame; renderCensus.perFrame = 0; }
 export const renderCensusPeek = () => renderCensus.foreign;
+/** a session starts from zero: no half-frame or foreign camera carried over from the last one */
+export function renderCensusReset() { renderCensus.perFrame = 0; renderCensus.maxPerFrame = 0; renderCensus.foreign = null; }
 export function renderCensusTake() { const o = { max: renderCensus.maxPerFrame, foreign: renderCensus.foreign }; renderCensus.maxPerFrame = 0; renderCensus.foreign = null; return o; }
 
 // ENTRY CURTAIN: while up, the eye pass draws a closed dark sphere around the head (the page's own
