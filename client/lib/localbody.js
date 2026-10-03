@@ -24,6 +24,8 @@ import { toast, flashHint, setAmbientHint } from './ui.js';
 import { posable, pushable } from './consent.js';
 import { clearMyReach } from './reachnet.js';
 import { getMe } from './mybody.js';
+import { surfaceUnder } from './colliders.js';
+import { heightAt } from './terrain.js';
 
 let logChat = () => {};
 
@@ -73,9 +75,10 @@ export function getUp() {
   myState.pose = null; me?.clearPose();
   me?.setLimp(false);
   myState.clip = 'idle';
-  // resume from where the body ended up
+  // resume from where the body ended up -- standing on the surface it lies on. This was y = 0, which got a body
+  // that fell over on a roof up INSIDE the building (review of hep/unstuck-respawn), and was wrong on any hill.
   myState.pos.copy(me.root.position);
-  myState.pos.y = 0;
+  myState.pos.y = surfaceUnder(myState.pos.x, myState.pos.z, heightAt, me.root.position.y + 0.5);
 }
 // ---------------------------------------------------------------- mounted
 // While seated/riding, my body is DERIVED from the parent entity's live

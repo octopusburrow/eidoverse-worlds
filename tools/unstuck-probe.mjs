@@ -77,6 +77,22 @@ try {
     !up.downed && Math.hypot(up.pos.x, up.pos.z) < 0.05, JSON.stringify({ up, r4 }));
   check('…and your visible body is where everyone else sees you (no desync)',
     Math.hypot(up.root.x - up.pos.x, up.root.z - up.pos.z) < 0.05, JSON.stringify(up));
+  // getting up after falling over ON something stands you on it (getUp used to set y = 0: up inside the building)
+  const deck = await pg.evaluate(async () => { const C = await import('./lib/colliders.js');
+    C.fitStructureBoxes('deck', [{ x0: -10, y0: 0, z0: -2, x1: -6, y1: 2, z1: 2 }], { position: [0, 0, 0] }); return C.colliders.has('deck#s0'); });
+  check('(setup) a 2 m block to fall over on', deck);
+  await pg.evaluate(async () => { (await import('./lib/controller.js')).myState.pos.set(-8, 2, 0); });
+  await pg.waitForTimeout(1000);
+  const onDeck = await pos();
+  check('(setup) standing on the block', Math.abs(onDeck.y - 2) < 0.05, JSON.stringify(onDeck));
+  await pg.evaluate(async () => (await import('./lib/localbody.js')).goLimp());
+  await pg.waitForTimeout(2500);
+  await pg.keyboard.down('KeyW'); await pg.waitForTimeout(250); await pg.keyboard.up('KeyW');
+  await pg.waitForTimeout(1000);
+  const gotUp = await pg.evaluate(async () => { const p = (await import('./lib/controller.js')).myState.pos;
+    return { x: p.x, y: p.y, z: p.z, downed: (await import('./lib/localbody.js')).isDowned() }; });
+  check('getting up after falling over on the block: standing ON it, not inside it at ground level',
+    !gotUp.downed && Math.abs(gotUp.y - 2) < 0.1, JSON.stringify(gotUp));
   check('no page errors', errs.length === 0, errs.slice(0, 2).join(' | '));
 } catch (e) { check('probe ran', false, e.message); }
 finally { try { await browser.close(); } catch {} try { await world.close(); } catch {} }
