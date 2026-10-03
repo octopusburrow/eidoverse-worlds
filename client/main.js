@@ -32,7 +32,7 @@ import { tickSounds } from './lib/sounds.js';   // the sound comp: positional au
 import { tickMotion } from './lib/motion.js';
 import {
   myState, updateMe, updateSpectator, setCamYaw, setPosture, togglePhotoMode,
-  setRightsHook, setMeHook, setFolded,
+  setRightsHook, setMeHook, setFolded, holdRestoredHeight,
 } from './lib/controller.js';
 import { remotes, updateRemotes, updateGaze } from './lib/remotes.js';
 // The whole module as one object: net.js takes the participant registry by injection
@@ -399,6 +399,8 @@ wireNet({
     // EXCEPT a remembered ragdoll frame (pre-sanitizer entries): that is
     // wreckage, not authorship — wake standing instead of hung mid-tumble.
     if (r.clip === 'ragdoll') { myState.pos.y = 0; return; }
+    // hold this height until what you stood on has a collider (controller.js RESTORE HOLD)
+    holdRestoredHeight(myState.pos.y);
     if (r.pose) myState.pose = r.pose;
     setFolded(r.wingsFolded === true);
   },

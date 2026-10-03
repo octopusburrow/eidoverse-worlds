@@ -259,6 +259,9 @@ let xrPresenting = () => false;
 export function setXrProbe(fn) { xrPresenting = fn; }
 let posture = null;              // 'sit' | 'lie' | null
 let vy = 0, grounded = true, mantle = null, airborneFor = 0, jumped = false, wantMove = false;
+let restoreHold = null;   // { y, until } while a restored body waits for what it stood on to load
+export function holdRestoredHeight(y, ms = 20000) { restoreHold = Number.isFinite(y) ? { y, until: performance.now() + ms } : null; }
+export const restoreHolding = () => !!restoreHold;
 
 // camera
 export let camYaw = 0, camPitch = 0.32, camDist = 4.2;
@@ -688,7 +691,15 @@ export function updateMe(dt, me) {
         grounded = false;
       } else { vy = 5.6; grounded = false; jumped = true; }   // a DELIBERATE jump: the clip may start this frame, no airborne grace
     }
-    if (!mantle) {
+    // RESTORE HOLD (BUG-HUNT 2026-09-27 22:20, part 2): a remembered pose lands at once, but what you stood on
+    // gets its collider only when its model loads (realize/models.js), and a reduced-tier placement gets none until
+    // it upgrades. Falling meanwhile drops you to the terrain and the roof builds around you. So hold the height
+    // until support appears there, you move, or the time runs out.
+    if (!mantle && restoreHold) {
+      if (ground >= restoreHold.y - 0.08 || wantMove || performance.now() > restoreHold.until) restoreHold = null;
+      else { myState.pos.y = restoreHold.y; vy = 0; grounded = true; }
+    }
+    if (!mantle && !restoreHold) {
       if (!grounded || myState.pos.y > ground + 0.02) {
         grounded = false;
         vy -= 16 * dt;
@@ -943,7 +954,7 @@ function probeStand(x, y, z) {
 }
 function landAt(s) {
   standUp();
-  posture = null; myState.seat = null;
+  posture = null; myState.seat = null; restoreHold = null;
   myState.pos.set(s.x, s.y, s.z);
   vy = 0; grounded = true; mantle = null; airborneFor = 0;
 }
