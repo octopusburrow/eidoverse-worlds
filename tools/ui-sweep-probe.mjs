@@ -10,16 +10,18 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { launchBrowser, ownedWorld, checker } from './probe-harness.mjs';
 const VP = process.env.BOOT_CHECK_VIEWPORT || 'default';
-const OUT = `${process.env.SWEEP_OUT || 'ui-sweep'}/${VP}`; mkdirSync(OUT, { recursive: true });
+const OUT = `${process.env.SWEEP_OUT || 'ui-sweep'}/${process.env.SWEEP_WORLD ? process.env.SWEEP_WORLD + '-' : ''}${VP}`; mkdirSync(OUT, { recursive: true });
 const { check, done } = checker();
-const world = await ownedWorld({});
+// SWEEP_WORLDS_DIR + SWEEP_WORLD: sweep a COPY of a populated world (keep it small: a full Commons Chromium is ~5 GB)
+const WNAME = process.env.SWEEP_WORLD || 'staging';
+const world = await ownedWorld(process.env.SWEEP_WORLDS_DIR ? { env: { WORLDS_DIR: process.env.SWEEP_WORLDS_DIR } } : {});
 const { browser, page } = await launchBrowser(); const pg = await page();
 const errs = []; pg.on('pageerror', (e) => errs.push(String(e)));
 const report = [];
 try {
   await pg.goto(`${world.origin}/`, { waitUntil: 'domcontentloaded' });
   await pg.evaluate(() => localStorage.setItem('ew-cloud-quality', 'off'));
-  await pg.goto(`${world.origin}/?world=staging&name=sweeper&key=${world.key}&lite=0`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await pg.goto(`${world.origin}/?world=${WNAME}&name=sweeper&key=${world.key}&lite=0`, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await pg.waitForFunction(() => globalThis.__ewEngineUp, null, { timeout: 120000 });
   await pg.evaluate(async () => { const M = await import('./lib/mods.js'); await M.modsApi.put({ name: 'sweep-mod', source: '// hi', auto: false }); });
   await pg.waitForTimeout(1500);
