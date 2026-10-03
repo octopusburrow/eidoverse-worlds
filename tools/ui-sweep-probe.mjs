@@ -23,6 +23,9 @@ try {
   await pg.evaluate(() => localStorage.setItem('ew-cloud-quality', 'off'));
   await pg.goto(`${world.origin}/?world=${WNAME}&name=sweeper&key=${world.key}&lite=0`, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await pg.waitForFunction(() => globalThis.__ewEngineUp, null, { timeout: 120000 });
+  // the loading splash covers the frames until boot finishes (boot.js finishBoot adds .gone): sweep the loaded UI only
+  const booted = await pg.waitForFunction(() => { const sp = document.getElementById('splash'); return !sp || sp.classList.contains('gone') || sp.style.display === 'none'; }, null, { timeout: 90000 }).then(() => true, () => false);
+  check('(setup) the loading splash cleared within 90 s', booted);
   await pg.evaluate(async () => { const M = await import('./lib/mods.js'); await M.modsApi.put({ name: 'sweep-mod', source: '// hi', auto: false }); });
   await pg.waitForTimeout(1500);
 
