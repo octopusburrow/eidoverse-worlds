@@ -24,29 +24,8 @@ try {
   await pg.evaluate(async () => { const M = await import('./lib/mods.js'); await M.modsApi.put({ name: 'sweep-mod', source: '// hi', auto: false }); });
   await pg.waitForTimeout(1500);
 
-  for (const fid of ['world', 'settings']) {
-    await pg.evaluate(async (fid) => { const F = await import('./lib/frames.js'); const f = F.getFrame(fid); f?.show(); }, fid);
-    await pg.waitForTimeout(400);
-    await pg.mouse.move(1, 1); await pg.screenshot({ path: `${OUT}/${fid}-WINDOW.png` });
-    const tabs = await pg.evaluate((fid) => [...document.querySelectorAll(`[data-frame=${fid}] .pf-tab.head`)].map((t) => t.title || t.textContent.trim()), fid);
-    check(`(setup) the ${fid} frame has tabs`, tabs.length > 0, JSON.stringify(tabs));
-    for (const title of tabs) {
-      const head = await pg.evaluate(([fid, title]) => { const t = [...document.querySelectorAll(`[data-frame=${fid}] .pf-tab.head`)].find((x) => (x.title || x.textContent.trim()) === title);
-        const r = t.getBoundingClientRect(); const e = document.elementFromPoint((r.left + r.right) / 2, (r.top + r.bottom) / 2);
-        const strip = t.parentElement, sx = strip && getComputedStyle(strip).overflowX;
-        return { x: (r.left + r.right) / 2, y: (r.top + r.bottom) / 2, onScreen: r.width > 0 && r.right <= innerWidth && r.bottom <= innerHeight && r.left >= 0 && r.top >= 0, hit: !!e && (e === t || t.contains(e)),
-          by: e && !(e === t || t.contains(e)) ? `${e.tagName.toLowerCase()}.${String(e.className).slice(0, 30)} "${(e.textContent || e.title || '').trim().slice(0, 24)}" in ${e.closest('[data-frame]')?.dataset.frame ?? e.closest('[id]')?.id}` : null,
-          stripScrolls: !!strip && /(auto|scroll)/.test(sx) && strip.scrollWidth > strip.clientWidth + 1 }; }, [fid, title]);
-      const row = { frame: fid, tab: title, defects: [] };
-      if (!head.onScreen || !head.hit) { row.defects.push({ kind: 'tab-unreachable', what: `tab "${title}"`, ...head }); report.push(row); continue; }
-      await pg.mouse.click(head.x, head.y);
-      await pg.mouse.move(1, 1);
-      await pg.waitForTimeout(900);
-      const fr = await pg.$(`[data-frame=${fid}]`);
-      const shot = `${OUT}/${fid}-${title.replace(/[^\w-]+/g, '_')}.png`;
-      try { await fr.screenshot({ path: shot }); row.shot = shot; } catch (e) { row.defects.push({ kind: 'screenshot-failed', what: String(e).slice(0, 80) }); }
-      row.defects.push(...await pg.evaluate((fid) => {
-        const fr = document.querySelector(`[data-frame=${fid}]`), fb = fr.querySelector('.fr-body') ?? fr;
+  const CHECK = (fid) => {
+        const fr = document.querySelector(`[data-frame="${fid}"]`), fb = fr.querySelector('.fr-body') ?? fr;
         const vb = fb.getBoundingClientRect();
         const vis = { top: Math.max(vb.top, 0), bottom: Math.min(vb.bottom, innerHeight), left: Math.max(vb.left, 0), right: Math.min(vb.right, innerWidth) };
         const pane = fr.querySelector('.sec.open') ?? fb;
@@ -89,9 +68,48 @@ try {
         }
         out.push({ kind: 'info', controls: ctrls.length });
         return out;
-      }, fid));
+      };
+  for (const fid of ['world', 'settings']) {
+    await pg.evaluate(async (fid) => { const F = await import('./lib/frames.js'); const f = F.getFrame(fid); f?.show(); }, fid);
+    await pg.waitForTimeout(400);
+    await pg.mouse.move(1, 1); await pg.screenshot({ path: `${OUT}/${fid}-WINDOW.png` });
+    const tabs = await pg.evaluate((fid) => [...document.querySelectorAll(`[data-frame=${fid}] .pf-tab.head`)].map((t) => t.title || t.textContent.trim()), fid);
+    check(`(setup) the ${fid} frame has tabs`, tabs.length > 0, JSON.stringify(tabs));
+    for (const title of tabs) {
+      const head = await pg.evaluate(([fid, title]) => { const t = [...document.querySelectorAll(`[data-frame=${fid}] .pf-tab.head`)].find((x) => (x.title || x.textContent.trim()) === title);
+        const r = t.getBoundingClientRect(); const e = document.elementFromPoint((r.left + r.right) / 2, (r.top + r.bottom) / 2);
+        const strip = t.parentElement, sx = strip && getComputedStyle(strip).overflowX;
+        return { x: (r.left + r.right) / 2, y: (r.top + r.bottom) / 2, onScreen: r.width > 0 && r.right <= innerWidth && r.bottom <= innerHeight && r.left >= 0 && r.top >= 0, hit: !!e && (e === t || t.contains(e)),
+          by: e && !(e === t || t.contains(e)) ? `${e.tagName.toLowerCase()}.${String(e.className).slice(0, 30)} "${(e.textContent || e.title || '').trim().slice(0, 24)}" in ${e.closest('[data-frame]')?.dataset.frame ?? e.closest('[id]')?.id}` : null,
+          stripScrolls: !!strip && /(auto|scroll)/.test(sx) && strip.scrollWidth > strip.clientWidth + 1 }; }, [fid, title]);
+      const row = { frame: fid, tab: title, defects: [] };
+      if (!head.onScreen || !head.hit) { row.defects.push({ kind: 'tab-unreachable', what: `tab "${title}"`, ...head }); report.push(row); continue; }
+      await pg.mouse.click(head.x, head.y);
+      await pg.mouse.move(1, 1);
+      await pg.waitForTimeout(900);
+      const fr = await pg.$(`[data-frame=${fid}]`);
+      const shot = `${OUT}/${fid}-${title.replace(/[^\w-]+/g, '_')}.png`;
+      try { await fr.screenshot({ path: shot }); row.shot = shot; } catch (e) { row.defects.push({ kind: 'screenshot-failed', what: String(e).slice(0, 80) }); }
+      row.defects.push(...await pg.evaluate(CHECK, fid));
       report.push(row);
     }
+  }
+  // ── phase 2: every OTHER frame the client registers (the rail's windows), one at a time, the rest hidden
+  const others = await pg.evaluate(async () => (await import('./lib/frames.js')).allFrames().map((f) => f.id ?? f.el?.dataset?.frame).filter(Boolean));
+  const ids = others.filter((id) => id !== 'world' && id !== 'settings');
+  check('(setup) found other frames to sweep', ids.length > 0, JSON.stringify(others));
+  for (const id of ids) {
+    const shown = await pg.evaluate(async (id) => { const F = await import('./lib/frames.js');
+      for (const f of F.allFrames()) try { f.hide?.(); } catch {}
+      const f = F.getFrame(id); try { f.show(); } catch { return false; }
+      return !!document.querySelector(`[data-frame="${id}"]`)?.getBoundingClientRect().width; }, id);
+    const row = { frame: id, tab: '(frame)', defects: [] };
+    if (!shown) { row.defects.push({ kind: 'info', note: 'did not show (may need context, e.g. a person to whisper)' }); report.push(row); continue; }
+    await pg.mouse.move(1, 1); await pg.waitForTimeout(700);
+    const shot = `${OUT}/frame-${id.replace(/[^\w-]+/g, '_')}.png`;
+    try { await (await pg.$(`[data-frame="${id}"]`)).screenshot({ path: shot }); row.shot = shot; } catch {}
+    row.defects.push(...await pg.evaluate(CHECK, id));
+    report.push(row);
   }
   writeFileSync(`${OUT}/report.json`, JSON.stringify(report, null, 1));
   const bad = report.flatMap((r) => r.defects.filter((d) => d.kind !== 'info').map((d) => ({ tab: `${r.frame}/${r.tab}`, ...d })));
