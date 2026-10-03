@@ -48,6 +48,8 @@ export const COMMANDS = [
   { name: 'fork', aliases: ['copy'], help: '/fork <new-name> — copy this world, history and all (owner)' },
   { name: 'reset', aliases: ['erase'], help: 'erase this world back to zero, archived not destroyed (owner)' },
   { name: 'goto', help: '/goto <name> — walk to someone' },
+  { name: 'unstuck', help: 'stuck inside something? up onto its top, or the nearest free spot' },
+  { name: 'respawn', aliases: ['home'], help: 'back to the world\'s start' },
   { name: 'clear', help: 'clear your chat log' },
   { name: 'flight', help: 'why flight is (or is not) doing that — rig, capability, phase' },
   { name: 'help', help: 'open the help sheet' },

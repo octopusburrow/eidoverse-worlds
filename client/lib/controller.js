@@ -33,6 +33,7 @@ import {
   takeOff as flightTakeOff, bestGlide, bodyDown as flightDown,
 } from '../../shared/flight.js';
 import { pilotInput } from '../../shared/flightpilot.js';
+import { findFreeSpot } from '../../shared/unstuck.js';
 import { worldFlightProvider, resolveFlight } from '../../shared/flightcap.js';
 import { inspectBody } from '../../shared/flightbody.js';
 import { applyOwnedWingFold } from '../../shared/wingpresence.js';
@@ -931,3 +932,34 @@ export function standUp() {
   if (posture === 'sit' || posture === 'lie') { posture = null; myState.seat = null; }
 }
 export const getPosture = () => posture;
+
+// /unstuck and /respawn (BUG-HUNT 2026-09-27 22:20). Probing uses its own scratch vector: resolveColliders
+// mutates x/z, and the live body must not be shoved by a question.
+const _stuckProbe = new THREE.Vector3();
+function probeStand(x, y, z) {
+  _stuckProbe.set(x, y, z);
+  const ground = resolveColliders(_stuckProbe, heightAt);
+  return { x: _stuckProbe.x, z: _stuckProbe.z, ground };
+}
+function landAt(s) {
+  standUp();
+  posture = null; myState.seat = null;
+  myState.pos.set(s.x, s.y, s.z);
+  vy = 0; grounded = true; mantle = null; airborneFor = 0;
+}
+/** The world's start: the origin (worlds have no declared spawn yet), or the nearest free spot to it. */
+export function respawnMe() {
+  if (flight) return 'you are flying — land first (F), then /respawn';
+  const o = { x: 0, y: heightAt(0, 0), z: 0 };
+  landAt(findFreeSpot(probeStand, o) ?? o);
+  myState.yaw = 0; setCamYaw(Math.PI);
+  return 'back at the world\'s start';
+}
+export function unstickMe() {
+  if (flight) return 'you are flying — land first (F), then /unstuck';
+  const s = findFreeSpot(probeStand, myState.pos);
+  if (!s) return 'nowhere free nearby — ' + respawnMe();
+  if (s.how === 'free') return 'you don\'t look stuck here (try /respawn to go back to the start)';
+  landAt(s);
+  return s.how === 'on-top' ? 'up onto the top of what you were stuck in' : 'moved to the nearest free spot';
+}

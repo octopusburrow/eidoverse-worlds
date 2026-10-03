@@ -16,7 +16,7 @@ import {
   net, sendVerb, sendMod, sendPuppet, sendWorldFork, sendWorldReset, requestDebug,
 } from '../net.js';
 import { remotes } from '../remotes.js';
-import { myState, setPosture, flightReport } from '../controller.js';
+import { myState, setPosture, flightReport, unstickMe, respawnMe } from '../controller.js';
 import { kick } from '../physobj.js';
 import { logChat } from '../chat.js';
 import { toggleHelp, flashHint } from '../ui.js';
@@ -32,6 +32,8 @@ import { TOUCH_GAP } from '../../../shared/reachwire.js';
 import { panelAlpha, setPanelAlpha } from '../stylepanel.js';
 
 register('help', () => toggleHelp());
+register('unstuck', () => logChat('*', unstickMe()));
+register('respawn', () => logChat('*', respawnMe()));
 // Flight's own diagnostic, in the chat log where a person can read it and
 // paste it back. See controller.js flightReport() for why this is not just
 // the console probe.
