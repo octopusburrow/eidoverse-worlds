@@ -232,7 +232,7 @@ function toggleFlight() {
     const why = next.events?.find(ev => ev.kind === 'takeoff.refused')?.reason ?? next.phase;
     return `cannot take off: ${why}`;
   }
-  flight = next;
+  flight = next; restoreHold = null;
   return 'flying — W/S pitch, A/D bank, Shift spoil, Space flap, F to land';
 }
 
@@ -259,8 +259,16 @@ let xrPresenting = () => false;
 export function setXrProbe(fn) { xrPresenting = fn; }
 let posture = null;              // 'sit' | 'lie' | null
 let vy = 0, grounded = true, mantle = null, airborneFor = 0, jumped = false, wantMove = false;
-let restoreHold = null;   // { y, until } while a restored body waits for what it stood on to load
-export function holdRestoredHeight(y, ms = 20000) { restoreHold = Number.isFinite(y) ? { y, until: performance.now() + ms } : null; }
+let restoreHold = null;   // { y, since, until } while a restored body waits for what it stood on to load
+let buildsPendingHook = () => 0;
+export function setBuildsPendingHook(fn) { if (typeof fn === 'function') buildsPendingHook = fn; }
+export function holdRestoredHeight(y, ms = 20000) {
+  const now = performance.now();
+  restoreHold = Number.isFinite(y) ? { y, since: now, until: now + ms } : null;
+}
+// anything else that takes the body (flight, a seat, a mount, a jump, /unstuck) ends the hold: it must never yank a
+// body that someone else is now moving back to the remembered height (re-review of 395e63c)
+export function clearRestoreHold() { restoreHold = null; }
 export const restoreHolding = () => !!restoreHold;
 
 // camera
@@ -695,8 +703,14 @@ export function updateMe(dt, me) {
     // gets its collider only when its model loads (realize/models.js), and a reduced-tier placement gets none until
     // it upgrades. Falling meanwhile drops you to the terrain and the roof builds around you. So hold the height
     // until support appears there, you move, or the time runs out.
+    // Walking does NOT release it while the world is still building: pressing W right after a reload is the commonest
+    // thing a person does, and releasing then fell straight back into the trap. Once building is done (and after a
+    // short grace, since a restore can precede the replay that queues the builds), no support there means none is
+    // coming: release. A deleted roof costs seconds, not the full timeout.
     if (!mantle && restoreHold) {
-      if (ground >= restoreHold.y - 0.08 || wantMove || performance.now() > restoreHold.until) restoreHold = null;
+      const now = performance.now(), pending = buildsPendingHook() > 0, settled = !pending && now - restoreHold.since > 1500;
+      if (ground >= restoreHold.y - 0.08 || jumped || posture || myState.seat || now > restoreHold.until
+          || (settled && (wantMove || ground < restoreHold.y - 0.08))) restoreHold = null;
       else { myState.pos.y = restoreHold.y; vy = 0; grounded = true; }
     }
     if (!mantle && !restoreHold) {
@@ -949,11 +963,12 @@ export const getPosture = () => posture;
 const _stuckProbe = new THREE.Vector3();
 function probeStand(x, y, z) {
   _stuckProbe.set(x, y, z);
-  const ground = resolveColliders(_stuckProbe, heightAt);
+  const cap = colliderFor(meRef()?.userScale);   // this body's capsule, not the default (re-review)
+  const ground = resolveColliders(_stuckProbe, heightAt, cap.r, cap.tall);
   return { x: _stuckProbe.x, z: _stuckProbe.z, ground };
 }
 const _hrO = new THREE.Vector3(), _hrUp = new THREE.Vector3(0, 1, 0);
-function headroom(x, y, z) { _hrO.set(x, y + 0.05, z); return raySegment(_hrO, _hrUp, 1.85) === null; }
+function headroom(x, y, z) { _hrO.set(x, y + 0.05, z); return raySegment(_hrO, _hrUp, colliderFor(meRef()?.userScale).tall - 0.05) === null; }
 const SEARCH = { headroom };
 function landAt(s) {
   standUp();

@@ -32,8 +32,9 @@ import { tickSounds } from './lib/sounds.js';   // the sound comp: positional au
 import { tickMotion } from './lib/motion.js';
 import {
   myState, updateMe, updateSpectator, setCamYaw, setPosture, togglePhotoMode,
-  setRightsHook, setMeHook, setFolded, holdRestoredHeight,
+  setRightsHook, setMeHook, setFolded, holdRestoredHeight, setBuildsPendingHook, clearRestoreHold,
 } from './lib/controller.js';
+setBuildsPendingHook(buildsPending);
 import { remotes, updateRemotes, updateGaze } from './lib/remotes.js';
 // The whole module as one object: net.js takes the participant registry by injection
 // now (it must carry the protocol for lite.js, which has no bodies to register), and
@@ -399,8 +400,9 @@ wireNet({
     // EXCEPT a remembered ragdoll frame (pre-sanitizer entries): that is
     // wreckage, not authorship — wake standing instead of hung mid-tumble.
     if (r.clip === 'ragdoll') { myState.pos.y = 0; return; }
-    // hold this height until what you stood on has a collider (controller.js RESTORE HOLD)
-    holdRestoredHeight(myState.pos.y);
+    // hold this height until what you stood on has a collider (controller.js RESTORE HOLD) -- unless the remembered
+    // body was in the air: a mid-flight or mid-jump save should fall as before, not hover (re-review)
+    if (!['fly', 'soar', 'jump', 'fall', 'glide'].includes(r.clip)) holdRestoredHeight(myState.pos.y);
     if (r.pose) myState.pose = r.pose;
     setFolded(r.wingsFolded === true);
   },
@@ -560,7 +562,7 @@ registerSystem('me-drive', (dt) => {
   if (CONFIG.renderer) { /* camera is driven per snap request */ }
   else if (CONFIG.spectate) updateSpectator(dt, CONFIG.follow ? remotes.get(CONFIG.follow) : null);
   else if (isDowned()) stepRagdoll(dt);     // the controller yields while limp
-  else if (avatarMounts.has(CONFIG.name)) updateMountedMe(dt);  // seated: derived, not driven
+  else if (avatarMounts.has(CONFIG.name)) { clearRestoreHold(); updateMountedMe(dt); }  // seated: derived, not driven
   else updateMe(dt, getMe());
   updateSeatHint(dt);            // "X — sit" while a declared seat is in reach
 });

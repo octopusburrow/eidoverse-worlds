@@ -41,6 +41,14 @@ for (const thick of [0.3, 0.6, 1.2]) {
     !!e.exact && s?.how === 'on-top' && Math.abs(s.y - (3 + thick)) < 0.02 && Math.abs(walkGround(s) - s.y) < 0.02, { exact: !!e.exact, s, walk: s && walkGround(s) });
 }
 
+const hall = (top: number) => [box(13, 0.2, 13, 0, -0.1, 0),
+  box(0.5, top, 13, -6.25, top / 2, 0), box(0.5, top, 13, 6.25, top / 2, 0), box(13, top, 0.5, 0, top / 2, -6.25), box(13, top, 0.5, 0, top / 2, 6.25),
+  box(13, 0.6, 13, 0, top + 0.3, 0)];
+for (const h of [6.5, 8]) {
+  clear(); fit('hall', hall(h), 'exact');
+  const s = findFreeSpot(probe, { x: 1, y: 0, z: 1 }, S);
+  ok(`a tall exact hall, roof ${h}..${h + 0.6}: /unstuck still finds the top (re-review: 6 m scan said "not stuck")`, s?.how === 'on-top' && Math.abs(s.y - (h + 0.6)) < 0.02, s);
+}
 clear(); fit('temple', temple(0.3), 'exact');
 let s = findFreeSpot(probe, { x: 1, y: 3.3, z: 1 }, S);
 ok('standing on an exact roof → left alone', s?.how === 'free' && Math.abs(s.y - 3.3) < 1e-6, s);

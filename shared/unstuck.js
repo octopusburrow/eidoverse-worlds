@@ -12,7 +12,7 @@
 // "inside a slab" heals itself; the case that traps a person is the enclosed one, which "is it free?" misses.
 
 export const SHOVE_EPS = 1e-3;
-export const HEADROOM = 6.0;                 // how far above the feet to look for a roof to stand on
+export const HEADROOM = 20.0;                // how far above the feet to look for a roof (a temple hall is ~7 m; re-review)
 export const SCAN = 0.25;                    // probe heights step; under the resolver's 8cm floor band x3
 export const RINGS = [0.75, 1.5, 2.5, 4, 6, 9, 12];
 export const SPOKES = 12;
@@ -35,7 +35,6 @@ export function isFree(probe, pos, step = 0.55, headroom = null) {
   return g !== null && g <= pos.y + 1e-6 && pos.y - g <= step + 1e-6 && roomy(headroom, pos.x, pos.y, pos.z);
 }
 
-/** → {x, y, z, how: 'free' | 'on-top' | 'nearby'} or null (caller respawns). */
 /** → {x, y, z, how: 'free' | 'on-top' | 'nearby'} or null (caller respawns).
  *  `onTop: false` skips phase (1) -- /respawn must not put you on a tree that stands over the world's start. */
 export function findFreeSpot(probe, pos, { step = 0.55, headroom = null, onTop = true } = {}) {
