@@ -61,6 +61,22 @@ try {
   await pg.waitForTimeout(1500);
   const home = await pos();
   check('/respawn takes you back to the world\'s start (the origin, on the ground)', Math.hypot(home.x, home.z) < 0.05 && Math.abs(home.y) < 0.6, JSON.stringify({ home, r3 }));
+  // limp: a ragdoll copies its body back into myState every frame, so a move made while downed was undone (review of
+  // f4bf844). The command must get you up first; then you stay put AND your visible body is where others see you.
+  await pg.evaluate(async () => { const C = await import('./lib/controller.js'); C.myState.pos.set(5, 0, 5);
+    (await import('./lib/localbody.js')).goLimp(); });
+  await pg.waitForTimeout(800);
+  const limp = await pg.evaluate(async () => (await import('./lib/localbody.js')).isDowned());
+  check('(setup) the body really is limp', limp === true);
+  const r4 = await say('/respawn');
+  await pg.waitForTimeout(2000);
+  const up = await pg.evaluate(async () => { const C = await import('./lib/controller.js'); const me = (await import('./lib/mybody.js')).getMe();
+    const L = await import('./lib/localbody.js'); const p = C.myState.pos, q = me.root.position;
+    return { pos: { x: p.x, y: p.y, z: p.z }, root: { x: q.x, y: q.y, z: q.z }, downed: L.isDowned() }; });
+  check('/respawn while limp: you get up, arrive at the start, and stay there',
+    !up.downed && Math.hypot(up.pos.x, up.pos.z) < 0.05, JSON.stringify({ up, r4 }));
+  check('…and your visible body is where everyone else sees you (no desync)',
+    Math.hypot(up.root.x - up.pos.x, up.root.z - up.pos.z) < 0.05, JSON.stringify(up));
   check('no page errors', errs.length === 0, errs.slice(0, 2).join(' | '));
 } catch (e) { check('probe ran', false, e.message); }
 finally { try { await browser.close(); } catch {} try { await world.close(); } catch {} }

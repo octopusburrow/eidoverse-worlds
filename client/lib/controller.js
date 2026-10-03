@@ -952,23 +952,28 @@ function probeStand(x, y, z) {
   const ground = resolveColliders(_stuckProbe, heightAt);
   return { x: _stuckProbe.x, z: _stuckProbe.z, ground };
 }
+const _hrO = new THREE.Vector3(), _hrUp = new THREE.Vector3(0, 1, 0);
+function headroom(x, y, z) { _hrO.set(x, y + 0.05, z); return raySegment(_hrO, _hrUp, 1.85) === null; }
+const SEARCH = { headroom };
 function landAt(s) {
   standUp();
-  posture = null; myState.seat = null; restoreHold = null;
+  posture = null; myState.seat = null; restoreHold = null; myState.pose = null;
   myState.pos.set(s.x, s.y, s.z);
   vy = 0; grounded = true; mantle = null; airborneFor = 0;
 }
-/** The world's start: the origin (worlds have no declared spawn yet), or the nearest free spot to it. */
+/** The world's start: the origin (worlds have no declared spawn yet), or the nearest free spot to it -- never on top
+ *  of whatever stands over it (a tree, a gazebo: review of f4bf844). */
 export function respawnMe() {
   if (flight) return 'you are flying — land first (F), then /respawn';
-  const o = { x: 0, y: heightAt(0, 0), z: 0 };
-  landAt(findFreeSpot(probeStand, o) ?? o);
+  const g = probeStand(0, heightAt(0, 0) + 0.55, 0);
+  const o = { x: 0, y: Math.hypot(g.x, g.z) < 1e-3 && Number.isFinite(g.ground) ? g.ground : heightAt(0, 0), z: 0 };
+  landAt(findFreeSpot(probeStand, o, { ...SEARCH, onTop: false }) ?? o);
   myState.yaw = 0; setCamYaw(Math.PI);
   return 'back at the world\'s start';
 }
 export function unstickMe() {
   if (flight) return 'you are flying — land first (F), then /unstuck';
-  const s = findFreeSpot(probeStand, myState.pos);
+  const s = findFreeSpot(probeStand, myState.pos, SEARCH);
   if (!s) return 'nowhere free nearby — ' + respawnMe();
   if (s.how === 'free') return 'you don\'t look stuck here (try /respawn to go back to the start)';
   landAt(s);

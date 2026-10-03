@@ -23,24 +23,33 @@ function standsFree(probe, x, y, z) {
   if (Math.hypot(p.x - x, p.z - z) > SHOVE_EPS) return null;
   return p.ground;
 }
+// `headroom(x, y, z)` → true when a body standing at y has nothing above it for its height. Optional (the pure tests
+// can omit it), but the client always passes it: an exact (mesh) roof thicker than a step otherwise answers with its
+// UNDERSIDE -- the floor ray starts inside the slab and hits the bottom face first -- and nothing shoves a probe deep
+// inside a mesh, so "on top" stood you inside the roof (review of f4bf844, measured on the real resolver).
+const roomy = (headroom, x, y, z) => !headroom || headroom(x, y, z);
 
 /** Is the body at `pos` free right now (no shove, feet within a step of the ground)? */
-export function isFree(probe, pos, step = 0.55) {
+export function isFree(probe, pos, step = 0.55, headroom = null) {
   const g = standsFree(probe, pos.x, pos.y, pos.z);
-  return g !== null && g <= pos.y + 1e-6 && pos.y - g <= step + 1e-6;
+  return g !== null && g <= pos.y + 1e-6 && pos.y - g <= step + 1e-6 && roomy(headroom, pos.x, pos.y, pos.z);
 }
 
 /** → {x, y, z, how: 'free' | 'on-top' | 'nearby'} or null (caller respawns). */
-export function findFreeSpot(probe, pos, step = 0.55) {
+/** → {x, y, z, how: 'free' | 'on-top' | 'nearby'} or null (caller respawns).
+ *  `onTop: false` skips phase (1) -- /respawn must not put you on a tree that stands over the world's start. */
+export function findFreeSpot(probe, pos, { step = 0.55, headroom = null, onTop = true } = {}) {
   // (1) on top: scan probe heights upward. A probe inside a slab is shoved (rejected); the first one that
   // clears a slab's top stands on it (the resolver's floor band) -- so this finds the NEAREST roof above you,
   // not the highest. One probe from a fixed height landed inside a roof starting at that height (probe, 10-03).
-  for (let h = pos.y + step + SCAN; h <= pos.y + HEADROOM; h += SCAN) {
-    const top = standsFree(probe, pos.x, h, pos.z);
-    if (top !== null && top > pos.y + step) return { x: pos.x, y: top, z: pos.z, how: 'on-top' };
+  if (onTop) {
+    for (let h = pos.y + step + SCAN; h <= pos.y + HEADROOM; h += SCAN) {
+      const top = standsFree(probe, pos.x, h, pos.z);
+      if (top !== null && top > pos.y + step && roomy(headroom, pos.x, top, pos.z)) return { x: pos.x, y: top, z: pos.z, how: 'on-top' };
+    }
   }
 
-  if (isFree(probe, pos, step)) return { x: pos.x, y: pos.y, z: pos.z, how: 'free' };
+  if (isFree(probe, pos, step, headroom)) return { x: pos.x, y: pos.y, z: pos.z, how: 'free' };
 
   // (2) nearest free spot at my own height, ring by ring
   for (const r of RINGS) {
@@ -48,7 +57,7 @@ export function findFreeSpot(probe, pos, step = 0.55) {
       const a = (k / SPOKES) * Math.PI * 2;
       const x = pos.x + r * Math.cos(a), z = pos.z + r * Math.sin(a);
       const g = standsFree(probe, x, pos.y + step, z);
-      if (g !== null) return { x, y: g, z, how: 'nearby' };
+      if (g !== null && roomy(headroom, x, g, z)) return { x, y: g, z, how: 'nearby' };
     }
   }
   return null;

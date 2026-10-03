@@ -23,7 +23,7 @@ import { toggleHelp, flashHint } from '../ui.js';
 import { sceneAttach, sceneDetach } from '../scenegraph.js';
 import { EMOTE_ORDER, EMOTES } from '../avatar.js';
 import { setPushable, pushable } from '../consent.js';
-import { trySitOn } from '../localbody.js';
+import { trySitOn, isDowned, getUp } from '../localbody.js';
 import { getMe } from '../mybody.js';
 import { setMyReach, clearMyReach } from '../reachnet.js';
 import { SIM_ID } from '../../../shared/sim.js';
@@ -32,8 +32,9 @@ import { TOUCH_GAP } from '../../../shared/reachwire.js';
 import { panelAlpha, setPanelAlpha } from '../stylepanel.js';
 
 register('help', () => toggleHelp());
-register('unstuck', () => logChat('*', unstickMe()));
-register('respawn', () => logChat('*', respawnMe()));
+// limp first: a ragdoll copies its body back into myState every frame, so a move made while downed is undone
+register('unstuck', () => { if (isDowned()) getUp(); logChat('*', unstickMe()); });
+register('respawn', () => { if (isDowned()) getUp(); logChat('*', respawnMe()); });
 // Flight's own diagnostic, in the chat log where a person can read it and
 // paste it back. See controller.js flightReport() for why this is not just
 // the console probe.
