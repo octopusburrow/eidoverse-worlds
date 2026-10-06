@@ -712,9 +712,15 @@ export function makeFrame(id, opts = {}) {
     // (#185 review: chat w:545 at a 390px viewport = 163px lost). minW/minH are
     // authoring floors, not guarantees: inside a viewport narrower than minW the
     // floor has to yield or the frame can never fit at all.
-    const chrome = hh - state.h;                       // title bar + padding: state.h is the BODY's height
+    // title bar + padding: state.h is the BODY's height. Measured against the body height last PAINTED, not
+    // state.h: show() runs project() then fit() with no paint between, so state.h already holds the rest height
+    // while offsetHeight still describes the old one (measured: a frame shrunk to 375 re-shown with rest 443 gave
+    // chrome -58, and the y clamp then dragged its top 68 px down).
+    const painted = parseFloat(body.style.height);
+    const chrome = hh - (Number.isFinite(painted) ? painted : state.h);
     const maxH = Math.max(40, innerHeight - 16 - chrome);
     state.h = Math.max(Math.min(state.h, maxH), Math.min(minH, maxH));
+    const H = chrome + state.h;            // the height the frame is ABOUT to have; hh is the stale painted one
     // THE ANCHOR is gated on `moved`; the CLAMP below is NOT — that distinction is
     // the whole fix. A frame placed by hand keeps its y; an untouched one still
     // follows its edge through a resize. Gating the clamp too was tried and
@@ -722,8 +728,8 @@ export function makeFrame(id, opts = {}) {
     // left an untouched bar at y=370 where 428 was wanted).
     // R, 2026-09-11: "the emote bar is a little broken now, it can't be
     // arbitrarily placed anywhere."
-    if (!moved && opts.y != null && opts.y < 0) state.y = Math.max(8, innerHeight + opts.y - hh);
-    state.y = clamp(state.y, 8, Math.max(8, innerHeight - hh - 8));
+    if (!moved && opts.y != null && opts.y < 0) state.y = Math.max(8, innerHeight + opts.y - H);
+    state.y = clamp(state.y, 8, Math.max(8, innerHeight - H - 8));
     // A frame created hidden gets its x from resolveAnchor at CREATION width. If it's first shown after a
     // resize/maximize, a negative-x (right-edge) anchor must re-resolve to the CURRENT width, or it strands
     // at its old absolute x (live 09-07: debug, x:-414, opened after maximizing and sat far left instead of
@@ -765,7 +771,7 @@ export function makeFrame(id, opts = {}) {
         for (const sel of (placed ? ['#dock'] : ['#dock', '#micbtn', '#earbtn', '#hudstatus'])) {   // a placed frame yields to the DOCK only
           const g = document.querySelector(sel)?.getBoundingClientRect();
           if (g && g.width && g.left < state.x + state.w && state.x < g.right
-              && g.top < state.y + hh && state.y < g.bottom) {
+              && g.top < state.y + H && state.y < g.bottom) {
             const c = chromeCost(sel, g, innerWidth);
             clearRight = Math.max(clearRight, c.left);
             clearFromRight = Math.max(clearFromRight, c.right);
@@ -825,13 +831,25 @@ export function makeFrame(id, opts = {}) {
           for (const sel of ['#hudstatus', '#lantern-pill', '#micbtn', '#earbtn']) {
             const el = document.querySelector(sel); const g = el?.getBoundingClientRect();
             if (!g || !g.width || getComputedStyle(el).visibility === 'hidden' || g.top > innerHeight / 3) continue;
-            if (g.left < state.x + state.w && state.x < g.right && g.top < state.y + hh && state.y < g.bottom) below = Math.max(below, g.bottom);
+            if (g.left < state.x + state.w && state.x < g.right && g.top < state.y + H && state.y < g.bottom) below = Math.max(below, g.bottom);
           }
           if (below) {
             state.y = Math.round(below + 8);
             const room = innerHeight - 8 - state.y - chrome;
             if (room < state.h) state.h = Math.max(40, room);
           }
+          // ...AND THE BOTTOM BAND, BY HEIGHT. The lantern's resting pill (bottom-centre, z above every frame) sat over
+          // Settings' last ~60 px at 1280x720 and hid "hear my own mic" (ui-sweep 2026-10-03). Moving up is not an
+          // option for the right column (world sits directly above settings), so an unplaced frame whose bottom meets
+          // bottom-band chrome stops 8 px above it and its body scrolls. The pill can be dragged: only chrome in the
+          // lower third counts, so a pill dragged to the top is the rule above's business, not this one's.
+          let above = Infinity;
+          for (const sel of ['#lantern-pill']) {
+            const el = document.querySelector(sel); const g = el?.getBoundingClientRect();
+            if (!g || !g.width || getComputedStyle(el).visibility === 'hidden' || g.top < innerHeight * 2 / 3) continue;
+            if (g.left < state.x + state.w && state.x < g.right && state.y < g.bottom && g.top < state.y + chrome + state.h) above = Math.min(above, g.top);
+          }
+          if (above < Infinity) state.h = Math.max(40, Math.min(state.h, Math.round(above - 8 - state.y - chrome)));
         }
       }
     paint();
