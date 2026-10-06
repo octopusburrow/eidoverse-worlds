@@ -12,6 +12,7 @@
 //   repin    — Settings open with the pill unpinned, then the pill is pinned again (and unpinned: grows back)
 //   reload   — Settings saved open, page reloaded (its first fit runs before the dock has laid out). NOTE: this one
 //              passed on the reviewed commit too (review #3 did not reproduce at 1280x720), so it is a guard never seen red.
+//   lantern  — the lantern opened and closed with Settings open (the open lantern hides the pill by VISIBILITY)
 //   chat     — chat (the frame the pill dodges) hidden then shown: never left shrunk off its bottom edge
 import { launchBrowser, ownedWorld, checker } from './probe-harness.mjs';
 const { check, done } = checker();
@@ -94,6 +95,7 @@ try {
   await boot({}, { keep: true });
   const D = await measure();
   console.log('reload', JSON.stringify(D));
+  if (desktop) check('(setup) reload: the pill is in the band with Settings', sharesBand(D));
   clear('reload (Settings saved open)', D);
 
   // esc-esc
@@ -101,7 +103,19 @@ try {
   await pg.keyboard.press('Escape');
   const E = await measure();
   console.log('esc-esc', JSON.stringify(E));
+  if (desktop) check('(setup) esc-esc: the pill is back in the band', sharesBand(E));
   clear('esc-esc', E);
+
+  // lantern open then closed while Settings is open, on a fresh profile (the 'fresh' pill changes width when opened):
+  // the open lantern hides the pill by visibility, and a refit during that window must not give the band back (review 2 #1)
+  await boot({}); await show('settings'); await audioTab();
+  await pg.evaluate(async () => { const L = await import('./lib/lantern.js'); L.openLantern(); });
+  await pg.waitForTimeout(1300);   // >2 place() ticks while open
+  await pg.evaluate(async () => { const L = await import('./lib/lantern.js'); L.closeLantern(); });
+  const O = await measure();
+  console.log('lantern', JSON.stringify(O));
+  if (desktop) check('(setup) lantern: the pill is back in the band after closing', sharesBand(O));
+  clear('lantern open+close', O);
 
   // unpinned, then re-pinned with Settings open, then unpinned again
   await boot({ 'ew-lantern-pinned': '0' }); await show('settings'); await audioTab();

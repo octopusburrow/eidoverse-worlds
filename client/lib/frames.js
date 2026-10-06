@@ -850,7 +850,9 @@ export function makeFrame(id, opts = {}) {
           let above = Infinity;
           for (const sel of (id === 'chat' ? [] : ['#lantern-pill'])) {
             const el = document.querySelector(sel); const g = el?.getBoundingClientRect();
-            if (!g || !g.width || getComputedStyle(el).visibility === 'hidden' || g.top < innerHeight * 2 / 3) continue;
+            // a pill hidden only by VISIBILITY (lantern open, hint bar up) still counts: it keeps its box, comes back with no
+            // event, and the open lantern / hint bar sit in the same band anyway (review 2 #1). Only display:none (width 0) skips.
+            if (!g || !g.width || g.top < innerHeight * 2 / 3) continue;
             if (g.left < state.x + state.w && state.x < g.right && state.y < g.bottom && g.top < state.y + chrome + state.h) above = Math.min(above, g.top);
           }
           if (above < Infinity) state.h = Math.max(40, Math.min(state.h, Math.round(above - 8 - state.y - chrome)));
@@ -965,15 +967,25 @@ let _lastFits = null;   // B1: the fit verdict at the last viewport change
 // panels BEFORE the pill un-quiets, re-pinning, a drag in arrange mode, its own 500 ms re-placement (review 10-06 #1).
 // Next animation frame, so the pill's new display is the one measured. Never mid-gesture: project() snaps a frame to
 // its rest rect, which would yank one that is being dragged, so a refit asked for while a pointer is down waits for it.
-let _bandPending = false, _pointerDown = false;
+// Pointers are tracked per id (a second finger's release must not end the first's drag) and cleared on blur (an up lost
+// to alt-tab or a native menu must not wedge refits forever). Several events in one frame coalesce into one refit.
+let _bandPending = false, _rafQueued = false;
+const _pointers = new Set();
 function refitForBand() {
-  if (_pointerDown) { _bandPending = true; return; }
+  if (_pointers.size) { _bandPending = true; return; }
   _bandPending = false;
-  requestAnimationFrame(() => { for (const f of frames.values()) f._refit?.(); });
+  if (_rafQueued) return;
+  _rafQueued = true;
+  requestAnimationFrame(() => {
+    _rafQueued = false;
+    if (_pointers.size) { _bandPending = true; return; }   // a gesture began between scheduling and the frame
+    for (const f of frames.values()) f._refit?.();
+  });
 }
 addEventListener('ew-bottom-chrome', refitForBand);
-addEventListener('pointerdown', () => { _pointerDown = true; }, true);
-for (const ev of ['pointerup', 'pointercancel']) addEventListener(ev, () => { _pointerDown = false; if (_bandPending) refitForBand(); }, true);
+addEventListener('pointerdown', (e) => { _pointers.add(e.pointerId); }, true);
+for (const ev of ['pointerup', 'pointercancel']) addEventListener(ev, (e) => { _pointers.delete(e.pointerId); if (!_pointers.size && _bandPending) refitForBand(); }, true);
+addEventListener('blur', () => { _pointers.clear(); if (_bandPending) refitForBand(); });
 
 // Ride the edges: frames sticky to right/bottom keep their edge gap when the
 // window resizes; everything is then clamped back inside regardless.
