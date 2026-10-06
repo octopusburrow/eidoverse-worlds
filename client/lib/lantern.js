@@ -197,12 +197,14 @@ function onEnter() {
 const POS_LS = 'ew-lantern-pos';   // {x: centre as a fraction of the width, b: px from the bottom}
 let spot = null;
 try { spot = JSON.parse(localStorage.getItem(POS_LS) || 'null'); } catch { /* private mode */ }
-let lastX = null;
+let lastX = null, lastB = null, lastW = null;
+// frames yield their bottom to the resting pill (frames.js fit); tell them whenever it shows, hides or moves
+const bandChanged = () => dispatchEvent(new Event('ew-bottom-chrome'));
 const PILL_B = 24, PILL_H = 36, EDGE = 8;
 const setVar = (k, v) => { const r = document.documentElement.style; if (v == null) r.removeProperty(k); else if (r.getPropertyValue(k) !== v) r.setProperty(k, v); };
 function place() {
   if (!root || innerWidth <= 600) {
-    if (lastX !== null) { for (const k of ['--ln-x', '--ln-b', '--ln-px', '--ln-t']) setVar(k, null); lastX = null; }
+    if (lastX !== null) { for (const k of ['--ln-x', '--ln-b', '--ln-px', '--ln-t']) setVar(k, null); lastX = null; bandChanged(); }
     root?.classList.remove('down');
     return;
   }
@@ -228,7 +230,8 @@ function place() {
     }
   }
   x = Math.round(x); b = Math.round(b);
-  lastX = x;
+  const moved = x !== lastX || b !== lastB || pw !== lastW;
+  lastX = x; lastB = b; lastW = pw;
   setVar('--ln-x', `${x}px`);
   setVar('--ln-b', spot ? `${b}px` : null);
   // the open panel: centred on the pill as far as the viewport lets it, below a pill in the top half
@@ -237,6 +240,7 @@ function place() {
   const down = !!spot && innerHeight - b - PILL_H / 2 < innerHeight / 2;
   root.classList.toggle('down', down);
   setVar('--ln-t', down ? `${innerHeight - b - PILL_H}px` : null);
+  if (moved) bandChanged();
 }
 /** Reset layout: the resting line goes back to its default spot. */
 export function resetPillPlace() {
@@ -301,6 +305,7 @@ export function setPillQuiet(v) { quiet = !!v; paintRest(); }
 function paintRest() {
   pill?.classList.toggle('unpinned', !pinned);
   pill?.classList.toggle('quiet', quiet);
+  bandChanged();
 }
 
 // the bar wears the same lighthouse its Panels row does, so the two read as one thing (owner, 10-01: "make sure the

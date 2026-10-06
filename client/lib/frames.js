@@ -459,6 +459,8 @@ export function makeFrame(id, opts = {}) {
     // alone BYPASSES the viewport clamp: the bar reflowed to three rows and
     // painted itself past the bottom edge (#185 review, 800x700).
     _state: state, _paint: () => paint(), _markMoved: markMoved, _project: () => project(),
+    // re-derive from rest and re-fit WITHOUT saving: the bottom band changed under a shown frame (frames' bottom-chrome listener)
+    _refit: () => { if (state.hidden || !root.offsetHeight) return; project(); fit(); },
     // a rider writing _state.w/h is setting the frame's size, so that is the rest size
     _fit: () => { rest.w = state.w; rest.h = state.h; fit(); },
       // READER for the same flag (#185 B1): the api carried a SETTER only, so the
@@ -843,8 +845,10 @@ export function makeFrame(id, opts = {}) {
           // option for the right column (world sits directly above settings), so an unplaced frame whose bottom meets
           // bottom-band chrome stops 8 px above it and its body scrolls. The pill can be dragged: only chrome in the
           // lower third counts, so a pill dragged to the top is the rule above's business, not this one's.
+          // NOT chat: the pill already steps beside chat's compose box (lantern.js place), and two pieces of layout that
+          // each dodge the other with no settling pass left chat shrunk 58 px under a pill that had since moved away.
           let above = Infinity;
-          for (const sel of ['#lantern-pill']) {
+          for (const sel of (id === 'chat' ? [] : ['#lantern-pill'])) {
             const el = document.querySelector(sel); const g = el?.getBoundingClientRect();
             if (!g || !g.width || getComputedStyle(el).visibility === 'hidden' || g.top < innerHeight * 2 / 3) continue;
             if (g.left < state.x + state.w && state.x < g.right && state.y < g.bottom && g.top < state.y + chrome + state.h) above = Math.min(above, g.top);
@@ -955,6 +959,21 @@ function stickyEdges(state, height) {
   };
 }
 let _lastFits = null;   // B1: the fit verdict at the last viewport change
+
+// THE BOTTOM BAND MOVED (lantern.js raises 'ew-bottom-chrome' when its resting pill shows, hides, or moves). fit() is
+// the only place frames yield to the pill, and the pill changes on paths that never call it: Esc twice re-shows the
+// panels BEFORE the pill un-quiets, re-pinning, a drag in arrange mode, its own 500 ms re-placement (review 10-06 #1).
+// Next animation frame, so the pill's new display is the one measured. Never mid-gesture: project() snaps a frame to
+// its rest rect, which would yank one that is being dragged, so a refit asked for while a pointer is down waits for it.
+let _bandPending = false, _pointerDown = false;
+function refitForBand() {
+  if (_pointerDown) { _bandPending = true; return; }
+  _bandPending = false;
+  requestAnimationFrame(() => { for (const f of frames.values()) f._refit?.(); });
+}
+addEventListener('ew-bottom-chrome', refitForBand);
+addEventListener('pointerdown', () => { _pointerDown = true; }, true);
+for (const ev of ['pointerup', 'pointercancel']) addEventListener(ev, () => { _pointerDown = false; if (_bandPending) refitForBand(); }, true);
 
 // Ride the edges: frames sticky to right/bottom keep their edge gap when the
 // window resizes; everything is then clamped back inside regardless.
