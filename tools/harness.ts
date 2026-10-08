@@ -154,7 +154,7 @@ export async function scratchBench(name: string, opts: ScratchOptions & { headed
     `--remote-debugging-port=${DEBUG_PORT}`, `--user-data-dir=${join(SCRATCH, "profile")}`,
     "--no-first-run", "--no-default-browser-check", "--disable-extensions",
     "--disable-background-networking", "--disable-sync", "--mute-audio",
-    "--window-size=1280,800", "--enable-unsafe-webgpu", pageURL,
+    "--window-size=1280,800", pageURL,
   ], { stdout: Bun.file(join(SCRATCH, "browser.log")), stderr: Bun.file(join(SCRATCH, "browser.stderr.log")) }));
   let target: any = null;
   for (let i = 0; i < 120 && !target; i++) {
