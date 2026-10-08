@@ -148,11 +148,12 @@ let worldCodeRan = false;
 async function runOffer(id, b) {
   const runName = `world:${id}`;
   if (running.has(runName)) return;
-  worldCodeRan = true;
   try {
     const res = await fetch(`/library/${b.src}`);
     if (!res.ok) throw new Error(`fetch ${b.src}: ${res.status}`);
-    await runSource(runName, await res.text());
+    const source = await res.text();
+    worldCodeRan = true; // only once world code is about to run: a failed download leaves the mod API open
+    await runSource(runName, source);
   } catch (e) { report(`world mod ${id}`, e); toast(`world mod "${id}" failed: ${e.message}`, 'err'); }
 }
 

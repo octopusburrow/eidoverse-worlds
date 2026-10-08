@@ -55,6 +55,14 @@ console.log('\nthe login popup');
 (body.querySelector('#cj-connect') as HTMLButtonElement | null)?.click();
 await tick(); await tick();
 check('a javascript: login link from the Orrery is not opened', opened.every((u) => /^https?:/.test(u)), JSON.stringify(opened));
+// the control: the same button with an ordinary https login link DOES open it (so the guard isn't refusing everything)
+loginUrl = 'https://orrery.example/login';
+const body1b = document.createElement('div');
+await sec.onOpen(body1b);
+await tick();
+(body1b.querySelector('#cj-connect') as HTMLButtonElement | null)?.click();
+await tick(); await tick();
+check('…while an https login link is opened', opened.includes('https://orrery.example/login'), JSON.stringify(opened));
 
 console.log('\nthe signed-in panel (it links to the Orrery by name)');
 // a fresh module instance (its `connected` state starts unknown) against an Orrery that says you are signed in

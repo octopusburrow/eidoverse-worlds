@@ -1,6 +1,6 @@
 // markup — the one way a string becomes HTML on the hint bar and the edit inspector.
 //
-// flashHint / setHint / setAmbientHint (ui.js) and setInspectorHtml (build.js) treat a plain string as TEXT: whatever
+// flashHint / setHint / setAmbientHint (ui.js) treat a plain string as TEXT: whatever
 // is in it is shown as the characters it is, never parsed. A line that needs markup (<kbd>, <b>) says so by being
 // built with the `html` tag, which escapes every interpolated value:
 //
@@ -9,6 +9,9 @@
 //
 // The brand is a module-private Symbol, so nothing that arrives as data (a name, a label, a JSON message) can pass for
 // markup: JSON has no symbols. A value that is itself html`` nests without escaping. No imports, on purpose.
+//
+// Not covered: the edit inspector (build.js showInspector, setInspectorHtml) still writes markup it builds itself;
+// its callers escape every name and label they interpolate (esc() in build.js, seatedit.js).
 
 const BRAND = Symbol('markup');
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };

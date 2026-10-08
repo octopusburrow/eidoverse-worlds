@@ -6,7 +6,7 @@
 //
 //   1. a TYPED name with < > or " is refused at join, in words, and never reaches anyone's roster
 //   2. & and ' are fine (Tom & Jerry, O'Brien) — and so is an ordinary name
-//   3. a name the identity service vouched for is never refused: it comes in with those characters dropped
+//   3. a name the identity service vouched for is never refused: it comes in with each of those characters swapped for a look-alike (‹ › ″)
 import { generateKeyPairSync, createPublicKey, sign as cryptoSign } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -70,7 +70,8 @@ try {
   check("typed with > is refused", !!nameAtDoor("a>b", { typed: true }).refused);
   check('typed with " is refused', !!nameAtDoor('a"b', { typed: true }).refused);
   check("& and ' pass untouched", nameAtDoor("Tom & Jerry O'Brien", { typed: true }).name === "Tom & Jerry O'Brien" && !nameAtDoor("Tom & Jerry O'Brien", { typed: true }).refused);
-  check("vouched-for: stripped, never refused", nameAtDoor('<b>"Ra"</b>', { typed: false }).name === "bRa/b" && !nameAtDoor('<b>"Ra"</b>', { typed: false }).refused);
+  check("vouched-for: look-alikes, never refused", nameAtDoor('<b>"Ra"</b>', { typed: false }).name === "\u2039b\u203a\u2033Ra\u2033\u2039/b\u203a" && !nameAtDoor('<b>"Ra"</b>', { typed: false }).refused);
+  check("vouched-for: never emptied or made reserved", ["<>", "<world>", '"*"'].every((n) => { const r = nameAtDoor(n, { typed: false }).name; return r.length > 0 && !/^(world|\*)$/i.test(r); }));
 
   console.log(`\nnames at the door — a live sequencer, world "${WORLD}"`);
   const host = await enter({ id: "host", world: WORLD });
@@ -94,7 +95,7 @@ try {
 
   const vouched = await enter({ id: "ignored", world: WORLD }, await cookieFor("human:discord:7001", '<i>"Ra"</i>'));
   check("a vouched-for name is not refused", !!vouched.snap, vouched.errors.join("; "));
-  check("…it arrives with < > \" dropped", vouched.snap?.you === "iRa/i", String(vouched.snap?.you));
+  check("…it arrives with < > \" as look-alikes", vouched.snap?.you === "\u2039i\u203a\u2033Ra\u2033\u2039/i\u203a", String(vouched.snap?.you));
 
   await sleep(200);
   const eye = await enter({ id: "eye", world: WORLD, spectate: true });

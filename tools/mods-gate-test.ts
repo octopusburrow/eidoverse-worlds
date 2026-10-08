@@ -81,6 +81,18 @@ const e3 = await tryCall(() => mods.modsApi.put({ name: 'mine', source: 'export 
 await settle();
 check('…with a click behind it, put still works (the feature stays)', !e3 && localMods().some((m) => m.name === 'mine'), String(e3));
 
+console.log('\nan offer whose download fails');
+stub.behaviors.set('broken', { runtime: 'client', src: 'scripts/dead.js', author: 'someone' });
+globalThis.fetch = (async () => new Response('gone', { status: 404 })) as any;
+active = true;
+await mods.modsApi.accept('broken', false);
+await settle();
+stub.behaviors.delete('broken');
+active = true;
+const e5 = await tryCall(() => mods.modsApi.put({ name: 'after-404', source: 'export default () => {}', auto: false }));
+await settle();
+check('a failed download ran no world code, so the mod API stays open', !e5 && localMods().some((m) => m.name === 'after-404'), String(e5));
+
 console.log('\na world-offered mod, after the visitor pressed "run once"');
 // the offer: on run it tries to make itself permanent and to trust a second offer forever
 const PLANT = `export default async ({ EW }) => {
