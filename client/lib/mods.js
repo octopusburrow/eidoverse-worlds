@@ -140,9 +140,15 @@ export function tickMods(dt, now) {
 
 const offers = () => [...behaviors].filter(([, b]) => b.runtime === 'client');
 
+// Once any world-offered code has run in this page, the scriptable install/run/trust surface (modsApi below) stays
+// shut until reload: that code runs in-page as the visitor, and would otherwise be holding the visitor's own click
+// window when it starts — enough to write itself into the local store with {auto: true} and outlive the "run once".
+let worldCodeRan = false;
+
 async function runOffer(id, b) {
   const runName = `world:${id}`;
   if (running.has(runName)) return;
+  worldCodeRan = true;
   try {
     const res = await fetch(`/library/${b.src}`);
     if (!res.ok) throw new Error(`fetch ${b.src}: ${res.status}`);
@@ -158,7 +164,7 @@ function reconcileOffers({ live = false } = {}) {
     if (running.has(runName)) continue;
     if (g[scriptKey(id, b.src)] || g[worldKey()]) { runOffer(id, b); continue; }
     if (live) {
-      logChat('*', `this world offers a mod: "${id}" by ${b.author} — open 🧩 mods to run it`);
+      logChat('*', `this world offers a mod: "${id}" by ${b.author} — it would run as you, with your identity; open 🧩 mods to read it or run it`);
     }
   }
   // unbound offers stop running
@@ -188,15 +194,28 @@ export default ({ EW, ui, onTick }) => {
 `;
 
 /** The scriptable face of the mod system — same acts as the panel buttons.
- *  (Also what the e2e drives: UI and API share one implementation.) */
+ *  (Also what the e2e drives: UI and API share one implementation.)
+ *
+ *  put, run and accept install, run or permanently trust code, so they need the user's hand: a click or key press this
+ *  moment (the browser's transient user activation). Code that merely holds EW — a mod running on its own at load, or
+ *  a world-offered mod — must not be able to plant another that outlives it. And once world-offered code has run in
+ *  this page they refuse until reload (see worldCodeRan). The 🧩 panel's own buttons don't go through here.
+ *
+ *  Defence in depth, not a wall: code already running in this page is same-origin and could reach IndexedDB or
+ *  localStorage directly. The offer prompt says so — running a world mod runs it as you. */
+const byHand = (what) => {
+  if (worldCodeRan) throw new Error(`EW.mods.${what} is closed in this page: a world-offered mod has run here (reload to use it)`);
+  if (globalThis.navigator?.userActivation?.isActive !== true) throw new Error(`EW.mods.${what} needs a click or key press from you (installing, running or trusting a mod is your decision)`);
+};
 export const modsApi = {
   list: listScripts,
-  put: putScript,
-  run: (name, source) => runSource(name, source),
+  put: async (rec) => { byHand('put'); return putScript(rec); },
+  run: async (name, source) => { byHand('run'); return runSource(name, source); },
   stop: stopMod,
   running: () => [...running.keys()],
   offers: () => offers().map(([id, b]) => ({ id, src: b.src, author: b.author })),
   accept: async (id, always = false) => {
+    byHand('accept');
     const b = behaviors.get(id);
     if (!b) return false;
     if (always) grant(scriptKey(id, b.src));
@@ -232,7 +251,7 @@ export function initMods() {
         return `<div class="mod-row stacked">
           <div class="mod-txt"><span class="mod-nm">${esc(id)}</span><span class="mod-note">by ${esc(b.author)}${on ? ' · running' : ''}</span></div>
           <div class="mod-btns">
-            <button data-orun="${esc(id)}">${on ? 'stop' : 'run once'}</button>
+            <button data-orun="${esc(id)}" title="runs as you, with your identity — read it first (view)">${on ? 'stop' : 'run once'}</button>
             <button data-oalways="${esc(id)}">${g[scriptKey(id, b.src)] ? 'trusted ✓' : 'always (this script)'}</button>
             <button data-osrc="${esc(id)}" title="read the code before trusting it">view</button></div>
         </div>`;
@@ -251,7 +270,9 @@ export function initMods() {
         <button data-new="1">+ new mod</button>
         <div class="sec-cap">this world offers</div>
         <div class="mod-note">scripts this world's owner promoted</div>
-        ${offerRows || '<div class="mod-note">none here</div>'}
+        ${offerRows ? `<div class="mod-note warn">a world mod runs as you, with your identity: it can do anything you can do
+          here — move, speak and build as you — and could leave code behind in this browser. Read it first (view); run
+          only what you'd run as your own.</div>${offerRows}` : '<div class="mod-note">none here</div>'}
         <button data-wworld="1">${g[worldKey()] ? `trusting everything in "${esc(CONFIG.world)}" ✓ (click to revoke)` : `trust all scripts in "${esc(CONFIG.world)}", now and future`}</button>
         ${editing != null ? `<div class="sec-cap">${editing ? `editing ${esc(editing)}` : 'new mod'}</div>
           <input id="mod-name" placeholder="mod name" value="${esc(editing)}" ${editing ? 'disabled' : ''}>
