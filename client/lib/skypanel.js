@@ -314,16 +314,16 @@ export function paintSky(body) {
   // log never stores a clock's def name. The one hardcoded LA entry this row
   // shipped with (survey §B4) lives there now.
   const { row: ckRow, select: ck } = selectRow('clock',
-    [['', 'authored (slider)']], '', null);
+    [['', 'the slider']], '', null);
   const fillClocks = () => defsRegistry().then((reg) => {
     const want = skyArgs().clock === 'real' ? (skyArgs().tz ?? '') : ck.value;
     ck.textContent = '';
-    ck.appendChild(new Option('authored (slider)', ''));
+    ck.appendChild(new Option('the slider', ''));
     for (const c of Object.values(reg.skyClocks ?? {})) {
       if (c?.tz) ck.appendChild(new Option(c.label ?? c.tz, c.tz));
     }
     // a world already committed to a tz the def no longer lists: show the
-    // truth (the raw tz) rather than silently displaying "authored"
+    // truth (the raw tz) rather than silently displaying "the slider"
     if (want && ![...ck.options].some((o) => o.value === want)) {
       ck.appendChild(new Option(`real time — ${want}`, want));
     }
