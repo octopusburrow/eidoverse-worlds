@@ -40,29 +40,36 @@ try {
     c2?.level === 'err' && c2.label === 'graphics lost ×2' && /Graphics lost again/.test(pop2) && !/show again/.test(pop2), JSON.stringify({ c2, pop2: pop2.slice(0, 120) }));
   ok('…replacing the reset chip (one chip for the GPU)', !(await chipOf('gpu-recovered')));
   // THE GATES (#228 review): stopped, with the page still connected, nothing may reach three. Counted on the renderer's
-  // own instance methods UNDER render.js's wrappers (render → _renderScene, compileAsync → _updateCamera, renderWorld's
-  // self-heal → getRenderTarget), on the module instances the page actually loaded — remove any gate and its line goes red
+  // own instance methods UNDER render.js's wrappers (render → _renderScene, renderWorld's self-heal → getRenderTarget), on
+  // the module instances the page actually loaded — remove any gate and its line goes red. compileAsync is counted at its
+  // FIRST line (three reads this._isDeviceLost before anything else), inside a synchronous window around the call: that
+  // read happens before any backend work, so a lost WebGL context can't hide an entry, and nothing a later frame does
+  // can add one (#228 review, round 2: an _updateCamera count depended on the lost backend). gpulost-gate-test.mjs binds
+  // the same three gates with no browser at all.
   const g = await p.evaluate(async () => {
     const before = globalThis.EW.renderer.render;
     const { renderWorld } = await import('./lib/render.js'), { renderer: r, scene, camera } = await import('./lib/core.js');   // the page's own instances (foliage-probe's pattern)
     const n = { scene: 0, cam: 0, rt: 0 }, undo = [], zero = () => { for (const k in n) n[k] = 0; };   // each leg counts only itself
-    for (const [k, c] of [['_renderScene', 'scene'], ['_updateCamera', 'cam'], ['getRenderTarget', 'rt']]) {
+    for (const [k, c] of [['_renderScene', 'scene'], ['getRenderTarget', 'rt']]) {
       const f = r[k]; r[k] = function (...a) { n[c]++; return f.apply(this, a); }; undo.push(() => { delete r[k]; if (r[k] !== f) r[k] = f; });
     }
+    let lostFlag = r._isDeviceLost, inWin = false;
+    Object.defineProperty(r, '_isDeviceLost', { configurable: true, enumerable: true, get() { if (inWin) n.cam++; return lostFlag; }, set(v) { lostFlag = v; } });
+    undo.push(() => { delete r._isDeviceLost; r._isDeviceLost = lostFlag; });
+    const compileOnce = () => { inWin = true; let q; try { q = r.compileAsync(scene, camera, scene); } finally { inWin = false; } return Promise.resolve(q).catch(() => {}); };
     const out = { fired: !!globalThis.__gpuLost?.fired, sameRenderer: r === globalThis.EW.renderer && r.render === before };
     try {
       // POSITIVE CONTROL: with the loss flag down for a moment the same calls DO reach three, so the zeros below mean something
-      const lost = globalThis.__gpuLost, threeKnew0 = r._isDeviceLost; globalThis.__gpuLost = { ...lost, fired: false }; r._isDeviceLost = false;
-      try { try { r.render(scene, camera); } catch {} await r.compileAsync(scene, camera, scene).catch(() => {}); try { renderWorld(); } catch {} }
-      finally { globalThis.__gpuLost = lost; r._isDeviceLost = threeKnew0; }
-      out.control = { render: n.scene, compile: n.cam, world: n.rt }; zero();
+      const lost = globalThis.__gpuLost; globalThis.__gpuLost = { ...lost, fired: false };
+      out.control = {};
+      try {
+        try { r.render(scene, camera); } catch {} out.control.render = n.scene; zero();
+        await compileOnce(); out.control.compile = n.cam; zero();
+        try { renderWorld(); } catch {} out.control.world = n.rt; zero();
+      } finally { globalThis.__gpuLost = lost; }
       for (let i = 0; i < 20; i++) try { r.render(scene, camera); } catch {}
       out.render = n.scene; zero();
-      // three returns early from compileAsync on its OWN _isDeviceLost, which a WebGL context loss sets — but a WebGPU device the
-      // browser destroys never sets it (three skips reason 'destroyed'), and that is the case this gate exists for: model it
-      const threeKnew = r._isDeviceLost; r._isDeviceLost = false;
-      try { for (let i = 0; i < 5; i++) await r.compileAsync(scene, camera, scene).catch(() => {}); } finally { r._isDeviceLost = threeKnew; }
-      out.threeKnew = threeKnew;
+      for (let i = 0; i < 5; i++) await compileOnce();
       out.compile = n.cam; zero();
       for (let i = 0; i < 20; i++) try { renderWorld(); } catch {}
       out.world = n.rt + n.scene;
