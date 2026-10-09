@@ -57,6 +57,10 @@ if (typeof renderer.render === 'function') { const orig = renderer.render.bind(r
     }
     return orig(sc, cam);
   }; }
+// …and compiles nothing: every pipeline warm (assets, flora, terrain, XR entry, instance batches) goes through this one
+// method, and a page stopped after a second loss stays connected and keeps receiving world updates
+if (typeof renderer.compileAsync === 'function') { const origCompile = renderer.compileAsync.bind(renderer);
+  renderer.compileAsync = (...args) => (globalThis.__gpuLost?.fired ? Promise.resolve() : origCompile(...args)); }
 export function renderCensusTick() { renderCensus.frames++; if (renderCensus.perFrame > renderCensus.maxPerFrame) renderCensus.maxPerFrame = renderCensus.perFrame; renderCensus.perFrame = 0; }
 export const renderCensusPeek = () => renderCensus.foreign;
 export function renderCensusTake() { const o = { max: renderCensus.maxPerFrame, foreign: renderCensus.foreign }; renderCensus.maxPerFrame = 0; renderCensus.foreign = null; return o; }

@@ -1,6 +1,7 @@
 // gpulost-probe — real Chromium: kill the WebGL context (WEBGL_lose_context), expect a reload into the
 // same world without ?xr=1 and a red 'graphics reset' status chip (statuschips.js); kill it again inside 2 min, expect
 // NO reload and a red 'graphics lost ×2' chip that opens itself ('Graphics lost again') and replaces the reset chip.   bun tools/gpulost-probe.mjs   (an owned server; SHOT=<png> saves the last frame)
+// …and once stopped, render / compileAsync / renderWorld reach nothing in three (each gate is red-on-revert).
 import { launchBrowser, ownedWorld, checker } from './probe-harness.mjs';
 const { check: ok, done } = checker();
 const world = await ownedWorld({});
@@ -38,6 +39,41 @@ try {
   ok("…and says so: a RED 'graphics lost ×2' chip, its text already open ('Graphics lost again', no 'don’t show again')",
     c2?.level === 'err' && c2.label === 'graphics lost ×2' && /Graphics lost again/.test(pop2) && !/show again/.test(pop2), JSON.stringify({ c2, pop2: pop2.slice(0, 120) }));
   ok('…replacing the reset chip (one chip for the GPU)', !(await chipOf('gpu-recovered')));
+  // THE GATES (#228 review): stopped, with the page still connected, nothing may reach three. Counted on the renderer's
+  // own instance methods UNDER render.js's wrappers (render → _renderScene, compileAsync → _updateCamera, renderWorld's
+  // self-heal → getRenderTarget), on the module instances the page actually loaded — remove any gate and its line goes red
+  const g = await p.evaluate(async () => {
+    const before = globalThis.EW.renderer.render;
+    const { renderWorld } = await import('./lib/render.js'), { renderer: r, scene, camera } = await import('./lib/core.js');   // the page's own instances (foliage-probe's pattern)
+    const n = { scene: 0, cam: 0, rt: 0 }, undo = [], zero = () => { for (const k in n) n[k] = 0; };   // each leg counts only itself
+    for (const [k, c] of [['_renderScene', 'scene'], ['_updateCamera', 'cam'], ['getRenderTarget', 'rt']]) {
+      const f = r[k]; r[k] = function (...a) { n[c]++; return f.apply(this, a); }; undo.push(() => { delete r[k]; if (r[k] !== f) r[k] = f; });
+    }
+    const out = { fired: !!globalThis.__gpuLost?.fired, sameRenderer: r === globalThis.EW.renderer && r.render === before };
+    try {
+      // POSITIVE CONTROL: with the loss flag down for a moment the same calls DO reach three, so the zeros below mean something
+      const lost = globalThis.__gpuLost, threeKnew0 = r._isDeviceLost; globalThis.__gpuLost = { ...lost, fired: false }; r._isDeviceLost = false;
+      try { try { r.render(scene, camera); } catch {} await r.compileAsync(scene, camera, scene).catch(() => {}); try { renderWorld(); } catch {} }
+      finally { globalThis.__gpuLost = lost; r._isDeviceLost = threeKnew0; }
+      out.control = { render: n.scene, compile: n.cam, world: n.rt }; zero();
+      for (let i = 0; i < 20; i++) try { r.render(scene, camera); } catch {}
+      out.render = n.scene; zero();
+      // three returns early from compileAsync on its OWN _isDeviceLost, which a WebGL context loss sets — but a WebGPU device the
+      // browser destroys never sets it (three skips reason 'destroyed'), and that is the case this gate exists for: model it
+      const threeKnew = r._isDeviceLost; r._isDeviceLost = false;
+      try { for (let i = 0; i < 5; i++) await r.compileAsync(scene, camera, scene).catch(() => {}); } finally { r._isDeviceLost = threeKnew; }
+      out.threeKnew = threeKnew;
+      out.compile = n.cam; zero();
+      for (let i = 0; i < 20; i++) try { renderWorld(); } catch {}
+      out.world = n.rt + n.scene;
+    } finally { undo.forEach((u) => u()); }
+    return out;
+  });
+  ok('stopped after the second loss, on the page\'s own renderer', g.fired && g.sameRenderer, JSON.stringify(g));
+  ok('…and the counters are live: unflagged, the same calls DO enter three', g.control?.render > 0 && g.control?.compile > 0 && g.control?.world > 0, JSON.stringify(g.control));
+  ok('…renderer.render() never enters three (20 calls)', g.render === 0, JSON.stringify(g));
+  ok('…renderer.compileAsync() never enters three (5 calls)', g.compile === 0, JSON.stringify(g));
+  ok('…renderWorld() does none of its work (20 calls)', g.world === 0, JSON.stringify(g));
   ok('no page errors', errs.length === 0, errs.slice(0, 3).join(' | '));
   console.log('  · tees:', tees.join(' ;; ').slice(0, 300));
   if (process.env.SHOT) await p.screenshot({ path: process.env.SHOT });
